@@ -14,7 +14,12 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Copy application code
 COPY . .
 
-# Debug: print DATABASE_URL format, then run migrations and start server
-CMD echo "DATABASE_URL starts with: $(echo $DATABASE_URL | head -c 30)..." && \
+# Debug: show all env vars related to database, then run migrations and start
+CMD echo "=== DEBUG ENV ===" && \
+    echo "DATABASE_URL=[${DATABASE_URL}]" && \
+    echo "PORT=[${PORT}]" && \
+    echo "SECRET_KEY exists: $([ -n \"$SECRET_KEY\" ] && echo yes || echo no)" && \
+    env | grep -i postgres | sed 's/:[^@]*@/:***@/g' && \
+    echo "=== END DEBUG ===" && \
     alembic upgrade head && \
     uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8000}
