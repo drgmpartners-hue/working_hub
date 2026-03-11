@@ -1,19 +1,22 @@
 from pydantic_settings import BaseSettings
-from pydantic import model_validator
+from pydantic import computed_field
 
 class Settings(BaseSettings):
     DATABASE_URL: str = "postgresql+asyncpg://postgres:postgres@localhost:5432/app"
     SECRET_KEY: str = "changeme"
 
-    @model_validator(mode="after")
-    def fix_database_url(self):
-        """Convert postgresql:// to postgresql+asyncpg:// for asyncpg compatibility."""
+    @computed_field
+    @property
+    def ASYNC_DATABASE_URL(self) -> str:
+        """Return asyncpg-compatible URL for SQLAlchemy async engine."""
         url = self.DATABASE_URL
+        if url.startswith("postgresql+asyncpg://"):
+            return url
         if url.startswith("postgresql://"):
-            self.DATABASE_URL = url.replace("postgresql://", "postgresql+asyncpg://", 1)
-        elif url.startswith("postgres://"):
-            self.DATABASE_URL = url.replace("postgres://", "postgresql+asyncpg://", 1)
-        return self
+            return url.replace("postgresql://", "postgresql+asyncpg://", 1)
+        if url.startswith("postgres://"):
+            return url.replace("postgres://", "postgresql+asyncpg://", 1)
+        return url
 
     class Config:
         env_file = ".env"
