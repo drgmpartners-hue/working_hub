@@ -64,3 +64,4 @@ temp/
 test-results/
 playwright-report/
 blob-report/
+generated_images/

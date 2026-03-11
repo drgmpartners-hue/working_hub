@@ -1,5 +1,6 @@
 """Stock theme, recommendation, recommended stock, and company stock pool service layer."""
 import random
+import logging
 from typing import Optional
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
@@ -13,6 +14,9 @@ from app.schemas.stock import (
     StockRecommendationCreate,
     CompanyStockPoolCreate,
 )
+from app.services import ai_service
+
+logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
 # Mock data for AI-generated recommended stocks
@@ -95,12 +99,24 @@ async def analyze_themes(
     )
     themes = list(result.scalars().all())
 
+    # Call Gemini for real analysis
+    theme_names = [t.theme_name for t in themes]
+    try:
+        ai_result = ai_service.analyze_stock_themes(theme_names)
+        ai_text = ai_result.get("analysis_text", "")
+    except Exception as e:
+        logger.warning("AI theme analysis failed, using fallback: %s", e)
+        ai_text = ""
+
     for theme in themes:
         theme.ai_score = round(random.uniform(50.0, 99.9), 1)
-        theme.news_summary = (
-            f"[AI 뉴스 요약 - Mock] '{theme.theme_name}' 테마는 최근 긍정적인 뉴스 흐름을 "
-            "보이고 있습니다. 관련 산업의 성장세가 지속되며 투자 매력도가 높아지고 있습니다."
-        )
+        if ai_text:
+            theme.news_summary = f"[Gemini AI 분석]\n{ai_text}"
+        else:
+            theme.news_summary = (
+                f"'{theme.theme_name}' 테마는 최근 긍정적인 뉴스 흐름을 "
+                "보이고 있습니다. 관련 산업의 성장세가 지속되며 투자 매력도가 높아지고 있습니다."
+            )
 
     await db.commit()
     for theme in themes:
