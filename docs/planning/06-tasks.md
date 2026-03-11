@@ -314,7 +314,7 @@ flowchart TD
 
 ### P2-R1: Commission Calculations Resource
 
-#### [ ] P2-R1-T1: Commission Calculations API 구현
+#### [x] P2-R1-T1: Commission Calculations API 구현
 - **담당**: backend-specialist
 - **리소스**: commission_calculations
 - **엔드포인트**:
@@ -332,7 +332,7 @@ flowchart TD
 
 ### P2-R2: Commission Results Resource
 
-#### [ ] P2-R2-T1: Commission Results API 구현
+#### [x] P2-R2-T1: Commission Results API 구현
 - **담당**: backend-specialist
 - **리소스**: commission_results
 - **엔드포인트**:
@@ -354,7 +354,7 @@ flowchart TD
 > 화면: /commission/dr-gm
 > 데이터 요구: file_uploads, commission_calculations, commission_results
 
-#### [ ] P2-S1-T1: Dr.GM 수당정산 UI 구현
+#### [x] P2-S1-T1: Dr.GM 수당정산 UI 구현
 - **담당**: frontend-specialist
 - **화면**: /commission/dr-gm
 - **컴포넌트**:
@@ -405,7 +405,7 @@ flowchart TD
 > 화면: /commission/securities
 > 데이터 요구: crawling_jobs, file_uploads, commission_calculations, commission_results
 
-#### [ ] P2-S2-T1: 증권사 수당정산 UI 구현
+#### [x] P2-S2-T1: 증권사 수당정산 UI 구현
 - **담당**: frontend-specialist
 - **화면**: /commission/securities
 - **컴포넌트**:
@@ -459,7 +459,7 @@ flowchart TD
 
 ### P3-R1: Portfolio Analyses Resource
 
-#### [ ] P3-R1-T1: Portfolio Analyses API 구현
+#### [x] P3-R1-T1: Portfolio Analyses API 구현
 - **담당**: backend-specialist
 - **리소스**: portfolio_analyses
 - **엔드포인트**:
@@ -478,7 +478,7 @@ flowchart TD
 
 ### P3-R2: Portfolio Items Resource
 
-#### [ ] P3-R2-T1: Portfolio Items API 구현
+#### [x] P3-R2-T1: Portfolio Items API 구현
 - **담당**: backend-specialist
 - **리소스**: portfolio_items
 - **엔드포인트**:
@@ -494,7 +494,7 @@ flowchart TD
 
 ### P3-R3: Stock Themes Resource
 
-#### [ ] P3-R3-T1: Stock Themes API 구현
+#### [x] P3-R3-T1: Stock Themes API 구현
 - **담당**: backend-specialist
 - **리소스**: stock_themes
 - **엔드포인트**:
@@ -510,7 +510,7 @@ flowchart TD
 
 ### P3-R4: Stock Recommendations Resource
 
-#### [ ] P3-R4-T1: Stock Recommendations API 구현
+#### [x] P3-R4-T1: Stock Recommendations API 구현
 - **담당**: backend-specialist
 - **리소스**: stock_recommendations
 - **엔드포인트**:
@@ -526,7 +526,7 @@ flowchart TD
 
 ### P3-R5: Recommended Stocks Resource
 
-#### [ ] P3-R5-T1: Recommended Stocks API 구현
+#### [x] P3-R5-T1: Recommended Stocks API 구현
 - **담당**: backend-specialist
 - **리소스**: recommended_stocks
 - **엔드포인트**:
@@ -541,7 +541,7 @@ flowchart TD
 
 ### P3-R6: Company Stock Pool Resource
 
-#### [ ] P3-R6-T1: Company Stock Pool API 구현
+#### [x] P3-R6-T1: Company Stock Pool API 구현
 - **담당**: backend-specialist
 - **리소스**: company_stock_pool
 - **엔드포인트**:
@@ -562,7 +562,7 @@ flowchart TD
 > 화면: /portfolio/irp
 > 데이터 요구: crawling_jobs, file_uploads, portfolio_analyses, portfolio_items
 
-#### [ ] P3-S1-T1: IRP 포트폴리오 UI 구현
+#### [x] P3-S1-T1: IRP 포트폴리오 UI 구현
 - **담당**: frontend-specialist
 - **화면**: /portfolio/irp
 - **컴포넌트**:
@@ -617,7 +617,7 @@ flowchart TD
 > 화면: /investment/stock-recommend
 > 데이터 요구: stock_themes, stock_recommendations, recommended_stocks, company_stock_pool
 
-#### [ ] P3-S2-T1: 주식/ETF 추천 UI 구현
+#### [x] P3-S2-T1: 주식/ETF 추천 UI 구현
 - **담당**: frontend-specialist
 - **화면**: /investment/stock-recommend
 - **컴포넌트**:
@@ -674,7 +674,7 @@ flowchart TD
 
 ### P4-R1: Content Projects Resource
 
-#### [ ] P4-R1-T1: Content Projects API 구현
+#### [x] P4-R1-T1: Content Projects API 구현
 - **담당**: backend-specialist
 - **리소스**: content_projects
 - **엔드포인트**:
@@ -692,7 +692,7 @@ flowchart TD
 
 ### P4-R2: Content Versions Resource
 
-#### [ ] P4-R2-T1: Content Versions API 구현
+#### [x] P4-R2-T1: Content Versions API 구현
 - **담당**: backend-specialist
 - **리소스**: content_versions
 - **엔드포인트**:
@@ -714,7 +714,7 @@ flowchart TD
 > 화면: /content/card-news
 > 데이터 요구: content_projects, content_versions, brand_settings, ai_api_settings
 
-#### [ ] P4-S1-T1: 카드뉴스 제작 UI 구현
+#### [x] P4-S1-T1: 카드뉴스 제작 UI 구현
 - **담당**: frontend-specialist
 - **화면**: /content/card-news
 - **컴포넌트**:
@@ -766,7 +766,7 @@ flowchart TD
 > 화면: /content/report
 > 데이터 요구: content_projects, content_versions, brand_settings, ai_api_settings
 
-#### [ ] P4-S2-T1: 보고서 제작 UI 구현
+#### [x] P4-S2-T1: 보고서 제작 UI 구현
 - **담당**: frontend-specialist
 - **화면**: /content/report
 - **컴포넌트**:
@@ -815,7 +815,7 @@ flowchart TD
 > 화면: /content/cover-promo
 > 데이터 요구: content_projects, content_versions, brand_settings, ai_api_settings
 
-#### [ ] P4-S3-T1: 표지/홍보페이지 UI 구현
+#### [x] P4-S3-T1: 표지/홍보페이지 UI 구현
 - **담당**: frontend-specialist
 - **화면**: /content/cover-promo
 - **컴포넌트**:
