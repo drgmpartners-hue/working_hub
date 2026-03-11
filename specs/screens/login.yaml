@@ -1,0 +1,54 @@
+version: "2.0"
+
+screen:
+  name: 로그인
+  route: /login
+  layout: full-width
+  auth: false
+
+data_requirements:
+  - resource: users
+    needs: [email]
+    auth_required: false
+
+components:
+  - id: login_form
+    type: form
+    position: main
+    function: 이메일/비밀번호 입력 및 인증 요청
+    data_source:
+      resource: users
+    events:
+      - on: submit
+        do: 로그인 API 호출, 성공 시 /dashboard로 이동
+      - on: validation:error
+        do: 입력 필드 하단에 에러 메시지 표시
+
+  - id: logo_image
+    type: detail
+    position: main
+    function: 회사 로고 표시
+    events: []
+
+connections:
+  navigations:
+    - from: login_form
+      to: /dashboard
+
+tests:
+  - name: 로그인 성공
+    when: 올바른 이메일/비밀번호 입력 후 로그인 클릭
+    then:
+      - /dashboard로 이동
+      - JWT 토큰 저장
+
+  - name: 로그인 실패
+    when: 잘못된 비밀번호 입력 후 로그인 클릭
+    then:
+      - 에러 메시지 "이메일 또는 비밀번호가 올바르지 않습니다" 표시
+      - 로그인 페이지 유지
+
+  - name: 빈 필드 제출
+    when: 이메일 또는 비밀번호 미입력 후 로그인 클릭
+    then:
+      - 필수 입력 안내 메시지 표시

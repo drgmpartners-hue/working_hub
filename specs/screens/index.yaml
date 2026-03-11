@@ -1,0 +1,57 @@
+version: "2.0"
+
+screens:
+  - name: 로그인
+    route: /login
+    file: login.yaml
+    auth: false
+
+  - name: 대시보드
+    route: /dashboard
+    file: dashboard.yaml
+    auth: true
+
+  - name: Dr.GM 수당정산 계산기
+    route: /commission/dr-gm
+    file: commission-dr-gm.yaml
+    auth: true
+
+  - name: 증권사 수당정산 계산기
+    route: /commission/securities
+    file: commission-securities.yaml
+    auth: true
+
+  - name: IRP 포트폴리오 수익률 관리기
+    route: /portfolio/irp
+    file: portfolio-irp.yaml
+    auth: true
+
+  - name: 주식/ETF 추천 프로그램
+    route: /investment/stock-recommend
+    file: stock-recommend.yaml
+    auth: true
+
+  - name: 카드뉴스 제작
+    route: /content/card-news
+    file: content-card-news.yaml
+    auth: true
+
+  - name: 보고서 제작
+    route: /content/report
+    file: content-report.yaml
+    auth: true
+
+  - name: 표지/홍보페이지 디자인
+    route: /content/cover-promo
+    file: content-cover-promo.yaml
+    auth: true
+
+categories:
+  - name: 업무 자동화
+    screens: [commission-dr-gm, commission-securities]
+
+  - name: 투자 분석
+    screens: [portfolio-irp, stock-recommend]
+
+  - name: 콘텐츠 제작
+    screens: [content-card-news, content-report, content-cover-promo]

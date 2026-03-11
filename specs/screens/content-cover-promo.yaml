@@ -1,0 +1,87 @@
+version: "2.0"
+
+screen:
+  name: 표지/홍보페이지 디자인
+  route: /content/cover-promo
+  layout: full-width
+  auth: true
+
+data_requirements:
+  - resource: content_projects
+    needs: [id, content_type, title, topic, content_input, status]
+    filters: { content_type: "cover_promo" }
+  - resource: content_versions
+    needs: [id, version_number, ai_text_content, generated_assets, file_path, is_approved]
+  - resource: brand_settings
+    needs: [company_name, primary_color, secondary_color, logo_path, font_family, style_config]
+  - resource: ai_api_settings
+    needs: [provider, is_active]
+
+components:
+  - id: input_panel
+    type: form
+    position: main
+    function: 표지/홍보페이지 주제 및 내용 입력
+    events:
+      - on: submit
+        do: AI에게 콘텐츠 작성 요청
+      - on: change:ai_provider
+        do: 사용할 AI 서비스 변경 (Claude/Gemini)
+
+  - id: ai_text_review
+    type: detail
+    position: main
+    function: AI가 작성한 콘텐츠 검토/수정
+    data_source:
+      resource: content_versions
+    events:
+      - on: click:approve
+        do: 콘텐츠 승인, 디자인 생성 시작
+      - on: click:edit
+        do: 텍스트 수정 모드
+      - on: click:regenerate
+        do: AI 재생성 요청
+
+  - id: design_preview
+    type: detail
+    position: main
+    function: 생성된 표지/홍보페이지 미리보기 (브랜드 자동 적용)
+    data_source:
+      resource: content_versions
+    events:
+      - on: click:edit_text
+        do: 텍스트 수정 후 재생성
+      - on: click:edit_image
+        do: 이미지 부분 수정 요청 후 재생성
+      - on: click:download
+        do: 디자인 파일 다운로드
+
+connections:
+  navigations:
+    - from: input_panel
+      to: /dashboard
+  shared_components:
+    - header_bar
+
+tests:
+  - name: AI 콘텐츠 생성
+    when: 주제/내용 입력 후 생성 요청
+    then:
+      - AI가 콘텐츠 작성
+      - 검토 영역에 결과 표시
+
+  - name: 디자인 생성 (브랜드 적용)
+    when: 콘텐츠 승인
+    then:
+      - 브랜드 적용된 표지/홍보 디자인 생성
+      - 미리보기 표시
+
+  - name: 수정 및 재생성
+    when: 텍스트/이미지 수정 후 재생성
+    then:
+      - 수정 반영된 디자인 재생성
+
+  - name: 다운로드
+    when: 다운로드 클릭
+    then:
+      - 디자인 파일 다운로드

@@ -1,0 +1,55 @@
+version: "2.0"
+
+enums:
+  calc_type:
+    values: [dr_gm, securities]
+    used_in: [commission_calculations]
+
+  content_type:
+    values: [card_news, report, cover_promo]
+    used_in: [content_projects]
+
+  crawling_source_type:
+    values: [securities_commission, irp_portfolio]
+    used_in: [crawling_jobs]
+
+  ai_provider:
+    values: [claude, gemini]
+    used_in: [ai_api_settings]
+
+  job_status:
+    values: [pending, processing, completed, error]
+    used_in: [commission_calculations, crawling_jobs, portfolio_analyses, content_projects]
+
+  product_type:
+    values: [pension, irp]
+    used_in: [portfolio_items]
+
+common_patterns:
+  file_download:
+    description: 파일 생성 후 다운로드
+    event: click:download
+    used_in:
+      - commission-dr-gm (명세서)
+      - commission-securities (보고서)
+      - portfolio-irp (PDF 보고서)
+      - content-card-news (카드뉴스 이미지)
+      - content-report (보고서 파일)
+      - content-cover-promo (디자인 파일)
+
+  excel_upload:
+    description: 엑셀 파일 업로드 및 파싱
+    event: drop:file
+    resource: file_uploads
+    used_in:
+      - commission-dr-gm
+      - commission-securities
+      - portfolio-irp
+
+  ai_content_generation:
+    description: AI 텍스트 콘텐츠 생성 → 검토 → 승인 → 디자인 생성
+    steps: [input, generate, review, approve, design, edit, download]
+    used_in:
+      - content-card-news
+      - content-report
+      - content-cover-promo

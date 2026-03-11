@@ -1,0 +1,121 @@
+@import "tailwindcss";
+
+/* ===== Design System CSS Variables ===== */
+:root {
+  /* Primary */
+  --color-primary: #1E3A5F;
+  --color-primary-light: #4A90D9;
+
+  /* Secondary / Accent */
+  --color-secondary: #2E8B8B;
+  --color-accent: #D4A847;
+
+  /* Backgrounds */
+  --color-background: #FFFFFF;
+  --color-surface: #F5F7FA;
+  --color-border: #E1E5EB;
+
+  /* Text */
+  --color-text-primary: #1A1A2E;
+  --color-text-secondary: #6B7280;
+
+  /* Semantic */
+  --color-success: #10B981;
+  --color-warning: #F59E0B;
+  --color-error: #EF4444;
+  --color-info: #3B82F6;
+
+  /* Legacy (keep for Tailwind theme compat) */
+  --background: #ffffff;
+  --foreground: #1A1A2E;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+}
+
+/* ===== Base Styles ===== */
+*, *::before, *::after {
+  box-sizing: border-box;
+}
+
+html {
+  -webkit-text-size-adjust: 100%;
+}
+
+body {
+  background: var(--color-background);
+  color: var(--color-text-primary);
+  font-family: var(--font-geist-sans, 'Pretendard', 'Noto Sans KR', system-ui, sans-serif);
+  line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* ===== Scrollbar ===== */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: var(--color-surface);
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--color-border);
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--color-text-secondary);
+}
+
+/* ===== Focus Ring ===== */
+:focus-visible {
+  outline: 2px solid var(--color-primary-light);
+  outline-offset: 2px;
+}
+
+/* ===== Selection ===== */
+::selection {
+  background: rgba(74, 144, 217, 0.2);
+  color: var(--color-text-primary);
+}
+
+/* ===== Transition Utility ===== */
+.transition-base {
+  transition: all 0.2s ease;
+}
+
+/* ===== Spinner Animation ===== */
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+.animate-spin {
+  animation: spin 0.75s linear infinite;
+}
+
+/* ===== Fade-in Animation ===== */
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(6px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+.animate-fade-in {
+  animation: fadeIn 0.2s ease forwards;
+}
+
+/* ===== Modal Overlay ===== */
+@keyframes overlayIn {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+.animate-overlay-in {
+  animation: overlayIn 0.15s ease forwards;
+}

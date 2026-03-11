@@ -1,0 +1,107 @@
+version: "2.0"
+
+screen:
+  name: 증권사 수당정산 계산기
+  route: /commission/securities
+  layout: full-width
+  auth: true
+
+data_requirements:
+  - resource: crawling_jobs
+    needs: [id, status, result_data, error_message]
+    filters: { source_type: "securities_commission" }
+  - resource: file_uploads
+    needs: [file_name, parsed_data]
+  - resource: commission_calculations
+    needs: [id, calc_type, input_data, result_data, status]
+    filters: { calc_type: "securities" }
+  - resource: commission_results
+    needs: [employee_name, detail_data, report_file_path]
+
+components:
+  - id: tab_navigation
+    type: navigation
+    position: main
+    function: 3탭 전환 (데이터 확인 / 템플릿&계산 / 미리보기&다운로드)
+    events:
+      - on: click:tab
+        do: 해당 탭 활성화
+
+  - id: data_source_selector
+    type: form
+    position: main
+    function: 크롤링 실행 또는 엑셀 업로드 선택
+    data_source:
+      resource: crawling_jobs
+    events:
+      - on: click:crawl
+        do: 크롤링 작업 시작 API 호출, 진행 상태 표시
+      - on: drop:file
+        do: 엑셀 파일 업로드 및 파싱
+
+  - id: data_result_table
+    type: list
+    position: main
+    function: 크롤링/업로드 결과 데이터 확인 테이블
+    data_source:
+      resource: crawling_jobs
+    events:
+      - on: click:next
+        do: 탭 2(템플릿&계산)로 이동
+
+  - id: template_calc_panel
+    type: detail
+    position: main
+    function: 템플릿에 데이터 적용 및 계산 결과 표시
+    data_source:
+      resource: commission_calculations
+    events:
+      - on: click:calculate
+        do: 수당 계산 실행
+      - on: click:next
+        do: 탭 3(미리보기&다운로드)로 이동
+      - on: click:prev
+        do: 탭 1로 복귀
+
+  - id: preview_download_panel
+    type: detail
+    position: main
+    function: 보고서 미리보기 및 다운로드
+    data_source:
+      resource: commission_results
+    events:
+      - on: click:download
+        do: 보고서 파일 다운로드
+      - on: click:prev
+        do: 탭 2로 복귀
+
+connections:
+  navigations:
+    - from: tab_navigation
+      to: /dashboard
+  shared_components:
+    - header_bar
+
+tests:
+  - name: 크롤링으로 데이터 수집
+    when: 크롤링 실행 버튼 클릭
+    then:
+      - 크롤링 진행 상태 표시
+      - 완료 시 데이터 테이블 표시
+
+  - name: 크롤링 실패 시 대체
+    when: 크롤링 실패
+    then:
+      - 에러 메시지 표시
+      - 엑셀 업로드 대체 안내
+
+  - name: 템플릿 적용 및 계산
+    when: 탭 2에서 계산 실행
+    then:
+      - 템플릿에 데이터 적용된 결과 표시
+      - 계산 결과 테이블 표시
+
+  - name: 보고서 다운로드
+    when: 탭 3에서 다운로드 클릭
+    then:
+      - 보고서 파일 다운로드 시작

@@ -1,0 +1,112 @@
+version: "2.0"
+
+screen:
+  name: IRP 포트폴리오 수익률 관리기
+  route: /portfolio/irp
+  layout: full-width
+  auth: true
+
+data_requirements:
+  - resource: crawling_jobs
+    needs: [id, status, result_data, error_message]
+    filters: { source_type: "irp_portfolio" }
+  - resource: file_uploads
+    needs: [file_name, parsed_data]
+  - resource: portfolio_analyses
+    needs: [id, data_source, raw_data, template_data, ai_analysis, rebalancing_suggestions, report_file_path, status]
+  - resource: portfolio_items
+    needs: [id, product_name, product_type, current_value, return_rate, details]
+
+components:
+  - id: tab_navigation
+    type: navigation
+    position: main
+    function: 3탭 전환 (데이터 확인 / 템플릿&편집&AI / 보고서&PDF)
+    events:
+      - on: click:tab
+        do: 해당 탭 활성화
+
+  - id: data_source_selector
+    type: form
+    position: main
+    function: 크롤링 실행 또는 엑셀 업로드 선택
+    data_source:
+      resource: crawling_jobs
+    events:
+      - on: click:crawl
+        do: 크롤링 작업 시작, 진행 상태 표시
+      - on: drop:file
+        do: 엑셀 파일 업로드 및 파싱
+
+  - id: data_result_table
+    type: list
+    position: main
+    function: 크롤링/업로드 결과 데이터 확인
+    events:
+      - on: click:next
+        do: 탭 2로 이동
+
+  - id: template_edit_panel
+    type: form
+    position: main
+    function: 템플릿 적용 결과 표시 + 값 직접 입력/수정 (리밸런싱, 추천상품)
+    data_source:
+      resource: portfolio_analyses
+    events:
+      - on: change:field
+        do: 입력된 값으로 템플릿 데이터 업데이트
+      - on: click:ai_analyze
+        do: AI 분석 요청, 분석 결과 표시
+
+  - id: ai_analysis_panel
+    type: detail
+    position: main
+    function: AI 포트폴리오 분석 결과 및 리밸런싱 제안 표시
+    data_source:
+      resource: portfolio_analyses
+    events:
+      - on: click:apply_suggestion
+        do: AI 제안을 템플릿에 반영
+      - on: click:next
+        do: 탭 3으로 이동
+
+  - id: report_preview
+    type: detail
+    position: main
+    function: 보고서 미리보기 및 PDF 다운로드
+    data_source:
+      resource: portfolio_analyses
+    events:
+      - on: click:download_pdf
+        do: PDF 보고서 생성 및 다운로드
+      - on: click:prev
+        do: 탭 2로 복귀
+
+connections:
+  navigations:
+    - from: tab_navigation
+      to: /dashboard
+  shared_components:
+    - header_bar
+
+tests:
+  - name: 데이터 수집 및 확인
+    when: 크롤링 또는 엑셀 업로드 완료
+    then:
+      - 포트폴리오 데이터 테이블 표시
+
+  - name: 템플릿 편집 및 AI 분석
+    when: 탭 2에서 값 수정 후 AI 분석 요청
+    then:
+      - 수정된 값 반영
+      - AI 분석 결과 및 리밸런싱 제안 표시
+
+  - name: AI 제안 적용
+    when: AI 리밸런싱 제안 적용 클릭
+    then:
+      - 제안 값이 템플릿에 자동 반영
+
+  - name: PDF 보고서 다운로드
+    when: 탭 3에서 PDF 다운로드 클릭
+    then:
+      - PDF 파일 생성 후 다운로드 시작

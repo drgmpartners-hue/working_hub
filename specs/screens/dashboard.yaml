@@ -1,0 +1,85 @@
+version: "2.0"
+
+screen:
+  name: 대시보드
+  route: /dashboard
+  layout: full-width
+  auth: true
+
+data_requirements:
+  - resource: users
+    needs: [name, email]
+    auth_required: true
+
+components:
+  - id: header_bar
+    type: navigation
+    position: header
+    function: 로고, 홈 버튼, 프로필/로그아웃 표시
+    data_source:
+      resource: users
+    events:
+      - on: click:logo
+        do: /dashboard로 이동
+      - on: click:logout
+        do: 로그아웃 API 호출, /login으로 이동
+
+  - id: category_accordion
+    type: navigation
+    position: main
+    function: 카테고리별 아코디언 그룹 (업무 자동화, 투자 분석, 콘텐츠 제작)
+    events:
+      - on: click:category
+        do: 해당 카테고리 하위 프로그램 카드 펼침/접기
+
+  - id: program_card_grid
+    type: grid
+    position: main
+    function: 카테고리 내 프로그램 카드 목록 표시
+    events:
+      - on: click:card
+        do: 해당 프로그램 페이지로 이동 (새 페이지)
+
+connections:
+  navigations:
+    - from: program_card_grid
+      to: /commission/dr-gm
+    - from: program_card_grid
+      to: /commission/securities
+    - from: program_card_grid
+      to: /portfolio/irp
+    - from: program_card_grid
+      to: /investment/stock-recommend
+    - from: program_card_grid
+      to: /content/card-news
+    - from: program_card_grid
+      to: /content/report
+    - from: program_card_grid
+      to: /content/cover-promo
+
+  shared_components:
+    - header_bar
+
+tests:
+  - name: 초기 로드
+    when: 로그인 후 대시보드 접속
+    then:
+      - 3개 카테고리 그룹 표시 (업무 자동화, 투자 분석, 콘텐츠 제작)
+      - 모든 카테고리 접힌 상태
+
+  - name: 카테고리 펼침
+    when: 업무 자동화 카테고리 클릭
+    then:
+      - Dr.GM 수당정산, 증권사 수당정산 카드 펼쳐짐
+      - 다른 카테고리는 접힌 상태 유지
+
+  - name: 프로그램 이동
+    when: Dr.GM 수당정산 카드 클릭
+    then:
+      - /commission/dr-gm 페이지로 이동
+
+  - name: 로그아웃
+    when: 로그아웃 버튼 클릭
+    then:
+      - /login 페이지로 이동
+      - 세션/토큰 삭제

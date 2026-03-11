@@ -1,0 +1,109 @@
+version: "2.0"
+
+screen:
+  name: 주식/ETF 추천 프로그램
+  route: /investment/stock-recommend
+  layout: full-width
+  auth: true
+
+data_requirements:
+  - resource: stock_themes
+    needs: [id, theme_name, ai_score, news_summary, stock_count]
+  - resource: stock_recommendations
+    needs: [id, selected_themes, ai_scores, status]
+  - resource: recommended_stocks
+    needs: [id, stock_code, stock_name, theme, rank, return_1m, return_3m, return_6m, institutional_buy, foreign_buy, is_top5, analysis_report]
+  - resource: company_stock_pool
+    needs: [id, pool_name, stocks]
+
+components:
+  - id: step_indicator
+    type: navigation
+    position: main
+    function: 2단계 위저드 진행 표시 (테마 분석 / 종목 확인)
+    events:
+      - on: click:step
+        do: 해당 단계로 이동
+
+  - id: theme_list
+    type: list
+    position: main
+    function: 증권사 API 테마 목록 + AI 분석 점수 + 추천 하이라이트
+    data_source:
+      resource: stock_themes
+    events:
+      - on: click:analyze
+        do: 테마 AI 분석 요청 (뉴스 분석 기반 점수)
+      - on: click:add_basket
+        do: 선택 테마를 바구니에 추가 (복수 선택)
+      - on: click:remove_basket
+        do: 바구니에서 테마 제거
+
+  - id: theme_basket
+    type: list
+    position: main
+    function: 선택된 테마 바구니 표시
+    events:
+      - on: click:next
+        do: Step 2로 이동 (선택 테마의 주식 목록 조회)
+
+  - id: stock_list
+    type: list
+    position: main
+    function: 선택 테마별 주식 목록 (Top 5 구별 표시) + 상세 정보
+    data_source:
+      resource: recommended_stocks
+    events:
+      - on: click:add_portfolio
+        do: 개인 포트폴리오에 주식 추가
+      - on: click:add_pool
+        do: 회사 투자풀에 주식 추가
+      - on: click:stock_detail
+        do: 주식 분석 보고서 팝업 열기
+
+  - id: stock_analysis_popup
+    type: detail
+    position: overlay
+    function: 개별 주식 AI 분석 보고서 (NotebookLM식 리서치 기반)
+    data_source:
+      resource: recommended_stocks
+    events:
+      - on: click:generate_report
+        do: AI 리서치 기반 분석 보고서 생성
+      - on: click:close
+        do: 팝업 닫기
+
+connections:
+  navigations:
+    - from: step_indicator
+      to: /dashboard
+    - from: stock_list
+      to: /portfolio/irp
+  shared_components:
+    - header_bar
+
+tests:
+  - name: 테마 분석 및 선택
+    when: 테마 분석 실행 후 테마 선택
+    then:
+      - AI 분석 점수가 각 테마에 표시
+      - 추천 테마가 하이라이트 표시
+      - 바구니에 복수 테마 담기 가능
+
+  - name: 종목 확인 및 Top 5
+    when: Step 2 진입
+    then:
+      - 선택 테마의 주식 목록 표시
+      - Top 5 주식이 시각적으로 구별
+      - 기간별 수익률, 기관/외국인 매수 정보 표시
+
+  - name: 포트폴리오 담기
+    when: 주식 선택 후 포트폴리오 담기 클릭
+    then:
+      - 개인 포트폴리오 또는 회사풀에 추가
+      - 추가 완료 알림 표시
+
+  - name: 주식 분석 보고서
+    when: 개별 주식 분석 버튼 클릭
+    then:
+      - 팝업에 AI 리서치 기반 분석 보고서 표시

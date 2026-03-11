@@ -1,0 +1,233 @@
+resources:
+  users:
+    endpoints:
+      - method: POST
+        path: /api/auth/login
+      - method: POST
+        path: /api/auth/logout
+      - method: GET
+        path: /api/auth/me
+    fields:
+      id: { type: integer, pk: true }
+      email: { type: string, unique: true }
+      name: { type: string }
+      last_login: { type: timestamp }
+
+  commission_calculations:
+    endpoints:
+      - method: POST
+        path: /api/commissions
+      - method: GET
+        path: /api/commissions
+      - method: GET
+        path: /api/commissions/:id
+    fields:
+      id: { type: integer, pk: true }
+      user_id: { type: integer, fk: users }
+      calc_type: { type: string, enum: [dr_gm, securities] }
+      source_file_path: { type: string }
+      input_data: { type: jsonb }
+      result_data: { type: jsonb }
+      status: { type: string, enum: [pending, processing, completed, error] }
+      created_at: { type: timestamp }
+
+  commission_results:
+    endpoints:
+      - method: GET
+        path: /api/commissions/:calc_id/results
+      - method: GET
+        path: /api/commissions/:calc_id/results/:id/download
+    fields:
+      id: { type: integer, pk: true }
+      calculation_id: { type: integer, fk: commission_calculations }
+      employee_name: { type: string }
+      detail_data: { type: jsonb }
+      report_file_path: { type: string }
+
+  crawling_jobs:
+    endpoints:
+      - method: POST
+        path: /api/crawling/start
+      - method: GET
+        path: /api/crawling/:id/status
+    fields:
+      id: { type: integer, pk: true }
+      source_type: { type: string, enum: [securities_commission, irp_portfolio] }
+      status: { type: string, enum: [pending, running, completed, failed] }
+      result_data: { type: jsonb }
+      error_message: { type: string }
+      created_at: { type: timestamp }
+
+  portfolio_analyses:
+    endpoints:
+      - method: POST
+        path: /api/portfolios
+      - method: GET
+        path: /api/portfolios
+      - method: GET
+        path: /api/portfolios/:id
+      - method: PUT
+        path: /api/portfolios/:id
+    fields:
+      id: { type: integer, pk: true }
+      user_id: { type: integer, fk: users }
+      data_source: { type: string, enum: [crawling, excel] }
+      raw_data: { type: jsonb }
+      template_data: { type: jsonb }
+      ai_analysis: { type: jsonb }
+      rebalancing_suggestions: { type: jsonb }
+      report_file_path: { type: string }
+      status: { type: string }
+      created_at: { type: timestamp }
+
+  portfolio_items:
+    endpoints:
+      - method: GET
+        path: /api/portfolios/:analysis_id/items
+      - method: PUT
+        path: /api/portfolios/:analysis_id/items/:id
+    fields:
+      id: { type: integer, pk: true }
+      analysis_id: { type: integer, fk: portfolio_analyses }
+      product_name: { type: string }
+      product_type: { type: string, enum: [pension, irp] }
+      current_value: { type: decimal }
+      return_rate: { type: decimal }
+      details: { type: jsonb }
+
+  stock_themes:
+    endpoints:
+      - method: GET
+        path: /api/stocks/themes
+      - method: POST
+        path: /api/stocks/themes/analyze
+    fields:
+      id: { type: integer, pk: true }
+      theme_name: { type: string }
+      ai_score: { type: decimal }
+      news_summary: { type: text }
+      stock_count: { type: integer }
+      updated_at: { type: timestamp }
+
+  stock_recommendations:
+    endpoints:
+      - method: POST
+        path: /api/stocks/recommendations
+      - method: GET
+        path: /api/stocks/recommendations/:id
+    fields:
+      id: { type: integer, pk: true }
+      user_id: { type: integer, fk: users }
+      selected_themes: { type: jsonb }
+      ai_scores: { type: jsonb }
+      status: { type: string }
+      created_at: { type: timestamp }
+
+  recommended_stocks:
+    endpoints:
+      - method: GET
+        path: /api/stocks/recommendations/:rec_id/stocks
+    fields:
+      id: { type: integer, pk: true }
+      recommendation_id: { type: integer, fk: stock_recommendations }
+      stock_code: { type: string }
+      stock_name: { type: string }
+      theme: { type: string }
+      rank: { type: integer }
+      return_1m: { type: decimal }
+      return_3m: { type: decimal }
+      return_6m: { type: decimal }
+      institutional_buy: { type: bigint }
+      foreign_buy: { type: bigint }
+      is_top5: { type: boolean }
+      analysis_report: { type: jsonb }
+
+  company_stock_pool:
+    endpoints:
+      - method: GET
+        path: /api/stocks/pool
+      - method: POST
+        path: /api/stocks/pool
+    fields:
+      id: { type: integer, pk: true }
+      pool_name: { type: string }
+      stocks: { type: jsonb }
+      created_at: { type: timestamp }
+
+  content_projects:
+    endpoints:
+      - method: POST
+        path: /api/content
+      - method: GET
+        path: /api/content
+      - method: GET
+        path: /api/content/:id
+      - method: PUT
+        path: /api/content/:id
+    fields:
+      id: { type: integer, pk: true }
+      user_id: { type: integer, fk: users }
+      content_type: { type: string, enum: [card_news, report, cover_promo] }
+      title: { type: string }
+      topic: { type: text }
+      content_input: { type: text }
+      brand_setting_id: { type: integer, fk: brand_settings }
+      status: { type: string, enum: [draft, generating, completed] }
+      created_at: { type: timestamp }
+
+  content_versions:
+    endpoints:
+      - method: GET
+        path: /api/content/:project_id/versions
+      - method: POST
+        path: /api/content/:project_id/versions
+      - method: GET
+        path: /api/content/:project_id/versions/:id/download
+    fields:
+      id: { type: integer, pk: true }
+      project_id: { type: integer, fk: content_projects }
+      version_number: { type: integer }
+      ai_text_content: { type: text }
+      generated_assets: { type: jsonb }
+      file_path: { type: string }
+      is_approved: { type: boolean }
+      created_at: { type: timestamp }
+
+  brand_settings:
+    endpoints:
+      - method: GET
+        path: /api/brand
+      - method: PUT
+        path: /api/brand
+    fields:
+      id: { type: integer, pk: true }
+      company_name: { type: string }
+      primary_color: { type: string }
+      secondary_color: { type: string }
+      logo_path: { type: string }
+      font_family: { type: string }
+      style_config: { type: jsonb }
+
+  ai_api_settings:
+    endpoints:
+      - method: GET
+        path: /api/settings/ai
+      - method: PUT
+        path: /api/settings/ai
+    fields:
+      id: { type: integer, pk: true }
+      provider: { type: string, enum: [claude, gemini] }
+      api_key_encrypted: { type: text }
+      is_active: { type: boolean }
+
+  file_uploads:
+    endpoints:
+      - method: POST
+        path: /api/upload/excel
+    fields:
+      id: { type: integer, pk: true }
+      file_name: { type: string }
+      file_path: { type: string }
+      file_size: { type: integer }
+      parsed_data: { type: jsonb }
+      uploaded_at: { type: timestamp }

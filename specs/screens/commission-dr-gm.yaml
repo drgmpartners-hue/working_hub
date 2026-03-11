@@ -1,0 +1,89 @@
+version: "2.0"
+
+screen:
+  name: Dr.GM 수당정산 계산기
+  route: /commission/dr-gm
+  layout: full-width
+  auth: true
+
+data_requirements:
+  - resource: file_uploads
+    needs: [file_name, parsed_data]
+  - resource: commission_calculations
+    needs: [id, calc_type, input_data, result_data, status]
+    filters: { calc_type: "dr_gm" }
+  - resource: commission_results
+    needs: [employee_name, detail_data, report_file_path]
+
+components:
+  - id: tab_navigation
+    type: navigation
+    position: main
+    function: 2탭 전환 (업로드&계산 / 미리보기&다운로드)
+    events:
+      - on: click:tab
+        do: 해당 탭 활성화
+
+  - id: excel_upload
+    type: form
+    position: main
+    function: 엑셀 파일 드래그&드롭 또는 파일 선택 업로드
+    data_source:
+      resource: file_uploads
+    events:
+      - on: drop:file
+        do: 엑셀 파일 업로드 API 호출, 파싱 결과 표시
+      - on: click:upload
+        do: 파일 선택 다이얼로그 열기
+
+  - id: calculation_result_table
+    type: list
+    position: main
+    function: 수당 계산 결과 테이블 표시
+    data_source:
+      resource: commission_calculations
+    events:
+      - on: click:next
+        do: 탭 2(미리보기)로 이동
+
+  - id: preview_panel
+    type: detail
+    position: main
+    function: 개인별 수당명세서 미리보기
+    data_source:
+      resource: commission_results
+    events:
+      - on: click:download
+        do: 명세서 파일 다운로드
+      - on: click:prev
+        do: 탭 1(업로드&계산)로 복귀
+
+connections:
+  navigations:
+    - from: tab_navigation
+      to: /dashboard
+  shared_components:
+    - header_bar
+
+tests:
+  - name: 엑셀 업로드 및 계산
+    when: 엑셀 파일 업로드
+    then:
+      - 파일 파싱 후 데이터 테이블 표시
+      - 수당 계산 결과 하단에 표시
+
+  - name: 명세서 미리보기
+    when: 다음 버튼 클릭
+    then:
+      - 탭 2로 이동
+      - 개인별 수당명세서 미리보기 표시
+
+  - name: 명세서 다운로드
+    when: 다운로드 버튼 클릭
+    then:
+      - 수당명세서 파일 다운로드 시작
+
+  - name: 이전 탭 복귀
+    when: 이전 버튼 클릭
+    then:
+      - 탭 1로 복귀, 이전 데이터 유지
