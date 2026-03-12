@@ -41,3 +41,6 @@ class User(Base):
     content_projects: Mapped[list["ContentProject"]] = relationship(
         "ContentProject", back_populates="user", lazy="select"
     )
+    clients: Mapped[list["Client"]] = relationship(
+        "Client", back_populates="user", lazy="select"
+    )

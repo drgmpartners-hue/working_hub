@@ -12,6 +12,8 @@ from app.models import (  # noqa: F401
     RecommendedStock, CompanyStockPool, ContentProject, ContentVersion,
     BrandSetting, AIAPISetting, FileUpload,
 )
+from app.models.client import Client, ClientAccount  # noqa: F401
+from app.models.snapshot import PortfolioSnapshot, PortfolioHolding  # noqa: F401
 
 config = context.config
 config.set_main_option("sqlalchemy.url", settings.ASYNC_DATABASE_URL)

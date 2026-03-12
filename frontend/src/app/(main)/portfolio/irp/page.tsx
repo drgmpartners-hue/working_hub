@@ -1,640 +1,549 @@
-/**
- * IRP 포트폴리오 수익률 관리기
- * /portfolio/irp
- *
- * 3-tab layout:
- *  Tab 1: 데이터 확인  – 크롤링 or 엑셀 업로드 → 결과 테이블
- *  Tab 2: 템플릿 & AI  – 항목 편집 + AI 분석 / 리밸런싱 제안
- *  Tab 3: 보고서 & PDF – 보고서 미리보기 + 다운로드
- */
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
+import dynamic from 'next/dynamic';
 import { Tab, type TabItem } from '@/components/common/Tab';
 import { Button } from '@/components/common/Button';
 import { Card } from '@/components/common/Card';
-import { TemplateEditPanel } from '@/components/portfolio/TemplateEditPanel';
-import { AIAnalysisPanel } from '@/components/portfolio/AIAnalysisPanel';
+import { ClientRow } from '@/components/portfolio/ClientRow';
+import { SnapshotDataTable } from '@/components/portfolio/SnapshotDataTable';
 import { authLib } from '@/lib/auth';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
 
 /* ------------------------------------------------------------------ */
+/*  Dynamic import for ReportView (recharts SSR 방지)                   */
+/* ------------------------------------------------------------------ */
+
+const ReportView = dynamic(() => import('@/components/portfolio/ReportView'), { ssr: false });
+
+/* ------------------------------------------------------------------ */
 /*  Types                                                               */
 /* ------------------------------------------------------------------ */
 
-interface PortfolioAnalysis {
-  id: number;
-  title: string;
+interface ClientAccount {
+  id: string;
+  client_id: string;
+  account_type: 'irp' | 'pension1' | 'pension2';
+  account_number?: string;
+  securities_company?: string;
+  monthly_payment?: number;
+}
+
+interface Client {
+  id: string;
+  name: string;
+  memo?: string;
+  accounts: ClientAccount[];
+}
+
+interface Holding {
+  id: string;
+  seq?: number;
+  product_name: string;
+  product_code?: string;
+  product_type?: string;
+  risk_level?: string;
+  region?: string;
+  purchase_amount?: number;
+  evaluation_amount?: number;
+  return_amount?: number;
+  return_rate?: number;
+  weight?: number;
+  reference_price?: number;
+}
+
+interface Snapshot {
+  id: string;
+  client_account_id: string;
+  snapshot_date: string;
+  deposit_amount?: number;
+  total_purchase?: number;
+  total_evaluation?: number;
+  total_return?: number;
+  total_return_rate?: number;
+  holdings: Holding[];
+}
+
+interface ReportData {
+  snapshot: {
+    id: string;
+    snapshot_date: string;
+    deposit_amount?: number;
+    total_purchase?: number;
+    total_evaluation?: number;
+    total_return?: number;
+    total_return_rate?: number;
+  };
+  account: {
+    id: string;
+    account_type: string;
+    account_number?: string;
+    securities_company?: string;
+    monthly_payment?: number;
+  };
+  holdings: Holding[];
+  history: { date: string; return_rate?: number }[];
+}
+
+interface ClientRowData {
+  clientId: string;
+  clientName: string;
+  accountId: string;
+  accountType: 'irp' | 'pension1' | 'pension2';
+  accountNumber: string;
+  imageFile: File | null;
+  imagePreview: string;
+  snapshotDate: string;
+}
+
+interface ProcessResult {
+  clientName: string;
+  accountType: string;
   status: 'pending' | 'processing' | 'done' | 'error';
-  created_at: string;
-  item_count?: number;
-}
-
-interface CrawlingJob {
-  job_id: string;
-  status: 'pending' | 'running' | 'done' | 'error';
-  progress?: number;
-  result?: unknown;
+  snapshotId?: string;
+  errorMsg?: string;
 }
 
 /* ------------------------------------------------------------------ */
-/*  Sub-components                                                      */
+/*  Helpers                                                             */
 /* ------------------------------------------------------------------ */
 
-/** Step indicator dot */
-function StepDot({ active, done, label }: { active: boolean; done: boolean; label: string }) {
+const accountTypeLabel = (t: string) =>
+  ({ irp: 'IRP', pension1: '연금저축1', pension2: '연금저축2' } as Record<string, string>)[t] || t;
+
+function todayString(): string {
+  return new Date().toISOString().slice(0, 10);
+}
+
+function makeDefaultRow(accountType: 'irp' | 'pension1' | 'pension2' = 'irp'): ClientRowData {
+  return {
+    clientId: '',
+    clientName: '',
+    accountId: '',
+    accountType,
+    accountNumber: '',
+    imageFile: null,
+    imagePreview: '',
+    snapshotDate: todayString(),
+  };
+}
+
+/* ------------------------------------------------------------------ */
+/*  고객/계좌 자동 생성                                                  */
+/* ------------------------------------------------------------------ */
+
+async function getOrCreateClientAccount(row: ClientRowData): Promise<string> {
+  if (row.accountId) return row.accountId;
+
+  let clientId = row.clientId;
+
+  if (!clientId) {
+    const res = await fetch(`${API_URL}/api/v1/clients`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...authLib.getAuthHeader() },
+      body: JSON.stringify({ name: row.clientName }),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err?.detail || '고객 생성 실패');
+    }
+    const client: Client = await res.json();
+    clientId = client.id;
+  }
+
+  const res = await fetch(`${API_URL}/api/v1/clients/${clientId}/accounts`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...authLib.getAuthHeader() },
+    body: JSON.stringify({
+      account_type: row.accountType,
+      account_number: row.accountNumber || undefined,
+    }),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err?.detail || '계좌 생성 실패');
+  }
+  const account: ClientAccount = await res.json();
+  return account.id;
+}
+
+/* ------------------------------------------------------------------ */
+/*  Step indicator                                                      */
+/* ------------------------------------------------------------------ */
+
+function StepDot({ step, active, done }: { step: number; active: boolean; done: boolean }) {
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6 }}>
-      <div
-        style={{
-          width: 32,
-          height: 32,
-          borderRadius: '50%',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          backgroundColor: done ? '#1E3A5F' : active ? '#2E8B8B' : '#E1E5EB',
-          color: done || active ? '#fff' : '#9CA3AF',
-          fontSize: '0.8125rem',
-          fontWeight: 700,
-          transition: 'all 0.2s ease',
-        }}
-      >
-        {done ? (
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round">
-            <polyline points="20 6 9 17 4 12" />
-          </svg>
-        ) : (
-          label
-        )}
-      </div>
-    </div>
-  );
-}
-
-/* ------------------------------------------------------------------ */
-/*  Tab 1 – DataSourceSelector + DataResultTable                        */
-/* ------------------------------------------------------------------ */
-
-function DataTab({
-  onAnalysisCreated,
-}: {
-  onAnalysisCreated: (analysis: PortfolioAnalysis) => void;
-}) {
-  const [sourceType, setSourceType] = useState<'crawling' | 'excel'>('excel');
-  const [crawlingUrl, setCrawlingUrl] = useState('');
-  const [file, setFile] = useState<File | null>(null);
-  const [title, setTitle] = useState('');
-  const [loading, setLoading] = useState(false);
-  const [jobId, setJobId] = useState<string | null>(null);
-  const [jobStatus, setJobStatus] = useState<CrawlingJob | null>(null);
-  const [analysis, setAnalysis] = useState<PortfolioAnalysis | null>(null);
-  const [error, setError] = useState<string | null>(null);
-
-  async function handleExcelUpload() {
-    if (!file) return;
-    setLoading(true);
-    setError(null);
-    try {
-      const formData = new FormData();
-      formData.append('file', file);
-      formData.append('title', title || file.name);
-      formData.append('type', 'irp_portfolio');
-
-      const uploadRes = await fetch(`${API_URL}/api/v1/upload/excel`, {
-        method: 'POST',
-        headers: { ...authLib.getAuthHeader() },
-        body: formData,
-      });
-      if (!uploadRes.ok) throw new Error('파일 업로드에 실패했습니다.');
-      const uploadData = await uploadRes.json();
-
-      const createRes = await fetch(`${API_URL}/api/v1/portfolios`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          ...authLib.getAuthHeader(),
-        },
-        body: JSON.stringify({
-          title: title || file.name,
-          source: 'excel',
-          file_id: uploadData.file_id,
-        }),
-      });
-      if (!createRes.ok) throw new Error('포트폴리오 분석 생성에 실패했습니다.');
-      const newAnalysis: PortfolioAnalysis = await createRes.json();
-      setAnalysis(newAnalysis);
-      onAnalysisCreated(newAnalysis);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : '알 수 없는 오류');
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  async function handleCrawlingStart() {
-    if (!crawlingUrl) return;
-    setLoading(true);
-    setError(null);
-    setJobStatus(null);
-    try {
-      const res = await fetch(`${API_URL}/api/v1/crawling/start`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          ...authLib.getAuthHeader(),
-        },
-        body: JSON.stringify({ url: crawlingUrl, type: 'irp_portfolio' }),
-      });
-      if (!res.ok) throw new Error('크롤링 시작에 실패했습니다.');
-      const data = await res.json();
-      setJobId(data.job_id);
-      pollJobStatus(data.job_id);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : '알 수 없는 오류');
-      setLoading(false);
-    }
-  }
-
-  async function pollJobStatus(jid: string) {
-    const poll = async () => {
-      try {
-        const res = await fetch(`${API_URL}/api/v1/crawling/${jid}/status`, {
-          headers: { ...authLib.getAuthHeader() },
-        });
-        if (!res.ok) throw new Error('상태 조회 실패');
-        const job: CrawlingJob = await res.json();
-        setJobStatus(job);
-
-        if (job.status === 'running' || job.status === 'pending') {
-          setTimeout(poll, 2000);
-        } else if (job.status === 'done') {
-          // Create portfolio from crawling result
-          const createRes = await fetch(`${API_URL}/api/v1/portfolios`, {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              ...authLib.getAuthHeader(),
-            },
-            body: JSON.stringify({
-              title: title || '크롤링 포트폴리오',
-              source: 'crawling',
-              job_id: jid,
-            }),
-          });
-          if (!createRes.ok) throw new Error('포트폴리오 생성 실패');
-          const newAnalysis: PortfolioAnalysis = await createRes.json();
-          setAnalysis(newAnalysis);
-          onAnalysisCreated(newAnalysis);
-          setLoading(false);
-        } else {
-          throw new Error('크롤링 중 오류가 발생했습니다.');
-        }
-      } catch (err) {
-        setError(err instanceof Error ? err.message : '알 수 없는 오류');
-        setLoading(false);
-      }
-    };
-    poll();
-  }
-
-  return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
-      {/* Title input */}
-      <div>
-        <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, color: '#374151', marginBottom: 6 }}>
-          분석 제목
-        </label>
-        <input
-          type="text"
-          placeholder="예: 2024년 4분기 IRP 포트폴리오"
-          value={title}
-          onChange={(e) => setTitle(e.target.value)}
-          style={{
-            width: '100%',
-            padding: '9px 12px',
-            fontSize: '0.875rem',
-            border: '1px solid #E1E5EB',
-            borderRadius: 8,
-            outline: 'none',
-            color: '#1A1A2E',
-            boxSizing: 'border-box',
-          }}
-        />
-      </div>
-
-      {/* Source selector */}
-      <div>
-        <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, color: '#374151', marginBottom: 10 }}>
-          데이터 소스
-        </label>
-        <div style={{ display: 'flex', gap: 10 }}>
-          {(['excel', 'crawling'] as const).map((type) => (
-            <button
-              key={type}
-              onClick={() => setSourceType(type)}
-              style={{
-                flex: 1,
-                padding: '12px 16px',
-                borderRadius: 10,
-                border: `2px solid ${sourceType === type ? '#1E3A5F' : '#E1E5EB'}`,
-                backgroundColor: sourceType === type ? '#EEF2F7' : '#FFFFFF',
-                cursor: 'pointer',
-                display: 'flex',
-                alignItems: 'center',
-                gap: 10,
-                transition: 'all 0.15s ease',
-              }}
-            >
-              {type === 'excel' ? (
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke={sourceType === 'excel' ? '#1E3A5F' : '#6B7280'} strokeWidth="1.5">
-                  <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
-                  <polyline points="14 2 14 8 20 8" />
-                  <line x1="9" y1="12" x2="15" y2="12" />
-                  <line x1="9" y1="16" x2="15" y2="16" />
-                </svg>
-              ) : (
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke={sourceType === 'crawling' ? '#1E3A5F' : '#6B7280'} strokeWidth="1.5">
-                  <circle cx="12" cy="12" r="10" />
-                  <line x1="2" y1="12" x2="22" y2="12" />
-                  <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z" />
-                </svg>
-              )}
-              <div style={{ textAlign: 'left' }}>
-                <div style={{ fontSize: '0.875rem', fontWeight: 600, color: sourceType === type ? '#1E3A5F' : '#1A1A2E' }}>
-                  {type === 'excel' ? '엑셀 업로드' : '크롤링'}
-                </div>
-                <div style={{ fontSize: '0.75rem', color: '#6B7280', marginTop: 1 }}>
-                  {type === 'excel' ? '.xlsx / .xls 파일' : 'URL에서 자동 수집'}
-                </div>
-              </div>
-            </button>
-          ))}
-        </div>
-      </div>
-
-      {/* Excel upload */}
-      {sourceType === 'excel' && (
-        <Card padding={16}>
-          <div
-            onDragOver={(e) => e.preventDefault()}
-            onDrop={(e) => {
-              e.preventDefault();
-              const dropped = e.dataTransfer.files[0];
-              if (dropped) setFile(dropped);
-            }}
-            style={{
-              border: '2px dashed #E1E5EB',
-              borderRadius: 10,
-              padding: '32px 20px',
-              textAlign: 'center',
-              backgroundColor: file ? '#F0FDF4' : '#FAFBFC',
-              cursor: 'pointer',
-              transition: 'all 0.15s ease',
-            }}
-            onClick={() => document.getElementById('irp-file-input')?.click()}
-          >
-            <input
-              id="irp-file-input"
-              type="file"
-              accept=".xlsx,.xls"
-              style={{ display: 'none' }}
-              onChange={(e) => {
-                const f = e.target.files?.[0];
-                if (f) setFile(f);
-              }}
-            />
-            <svg
-              width="32"
-              height="32"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke={file ? '#059669' : '#9CA3AF'}
-              strokeWidth="1.5"
-              style={{ margin: '0 auto 10px' }}
-            >
-              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
-              <polyline points="17 8 12 3 7 8" />
-              <line x1="12" y1="3" x2="12" y2="15" />
-            </svg>
-            <p style={{ margin: 0, fontSize: '0.875rem', color: file ? '#059669' : '#6B7280' }}>
-              {file ? file.name : '파일을 드래그하거나 클릭하여 선택하세요'}
-            </p>
-            {!file && (
-              <p style={{ margin: '4px 0 0', fontSize: '0.75rem', color: '#9CA3AF' }}>
-                .xlsx, .xls 형식 지원
-              </p>
-            )}
-          </div>
-          {file && (
-            <div style={{ marginTop: 12, display: 'flex', justifyContent: 'flex-end' }}>
-              <Button size="sm" variant="ghost" onClick={() => setFile(null)}>
-                파일 제거
-              </Button>
-            </div>
-          )}
-        </Card>
-      )}
-
-      {/* Crawling URL */}
-      {sourceType === 'crawling' && (
-        <Card padding={16}>
-          <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, color: '#374151', marginBottom: 6 }}>
-            크롤링 URL
-          </label>
-          <input
-            type="url"
-            placeholder="https://example.com/portfolio"
-            value={crawlingUrl}
-            onChange={(e) => setCrawlingUrl(e.target.value)}
-            style={{
-              width: '100%',
-              padding: '9px 12px',
-              fontSize: '0.875rem',
-              border: '1px solid #E1E5EB',
-              borderRadius: 8,
-              outline: 'none',
-              color: '#1A1A2E',
-              boxSizing: 'border-box',
-            }}
-          />
-
-          {/* Crawling progress */}
-          {jobStatus && (
-            <div style={{ marginTop: 14 }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6 }}>
-                <span style={{ fontSize: '0.8125rem', color: '#6B7280' }}>
-                  {jobStatus.status === 'running' ? '크롤링 진행 중...' : '크롤링 완료'}
-                </span>
-                <span style={{ fontSize: '0.8125rem', fontWeight: 600, color: '#1E3A5F' }}>
-                  {jobStatus.progress ?? 0}%
-                </span>
-              </div>
-              <div style={{ height: 6, backgroundColor: '#E1E5EB', borderRadius: 3, overflow: 'hidden' }}>
-                <div
-                  style={{
-                    height: '100%',
-                    width: `${jobStatus.progress ?? 0}%`,
-                    backgroundColor: '#1E3A5F',
-                    borderRadius: 3,
-                    transition: 'width 0.4s ease',
-                  }}
-                />
-              </div>
-            </div>
-          )}
-        </Card>
-      )}
-
-      {/* Error */}
-      {error && (
-        <div
-          style={{
-            padding: '12px 16px',
-            backgroundColor: '#FEF2F2',
-            border: '1px solid #FECACA',
-            borderRadius: 8,
-            color: '#B91C1C',
-            fontSize: '0.875rem',
-          }}
-        >
-          {error}
-        </div>
-      )}
-
-      {/* Success */}
-      {analysis && (
-        <div
-          style={{
-            padding: '14px 16px',
-            backgroundColor: '#ECFDF5',
-            border: '1px solid #6EE7B7',
-            borderRadius: 8,
-            display: 'flex',
-            alignItems: 'center',
-            gap: 8,
-          }}
-        >
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#059669" strokeWidth="2.5" strokeLinecap="round">
-            <polyline points="20 6 9 17 4 12" />
-          </svg>
-          <span style={{ fontSize: '0.875rem', color: '#065F46' }}>
-            분석이 생성되었습니다. (ID: {analysis.id}) — 다음 탭에서 편집하고 AI 분석을 요청하세요.
-          </span>
-        </div>
-      )}
-
-      {/* Submit */}
-      <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
-        <Button
-          variant="primary"
-          size="md"
-          loading={loading}
-          disabled={
-            (sourceType === 'excel' && !file) ||
-            (sourceType === 'crawling' && !crawlingUrl) ||
-            !!analysis
-          }
-          onClick={sourceType === 'excel' ? handleExcelUpload : handleCrawlingStart}
-        >
-          {loading
-            ? sourceType === 'crawling'
-              ? '크롤링 중...'
-              : '업로드 중...'
-            : '데이터 불러오기'}
-        </Button>
-      </div>
-    </div>
-  );
-}
-
-/* ------------------------------------------------------------------ */
-/*  Tab 3 – Report preview                                              */
-/* ------------------------------------------------------------------ */
-
-function ReportTab({ analysisId }: { analysisId: number | null }) {
-  const [loading, setLoading] = useState(false);
-  const [reportHtml, setReportHtml] = useState<string | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [downloading, setDownloading] = useState(false);
-
-  async function generateReport() {
-    if (!analysisId) return;
-    setLoading(true);
-    setError(null);
-    try {
-      const res = await fetch(`${API_URL}/api/v1/portfolios/${analysisId}`, {
-        headers: { ...authLib.getAuthHeader() },
-      });
-      if (!res.ok) throw new Error('보고서 조회 실패');
-      const data = await res.json();
-      setReportHtml(data.report_html ?? buildFallbackReport(data));
-    } catch (err) {
-      setError(err instanceof Error ? err.message : '보고서 생성 중 오류');
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  function buildFallbackReport(data: Record<string, unknown>): string {
-    return `
-      <div style="font-family:sans-serif;padding:32px;max-width:760px;margin:0 auto;">
-        <h1 style="color:#1E3A5F;border-bottom:3px solid #1E3A5F;padding-bottom:12px;">
-          IRP 포트폴리오 분석 보고서
-        </h1>
-        <p style="color:#6B7280;font-size:14px;">생성일: ${new Date().toLocaleDateString('ko-KR')}</p>
-        <h2 style="color:#1E3A5F;margin-top:28px;">분석 요약</h2>
-        <p>${(data.ai_analysis as string) ?? '분석 결과가 없습니다. AI 분석을 먼저 요청하세요.'}</p>
-      </div>
-    `;
-  }
-
-  async function downloadPDF() {
-    if (!analysisId) return;
-    setDownloading(true);
-    try {
-      const res = await fetch(`${API_URL}/api/v1/portfolios/${analysisId}/export/pdf`, {
-        headers: { ...authLib.getAuthHeader() },
-      });
-      if (!res.ok) throw new Error('PDF 다운로드 실패');
-      const blob = await res.blob();
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `portfolio_report_${analysisId}.pdf`;
-      a.click();
-      URL.revokeObjectURL(url);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'PDF 다운로드 오류');
-    } finally {
-      setDownloading(false);
-    }
-  }
-
-  if (!analysisId) {
-    return (
-      <div
-        style={{
-          padding: '60px 20px',
-          textAlign: 'center',
-          color: '#6B7280',
-        }}
-      >
-        <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="#D1D5DB" strokeWidth="1" style={{ margin: '0 auto 16px', display: 'block' }}>
-          <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
-          <polyline points="14 2 14 8 20 8" />
-          <line x1="9" y1="12" x2="15" y2="12" />
-          <line x1="9" y1="16" x2="15" y2="16" />
+    <div
+      style={{
+        width: 28,
+        height: 28,
+        borderRadius: '50%',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        backgroundColor: done ? '#1E3A5F' : active ? '#3B82F6' : '#E1E5EB',
+        color: done || active ? '#fff' : '#9CA3AF',
+        fontSize: '0.75rem',
+        fontWeight: 700,
+        flexShrink: 0,
+        transition: 'all 0.2s ease',
+      }}
+    >
+      {done ? (
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3">
+          <polyline points="20 6 9 17 4 12" />
         </svg>
-        <p style={{ margin: 0, fontSize: '0.9375rem', fontWeight: 600 }}>데이터를 먼저 불러오세요</p>
-        <p style={{ margin: '6px 0 0', fontSize: '0.8125rem' }}>
-          탭 1에서 데이터를 업로드한 후 보고서를 생성할 수 있습니다.
-        </p>
-      </div>
-    );
-  }
-
-  return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-        <p style={{ margin: 0, fontSize: '0.875rem', color: '#6B7280' }}>
-          분석 ID: <strong style={{ color: '#1A1A2E' }}>#{analysisId}</strong>
-        </p>
-        <div style={{ display: 'flex', gap: 8 }}>
-          <Button size="sm" variant="secondary" loading={loading} onClick={generateReport}>
-            보고서 미리보기
-          </Button>
-          <Button size="sm" variant="primary" loading={downloading} onClick={downloadPDF} disabled={!reportHtml}>
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
-              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
-              <polyline points="7 10 12 15 17 10" />
-              <line x1="12" y1="15" x2="12" y2="3" />
-            </svg>
-            PDF 다운로드
-          </Button>
-        </div>
-      </div>
-
-      {error && (
-        <div
-          style={{
-            padding: '12px 16px',
-            backgroundColor: '#FEF2F2',
-            border: '1px solid #FECACA',
-            borderRadius: 8,
-            color: '#B91C1C',
-            fontSize: '0.875rem',
-          }}
-        >
-          {error}
-        </div>
-      )}
-
-      {reportHtml ? (
-        <div
-          style={{
-            border: '1px solid #E1E5EB',
-            borderRadius: 10,
-            backgroundColor: '#FFFFFF',
-            minHeight: 400,
-            overflow: 'hidden',
-          }}
-        >
-          <iframe
-            srcDoc={reportHtml}
-            style={{ width: '100%', height: '600px', border: 'none' }}
-            title="보고서 미리보기"
-          />
-        </div>
       ) : (
-        <div
-          style={{
-            border: '2px dashed #E1E5EB',
-            borderRadius: 10,
-            padding: '60px 20px',
-            textAlign: 'center',
-            color: '#9CA3AF',
-            fontSize: '0.875rem',
-            backgroundColor: '#FAFBFC',
-          }}
-        >
-          "보고서 미리보기" 버튼을 클릭하면 보고서가 여기에 표시됩니다.
-        </div>
+        step
       )}
     </div>
   );
 }
 
 /* ------------------------------------------------------------------ */
-/*  Main page                                                           */
+/*  Process result status icon                                          */
+/* ------------------------------------------------------------------ */
+
+function StatusIcon({ status }: { status: ProcessResult['status'] }) {
+  if (status === 'done')
+    return (
+      <span style={{ color: '#10B981', fontWeight: 700, fontSize: '1.1rem' }}>✓</span>
+    );
+  if (status === 'processing')
+    return (
+      <span
+        style={{
+          display: 'inline-block',
+          width: 14,
+          height: 14,
+          border: '2px solid #1E3A5F',
+          borderTopColor: 'transparent',
+          borderRadius: '50%',
+          animation: 'spin 0.7s linear infinite',
+        }}
+      />
+    );
+  if (status === 'error')
+    return <span style={{ color: '#EF4444', fontWeight: 700, fontSize: '1.1rem' }}>✗</span>;
+  return <span style={{ color: '#9CA3AF' }}>–</span>;
+}
+
+/* ------------------------------------------------------------------ */
+/*  Tabs definition                                                     */
 /* ------------------------------------------------------------------ */
 
 const TABS: TabItem[] = [
-  { key: 'data', label: '1. 데이터 확인' },
-  { key: 'template', label: '2. 템플릿 & AI 분석' },
-  { key: 'report', label: '3. 보고서 & PDF' },
+  { key: 'data', label: '1. 데이터 입력' },
+  { key: 'template', label: '2. 데이터 확인' },
+  { key: 'report', label: '3. 보고서' },
 ];
+
+/* ------------------------------------------------------------------ */
+/*  Main Page                                                           */
+/* ------------------------------------------------------------------ */
 
 export default function IRPPage() {
   const router = useRouter();
-  const [activeTab, setActiveTab] = useState('data');
-  const [currentAnalysis, setCurrentAnalysis] = useState<{ id: number } | null>(null);
+  const reportRef = useRef<HTMLDivElement>(null);
+
+  /* ---------- global state ---------- */
+  const [activeTab, setActiveTab] = useState<'data' | 'template' | 'report'>('data');
+  const [clients, setClients] = useState<Client[]>([]);
+  const [clientsLoading, setClientsLoading] = useState(false);
+
+  /* ---------- tab1 state ---------- */
+  const [rows, setRows] = useState<ClientRowData[]>([makeDefaultRow()]);
+  const [commonDate, setCommonDate] = useState(todayString());
+  const [processing, setProcessing] = useState(false);
+
+  /* ---------- tab2 state ---------- */
+  const [processResults, setProcessResults] = useState<ProcessResult[]>([]);
+  const [snapshots, setSnapshots] = useState<Snapshot[]>([]);
+  const [snapshotsLoading, setSnapshotsLoading] = useState(false);
+  const [searchDate, setSearchDate] = useState(todayString());
+  const [searchClientName, setSearchClientName] = useState('');
+
+  /* ---------- tab3 state ---------- */
+  const [selectedAccountId, setSelectedAccountId] = useState('');
+  const [reportDate, setReportDate] = useState(todayString());
+  const [reportData, setReportData] = useState<ReportData | null>(null);
+  const [reportLoading, setReportLoading] = useState(false);
+  const [modifiedWeights, setModifiedWeights] = useState<Record<string, number>>({});
+  const [reportClientName, setReportClientName] = useState('');
+  const [saving, setSaving] = useState(false);
+
+  /* ---------- load clients on mount ---------- */
+  useEffect(() => {
+    loadClients();
+  }, []);
+
+  async function loadClients() {
+    setClientsLoading(true);
+    try {
+      const res = await fetch(`${API_URL}/api/v1/clients`, {
+        headers: { ...authLib.getAuthHeader() },
+      });
+      if (!res.ok) return;
+      const data = await res.json();
+
+      // load accounts for each client
+      const withAccounts: Client[] = await Promise.all(
+        (data as Client[]).map(async (c) => {
+          try {
+            const ar = await fetch(`${API_URL}/api/v1/clients/${c.id}/accounts`, {
+              headers: { ...authLib.getAuthHeader() },
+            });
+            const accounts: ClientAccount[] = ar.ok ? await ar.json() : [];
+            return { ...c, accounts };
+          } catch {
+            return { ...c, accounts: [] };
+          }
+        })
+      );
+      setClients(withAccounts);
+    } catch {
+      // silent
+    } finally {
+      setClientsLoading(false);
+    }
+  }
+
+  /* ---------- tab1: row management ---------- */
+
+  function addRow() {
+    setRows((prev) => [...prev, makeDefaultRow()]);
+  }
+
+  function removeRow(index: number) {
+    setRows((prev) => prev.filter((_, i) => i !== index));
+  }
+
+  function updateRow(index: number, data: ClientRowData) {
+    setRows((prev) => prev.map((r, i) => (i === index ? data : r)));
+  }
+
+  // 공통 날짜 변경 → 모든 행에 적용
+  function handleCommonDateChange(date: string) {
+    setCommonDate(date);
+    setRows((prev) => prev.map((r) => ({ ...r, snapshotDate: date })));
+    setSearchDate(date);
+  }
+
+  /* ---------- tab1: process ---------- */
+
+  async function handleProcess() {
+    const validRows = rows.filter((r) => r.clientName && r.imageFile);
+    if (validRows.length === 0) {
+      alert('고객명과 이미지가 필요합니다.');
+      return;
+    }
+
+    setProcessing(true);
+    const results: ProcessResult[] = validRows.map((r) => ({
+      clientName: r.clientName,
+      accountType: r.accountType,
+      status: 'pending',
+    }));
+    setProcessResults(results);
+    setActiveTab('template');
+
+    const newSnapshots: Snapshot[] = [];
+
+    for (let i = 0; i < validRows.length; i++) {
+      const row = validRows[i];
+      setProcessResults((prev) =>
+        prev.map((r, idx) => (idx === i ? { ...r, status: 'processing' } : r))
+      );
+
+      try {
+        const accountId = await getOrCreateClientAccount(row);
+
+        const formData = new FormData();
+        formData.append('client_account_id', accountId);
+        formData.append('snapshot_date', row.snapshotDate);
+        formData.append('image', row.imageFile!, row.imageFile!.name);
+
+        const snapRes = await fetch(`${API_URL}/api/v1/snapshots`, {
+          method: 'POST',
+          headers: { ...authLib.getAuthHeader() },
+          body: formData,
+        });
+
+        if (!snapRes.ok) {
+          const err = await snapRes.json().catch(() => ({}));
+          throw new Error(err?.detail || '스냅샷 생성 실패');
+        }
+
+        const snap: Snapshot = await snapRes.json();
+        newSnapshots.push(snap);
+
+        setProcessResults((prev) =>
+          prev.map((r, idx) =>
+            idx === i ? { ...r, status: 'done', snapshotId: snap.id } : r
+          )
+        );
+      } catch (e) {
+        setProcessResults((prev) =>
+          prev.map((r, idx) =>
+            idx === i
+              ? { ...r, status: 'error', errorMsg: e instanceof Error ? e.message : '오류 발생' }
+              : r
+          )
+        );
+      }
+    }
+
+    setSnapshots(newSnapshots);
+    setProcessing(false);
+    await loadClients();
+  }
+
+  /* ---------- tab2: load snapshots by date ---------- */
+
+  const loadSnapshotsByDate = useCallback(async (date: string) => {
+    setSnapshotsLoading(true);
+    try {
+      // collect all account IDs from clients
+      const allAccounts = clients.flatMap((c) => c.accounts);
+      const loaded: Snapshot[] = [];
+      for (const acc of allAccounts) {
+        try {
+          const res = await fetch(
+            `${API_URL}/api/v1/snapshots?account_id=${acc.id}&snapshot_date=${date}`,
+            { headers: { ...authLib.getAuthHeader() } }
+          );
+          if (!res.ok) continue;
+          const list = await res.json();
+          // list is SnapshotListItem[]; load full snapshots
+          for (const item of list) {
+            const sr = await fetch(`${API_URL}/api/v1/snapshots/${item.id}`, {
+              headers: { ...authLib.getAuthHeader() },
+            });
+            if (sr.ok) loaded.push(await sr.json());
+          }
+        } catch {
+          // skip
+        }
+      }
+      setSnapshots(loaded);
+    } finally {
+      setSnapshotsLoading(false);
+    }
+  }, [clients]);
+
+  /* ---------- tab3: report ---------- */
+
+  async function loadReport() {
+    if (!selectedAccountId) {
+      alert('계좌를 선택하세요.');
+      return;
+    }
+    setReportLoading(true);
+    setReportData(null);
+    setModifiedWeights({});
+    try {
+      const res = await fetch(
+        `${API_URL}/api/v1/snapshots/report?account_id=${selectedAccountId}&target_date=${reportDate}`,
+        { headers: { ...authLib.getAuthHeader() } }
+      );
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        alert(err?.detail || '보고서 로드 실패');
+        return;
+      }
+      const data: ReportData = await res.json();
+      setReportData(data);
+    } catch (e) {
+      alert(e instanceof Error ? e.message : '오류 발생');
+    } finally {
+      setReportLoading(false);
+    }
+  }
+
+  async function handleSaveImage() {
+    if (!reportRef.current) return;
+    setSaving(true);
+    try {
+      const html2canvas = (await import('html2canvas')).default;
+      const canvas = await html2canvas(reportRef.current, { scale: 2 });
+      const link = document.createElement('a');
+      link.download = `${reportClientName}_보고서_${reportDate}.png`;
+      link.href = canvas.toDataURL('image/png');
+      link.click();
+    } catch (e) {
+      alert(e instanceof Error ? e.message : '이미지 저장 실패');
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function handleDownloadPDF() {
+    if (!reportRef.current) return;
+    setSaving(true);
+    try {
+      const html2canvas = (await import('html2canvas')).default;
+      const { default: jsPDF } = await import('jspdf');
+      const canvas = await html2canvas(reportRef.current, { scale: 2 });
+      const imgData = canvas.toDataURL('image/png');
+      const pdf = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
+      const w = pdf.internal.pageSize.getWidth();
+      const h = (canvas.height * w) / canvas.width;
+      pdf.addImage(imgData, 'PNG', 0, 0, w, h);
+      pdf.save(`${reportClientName}_보고서_${reportDate}.pdf`);
+    } catch (e) {
+      alert(e instanceof Error ? e.message : 'PDF 다운로드 실패');
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  /* ---------- derived ---------- */
 
   const stepIndex = TABS.findIndex((t) => t.key === activeTab);
 
+  const filteredSnapshots = snapshots.filter((s) => {
+    if (!searchClientName) return true;
+    const account = clients
+      .flatMap((c) => c.accounts.map((a) => ({ ...a, clientName: c.name })))
+      .find((a) => a.id === s.client_account_id);
+    return account?.clientName?.includes(searchClientName) ?? false;
+  });
+
+  const allAccountsForReport = clients.flatMap((c) =>
+    c.accounts.map((a) => ({
+      accountId: a.id,
+      clientName: c.name,
+      label: `${c.name} - ${accountTypeLabel(a.account_type)}${a.account_number ? ` (${a.account_number})` : ''}`,
+    }))
+  );
+
+  const getClientNameForSnapshot = (accountId: string): string => {
+    const found = clients.flatMap((c) => c.accounts.map((a) => ({ ...a, clientName: c.name }))).find((a) => a.id === accountId);
+    return found?.clientName ?? '고객';
+  };
+
+  const getAccountTypeForSnapshot = (accountId: string): string => {
+    const found = clients.flatMap((c) => c.accounts).find((a) => a.id === accountId);
+    return found?.account_type ?? 'irp';
+  };
+
+  /* ================================================================ */
+  /*  Render                                                            */
+  /* ================================================================ */
+
   return (
-    <div style={{ maxWidth: '900px', margin: '0 auto' }}>
-      {/* Page header */}
-      <div style={{ marginBottom: 28 }}>
+    <div style={{ maxWidth: '960px', margin: '0 auto' }}>
+      {/* ===== 페이지 헤더 ===== */}
+      <div style={{ marginBottom: 24 }}>
         <button
           onClick={() => router.push('/dashboard')}
           style={{
             display: 'inline-flex',
             alignItems: 'center',
-            gap: 6,
-            marginBottom: 14,
+            gap: 5,
+            marginBottom: 12,
             background: 'none',
             border: 'none',
             cursor: 'pointer',
@@ -645,61 +554,56 @@ export default function IRPPage() {
           onMouseEnter={(e) => ((e.currentTarget as HTMLButtonElement).style.color = '#1A1A2E')}
           onMouseLeave={(e) => ((e.currentTarget as HTMLButtonElement).style.color = '#6B7280')}
         >
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
             <polyline points="15 18 9 12 15 6" />
           </svg>
           대시보드로 돌아가기
         </button>
 
-        <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 16 }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 16 }}>
           <div>
             <div
               style={{
-                width: 36,
+                width: 32,
                 height: 4,
                 borderRadius: 2,
-                background: 'linear-gradient(90deg, #2E8B8B 0%, #1E3A5F 100%)',
-                marginBottom: 12,
+                background: 'linear-gradient(90deg,#3B82F6 0%,#1E3A5F 100%)',
+                marginBottom: 10,
               }}
             />
             <h1
               style={{
                 margin: 0,
-                fontSize: '24px',
+                fontSize: '1.375rem',
                 fontWeight: 800,
                 color: '#1A1A2E',
                 letterSpacing: '-0.4px',
               }}
             >
-              IRP 포트폴리오 수익률 관리기
+              IRP / 연금저축 포트폴리오 관리
             </h1>
-            <p style={{ margin: '6px 0 0', fontSize: '0.875rem', color: '#6B7280' }}>
-              IRP 포트폴리오 데이터를 불러오고 AI 리밸런싱 제안을 받아 보고서를 생성합니다.
+            <p style={{ margin: '5px 0 0', fontSize: '0.875rem', color: '#6B7280' }}>
+              증권사 화면을 캡처해 붙여넣으면 AI가 데이터를 인식해 보고서를 생성합니다.
             </p>
           </div>
 
-          {/* Step indicators */}
-          <div
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: 0,
-              flexShrink: 0,
-            }}
-          >
+          {/* Step indicator */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 0, flexShrink: 0 }}>
             {TABS.map((tab, i) => (
               <div key={tab.key} style={{ display: 'flex', alignItems: 'center' }}>
-                <StepDot
-                  active={activeTab === tab.key}
-                  done={i < stepIndex}
-                  label={String(i + 1)}
-                />
+                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4 }}>
+                  <StepDot step={i + 1} active={activeTab === tab.key} done={i < stepIndex} />
+                  <span style={{ fontSize: '0.625rem', color: i < stepIndex ? '#1E3A5F' : activeTab === tab.key ? '#3B82F6' : '#9CA3AF', fontWeight: 600, whiteSpace: 'nowrap' }}>
+                    {typeof tab.label === 'string' ? tab.label.replace(/^\d+\.\s/, '') : tab.label}
+                  </span>
+                </div>
                 {i < TABS.length - 1 && (
                   <div
                     style={{
-                      width: 28,
+                      width: 32,
                       height: 2,
                       backgroundColor: i < stepIndex ? '#1E3A5F' : '#E1E5EB',
+                      marginBottom: 18,
                       transition: 'background-color 0.2s ease',
                     }}
                   />
@@ -710,111 +614,383 @@ export default function IRPPage() {
         </div>
       </div>
 
-      {/* Tabs */}
+      {/* ===== Tabs ===== */}
       <div style={{ marginBottom: 24 }}>
-        <Tab items={TABS} activeKey={activeTab} onChange={setActiveTab} variant="underline" />
+        <Tab items={TABS} activeKey={activeTab} onChange={(k) => setActiveTab(k as typeof activeTab)} />
       </div>
 
-      {/* Tab content */}
-      <div>
-        {activeTab === 'data' && (
-          <DataTab
-            onAnalysisCreated={(a) => {
-              setCurrentAnalysis({ id: a.id });
-              setActiveTab('template');
-            }}
-          />
-        )}
-
-        {activeTab === 'template' && (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
-            {!currentAnalysis ? (
-              <div
-                style={{
-                  padding: '48px 20px',
-                  textAlign: 'center',
-                  color: '#6B7280',
-                  fontSize: '0.875rem',
-                }}
-              >
-                탭 1에서 데이터를 먼저 불러오세요.
-                <Button
-                  size="sm"
-                  variant="secondary"
-                  style={{ marginLeft: 12 }}
-                  onClick={() => setActiveTab('data')}
-                >
-                  데이터 확인으로 이동
+      {/* ===================================================== */}
+      {/* TAB 1: 데이터 입력                                     */}
+      {/* ===================================================== */}
+      {activeTab === 'data' && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+          {/* 상단 툴바 */}
+          <Card padding={16}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 16, flexWrap: 'wrap' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <label style={{ fontSize: '0.8125rem', fontWeight: 600, color: '#374151', whiteSpace: 'nowrap' }}>
+                  공통 날짜
+                </label>
+                <input
+                  type="date"
+                  value={commonDate}
+                  onChange={(e) => handleCommonDateChange(e.target.value)}
+                  style={{
+                    padding: '7px 10px',
+                    fontSize: '0.8125rem',
+                    border: '1px solid #E1E5EB',
+                    borderRadius: 8,
+                    outline: 'none',
+                    color: '#1A1A2E',
+                    cursor: 'pointer',
+                  }}
+                />
+              </div>
+              <div style={{ marginLeft: 'auto', display: 'flex', gap: 8 }}>
+                <Button variant="secondary" size="sm" onClick={addRow}>
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                    <line x1="12" y1="5" x2="12" y2="19" />
+                    <line x1="5" y1="12" x2="19" y2="12" />
+                  </svg>
+                  고객 추가
                 </Button>
               </div>
-            ) : (
-              <>
-                {/* Template edit section */}
-                <Card padding={20}>
-                  <h2
+            </div>
+          </Card>
+
+          {/* 로딩 중 */}
+          {clientsLoading && (
+            <div style={{ textAlign: 'center', color: '#9CA3AF', fontSize: '0.875rem', padding: '12px 0' }}>
+              고객 목록 로딩 중...
+            </div>
+          )}
+
+          {/* 고객 행들 */}
+          {rows.map((row, i) => (
+            <ClientRow
+              key={i}
+              index={i}
+              clients={clients}
+              data={row}
+              onChange={(d) => updateRow(i, d)}
+              onRemove={() => removeRow(i)}
+            />
+          ))}
+
+          {rows.length === 0 && (
+            <div
+              style={{
+                padding: '40px 20px',
+                textAlign: 'center',
+                color: '#9CA3AF',
+                fontSize: '0.875rem',
+                border: '2px dashed #E1E5EB',
+                borderRadius: 12,
+              }}
+            >
+              "고객 추가" 버튼으로 처리할 고객을 추가하세요.
+            </div>
+          )}
+
+          {/* 처리 버튼 */}
+          {rows.length > 0 && (
+            <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+              <Button
+                variant="primary"
+                size="md"
+                loading={processing}
+                disabled={rows.filter((r) => r.clientName && r.imageFile).length === 0}
+                onClick={handleProcess}
+              >
+                데이터 처리하기
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <polyline points="9 18 15 12 9 6" />
+                </svg>
+              </Button>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ===================================================== */}
+      {/* TAB 2: 데이터 확인                                     */}
+      {/* ===================================================== */}
+      {activeTab === 'template' && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+          {/* 처리 결과 목록 */}
+          {processResults.length > 0 && (
+            <Card padding={16}>
+              <h3 style={{ margin: '0 0 12px', fontSize: '0.9375rem', fontWeight: 700, color: '#1A1A2E' }}>
+                처리 현황
+              </h3>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                {processResults.map((r, i) => (
+                  <div
+                    key={i}
                     style={{
-                      margin: '0 0 16px',
-                      fontSize: '1rem',
-                      fontWeight: 700,
-                      color: '#1A1A2E',
                       display: 'flex',
                       alignItems: 'center',
-                      gap: 8,
+                      gap: 10,
+                      padding: '8px 12px',
+                      borderRadius: 8,
+                      backgroundColor:
+                        r.status === 'done'
+                          ? '#ECFDF5'
+                          : r.status === 'error'
+                          ? '#FEF2F2'
+                          : '#F9FAFB',
+                      border: `1px solid ${
+                        r.status === 'done'
+                          ? '#6EE7B7'
+                          : r.status === 'error'
+                          ? '#FECACA'
+                          : '#E1E5EB'
+                      }`,
                     }}
                   >
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#1E3A5F" strokeWidth="2" strokeLinecap="round">
-                      <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
-                      <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
-                    </svg>
-                    포트폴리오 항목 편집
-                  </h2>
-                  <TemplateEditPanel analysisId={currentAnalysis.id} />
-                </Card>
+                    <StatusIcon status={r.status} />
+                    <span style={{ fontSize: '0.875rem', fontWeight: 600, color: '#1A1A2E' }}>
+                      {r.clientName}
+                    </span>
+                    <span
+                      style={{
+                        fontSize: '0.75rem',
+                        color: '#6B7280',
+                        backgroundColor: '#F3F4F6',
+                        padding: '2px 6px',
+                        borderRadius: 4,
+                      }}
+                    >
+                      {accountTypeLabel(r.accountType)}
+                    </span>
+                    {r.status === 'processing' && (
+                      <span style={{ fontSize: '0.75rem', color: '#6B7280' }}>처리 중...</span>
+                    )}
+                    {r.errorMsg && (
+                      <span style={{ fontSize: '0.75rem', color: '#EF4444', marginLeft: 4 }}>
+                        {r.errorMsg}
+                      </span>
+                    )}
+                    {r.status === 'done' && (
+                      <span style={{ fontSize: '0.75rem', color: '#059669', marginLeft: 'auto' }}>
+                        완료
+                      </span>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </Card>
+          )}
 
-                {/* AI analysis section */}
-                <Card padding={20}>
-                  <h2
-                    style={{
-                      margin: '0 0 16px',
-                      fontSize: '1rem',
-                      fontWeight: 700,
-                      color: '#1A1A2E',
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: 8,
-                    }}
-                  >
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#2E8B8B" strokeWidth="2" strokeLinecap="round">
-                      <circle cx="12" cy="12" r="10" />
-                      <path d="M12 8v4l3 3" />
-                    </svg>
-                    AI 분석 & 리밸런싱 제안
-                  </h2>
-                  <AIAnalysisPanel analysisId={currentAnalysis.id} />
-                </Card>
+          {/* 날짜/이름 필터 */}
+          <Card padding={16}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <label style={{ fontSize: '0.8125rem', fontWeight: 600, color: '#374151', whiteSpace: 'nowrap' }}>
+                  조회일
+                </label>
+                <input
+                  type="date"
+                  value={searchDate}
+                  onChange={(e) => setSearchDate(e.target.value)}
+                  style={{
+                    padding: '7px 10px',
+                    fontSize: '0.8125rem',
+                    border: '1px solid #E1E5EB',
+                    borderRadius: 8,
+                    outline: 'none',
+                    color: '#1A1A2E',
+                  }}
+                />
+              </div>
+              <input
+                type="text"
+                placeholder="고객명 검색"
+                value={searchClientName}
+                onChange={(e) => setSearchClientName(e.target.value)}
+                style={{
+                  padding: '7px 10px',
+                  fontSize: '0.8125rem',
+                  border: '1px solid #E1E5EB',
+                  borderRadius: 8,
+                  outline: 'none',
+                  color: '#1A1A2E',
+                  width: 150,
+                }}
+              />
+              <Button
+                variant="secondary"
+                size="sm"
+                loading={snapshotsLoading}
+                onClick={() => loadSnapshotsByDate(searchDate)}
+              >
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <circle cx="11" cy="11" r="8" />
+                  <line x1="21" y1="21" x2="16.65" y2="16.65" />
+                </svg>
+                조회
+              </Button>
+              <div style={{ marginLeft: 'auto' }}>
+                <Button
+                  variant="primary"
+                  size="sm"
+                  onClick={() => setActiveTab('report')}
+                  disabled={snapshots.length === 0}
+                >
+                  보고서 만들기
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <polyline points="9 18 15 12 9 6" />
+                  </svg>
+                </Button>
+              </div>
+            </div>
+          </Card>
 
-                {/* Next step */}
-                <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
-                  <Button
-                    variant="primary"
-                    size="md"
-                    onClick={() => setActiveTab('report')}
-                  >
-                    보고서 생성하기
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
-                      <polyline points="9 18 15 12 9 6" />
-                    </svg>
-                  </Button>
-                </div>
-              </>
-            )}
-          </div>
-        )}
+          {/* 스냅샷 테이블 목록 */}
+          {snapshotsLoading ? (
+            <div style={{ textAlign: 'center', padding: '32px', color: '#9CA3AF', fontSize: '0.875rem' }}>
+              로딩 중...
+            </div>
+          ) : filteredSnapshots.length === 0 && processResults.length === 0 ? (
+            <div
+              style={{
+                padding: '40px 20px',
+                textAlign: 'center',
+                color: '#9CA3AF',
+                fontSize: '0.875rem',
+                border: '2px dashed #E1E5EB',
+                borderRadius: 12,
+              }}
+            >
+              <p style={{ margin: 0, fontWeight: 600 }}>데이터가 없습니다</p>
+              <p style={{ margin: '6px 0 0', fontSize: '0.8125rem' }}>
+                탭 1에서 이미지를 업로드하거나, 날짜를 선택해 조회하세요.
+              </p>
+            </div>
+          ) : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+              {filteredSnapshots.map((snap) => (
+                <SnapshotDataTable
+                  key={snap.id}
+                  clientName={getClientNameForSnapshot(snap.client_account_id)}
+                  accountType={getAccountTypeForSnapshot(snap.client_account_id)}
+                  snapshot={snap}
+                  isLoading={false}
+                />
+              ))}
+            </div>
+          )}
+        </div>
+      )}
 
-        {activeTab === 'report' && (
-          <ReportTab analysisId={currentAnalysis?.id ?? null} />
-        )}
-      </div>
+      {/* ===================================================== */}
+      {/* TAB 3: 보고서                                          */}
+      {/* ===================================================== */}
+      {activeTab === 'report' && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+          {/* 컨트롤 바 */}
+          <Card padding={16}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+              {/* 고객/계좌 선택 */}
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, flex: 1, minWidth: 220 }}>
+                <label style={{ fontSize: '0.8125rem', fontWeight: 600, color: '#374151', whiteSpace: 'nowrap' }}>
+                  계좌 선택
+                </label>
+                <select
+                  value={selectedAccountId}
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    setSelectedAccountId(val);
+                    const found = allAccountsForReport.find((a) => a.accountId === val);
+                    setReportClientName(found?.clientName ?? '');
+                  }}
+                  style={{
+                    flex: 1,
+                    padding: '7px 10px',
+                    fontSize: '0.8125rem',
+                    border: '1px solid #E1E5EB',
+                    borderRadius: 8,
+                    outline: 'none',
+                    color: '#1A1A2E',
+                    cursor: 'pointer',
+                  }}
+                >
+                  <option value="">-- 계좌 선택 --</option>
+                  {allAccountsForReport.map((a) => (
+                    <option key={a.accountId} value={a.accountId}>
+                      {a.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {/* 날짜 */}
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <label style={{ fontSize: '0.8125rem', fontWeight: 600, color: '#374151', whiteSpace: 'nowrap' }}>
+                  날짜
+                </label>
+                <input
+                  type="date"
+                  value={reportDate}
+                  onChange={(e) => setReportDate(e.target.value)}
+                  style={{
+                    padding: '7px 10px',
+                    fontSize: '0.8125rem',
+                    border: '1px solid #E1E5EB',
+                    borderRadius: 8,
+                    outline: 'none',
+                    color: '#1A1A2E',
+                  }}
+                />
+              </div>
+
+              <Button
+                variant="primary"
+                size="sm"
+                loading={reportLoading}
+                onClick={loadReport}
+                disabled={!selectedAccountId}
+              >
+                보고서 생성
+              </Button>
+            </div>
+          </Card>
+
+          {/* 저장 버튼들 */}
+          {reportData && (
+            <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+              <Button variant="secondary" size="sm" loading={saving} onClick={handleSaveImage}>
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <rect x="3" y="3" width="18" height="18" rx="2" />
+                  <circle cx="8.5" cy="8.5" r="1.5" />
+                  <polyline points="21 15 16 10 5 21" />
+                </svg>
+                이미지 저장
+              </Button>
+              <Button variant="primary" size="sm" loading={saving} onClick={handleDownloadPDF}>
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                  <polyline points="7 10 12 15 17 10" />
+                  <line x1="12" y1="15" x2="12" y2="3" />
+                </svg>
+                PDF 다운로드
+              </Button>
+            </div>
+          )}
+
+          {/* ReportView */}
+          <ReportView
+            ref={reportRef}
+            reportData={reportData}
+            clientName={reportClientName}
+            modifiedWeights={modifiedWeights}
+            onWeightChange={(id, val) => setModifiedWeights((prev) => ({ ...prev, [id]: val }))}
+          />
+        </div>
+      )}
+
+      {/* spin animation */}
+      <style>{`@keyframes spin{from{transform:rotate(0deg)}to{transform:rotate(360deg)}}`}</style>
     </div>
   );
 }
