@@ -1,7 +1,7 @@
 """Pydantic schemas for Client and ClientAccount."""
 from pydantic import BaseModel, ConfigDict
 from typing import Optional
-from datetime import datetime
+from datetime import datetime, date
 
 
 class AccountBase(BaseModel):
@@ -48,4 +48,8 @@ class ClientResponse(ClientBase):
     user_id: str
     created_at: datetime
     accounts: list[AccountResponse] = []
+    birth_date: Optional[date] = None
+    phone: Optional[str] = None
+    email: Optional[str] = None
+    portal_token: Optional[str] = None
     model_config = ConfigDict(from_attributes=True)

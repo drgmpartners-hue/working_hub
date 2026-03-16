@@ -4,6 +4,11 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.api.v1 import auth, users, brand, ai_settings, upload, crawling, commission, content, portfolio, stock
 from app.api.v1 import clients as clients_router
 from app.api.v1 import snapshots as snapshots_router
+from app.api.v1 import product_master as product_master_router
+from app.api.v1 import reports as reports_router
+from app.api.v1 import client_portal as client_portal_router
+from app.api.v1 import portfolio_suggestions as portfolio_suggestions_router
+from app.api.v1 import call_reservations as call_reservations_router
 
 app = FastAPI(title="API", version="0.1.0")
 
@@ -28,6 +33,11 @@ app.include_router(portfolio.router, prefix="/api/v1")
 app.include_router(stock.router, prefix="/api/v1")
 app.include_router(clients_router.router, prefix="/api/v1")
 app.include_router(snapshots_router.router, prefix="/api/v1")
+app.include_router(product_master_router.router, prefix="/api/v1")
+app.include_router(reports_router.router, prefix="/api/v1")
+app.include_router(client_portal_router.router, prefix="/api/v1")
+app.include_router(portfolio_suggestions_router.router, prefix="/api/v1")
+app.include_router(call_reservations_router.router, prefix="/api/v1")
 
 
 @app.get("/health")

@@ -29,6 +29,13 @@ from app.models.content import ContentProject, ContentVersion
 # Depends on client_accounts (portfolio snapshots)
 from app.models.snapshot import PortfolioSnapshot, PortfolioHolding
 
+# Depends on product_master
+from app.models.product_master import ProductMaster
+
+# Depends on client_accounts (portal suggestions + reservations)
+from app.models.portfolio_suggestion import PortfolioSuggestion
+from app.models.call_reservation import CallReservation
+
 __all__ = [
     "BrandSetting",
     "AIAPISetting",
@@ -49,4 +56,7 @@ __all__ = [
     "ContentVersion",
     "PortfolioSnapshot",
     "PortfolioHolding",
+    "ProductMaster",
+    "PortfolioSuggestion",
+    "CallReservation",
 ]

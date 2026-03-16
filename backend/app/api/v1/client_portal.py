@@ -1,0 +1,192 @@
+"""Client portal API — public token-based access for customers."""
+from datetime import datetime
+from fastapi import APIRouter, Depends, HTTPException, status, Header
+from sqlalchemy.ext.asyncio import AsyncSession
+from typing import Optional
+
+from app.db.session import get_db
+from app.schemas.client_portal import (
+    PortalCheckResponse,
+    PortalVerifyRequest,
+    PortalTokenResponse,
+    SnapshotsListResponse,
+    SuggestionResponse,
+    CallReserveRequest,
+    CallReserveResponse,
+)
+from app.services import client_portal_service
+from app.services.email_service import notify_staff_call_reservation
+
+router = APIRouter(prefix="/client-portal", tags=["client-portal"])
+
+
+# ---------------------------------------------------------------------------
+# Dependency: validate portal JWT from Authorization header
+# ---------------------------------------------------------------------------
+
+async def get_portal_client_id(authorization: Optional[str] = Header(None)) -> str:
+    """Extract and validate portal JWT, returning client_id."""
+    if not authorization or not authorization.startswith("Bearer "):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Portal authentication required",
+        )
+    token_str = authorization.removeprefix("Bearer ").strip()
+    payload = client_portal_service.decode_portal_jwt(token_str)
+    if not payload:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid or expired portal token",
+        )
+    return payload["sub"]
+
+
+# ---------------------------------------------------------------------------
+# Public endpoints (no JWT required)
+# ---------------------------------------------------------------------------
+
+@router.get("/{token}", response_model=PortalCheckResponse)
+async def check_portal_token(
+    token: str,
+    db: AsyncSession = Depends(get_db),
+):
+    """Check if portal token exists and return masked client name."""
+    result = await client_portal_service.check_portal_token(db, token)
+    return PortalCheckResponse(
+        exists=result["exists"],
+        masked_name=result.get("masked_name"),
+    )
+
+
+@router.post("/{token}/verify", response_model=PortalTokenResponse)
+async def verify_client(
+    token: str,
+    body: PortalVerifyRequest,
+    db: AsyncSession = Depends(get_db),
+):
+    """Verify client identity and issue portal JWT."""
+    jwt_token, error = await client_portal_service.verify_client(
+        db, token, body.birth_date, body.phone
+    )
+
+    if error == "locked":
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail="Too many failed attempts. Please try again in 30 minutes.",
+        )
+    if error == "not_found":
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Invalid portal link",
+        )
+    if error == "invalid":
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Verification failed. Please check your birth date and phone number.",
+        )
+
+    return PortalTokenResponse(access_token=jwt_token)
+
+
+# ---------------------------------------------------------------------------
+# Protected endpoints (portal JWT required)
+# ---------------------------------------------------------------------------
+
+@router.get("/{token}/snapshots", response_model=SnapshotsListResponse)
+async def get_snapshots(
+    token: str,
+    client_id: str = Depends(get_portal_client_id),
+    db: AsyncSession = Depends(get_db),
+):
+    """Return snapshot date list grouped by account."""
+    accounts = await client_portal_service.get_client_snapshots(db, client_id)
+    return SnapshotsListResponse(accounts=accounts)
+
+
+@router.get("/{token}/report")
+async def get_report(
+    token: str,
+    account_id: str,
+    date: str,
+    client_id: str = Depends(get_portal_client_id),
+    db: AsyncSession = Depends(get_db),
+):
+    """Return report data for a specific account and date."""
+    from datetime import date as date_type
+    try:
+        parsed_date = date_type.fromisoformat(date)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid date format. Use YYYY-MM-DD.")
+
+    report = await client_portal_service.get_report_for_date(
+        db, client_id, account_id, parsed_date
+    )
+    if not report:
+        raise HTTPException(status_code=404, detail="Report not found")
+    return report
+
+
+@router.get("/{token}/suggestion/{suggest_id}", response_model=SuggestionResponse)
+async def get_suggestion(
+    token: str,
+    suggest_id: str,
+    client_id: str = Depends(get_portal_client_id),
+    db: AsyncSession = Depends(get_db),
+):
+    """Return suggestion content and expiry status."""
+    suggestion = await client_portal_service.get_suggestion(db, suggest_id)
+    if not suggestion:
+        raise HTTPException(status_code=404, detail="Suggestion not found")
+
+    expired = datetime.utcnow() > suggestion.expires_at
+    return SuggestionResponse(
+        id=suggestion.id,
+        account_id=suggestion.account_id,
+        snapshot_id=suggestion.snapshot_id,
+        suggested_weights=suggestion.suggested_weights,
+        ai_comment=suggestion.ai_comment,
+        expires_at=suggestion.expires_at,
+        created_at=suggestion.created_at,
+        expired=expired,
+    )
+
+
+# ---------------------------------------------------------------------------
+# Call reservation (public — authenticated by suggestion context)
+# ---------------------------------------------------------------------------
+
+@router.post("/suggestion/{suggest_id}/call-reserve", response_model=CallReserveResponse)
+async def create_call_reservation(
+    suggest_id: str,
+    body: CallReserveRequest,
+    db: AsyncSession = Depends(get_db),
+):
+    """Create a call reservation for a given suggestion."""
+    suggestion = await client_portal_service.get_suggestion(db, suggest_id)
+    if not suggestion:
+        raise HTTPException(status_code=404, detail="Suggestion not found")
+
+    reservation = await client_portal_service.create_call_reservation(
+        db,
+        suggestion_id=suggest_id,
+        preferred_date=body.preferred_date,
+        preferred_time=body.preferred_time,
+        client_name=body.client_name,
+        phone=body.phone,
+    )
+
+    # Notify staff asynchronously — failure must not break the response
+    await notify_staff_call_reservation(
+        reservation_id=reservation.id,
+        client_name=body.client_name or "미입력",
+        preferred_date=str(reservation.preferred_date),
+        preferred_time=reservation.preferred_time,
+    )
+
+    return CallReserveResponse(
+        id=reservation.id,
+        suggestion_id=reservation.suggestion_id,
+        preferred_date=reservation.preferred_date,
+        preferred_time=reservation.preferred_time,
+        status=reservation.status or "pending",
+    )

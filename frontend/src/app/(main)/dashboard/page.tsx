@@ -64,6 +64,11 @@ const CATEGORIES: Array<{
         href: '/portfolio/irp',
       },
       {
+        title: '상품 마스터 관리',
+        description: '상품명 · 위험도 · 지역 매핑 마스터 데이터를 관리합니다',
+        href: '/portfolio/product-master',
+      },
+      {
         title: '주식/ETF 추천 프로그램',
         description: '테마별 주식/ETF를 AI로 분석하고 추천합니다',
         href: '/investment/stock-recommend',

@@ -6,6 +6,14 @@ class Settings(BaseSettings):
     SECRET_KEY: str = "changeme"
     GEMINI_API_KEY: str = ""
 
+    # Email (SMTP) settings — optional; leave empty to use mock logging
+    SMTP_HOST: str = ""
+    SMTP_PORT: int = 587
+    SMTP_USER: str = ""
+    SMTP_PASSWORD: str = ""
+    STAFF_EMAIL: str = ""         # recipient for staff notifications
+    FRONTEND_URL: str = "http://localhost:3000"  # used to build portal links
+
     @computed_field
     @property
     def ASYNC_DATABASE_URL(self) -> str:

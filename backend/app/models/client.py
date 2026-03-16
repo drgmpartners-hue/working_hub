@@ -1,8 +1,8 @@
 """Client and ClientAccount ORM models for IRP/pension portfolio management."""
 import uuid
-from datetime import datetime
+from datetime import datetime, date
 from typing import Optional, TYPE_CHECKING
-from sqlalchemy import String, Text, Integer, DateTime, ForeignKey
+from sqlalchemy import String, Text, Integer, DateTime, Date, ForeignKey
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.sql import func
 from app.db.base import Base
@@ -23,6 +23,12 @@ class Client(Base):
     )
     name: Mapped[str] = mapped_column(String(100), nullable=False)
     memo: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    birth_date: Mapped[Optional[date]] = mapped_column(Date, nullable=True)
+    phone: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)
+    email: Mapped[Optional[str]] = mapped_column(String(200), nullable=True)
+    portal_token: Mapped[Optional[str]] = mapped_column(
+        String(36), nullable=True, unique=True, default=lambda: str(uuid.uuid4())
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime, server_default=func.now(), nullable=False
     )

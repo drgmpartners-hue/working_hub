@@ -54,6 +54,8 @@ interface ReportData {
   };
   holdings: Holding[];
   history: { date: string; return_rate?: number }[];
+  ai_comment?: string;
+  ai_change_comment?: string;
 }
 
 /* ------------------------------------------------------------------ */
@@ -65,22 +67,38 @@ interface ReportViewProps {
   clientName: string;
   modifiedWeights: Record<string, number>;
   onWeightChange: (holdingId: string, value: number) => void;
+  aiComment?: string;
+  onAiCommentChange?: (val: string) => void;
+  aiChangeComment?: string;
+  onAiChangeCommentChange?: (val: string) => void;
+  onGenerateAiComment?: () => void;
+  onGenerateAiChangeComment?: () => void;
+  aiCommentLoading?: boolean;
+  aiChangeCommentLoading?: boolean;
 }
 
 /* ------------------------------------------------------------------ */
 /*  Constants                                                           */
 /* ------------------------------------------------------------------ */
 
-const COLORS = [
-  '#1E3A5F',
-  '#3B82F6',
-  '#10B981',
-  '#F59E0B',
-  '#EF4444',
-  '#8B5CF6',
-  '#EC4899',
-  '#14B8A6',
-];
+const REGION_COLORS: Record<string, string> = {
+  국내: '#1E3A5F',
+  미국: '#3B82F6',
+  글로벌: '#10B981',
+  베트남: '#F59E0B',
+  인도: '#EF4444',
+  중국: '#8B5CF6',
+  기타: '#9CA3AF',
+};
+
+const RISK_COLORS: Record<string, string> = {
+  절대안정형: '#3B82F6',
+  안정형: '#10B981',
+  성장형: '#F59E0B',
+  절대성장형: '#EF4444',
+};
+
+const FALLBACK_COLORS = ['#1E3A5F', '#3B82F6', '#10B981', '#F59E0B', '#EF4444', '#8B5CF6', '#EC4899', '#14B8A6'];
 
 /* ------------------------------------------------------------------ */
 /*  Helpers                                                             */
@@ -97,6 +115,9 @@ const returnRateColor = (rate?: number) => {
   if (rate < 0) return '#EF4444';
   return '#374151';
 };
+
+const getColorForKey = (key: string, colorMap: Record<string, string>, idx: number) =>
+  colorMap[key] ?? FALLBACK_COLORS[idx % FALLBACK_COLORS.length];
 
 /* ------------------------------------------------------------------ */
 /*  Sub-components                                                      */
@@ -150,12 +171,356 @@ function SubTitle({ children }: { children: React.ReactNode }) {
 }
 
 /* ------------------------------------------------------------------ */
+/*  AI Comment Block                                                    */
+/* ------------------------------------------------------------------ */
+
+interface AiCommentBlockProps {
+  label: string;
+  value: string;
+  onChange: (val: string) => void;
+  onGenerate?: () => void;
+  loading?: boolean;
+}
+
+function AiCommentBlock({ label, value, onChange, onGenerate, loading }: AiCommentBlockProps) {
+  return (
+    <div style={{ marginTop: 4 }}>
+      <SubTitle>{label}</SubTitle>
+      <div
+        style={{
+          border: '1px solid #E1E5EB',
+          borderRadius: 8,
+          overflow: 'hidden',
+          backgroundColor: '#FAFBFC',
+        }}
+      >
+        {/* Toolbar */}
+        {onGenerate && (
+          <div
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              padding: '8px 12px',
+              borderBottom: '1px solid #E1E5EB',
+              backgroundColor: '#F5F7FA',
+            }}
+          >
+            <span style={{ fontSize: '0.75rem', color: '#6B7280' }}>
+              AI가 자동 생성한 코멘트입니다. 직접 수정 가능합니다.
+            </span>
+            <button
+              onClick={onGenerate}
+              disabled={loading}
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: 5,
+                padding: '4px 12px',
+                fontSize: '0.75rem',
+                fontWeight: 600,
+                color: '#fff',
+                backgroundColor: loading ? '#9CA3AF' : '#1E3A5F',
+                border: 'none',
+                borderRadius: 5,
+                cursor: loading ? 'not-allowed' : 'pointer',
+                transition: 'background-color 0.15s',
+              }}
+            >
+              {loading ? (
+                <span
+                  style={{
+                    display: 'inline-block',
+                    width: 10,
+                    height: 10,
+                    border: '1.5px solid #fff',
+                    borderTopColor: 'transparent',
+                    borderRadius: '50%',
+                    animation: 'spin 0.7s linear infinite',
+                  }}
+                />
+              ) : (
+                <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <path d="M12 2L2 7l10 5 10-5-10-5z" />
+                  <path d="M2 17l10 5 10-5" />
+                  <path d="M2 12l10 5 10-5" />
+                </svg>
+              )}
+              {loading ? 'AI 생성 중...' : 'AI 코멘트 생성'}
+            </button>
+          </div>
+        )}
+        <textarea
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          placeholder="AI 분석 코멘트를 입력하거나 위 버튼으로 자동 생성하세요."
+          rows={4}
+          style={{
+            width: '100%',
+            padding: '12px',
+            fontSize: '0.8125rem',
+            color: '#374151',
+            backgroundColor: 'transparent',
+            border: 'none',
+            outline: 'none',
+            resize: 'vertical',
+            lineHeight: 1.6,
+            boxSizing: 'border-box',
+            fontFamily: "'Pretendard', 'Noto Sans KR', -apple-system, sans-serif",
+          }}
+        />
+      </div>
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/*  WeightEditor — 포트폴리오 변경 안내 테이블                           */
+/* ------------------------------------------------------------------ */
+
+interface WeightEditorProps {
+  holdings: Holding[];
+  totalEval: number;
+  modifiedWeights: Record<string, number>;
+  onWeightChange: (holdingId: string, value: number) => void;
+  thStyle: React.CSSProperties;
+  thLeftStyle: React.CSSProperties;
+  tdStyle: React.CSSProperties;
+  tdLeftStyle: React.CSSProperties;
+  totalRowStyle: React.CSSProperties;
+}
+
+function WeightEditor({
+  holdings,
+  totalEval,
+  modifiedWeights,
+  onWeightChange,
+  thStyle,
+  thLeftStyle,
+  tdStyle,
+  tdLeftStyle,
+  totalRowStyle,
+}: WeightEditorProps) {
+  const totalModified = Object.values(modifiedWeights).reduce((s, v) => s + v, 0);
+  const hasModified = Object.keys(modifiedWeights).length > 0;
+  const isValid = Math.abs(totalModified - 100) < 0.01;
+
+  return (
+    <div>
+      <div style={{ overflowX: 'auto' }}>
+        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.8125rem' }}>
+          <thead>
+            <tr>
+              <th style={{ ...thStyle, textAlign: 'center', width: 36 }}>NO</th>
+              <th style={thLeftStyle}>상품명</th>
+              <th style={thStyle}>기준가</th>
+              <th style={thStyle}>평가금액</th>
+              <th style={thStyle}>수익률</th>
+              <th style={thStyle}>현재비중</th>
+              <th style={{ ...thStyle, color: '#1E3A5F' }}>수정비중</th>
+              <th style={thStyle}>변경후금액</th>
+              <th style={thStyle}>(+/-)</th>
+            </tr>
+          </thead>
+          <tbody>
+            {holdings.map((h, idx) => {
+              const modW = modifiedWeights[h.id];
+              const changedAmt =
+                modW != null && totalEval > 0
+                  ? Math.round((totalEval * modW) / 100)
+                  : null;
+              const diffAmt =
+                changedAmt != null && h.evaluation_amount != null
+                  ? changedAmt - h.evaluation_amount
+                  : null;
+              return (
+                <tr
+                  key={h.id}
+                  onMouseEnter={(e) => { (e.currentTarget as HTMLTableRowElement).style.backgroundColor = '#F9FAFB'; }}
+                  onMouseLeave={(e) => { (e.currentTarget as HTMLTableRowElement).style.backgroundColor = 'transparent'; }}
+                  style={{ transition: 'background-color 0.1s ease' }}
+                >
+                  <td style={{ ...tdStyle, textAlign: 'center', color: '#9CA3AF' }}>
+                    {h.seq ?? idx + 1}
+                  </td>
+                  <td style={tdLeftStyle}>
+                    <div style={{ fontWeight: 500 }}>{h.product_name}</div>
+                    {h.product_type && (
+                      <div style={{ fontSize: '0.6875rem', color: '#9CA3AF', marginTop: 1 }}>
+                        {h.product_type}
+                        {h.region ? ` · ${h.region}` : ''}
+                      </div>
+                    )}
+                  </td>
+                  <td style={tdStyle}>{fmt(h.reference_price)}</td>
+                  <td style={tdStyle}>{fmt(h.evaluation_amount)}</td>
+                  <td style={{ ...tdStyle, color: returnRateColor(h.return_rate), fontWeight: 600 }}>
+                    {h.return_rate != null
+                      ? `${h.return_rate > 0 ? '+' : ''}${h.return_rate.toFixed(2)}%`
+                      : '-'}
+                  </td>
+                  <td style={tdStyle}>
+                    {h.weight != null ? `${(h.weight * 100).toFixed(1)}%` : '-'}
+                  </td>
+                  <td style={{ ...tdStyle, padding: '6px 8px' }}>
+                    <input
+                      type="number"
+                      min={0}
+                      max={100}
+                      step={0.1}
+                      placeholder="-"
+                      value={modW ?? ''}
+                      onChange={(e) => {
+                        const v = parseFloat(e.target.value);
+                        onWeightChange(h.id, isNaN(v) ? 0 : v);
+                      }}
+                      style={{
+                        width: 68,
+                        padding: '4px 6px',
+                        fontSize: '0.8125rem',
+                        border: '1px solid #CBD5E1',
+                        borderRadius: 6,
+                        textAlign: 'right',
+                        outline: 'none',
+                        color: '#1E3A5F',
+                        fontWeight: 600,
+                        boxSizing: 'border-box',
+                      }}
+                    />
+                  </td>
+                  <td style={{ ...tdStyle, fontWeight: changedAmt != null ? 600 : undefined }}>
+                    {changedAmt != null ? `${fmt(changedAmt)}원` : '-'}
+                  </td>
+                  <td
+                    style={{
+                      ...tdStyle,
+                      fontWeight: diffAmt != null ? 600 : undefined,
+                      color: diffAmt != null ? returnRateColor(diffAmt) : '#374151',
+                    }}
+                  >
+                    {diffAmt != null
+                      ? `${diffAmt > 0 ? '+' : ''}${fmt(diffAmt)}`
+                      : '-'}
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+          <tfoot>
+            <tr>
+              <td colSpan={5} style={{ ...totalRowStyle, textAlign: 'left' }}>
+                합계
+              </td>
+              <td style={totalRowStyle}>
+                {holdings.every((h) => h.weight != null)
+                  ? `${(holdings.reduce((s, h) => s + (h.weight ?? 0), 0) * 100).toFixed(1)}%`
+                  : '-'}
+              </td>
+              {/* 수정비중 합계 — 100% 아닐 때 빨간색 */}
+              <td
+                style={{
+                  ...totalRowStyle,
+                  color: hasModified ? (isValid ? '#10B981' : '#EF4444') : '#1A1A2E',
+                }}
+              >
+                {hasModified ? (
+                  <span>
+                    {totalModified.toFixed(1)}%
+                    {!isValid && (
+                      <span style={{ fontSize: '0.6875rem', marginLeft: 4 }}>
+                        (합계 100% 필요)
+                      </span>
+                    )}
+                  </span>
+                ) : (
+                  '-'
+                )}
+              </td>
+              <td style={totalRowStyle}>
+                {hasModified && totalEval > 0
+                  ? `${fmt(
+                      Math.round(
+                        Object.values(modifiedWeights).reduce((s, v) => s + (totalEval * v) / 100, 0)
+                      )
+                    )}원`
+                  : '-'}
+              </td>
+              <td style={totalRowStyle}>-</td>
+            </tr>
+          </tfoot>
+        </table>
+      </div>
+
+      {/* 합계 경고 메시지 */}
+      {hasModified && !isValid && (
+        <div
+          style={{
+            marginTop: 8,
+            padding: '8px 12px',
+            backgroundColor: '#FEF2F2',
+            border: '1px solid #FECACA',
+            borderRadius: 6,
+            display: 'flex',
+            alignItems: 'center',
+            gap: 6,
+          }}
+        >
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#EF4444" strokeWidth="2">
+            <circle cx="12" cy="12" r="10" />
+            <line x1="12" y1="8" x2="12" y2="12" />
+            <line x1="12" y1="16" x2="12.01" y2="16" />
+          </svg>
+          <span style={{ fontSize: '0.8125rem', color: '#DC2626', fontWeight: 500 }}>
+            수정비중 합계가 {totalModified.toFixed(1)}%입니다. 100%가 되도록 입력하세요.
+          </span>
+        </div>
+      )}
+      {hasModified && isValid && (
+        <div
+          style={{
+            marginTop: 8,
+            padding: '8px 12px',
+            backgroundColor: '#ECFDF5',
+            border: '1px solid #A7F3D0',
+            borderRadius: 6,
+            display: 'flex',
+            alignItems: 'center',
+            gap: 6,
+          }}
+        >
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#10B981" strokeWidth="2">
+            <circle cx="12" cy="12" r="10" />
+            <polyline points="9 12 11 14 15 10" />
+          </svg>
+          <span style={{ fontSize: '0.8125rem', color: '#059669', fontWeight: 500 }}>
+            수정비중 합계가 100%입니다.
+          </span>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------------ */
 /*  ReportView (forwardRef for html2canvas)                             */
 /* ------------------------------------------------------------------ */
 
 const ReportView = forwardRef<HTMLDivElement, ReportViewProps>(
-  ({ reportData, clientName, modifiedWeights, onWeightChange }, ref) => {
-    const [historyRange, setHistoryRange] = useState<'6m' | '1y'>('6m');
+  ({
+    reportData,
+    clientName,
+    modifiedWeights,
+    onWeightChange,
+    aiComment = '',
+    onAiCommentChange,
+    aiChangeComment = '',
+    onAiChangeCommentChange,
+    onGenerateAiComment,
+    onGenerateAiChangeComment,
+    aiCommentLoading = false,
+    aiChangeCommentLoading = false,
+  }, ref) => {
+    const [historyRange, setHistoryRange] = useState<'3m' | '6m' | '1y'>('6m');
 
     /* ---------- computed data ---------- */
 
@@ -194,13 +559,10 @@ const ReportView = forwardRef<HTMLDivElement, ReportViewProps>(
       const all = [...reportData.history].sort(
         (a, b) => new Date(a.date).getTime() - new Date(b.date).getTime()
       );
-      if (historyRange === '6m') {
-        const cutoff = new Date();
-        cutoff.setMonth(cutoff.getMonth() - 6);
-        return all.filter((d) => new Date(d.date) >= cutoff);
-      }
       const cutoff = new Date();
-      cutoff.setFullYear(cutoff.getFullYear() - 1);
+      if (historyRange === '3m') cutoff.setMonth(cutoff.getMonth() - 3);
+      else if (historyRange === '6m') cutoff.setMonth(cutoff.getMonth() - 6);
+      else cutoff.setFullYear(cutoff.getFullYear() - 1);
       return all.filter((d) => new Date(d.date) >= cutoff);
     }, [reportData, historyRange]);
 
@@ -264,7 +626,7 @@ const ReportView = forwardRef<HTMLDivElement, ReportViewProps>(
           </svg>
           <p style={{ margin: 0, fontWeight: 600 }}>보고서를 생성하세요</p>
           <p style={{ margin: '6px 0 0', fontSize: '0.8125rem' }}>
-            계좌와 날짜를 선택하고 "보고서 생성" 버튼을 클릭하세요.
+            계좌와 날짜를 선택하고 &quot;보고서 생성&quot; 버튼을 클릭하세요.
           </p>
         </div>
       );
@@ -290,7 +652,7 @@ const ReportView = forwardRef<HTMLDivElement, ReportViewProps>(
           padding: '32px',
           fontFamily:
             "'Pretendard', 'Noto Sans KR', -apple-system, BlinkMacSystemFont, sans-serif",
-          maxWidth: '860px',
+          maxWidth: '900px',
           margin: '0 auto',
           border: '1px solid #E1E5EB',
           borderRadius: 12,
@@ -332,14 +694,14 @@ const ReportView = forwardRef<HTMLDivElement, ReportViewProps>(
           </div>
         </div>
 
-        {/* ===== 2. 개요 ===== */}
+        {/* ===== 2. 개요 — 자금현황 테이블 ===== */}
         <div style={{ marginBottom: 28 }}>
           <SectionTitle>개요</SectionTitle>
           <div style={{ overflowX: 'auto' }}>
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.8125rem' }}>
               <thead>
                 <tr>
-                  {['구분', '조회일', '계좌번호', '월납입액', '예수금', '납입원금', '평가금액', '수익금액', '누적수익률'].map(
+                  {['구분', '조회일', '계좌번호', '월납입액', '예수금', '납입원금', '평가금액', '수익금액', '총수익률'].map(
                     (h) => (
                       <th key={h} style={thLeftStyle}>
                         {h}
@@ -356,9 +718,9 @@ const ReportView = forwardRef<HTMLDivElement, ReportViewProps>(
                   <td style={tdLeftStyle}>
                     {account?.monthly_payment ? `${fmt(account.monthly_payment)}원` : '-'}
                   </td>
-                  <td style={tdLeftStyle}>{fmt(snap.deposit_amount)}</td>
-                  <td style={tdLeftStyle}>{fmt(snap.total_purchase)}</td>
-                  <td style={{ ...tdLeftStyle, fontWeight: 600 }}>{fmt(snap.total_evaluation)}</td>
+                  <td style={tdLeftStyle}>{snap.deposit_amount != null ? `${fmt(snap.deposit_amount)}원` : '-'}</td>
+                  <td style={tdLeftStyle}>{snap.total_purchase != null ? `${fmt(snap.total_purchase)}원` : '-'}</td>
+                  <td style={{ ...tdLeftStyle, fontWeight: 600 }}>{snap.total_evaluation != null ? `${fmt(snap.total_evaluation)}원` : '-'}</td>
                   <td
                     style={{
                       ...tdLeftStyle,
@@ -367,7 +729,7 @@ const ReportView = forwardRef<HTMLDivElement, ReportViewProps>(
                     }}
                   >
                     {snap.total_return != null
-                      ? `${snap.total_return > 0 ? '+' : ''}${fmt(snap.total_return)}`
+                      ? `${snap.total_return > 0 ? '+' : ''}${fmt(snap.total_return)}원`
                       : '-'}
                   </td>
                   <td
@@ -387,10 +749,33 @@ const ReportView = forwardRef<HTMLDivElement, ReportViewProps>(
           </div>
         </div>
 
-        {/* ===== 3. 포트폴리오 분석 ===== */}
-        <div style={{ marginBottom: 28 }}>
-          <SectionTitle>{accountTypeLabel(account?.account_type ?? '')} 포트폴리오 분석</SectionTitle>
-          <SubTitle>포트폴리오 현황</SubTitle>
+        {/* ===== 3. 계좌 유형 섹션 헤더 ===== */}
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: 8,
+            marginBottom: 20,
+            padding: '10px 16px',
+            backgroundColor: '#1E3A5F',
+            borderRadius: 8,
+          }}
+        >
+          <span
+            style={{
+              fontSize: '1rem',
+              fontWeight: 800,
+              color: '#FFFFFF',
+              letterSpacing: '-0.3px',
+            }}
+          >
+            {accountTypeLabel(account?.account_type ?? '')} 포트폴리오 분석
+          </span>
+        </div>
+
+        {/* ===== 4. 포트폴리오 분석표 ===== */}
+        <div style={{ marginBottom: 24 }}>
+          <SubTitle>포트폴리오 분석표</SubTitle>
           <div style={{ overflowX: 'auto' }}>
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.8125rem' }}>
               <thead>
@@ -406,7 +791,12 @@ const ReportView = forwardRef<HTMLDivElement, ReportViewProps>(
               </thead>
               <tbody>
                 {holdings.map((h, idx) => (
-                  <tr key={h.id}>
+                  <tr
+                    key={h.id}
+                    onMouseEnter={(e) => { (e.currentTarget as HTMLTableRowElement).style.backgroundColor = '#F9FAFB'; }}
+                    onMouseLeave={(e) => { (e.currentTarget as HTMLTableRowElement).style.backgroundColor = 'transparent'; }}
+                    style={{ transition: 'background-color 0.1s ease' }}
+                  >
                     <td style={{ ...tdStyle, textAlign: 'center', color: '#9CA3AF' }}>
                       {h.seq ?? idx + 1}
                     </td>
@@ -419,7 +809,27 @@ const ReportView = forwardRef<HTMLDivElement, ReportViewProps>(
                         </div>
                       )}
                     </td>
-                    <td style={tdStyle}>{h.risk_level ?? '-'}</td>
+                    <td style={{ ...tdStyle, textAlign: 'center' }}>
+                      {h.risk_level ? (
+                        <span
+                          style={{
+                            fontSize: '0.6875rem',
+                            fontWeight: 600,
+                            padding: '2px 6px',
+                            borderRadius: 4,
+                            ...(h.risk_level === '절대성장형'
+                              ? { backgroundColor: '#FEF2F2', color: '#DC2626' }
+                              : h.risk_level === '성장형'
+                              ? { backgroundColor: '#FFFBEB', color: '#D97706' }
+                              : h.risk_level === '안정형'
+                              ? { backgroundColor: '#ECFDF5', color: '#059669' }
+                              : { backgroundColor: '#EFF6FF', color: '#2563EB' }),
+                          }}
+                        >
+                          {h.risk_level}
+                        </span>
+                      ) : '-'}
+                    </td>
                     <td style={tdStyle}>{fmt(h.purchase_amount)}</td>
                     <td style={{ ...tdStyle, fontWeight: 500 }}>{fmt(h.evaluation_amount)}</td>
                     <td style={{ ...tdStyle, color: returnRateColor(h.return_amount) }}>
@@ -458,101 +868,146 @@ const ReportView = forwardRef<HTMLDivElement, ReportViewProps>(
           </div>
         </div>
 
-        {/* ===== 4. 차트 (지역분산 + 위험도 분산) ===== */}
+        {/* ===== 5. 차트 (지역분산 + 위험도분산) ===== */}
         {(regionData.length > 0 || riskData.length > 0) && (
-          <div style={{ marginBottom: 28 }}>
-            <SubTitle>분산 분석</SubTitle>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20 }}>
-              {/* 지역분산 */}
-              {regionData.length > 0 && (
-                <div>
-                  <div style={{ fontSize: '0.8125rem', fontWeight: 600, color: '#374151', marginBottom: 8, textAlign: 'center' }}>
-                    지역 분산
-                  </div>
-                  <ResponsiveContainer width="100%" height={220}>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20, marginBottom: 24 }}>
+            {/* 지역분산 */}
+            <div>
+              <SubTitle>지역 분산</SubTitle>
+              {regionData.length > 0 ? (
+                <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                  <ResponsiveContainer width={180} height={180}>
                     <PieChart>
                       <Pie
                         data={regionData}
                         cx="50%"
                         cy="50%"
+                        innerRadius={45}
                         outerRadius={75}
+                        paddingAngle={2}
                         dataKey="value"
-                        label={({ percent }: { percent?: number }) => percent != null ? `${(percent * 100).toFixed(1)}%` : ''}
-                        labelLine={false}
                       >
-                        {regionData.map((_, i) => (
-                          <Cell key={i} fill={COLORS[i % COLORS.length]} />
+                        {regionData.map((entry, i) => (
+                          <Cell key={entry.name} fill={getColorForKey(entry.name, REGION_COLORS, i)} />
                         ))}
                       </Pie>
                       <Tooltip
                         formatter={(v: unknown) => [`${typeof v === 'number' ? v.toLocaleString('ko-KR') : v}원`, '평가금액']}
                       />
-                      <Legend iconSize={10} iconType="circle" wrapperStyle={{ fontSize: '0.75rem' }} />
                     </PieChart>
                   </ResponsiveContainer>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
+                    {regionData.map((entry, i) => {
+                      const total = regionData.reduce((s, d) => s + d.value, 0);
+                      const pct = total > 0 ? ((entry.value / total) * 100).toFixed(1) : '0.0';
+                      const color = getColorForKey(entry.name, REGION_COLORS, i);
+                      return (
+                        <div key={entry.name} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                          <div style={{ width: 10, height: 10, borderRadius: 3, backgroundColor: color, flexShrink: 0 }} />
+                          <span style={{ fontSize: '0.75rem', color: '#374151' }}>{entry.name}</span>
+                          <span style={{ fontSize: '0.75rem', fontWeight: 700, color: '#1A1A2E', marginLeft: 'auto', minWidth: 36, textAlign: 'right' }}>{pct}%</span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              ) : (
+                <div style={{ height: 160, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#9CA3AF', fontSize: '0.875rem' }}>
+                  데이터 없음
                 </div>
               )}
+            </div>
 
-              {/* 위험도 분산 */}
-              {riskData.length > 0 && (
-                <div>
-                  <div style={{ fontSize: '0.8125rem', fontWeight: 600, color: '#374151', marginBottom: 8, textAlign: 'center' }}>
-                    위험도 분산
-                  </div>
-                  <ResponsiveContainer width="100%" height={220}>
+            {/* 위험도 분산 */}
+            <div>
+              <SubTitle>위험도 분산</SubTitle>
+              {riskData.length > 0 ? (
+                <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                  <ResponsiveContainer width={180} height={180}>
                     <PieChart>
                       <Pie
                         data={riskData}
                         cx="50%"
                         cy="50%"
+                        innerRadius={45}
                         outerRadius={75}
+                        paddingAngle={2}
                         dataKey="value"
-                        label={({ percent }: { percent?: number }) => percent != null ? `${(percent * 100).toFixed(1)}%` : ''}
-                        labelLine={false}
                       >
-                        {riskData.map((_, i) => (
-                          <Cell key={i} fill={COLORS[i % COLORS.length]} />
+                        {riskData.map((entry, i) => (
+                          <Cell key={entry.name} fill={getColorForKey(entry.name, RISK_COLORS, i)} />
                         ))}
                       </Pie>
                       <Tooltip
                         formatter={(v: unknown) => [`${typeof v === 'number' ? v.toLocaleString('ko-KR') : v}원`, '평가금액']}
                       />
-                      <Legend iconSize={10} iconType="circle" wrapperStyle={{ fontSize: '0.75rem' }} />
                     </PieChart>
                   </ResponsiveContainer>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
+                    {riskData.map((entry, i) => {
+                      const total = riskData.reduce((s, d) => s + d.value, 0);
+                      const pct = total > 0 ? ((entry.value / total) * 100).toFixed(1) : '0.0';
+                      const color = getColorForKey(entry.name, RISK_COLORS, i);
+                      return (
+                        <div key={entry.name} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                          <div style={{ width: 10, height: 10, borderRadius: 3, backgroundColor: color, flexShrink: 0 }} />
+                          <span style={{ fontSize: '0.75rem', color: '#374151' }}>{entry.name}</span>
+                          <span style={{ fontSize: '0.75rem', fontWeight: 700, color: '#1A1A2E', marginLeft: 'auto', minWidth: 36, textAlign: 'right' }}>{pct}%</span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              ) : (
+                <div style={{ height: 160, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#9CA3AF', fontSize: '0.875rem' }}>
+                  데이터 없음
                 </div>
               )}
             </div>
           </div>
         )}
 
-        {/* ===== 5. 수익률 그래프 ===== */}
-        {historyData.length > 0 && (
-          <div style={{ marginBottom: 28 }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
-              <SubTitle>수익률 추이</SubTitle>
-              <div style={{ display: 'flex', gap: 6 }}>
-                {(['6m', '1y'] as const).map((r) => (
-                  <button
-                    key={r}
-                    onClick={() => setHistoryRange(r)}
-                    style={{
-                      padding: '4px 12px',
-                      borderRadius: 6,
-                      border: `1px solid ${historyRange === r ? '#1E3A5F' : '#E1E5EB'}`,
-                      backgroundColor: historyRange === r ? '#1E3A5F' : '#FFFFFF',
-                      color: historyRange === r ? '#FFFFFF' : '#6B7280',
-                      fontSize: '0.75rem',
-                      fontWeight: 600,
-                      cursor: 'pointer',
-                      transition: 'all 0.15s ease',
-                    }}
-                  >
-                    {r === '6m' ? '6개월' : '1년'}
-                  </button>
-                ))}
-              </div>
+        {/* ===== 6. 수익률 그래프 ===== */}
+        <div style={{ marginBottom: 24 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+            <SubTitle>수익률 추이</SubTitle>
+            <div style={{ display: 'flex', gap: 0, border: '1px solid #E1E5EB', borderRadius: 8, overflow: 'hidden' }}>
+              {(['3m', '6m', '1y'] as const).map((r) => (
+                <button
+                  key={r}
+                  onClick={() => setHistoryRange(r)}
+                  style={{
+                    padding: '5px 12px',
+                    border: 'none',
+                    backgroundColor: historyRange === r ? '#1E3A5F' : 'transparent',
+                    color: historyRange === r ? '#fff' : '#6B7280',
+                    fontSize: '0.75rem',
+                    fontWeight: 600,
+                    cursor: 'pointer',
+                    transition: 'all 0.15s ease',
+                  }}
+                >
+                  {r === '3m' ? '3개월' : r === '6m' ? '6개월' : '1년'}
+                </button>
+              ))}
             </div>
+          </div>
+          {historyData.length === 0 ? (
+            <div
+              style={{
+                height: 160,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                color: '#9CA3AF',
+                fontSize: '0.875rem',
+                border: '1px solid #F3F4F6',
+                borderRadius: 8,
+              }}
+            >
+              이력 데이터가 없습니다.
+            </div>
+          ) : (
             <ResponsiveContainer width="100%" height={200}>
               <LineChart data={historyData} margin={{ top: 8, right: 16, left: 0, bottom: 0 }}>
                 <CartesianGrid strokeDasharray="3 3" stroke="#F3F4F6" />
@@ -577,118 +1032,73 @@ const ReportView = forwardRef<HTMLDivElement, ReportViewProps>(
                   strokeWidth={2}
                   dot={{ r: 3, fill: '#1E3A5F' }}
                   activeDot={{ r: 5 }}
-                  label={false}
+                  connectNulls={false}
                 />
               </LineChart>
             </ResponsiveContainer>
-          </div>
-        )}
+          )}
+        </div>
 
-        {/* ===== 6. 포트폴리오 변경 ===== */}
-        <div>
-          <SubTitle>포트폴리오 변경 제안</SubTitle>
-          <div style={{ overflowX: 'auto' }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.8125rem' }}>
-              <thead>
-                <tr>
-                  <th style={{ ...thStyle, textAlign: 'center', width: 36 }}>NO</th>
-                  <th style={thLeftStyle}>상품명</th>
-                  <th style={thStyle}>상품코드</th>
-                  <th style={thStyle}>기준가</th>
-                  <th style={thStyle}>평가금액</th>
-                  <th style={thStyle}>수익률</th>
-                  <th style={thStyle}>현재비중</th>
-                  <th style={{ ...thStyle, color: '#1E3A5F' }}>수정비중</th>
-                  <th style={thStyle}>변경후금액</th>
-                </tr>
-              </thead>
-              <tbody>
-                {holdings.map((h, idx) => {
-                  const modW = modifiedWeights[h.id];
-                  const changedAmt =
-                    modW != null && totalEval > 0
-                      ? Math.round((totalEval * modW) / 100)
-                      : null;
-                  return (
-                    <tr key={h.id}>
-                      <td style={{ ...tdStyle, textAlign: 'center', color: '#9CA3AF' }}>
-                        {h.seq ?? idx + 1}
-                      </td>
-                      <td style={tdLeftStyle}>{h.product_name}</td>
-                      <td style={tdStyle}>{h.product_code ?? '-'}</td>
-                      <td style={tdStyle}>{fmt(h.reference_price)}</td>
-                      <td style={tdStyle}>{fmt(h.evaluation_amount)}</td>
-                      <td style={{ ...tdStyle, color: returnRateColor(h.return_rate), fontWeight: 600 }}>
-                        {h.return_rate != null
-                          ? `${h.return_rate > 0 ? '+' : ''}${h.return_rate.toFixed(2)}%`
-                          : '-'}
-                      </td>
-                      <td style={tdStyle}>
-                        {h.weight != null ? `${h.weight.toFixed(1)}%` : '-'}
-                      </td>
-                      <td style={tdStyle}>
-                        <input
-                          type="number"
-                          min={0}
-                          max={100}
-                          step={0.1}
-                          placeholder="-"
-                          value={modW ?? ''}
-                          onChange={(e) => {
-                            const v = parseFloat(e.target.value);
-                            onWeightChange(h.id, isNaN(v) ? 0 : v);
-                          }}
-                          style={{
-                            width: 64,
-                            padding: '4px 6px',
-                            fontSize: '0.8125rem',
-                            border: '1px solid #CBD5E1',
-                            borderRadius: 6,
-                            textAlign: 'right',
-                            outline: 'none',
-                            color: '#1E3A5F',
-                            fontWeight: 600,
-                          }}
-                        />
-                      </td>
-                      <td style={{ ...tdStyle, fontWeight: changedAmt != null ? 600 : undefined }}>
-                        {changedAmt != null ? `${fmt(changedAmt)}원` : '-'}
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-              <tfoot>
-                <tr>
-                  <td colSpan={6} style={{ ...totalRowStyle, textAlign: 'left' }}>
-                    합계
-                  </td>
-                  <td style={totalRowStyle}>
-                    {/* 현재비중 합계 */}
-                    {holdings.every((h) => h.weight != null)
-                      ? `${holdings.reduce((s, h) => s + (h.weight ?? 0), 0).toFixed(1)}%`
-                      : '-'}
-                  </td>
-                  <td style={totalRowStyle}>
-                    {/* 수정비중 합계 */}
-                    {Object.values(modifiedWeights).length > 0
-                      ? `${Object.values(modifiedWeights).reduce((s, v) => s + v, 0).toFixed(1)}%`
-                      : '-'}
-                  </td>
-                  <td style={totalRowStyle}>
-                    {/* 변경후금액 합계 */}
-                    {Object.keys(modifiedWeights).length > 0 && totalEval > 0
-                      ? `${fmt(
-                          Math.round(
-                            Object.values(modifiedWeights).reduce((s, v) => s + (totalEval * v) / 100, 0)
-                          )
-                        )}원`
-                      : '-'}
-                  </td>
-                </tr>
-              </tfoot>
-            </table>
-          </div>
+        {/* ===== 7. AI 분석 코멘트 ===== */}
+        <div style={{ marginBottom: 28 }}>
+          <AiCommentBlock
+            label="AI 분석 코멘트"
+            value={aiComment}
+            onChange={onAiCommentChange ?? (() => {})}
+            onGenerate={onGenerateAiComment}
+            loading={aiCommentLoading}
+          />
+        </div>
+
+        {/* ===== 8. 포트폴리오 변경 안내 ===== */}
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: 8,
+            marginBottom: 20,
+            marginTop: 8,
+            padding: '10px 16px',
+            backgroundColor: '#374151',
+            borderRadius: 8,
+          }}
+        >
+          <span
+            style={{
+              fontSize: '1rem',
+              fontWeight: 800,
+              color: '#FFFFFF',
+              letterSpacing: '-0.3px',
+            }}
+          >
+            포트폴리오 변경 안내
+          </span>
+        </div>
+
+        <div style={{ marginBottom: 24 }}>
+          <SubTitle>수정비중 입력</SubTitle>
+          <WeightEditor
+            holdings={holdings}
+            totalEval={totalEval}
+            modifiedWeights={modifiedWeights}
+            onWeightChange={onWeightChange}
+            thStyle={thStyle}
+            thLeftStyle={thLeftStyle}
+            tdStyle={tdStyle}
+            tdLeftStyle={tdLeftStyle}
+            totalRowStyle={totalRowStyle}
+          />
+        </div>
+
+        {/* ===== 9. AI 변경 코멘트 ===== */}
+        <div style={{ marginBottom: 28 }}>
+          <AiCommentBlock
+            label="AI 변경 코멘트"
+            value={aiChangeComment}
+            onChange={onAiChangeCommentChange ?? (() => {})}
+            onGenerate={onGenerateAiChangeComment}
+            loading={aiChangeCommentLoading}
+          />
         </div>
 
         {/* Footer */}
@@ -707,6 +1117,8 @@ const ReportView = forwardRef<HTMLDivElement, ReportViewProps>(
           <span>본 보고서는 참고 자료이며 투자 결과에 대한 책임은 투자자 본인에게 있습니다.</span>
           <span>Working Hub Manager</span>
         </div>
+
+        <style>{`@keyframes spin{from{transform:rotate(0deg)}to{transform:rotate(360deg)}}`}</style>
       </div>
     );
   }

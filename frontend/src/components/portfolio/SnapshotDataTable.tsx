@@ -1,10 +1,22 @@
 'use client';
 
+import { useState, useCallback } from 'react';
+import { authLib } from '@/lib/auth';
+
+const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+
+/* ------------------------------------------------------------------ */
+/*  Constants                                                           */
+/* ------------------------------------------------------------------ */
+
+const RISK_LEVELS = ['절대안정형', '안정형', '성장형', '절대성장형'];
+const REGIONS = ['국내', '미국', '글로벌', '베트남', '인도', '중국', '기타'];
+
 /* ------------------------------------------------------------------ */
 /*  Types                                                               */
 /* ------------------------------------------------------------------ */
 
-interface Holding {
+export interface Holding {
   id: string;
   seq?: number;
   product_name: string;
@@ -20,7 +32,7 @@ interface Holding {
   reference_price?: number;
 }
 
-interface Snapshot {
+export interface Snapshot {
   id: string;
   client_account_id: string;
   snapshot_date: string;
@@ -41,6 +53,10 @@ interface SnapshotDataTableProps {
   accountType: string;
   snapshot: Snapshot | null;
   isLoading: boolean;
+  /** 인라인 편집 활성화 여부 (탭 2에서만 true) */
+  editable?: boolean;
+  /** 홀딩 저장 후 스냅샷 새로고침 콜백 */
+  onHoldingUpdated?: (snapshotId: string) => void;
 }
 
 /* ------------------------------------------------------------------ */
@@ -57,6 +73,15 @@ const returnRateColor = (rate?: number) => {
   if (rate > 0) return '#10B981';
   if (rate < 0) return '#EF4444';
   return '#374151';
+};
+
+const riskLevelStyle = (level?: string): React.CSSProperties => {
+  if (!level) return {};
+  if (level === '절대성장형') return { backgroundColor: '#FEF2F2', color: '#DC2626' };
+  if (level === '성장형') return { backgroundColor: '#FFFBEB', color: '#D97706' };
+  if (level === '안정형') return { backgroundColor: '#ECFDF5', color: '#059669' };
+  if (level === '절대안정형') return { backgroundColor: '#EFF6FF', color: '#2563EB' };
+  return { backgroundColor: '#F3F4F6', color: '#374151' };
 };
 
 /* ------------------------------------------------------------------ */
@@ -92,10 +117,6 @@ function SummaryCard({ label, value, accent }: { label: string; value: string; a
   );
 }
 
-/* ------------------------------------------------------------------ */
-/*  Loading skeleton                                                    */
-/* ------------------------------------------------------------------ */
-
 function LoadingSkeleton() {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 10, padding: 20 }}>
@@ -117,6 +138,224 @@ function LoadingSkeleton() {
 }
 
 /* ------------------------------------------------------------------ */
+/*  Inline-editable holding row                                         */
+/* ------------------------------------------------------------------ */
+
+interface HoldingRowProps {
+  holding: Holding;
+  index: number;
+  snapshotId: string;
+  editable: boolean;
+  onSaved: (snapshotId: string) => void;
+}
+
+function HoldingRow({ holding: initialHolding, index, snapshotId, editable, onSaved }: HoldingRowProps) {
+  const [riskLevel, setRiskLevel] = useState(initialHolding.risk_level ?? '');
+  const [region, setRegion] = useState(initialHolding.region ?? '');
+  const [saving, setSaving] = useState(false);
+  const [saved, setSaved] = useState(false);
+
+  const isDirty =
+    riskLevel !== (initialHolding.risk_level ?? '') ||
+    region !== (initialHolding.region ?? '');
+
+  const handleSave = useCallback(async () => {
+    setSaving(true);
+    try {
+      const res = await fetch(
+        `${API_URL}/api/v1/snapshots/${snapshotId}/holdings/${initialHolding.id}`,
+        {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json', ...authLib.getAuthHeader() },
+          body: JSON.stringify({ risk_level: riskLevel || null, region: region || null }),
+        }
+      );
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        alert(err?.detail || '저장 실패');
+        return;
+      }
+      setSaved(true);
+      setTimeout(() => setSaved(false), 2000);
+      onSaved(snapshotId);
+    } catch {
+      alert('저장 중 오류가 발생했습니다.');
+    } finally {
+      setSaving(false);
+    }
+  }, [snapshotId, initialHolding.id, riskLevel, region, onSaved]);
+
+  const h = initialHolding;
+
+  const tdStyle: React.CSSProperties = {
+    padding: '9px 12px',
+    fontSize: '0.8125rem',
+    color: '#374151',
+    textAlign: 'right',
+    borderBottom: '1px solid #F3F4F6',
+    whiteSpace: 'nowrap',
+  };
+
+  return (
+    <tr
+      onMouseEnter={(e) => { (e.currentTarget as HTMLTableRowElement).style.backgroundColor = '#F9FAFB'; }}
+      onMouseLeave={(e) => { (e.currentTarget as HTMLTableRowElement).style.backgroundColor = 'transparent'; }}
+      style={{ transition: 'background-color 0.1s ease' }}
+    >
+      <td style={{ ...tdStyle, textAlign: 'center', color: '#9CA3AF' }}>
+        {h.seq ?? index + 1}
+      </td>
+      <td style={{ ...tdStyle, textAlign: 'left' }}>
+        <div style={{ fontWeight: 500, color: '#1A1A2E' }}>{h.product_name}</div>
+        {h.product_type && (
+          <div style={{ fontSize: '0.6875rem', color: '#9CA3AF', marginTop: 1 }}>{h.product_type}</div>
+        )}
+      </td>
+
+      {/* 위험도 */}
+      <td style={{ ...tdStyle, textAlign: 'center', padding: '6px 8px' }}>
+        {editable ? (
+          <select
+            value={riskLevel}
+            onChange={(e) => setRiskLevel(e.target.value)}
+            style={{
+              width: '100%',
+              padding: '5px 6px',
+              fontSize: '0.75rem',
+              border: '1px solid #E1E5EB',
+              borderRadius: 6,
+              outline: 'none',
+              backgroundColor: '#fff',
+              cursor: 'pointer',
+              color: '#1A1A2E',
+            }}
+          >
+            <option value="">선택</option>
+            {RISK_LEVELS.map((rl) => (
+              <option key={rl} value={rl}>{rl}</option>
+            ))}
+          </select>
+        ) : (
+          riskLevel ? (
+            <span
+              style={{
+                fontSize: '0.6875rem',
+                fontWeight: 600,
+                padding: '2px 6px',
+                borderRadius: 4,
+                ...riskLevelStyle(riskLevel),
+              }}
+            >
+              {riskLevel}
+            </span>
+          ) : '-'
+        )}
+      </td>
+
+      {/* 지역 */}
+      <td style={{ ...tdStyle, textAlign: 'center', padding: '6px 8px' }}>
+        {editable ? (
+          <select
+            value={region}
+            onChange={(e) => setRegion(e.target.value)}
+            style={{
+              width: '100%',
+              padding: '5px 6px',
+              fontSize: '0.75rem',
+              border: '1px solid #E1E5EB',
+              borderRadius: 6,
+              outline: 'none',
+              backgroundColor: '#fff',
+              cursor: 'pointer',
+              color: '#1A1A2E',
+            }}
+          >
+            <option value="">선택</option>
+            {REGIONS.map((rg) => (
+              <option key={rg} value={rg}>{rg}</option>
+            ))}
+          </select>
+        ) : (
+          region ? (
+            <span
+              style={{
+                fontSize: '0.75rem',
+                fontWeight: 500,
+                color: '#1E3A5F',
+                backgroundColor: '#EEF2F7',
+                padding: '2px 6px',
+                borderRadius: 4,
+              }}
+            >
+              {region}
+            </span>
+          ) : '-'
+        )}
+      </td>
+
+      <td style={tdStyle}>{fmt(h.purchase_amount)}</td>
+      <td style={{ ...tdStyle, fontWeight: 500 }}>{fmt(h.evaluation_amount)}</td>
+      <td style={{ ...tdStyle, color: returnRateColor(h.return_amount), fontWeight: h.return_amount != null && h.return_amount !== 0 ? 500 : undefined }}>
+        {h.return_amount != null ? `${h.return_amount > 0 ? '+' : ''}${fmt(h.return_amount)}` : '-'}
+      </td>
+      <td style={{ ...tdStyle, color: returnRateColor(h.return_rate), fontWeight: 600 }}>
+        {h.return_rate != null ? `${h.return_rate > 0 ? '+' : ''}${h.return_rate.toFixed(2)}%` : '-'}
+      </td>
+      <td style={{ ...tdStyle, color: '#374151' }}>
+        {h.weight != null ? `${(h.weight * 100).toFixed(1)}%` : '-'}
+      </td>
+
+      {/* 저장 버튼 (editable 모드에서만) */}
+      {editable && (
+        <td style={{ ...tdStyle, textAlign: 'center', padding: '6px 8px' }}>
+          <button
+            onClick={handleSave}
+            disabled={saving || (!isDirty && !saved)}
+            title="저장"
+            style={{
+              padding: '4px 10px',
+              fontSize: '0.7rem',
+              fontWeight: 600,
+              color: '#fff',
+              backgroundColor: saved ? '#10B981' : isDirty ? '#1E3A5F' : '#D1D5DB',
+              border: 'none',
+              borderRadius: 5,
+              cursor: saving || (!isDirty && !saved) ? 'not-allowed' : 'pointer',
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: 4,
+              transition: 'background-color 0.15s',
+              minWidth: 44,
+              justifyContent: 'center',
+            }}
+          >
+            {saving ? (
+              <span
+                style={{
+                  display: 'inline-block',
+                  width: 9,
+                  height: 9,
+                  border: '1.5px solid #fff',
+                  borderTopColor: 'transparent',
+                  borderRadius: '50%',
+                  animation: 'spin 0.7s linear infinite',
+                }}
+              />
+            ) : saved ? (
+              <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3">
+                <polyline points="20 6 9 17 4 12" />
+              </svg>
+            ) : (
+              '저장'
+            )}
+          </button>
+        </td>
+      )}
+    </tr>
+  );
+}
+
+/* ------------------------------------------------------------------ */
 /*  Main component                                                      */
 /* ------------------------------------------------------------------ */
 
@@ -125,6 +364,8 @@ export function SnapshotDataTable({
   accountType,
   snapshot,
   isLoading,
+  editable = false,
+  onHoldingUpdated,
 }: SnapshotDataTableProps) {
   const thStyle: React.CSSProperties = {
     padding: '10px 12px',
@@ -142,20 +383,6 @@ export function SnapshotDataTable({
     textAlign: 'left',
   };
 
-  const tdStyle: React.CSSProperties = {
-    padding: '10px 12px',
-    fontSize: '0.8125rem',
-    color: '#374151',
-    textAlign: 'right',
-    borderBottom: '1px solid #F3F4F6',
-    whiteSpace: 'nowrap',
-  };
-
-  const tdLeftStyle: React.CSSProperties = {
-    ...tdStyle,
-    textAlign: 'left',
-  };
-
   const totalRowStyle: React.CSSProperties = {
     padding: '10px 12px',
     fontSize: '0.8125rem',
@@ -165,6 +392,13 @@ export function SnapshotDataTable({
     backgroundColor: '#F5F7FA',
     whiteSpace: 'nowrap',
   };
+
+  const handleHoldingUpdated = useCallback(
+    (snapshotId: string) => {
+      onHoldingUpdated?.(snapshotId);
+    },
+    [onHoldingUpdated]
+  );
 
   return (
     <div
@@ -186,13 +420,7 @@ export function SnapshotDataTable({
           backgroundColor: '#FFFFFF',
         }}
       >
-        <span
-          style={{
-            fontSize: '0.9375rem',
-            fontWeight: 700,
-            color: '#1A1A2E',
-          }}
-        >
+        <span style={{ fontSize: '0.9375rem', fontWeight: 700, color: '#1A1A2E' }}>
           {clientName || '고객명'}
         </span>
         <span
@@ -210,6 +438,19 @@ export function SnapshotDataTable({
         {snapshot && (
           <span style={{ fontSize: '0.75rem', color: '#9CA3AF', marginLeft: 'auto' }}>
             조회일: {snapshot.snapshot_date}
+          </span>
+        )}
+        {editable && snapshot && (
+          <span
+            style={{
+              fontSize: '0.6875rem',
+              color: '#6B7280',
+              backgroundColor: '#F3F4F6',
+              padding: '2px 8px',
+              borderRadius: 4,
+            }}
+          >
+            위험도·지역 수정 가능
           </span>
         )}
       </div>
@@ -266,97 +507,31 @@ export function SnapshotDataTable({
                 <tr>
                   <th style={{ ...thStyle, textAlign: 'center', width: 40 }}>NO</th>
                   <th style={thLeftStyle}>상품명</th>
-                  <th style={thStyle}>위험도</th>
+                  <th style={{ ...thStyle, textAlign: 'center', width: editable ? 130 : 90 }}>위험도</th>
+                  <th style={{ ...thStyle, textAlign: 'center', width: editable ? 110 : 70 }}>지역</th>
                   <th style={thStyle}>매입금액</th>
                   <th style={thStyle}>평가금액</th>
                   <th style={thStyle}>평가손익</th>
                   <th style={thStyle}>수익률</th>
+                  <th style={thStyle}>비중</th>
+                  {editable && <th style={{ ...thStyle, textAlign: 'center', width: 60 }}>저장</th>}
                 </tr>
               </thead>
               <tbody>
                 {snapshot.holdings.map((h, idx) => (
-                  <tr
+                  <HoldingRow
                     key={h.id}
-                    style={{
-                      transition: 'background-color 0.1s ease',
-                    }}
-                    onMouseEnter={(e) => {
-                      (e.currentTarget as HTMLTableRowElement).style.backgroundColor = '#F9FAFB';
-                    }}
-                    onMouseLeave={(e) => {
-                      (e.currentTarget as HTMLTableRowElement).style.backgroundColor = 'transparent';
-                    }}
-                  >
-                    <td style={{ ...tdStyle, textAlign: 'center', color: '#9CA3AF' }}>
-                      {h.seq ?? idx + 1}
-                    </td>
-                    <td style={tdLeftStyle}>
-                      <div style={{ fontWeight: 500, color: '#1A1A2E' }}>{h.product_name}</div>
-                      {h.product_type && (
-                        <div style={{ fontSize: '0.6875rem', color: '#9CA3AF', marginTop: 1 }}>
-                          {h.product_type}
-                          {h.region ? ` · ${h.region}` : ''}
-                        </div>
-                      )}
-                    </td>
-                    <td style={tdStyle}>
-                      {h.risk_level ? (
-                        <span
-                          style={{
-                            fontSize: '0.6875rem',
-                            fontWeight: 600,
-                            padding: '2px 6px',
-                            borderRadius: 4,
-                            backgroundColor:
-                              h.risk_level.includes('고') || h.risk_level.includes('매우')
-                                ? '#FEF2F2'
-                                : h.risk_level.includes('중')
-                                ? '#FFFBEB'
-                                : '#ECFDF5',
-                            color:
-                              h.risk_level.includes('고') || h.risk_level.includes('매우')
-                                ? '#DC2626'
-                                : h.risk_level.includes('중')
-                                ? '#D97706'
-                                : '#059669',
-                          }}
-                        >
-                          {h.risk_level}
-                        </span>
-                      ) : (
-                        '-'
-                      )}
-                    </td>
-                    <td style={tdStyle}>{fmt(h.purchase_amount)}</td>
-                    <td style={{ ...tdStyle, fontWeight: 500 }}>{fmt(h.evaluation_amount)}</td>
-                    <td
-                      style={{
-                        ...tdStyle,
-                        color: returnRateColor(h.return_amount),
-                        fontWeight: h.return_amount != null && h.return_amount !== 0 ? 500 : undefined,
-                      }}
-                    >
-                      {h.return_amount != null
-                        ? `${h.return_amount > 0 ? '+' : ''}${fmt(h.return_amount)}`
-                        : '-'}
-                    </td>
-                    <td
-                      style={{
-                        ...tdStyle,
-                        color: returnRateColor(h.return_rate),
-                        fontWeight: 600,
-                      }}
-                    >
-                      {h.return_rate != null
-                        ? `${h.return_rate > 0 ? '+' : ''}${h.return_rate.toFixed(2)}%`
-                        : '-'}
-                    </td>
-                  </tr>
+                    holding={h}
+                    index={idx}
+                    snapshotId={snapshot.id}
+                    editable={editable}
+                    onSaved={handleHoldingUpdated}
+                  />
                 ))}
               </tbody>
               <tfoot>
                 <tr>
-                  <td colSpan={3} style={{ ...totalRowStyle, textAlign: 'left' }}>
+                  <td colSpan={editable ? 4 : 4} style={{ ...totalRowStyle, textAlign: 'left' }}>
                     합계
                   </td>
                   <td style={totalRowStyle}>{fmt(snapshot.total_purchase)}</td>
@@ -381,12 +556,15 @@ export function SnapshotDataTable({
                       ? `${snapshot.total_return_rate > 0 ? '+' : ''}${snapshot.total_return_rate.toFixed(2)}%`
                       : '-'}
                   </td>
+                  <td style={totalRowStyle}>100%</td>
+                  {editable && <td style={totalRowStyle} />}
                 </tr>
               </tfoot>
             </table>
           </div>
         </>
       )}
+      <style>{`@keyframes spin{from{transform:rotate(0deg)}to{transform:rotate(360deg)}}`}</style>
     </div>
   );
 }

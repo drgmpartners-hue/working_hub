@@ -1,13 +1,14 @@
 """Snapshot service - create/retrieve portfolio snapshots."""
 import uuid
 import os
-from datetime import date
+from datetime import date, datetime, timedelta
 from typing import Optional
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, and_
 from app.models.snapshot import PortfolioSnapshot, PortfolioHolding
 from app.models.client import ClientAccount
 from app.services.vision_service import extract_portfolio_from_image
+from app.schemas.snapshot import HoldingUpdateRequest
 
 UPLOAD_DIR = "uploads/snapshots"
 
@@ -193,3 +194,200 @@ async def get_report_data(
         ],
         "history": history,
     }
+
+
+async def update_holding(
+    db: AsyncSession,
+    snapshot_id: str,
+    holding_id: str,
+    data: HoldingUpdateRequest,
+) -> Optional[PortfolioHolding]:
+    """Manually update mutable fields on a single PortfolioHolding.
+
+    Returns the updated holding, or None if the holding is not found
+    or does not belong to the given snapshot.
+    """
+    result = await db.execute(
+        select(PortfolioHolding).where(
+            and_(
+                PortfolioHolding.id == holding_id,
+                PortfolioHolding.snapshot_id == snapshot_id,
+            )
+        )
+    )
+    holding = result.scalar_one_or_none()
+    if not holding:
+        return None
+
+    update_fields = data.model_dump(exclude_unset=True)
+    for field, value in update_fields.items():
+        setattr(holding, field, value)
+
+    await db.commit()
+    await db.refresh(holding)
+    return holding
+
+
+_PERIOD_DAYS: dict[str, int] = {
+    "3m": 90,
+    "6m": 180,
+    "1y": 365,
+}
+
+
+async def get_history_with_weights(
+    db: AsyncSession,
+    client_account_id: str,
+    period: Optional[str] = None,
+) -> list[dict]:
+    """Return snapshot history with per-snapshot region/risk weight breakdown.
+
+    Parameters
+    ----------
+    db:
+        Async SQLAlchemy session.
+    client_account_id:
+        The account whose snapshots to fetch.
+    period:
+        One of "3m", "6m", "1y".  None means all history.
+
+    Returns
+    -------
+    A list of dicts matching the SnapshotHistoryItem schema, ordered by
+    snapshot_date ascending so the caller can feed them directly into a chart.
+    """
+    filters = [PortfolioSnapshot.client_account_id == client_account_id]
+
+    if period is not None:
+        days = _PERIOD_DAYS.get(period)
+        if days is None:
+            raise ValueError(f"Invalid period '{period}'. Use 3m, 6m or 1y.")
+        cutoff = datetime.utcnow().date() - timedelta(days=days)
+        filters.append(PortfolioSnapshot.snapshot_date >= cutoff)
+
+    snapshots_result = await db.execute(
+        select(PortfolioSnapshot)
+        .where(and_(*filters))
+        .order_by(PortfolioSnapshot.snapshot_date.asc())
+    )
+    snapshots: list[PortfolioSnapshot] = list(snapshots_result.scalars().all())
+
+    if not snapshots:
+        return []
+
+    snapshot_ids = [s.id for s in snapshots]
+
+    holdings_result = await db.execute(
+        select(PortfolioHolding).where(
+            PortfolioHolding.snapshot_id.in_(snapshot_ids)
+        )
+    )
+    all_holdings: list[PortfolioHolding] = list(holdings_result.scalars().all())
+
+    # Group holdings by snapshot_id
+    holdings_by_snapshot: dict[str, list[PortfolioHolding]] = {}
+    for h in all_holdings:
+        holdings_by_snapshot.setdefault(h.snapshot_id, []).append(h)
+
+    items: list[dict] = []
+    for snap in snapshots:
+        holdings = holdings_by_snapshot.get(snap.id, [])
+
+        # Sum evaluation_amount by region and risk_level
+        region_totals: dict[str, float] = {}
+        risk_totals: dict[str, float] = {}
+        grand_total = 0.0
+
+        for h in holdings:
+            amt = h.evaluation_amount or 0.0
+            grand_total += amt
+            if h.region:
+                region_totals[h.region] = region_totals.get(h.region, 0.0) + amt
+            if h.risk_level:
+                risk_totals[h.risk_level] = risk_totals.get(h.risk_level, 0.0) + amt
+
+        # Convert totals to weights (0.0–1.0, rounded to 4 decimal places)
+        if grand_total > 0:
+            region_weights = {
+                k: round(v / grand_total, 4) for k, v in region_totals.items()
+            }
+            risk_weights = {
+                k: round(v / grand_total, 4) for k, v in risk_totals.items()
+            }
+        else:
+            region_weights = {}
+            risk_weights = {}
+
+        items.append(
+            {
+                "snapshot_id": snap.id,
+                "snapshot_date": snap.snapshot_date,
+                "total_evaluation": snap.total_evaluation,
+                "total_return_rate": snap.total_return_rate,
+                "region_weights": region_weights,
+                "risk_weights": risk_weights,
+            }
+        )
+
+    return items
+
+
+async def apply_master_to_snapshot(
+    db: AsyncSession,
+    snapshot_id: str,
+) -> dict:
+    """Look up risk_level and region from product_master for every holding in
+    the given snapshot and apply them in bulk.
+
+    Returns {"updated": N, "not_found": ["상품명1", ...]}
+
+    If the product_master table / model is not available (e.g. the migration
+    has not been run yet), the function raises an ImportError which the caller
+    should convert to an appropriate HTTP error.
+    """
+    # Late import so that the rest of snapshot_service works even before
+    # PF-R1-T1 is merged.
+    try:
+        from app.models.product_master import ProductMaster  # noqa: PLC0415
+    except ImportError as exc:
+        raise ImportError(
+            "product_master model is not yet available. "
+            "Run PF-R1-T1 first."
+        ) from exc
+
+    # Load all holdings for this snapshot
+    holdings_result = await db.execute(
+        select(PortfolioHolding).where(PortfolioHolding.snapshot_id == snapshot_id)
+    )
+    holdings: list[PortfolioHolding] = list(holdings_result.scalars().all())
+
+    if not holdings:
+        return {"updated": 0, "not_found": []}
+
+    # Collect distinct product names
+    product_names = list({h.product_name for h in holdings})
+
+    # Fetch matching master records in one query
+    master_result = await db.execute(
+        select(ProductMaster).where(ProductMaster.product_name.in_(product_names))
+    )
+    master_rows = master_result.scalars().all()
+    master_map: dict[str, ProductMaster] = {m.product_name: m for m in master_rows}
+
+    updated_count = 0
+    not_found: list[str] = []
+
+    for holding in holdings:
+        master = master_map.get(holding.product_name)
+        if master:
+            holding.risk_level = master.risk_level
+            holding.region = master.region
+            updated_count += 1
+        else:
+            if holding.product_name not in not_found:
+                not_found.append(holding.product_name)
+
+    if updated_count:
+        await db.commit()
+
+    return {"updated": updated_count, "not_found": not_found}

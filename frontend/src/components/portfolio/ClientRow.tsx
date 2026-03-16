@@ -1,6 +1,6 @@
 'use client';
 
-import { useRef, useCallback } from 'react';
+import { useRef, useCallback, useEffect } from 'react';
 import { Button } from '@/components/common/Button';
 import { Card } from '@/components/common/Card';
 
@@ -150,6 +150,27 @@ export function ClientRow({ index, clients, data, onChange, onRemove }: ClientRo
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [data, onChange]
   );
+
+  // window 레벨 paste 이벤트: 이미지가 없을 때 어디서 Ctrl+V 해도 동작
+  useEffect(() => {
+    const handleWindowPaste = (e: ClipboardEvent) => {
+      if (data.imagePreview) return; // 이미 이미지 있으면 무시
+      const items = e.clipboardData?.items;
+      if (!items) return;
+      for (let i = 0; i < items.length; i++) {
+        if (items[i].type.startsWith('image/')) {
+          const file = items[i].getAsFile();
+          if (file) {
+            processImageFile(file);
+            break;
+          }
+        }
+      }
+    };
+    window.addEventListener('paste', handleWindowPaste);
+    return () => window.removeEventListener('paste', handleWindowPaste);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [data.imagePreview]);
 
   function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
@@ -357,13 +378,13 @@ export function ClientRow({ index, clients, data, onChange, onRemove }: ClientRo
             ref={pasteZoneRef}
             tabIndex={0}
             onPaste={handlePaste}
-            onClick={() => fileInputRef.current?.click()}
+            onClick={() => pasteZoneRef.current?.focus()}
             style={{
               border: '2px dashed #CBD5E1',
               borderRadius: 8,
               padding: '24px 16px',
               textAlign: 'center',
-              cursor: 'pointer',
+              cursor: 'default',
               backgroundColor: '#FAFBFC',
               transition: 'border-color 0.15s ease, background-color 0.15s ease',
               userSelect: 'none',
@@ -397,11 +418,31 @@ export function ClientRow({ index, clients, data, onChange, onRemove }: ClientRo
               <polyline points="21 15 16 10 5 21" />
             </svg>
             <p style={{ margin: 0, fontSize: '0.8125rem', color: '#6B7280', fontWeight: 500 }}>
-              클릭하거나 Ctrl+V로 이미지 붙여넣기
+              Ctrl+V로 이미지를 붙여넣으세요
             </p>
             <p style={{ margin: '4px 0 0', fontSize: '0.75rem', color: '#9CA3AF' }}>
               PNG, JPG, GIF 등 이미지 파일 지원
             </p>
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                fileInputRef.current?.click();
+              }}
+              style={{
+                marginTop: 10,
+                padding: '5px 14px',
+                fontSize: '0.75rem',
+                fontWeight: 600,
+                color: '#1E3A5F',
+                backgroundColor: '#EEF2F7',
+                border: '1px solid #CBD5E1',
+                borderRadius: 6,
+                cursor: 'pointer',
+              }}
+            >
+              파일 선택
+            </button>
           </div>
         )}
       </div>
