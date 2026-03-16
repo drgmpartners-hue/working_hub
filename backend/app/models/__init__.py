@@ -20,8 +20,14 @@ from app.models.commission import CommissionCalculation, CommissionResult
 from app.models.portfolio import PortfolioAnalysis, PortfolioItem
 from app.models.stock import StockRecommendation, RecommendedStock
 
+# Depends on users (client management)
+from app.models.client import Client, ClientAccount
+
 # Depends on users + brand_settings
 from app.models.content import ContentProject, ContentVersion
+
+# Depends on client_accounts (portfolio snapshots)
+from app.models.snapshot import PortfolioSnapshot, PortfolioHolding
 
 __all__ = [
     "BrandSetting",
@@ -37,6 +43,10 @@ __all__ = [
     "PortfolioItem",
     "StockRecommendation",
     "RecommendedStock",
+    "Client",
+    "ClientAccount",
     "ContentProject",
     "ContentVersion",
+    "PortfolioSnapshot",
+    "PortfolioHolding",
 ]

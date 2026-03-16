@@ -2,6 +2,8 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.api.v1 import auth, users, brand, ai_settings, upload, crawling, commission, content, portfolio, stock
+from app.api.v1 import clients as clients_router
+from app.api.v1 import snapshots as snapshots_router
 
 app = FastAPI(title="API", version="0.1.0")
 
@@ -24,6 +26,8 @@ app.include_router(commission.router, prefix="/api/v1")
 app.include_router(content.router, prefix="/api/v1")
 app.include_router(portfolio.router, prefix="/api/v1")
 app.include_router(stock.router, prefix="/api/v1")
+app.include_router(clients_router.router, prefix="/api/v1")
+app.include_router(snapshots_router.router, prefix="/api/v1")
 
 
 @app.get("/health")
