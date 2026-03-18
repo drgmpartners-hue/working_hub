@@ -2,7 +2,7 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.db.session import get_db
-from app.core.deps import CurrentUser
+from app.core.deps import CurrentUser, get_current_user
 from app.core.config import settings
 from app.schemas.client import (
     ClientCreate,
@@ -22,7 +22,7 @@ router = APIRouter(prefix="/clients", tags=["clients"])
 
 @router.get("", response_model=list[ClientResponse])
 async def list_clients(
-    current_user=Depends(CurrentUser),
+    current_user = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
     clients = await client_service.list_clients(db, current_user.id)
@@ -34,7 +34,7 @@ async def list_clients(
 @router.post("", response_model=ClientResponse, status_code=201)
 async def create_client(
     body: ClientCreate,
-    current_user=Depends(CurrentUser),
+    current_user = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
     return await client_service.create_client(db, current_user.id, body.name, body.memo)
@@ -44,7 +44,7 @@ async def create_client(
 async def update_client(
     client_id: str,
     body: ClientUpdate,
-    current_user=Depends(CurrentUser),
+    current_user = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
     client = await client_service.update_client(
@@ -58,7 +58,7 @@ async def update_client(
 @router.delete("/{client_id}", status_code=204)
 async def delete_client(
     client_id: str,
-    current_user=Depends(CurrentUser),
+    current_user = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
     ok = await client_service.delete_client(db, current_user.id, client_id)
@@ -69,7 +69,7 @@ async def delete_client(
 @router.get("/{client_id}/accounts", response_model=list[AccountResponse])
 async def list_accounts(
     client_id: str,
-    current_user=Depends(CurrentUser),
+    current_user = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
     client = await client_service.get_client(db, current_user.id, client_id)
@@ -82,7 +82,7 @@ async def list_accounts(
 async def create_account(
     client_id: str,
     body: AccountCreate,
-    current_user=Depends(CurrentUser),
+    current_user = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
     client = await client_service.get_client(db, current_user.id, client_id)
@@ -103,7 +103,7 @@ async def update_account(
     client_id: str,
     account_id: str,
     body: AccountUpdate,
-    current_user=Depends(CurrentUser),
+    current_user = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
     account = await client_service.update_account(
@@ -118,7 +118,7 @@ async def update_account(
 async def delete_account(
     client_id: str,
     account_id: str,
-    current_user=Depends(CurrentUser),
+    current_user = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
     ok = await client_service.delete_account(db, account_id, client_id)
@@ -129,7 +129,7 @@ async def delete_account(
 @router.post("/{client_id}/send-portal-link")
 async def send_portal_link(
     client_id: str,
-    current_user=Depends(CurrentUser),
+    current_user = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
     """Return portal view link and optionally send it by email.
@@ -170,7 +170,7 @@ async def send_portal_link(
 async def patch_client_portal_info(
     client_id: str,
     body: ClientPortalUpdate,
-    current_user=Depends(CurrentUser),
+    current_user = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
     """Update portal-related fields: birth_date, phone, email."""

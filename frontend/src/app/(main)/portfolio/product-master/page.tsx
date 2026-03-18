@@ -172,7 +172,10 @@ export default function ProductMasterPage() {
       });
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));
-        throw new Error(err.detail ?? `등록 실패 (${res.status})`);
+        const detail = Array.isArray(err.detail)
+          ? err.detail.map((e: { msg: string }) => e.msg).join(', ')
+          : (err.detail ?? `등록 실패 (${res.status})`);
+        throw new Error(detail);
       }
       const created: ProductMaster = await res.json();
       setItems((prev) => [created, ...prev]);

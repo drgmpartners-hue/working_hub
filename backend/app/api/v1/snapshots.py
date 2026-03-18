@@ -1,10 +1,10 @@
 """Snapshots API - portfolio snapshot management with Gemini Vision."""
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form
 from sqlalchemy.ext.asyncio import AsyncSession
-from typing import Optional
+from typing import Optional, Annotated
 from datetime import date
 from app.db.session import get_db
-from app.core.deps import CurrentUser
+from app.core.deps import CurrentUser, get_current_user
 from app.schemas.snapshot import (
     SnapshotResponse,
     SnapshotListItem,
@@ -24,7 +24,7 @@ async def create_snapshot(
     client_account_id: str = Form(...),
     snapshot_date: date = Form(...),
     image: UploadFile = File(...),
-    current_user=Depends(CurrentUser),
+    current_user = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
     """Upload image, extract with Gemini Vision, save snapshot."""
@@ -42,7 +42,7 @@ async def list_snapshots(
     account_id: str,
     date_from: Optional[date] = None,
     date_to: Optional[date] = None,
-    current_user=Depends(CurrentUser),
+    current_user = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
     return await snapshot_service.list_snapshots(db, account_id, date_from, date_to)
@@ -52,7 +52,7 @@ async def list_snapshots(
 async def get_snapshot_history(
     account_id: str,
     period: Optional[str] = None,
-    current_user=Depends(CurrentUser),
+    current_user = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
     """Return snapshot history with region/risk weight breakdown for chart rendering.
@@ -74,7 +74,7 @@ async def get_snapshot_history(
 async def get_report_data(
     account_id: str,
     target_date: Optional[date] = None,
-    current_user=Depends(CurrentUser),
+    current_user = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
     data = await snapshot_service.get_report_data(db, account_id, target_date)
@@ -86,7 +86,7 @@ async def get_report_data(
 @router.get("/{snapshot_id}", response_model=SnapshotResponse)
 async def get_snapshot(
     snapshot_id: str,
-    current_user=Depends(CurrentUser),
+    current_user = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
     snapshot = await snapshot_service.get_snapshot_with_holdings(db, snapshot_id)
@@ -103,7 +103,7 @@ async def update_holding(
     snapshot_id: str,
     holding_id: str,
     body: HoldingUpdateRequest,
-    current_user=Depends(CurrentUser),
+    current_user = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
     """Manually update mutable fields (risk_level, region, amounts, etc.)
@@ -123,7 +123,7 @@ async def update_holding(
 )
 async def apply_master(
     snapshot_id: str,
-    current_user=Depends(CurrentUser),
+    current_user = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
     """Apply risk_level and region from the product_master table to every

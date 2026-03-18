@@ -1,9 +1,9 @@
 """Product Master API — 상품명 ↔ 위험도/지역 마스터 관리."""
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
-from typing import Optional
+from typing import Optional, Annotated
 from app.db.session import get_db
-from app.core.deps import CurrentUser
+from app.core.deps import CurrentUser, get_current_user
 from app.schemas.product_master import (
     ProductMasterCreate,
     ProductMasterUpdate,
@@ -18,7 +18,7 @@ router = APIRouter(prefix="/product-master", tags=["product-master"])
 @router.get("/lookup", response_model=ProductMasterLookupResponse)
 async def lookup_product(
     name: str = Query(..., description="상품명 정확 일치 검색"),
-    current_user=Depends(CurrentUser),
+    current_user = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
     """상품명으로 위험도/지역 조회 — 홀딩 자동 매핑용."""
@@ -31,7 +31,7 @@ async def lookup_product(
 @router.get("", response_model=list[ProductMasterResponse])
 async def list_products(
     q: Optional[str] = Query(None, description="상품명/종목코드 검색"),
-    current_user=Depends(CurrentUser),
+    current_user = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
     """전체 상품 목록 조회. q 파라미터로 부분 검색 가능."""
@@ -41,7 +41,7 @@ async def list_products(
 @router.post("", response_model=ProductMasterResponse, status_code=201)
 async def create_product(
     data: ProductMasterCreate,
-    current_user=Depends(CurrentUser),
+    current_user = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
     """신규 상품 등록."""
@@ -58,7 +58,7 @@ async def create_product(
 async def update_product(
     product_id: str,
     data: ProductMasterUpdate,
-    current_user=Depends(CurrentUser),
+    current_user = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
     """상품 위험도/지역 등 수정."""
@@ -71,7 +71,7 @@ async def update_product(
 @router.delete("/{product_id}", status_code=204)
 async def delete_product(
     product_id: str,
-    current_user=Depends(CurrentUser),
+    current_user = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
     """상품 삭제."""

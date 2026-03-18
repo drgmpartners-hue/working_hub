@@ -1,11 +1,11 @@
 """Call reservations API — employee-facing endpoints."""
-from typing import Optional
+from typing import Optional, Annotated
 
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.deps import CurrentUser
+from app.core.deps import CurrentUser, get_current_user
 from app.db.session import get_db
 from app.models.call_reservation import CallReservation
 from app.schemas.call_reservation import (
@@ -21,7 +21,7 @@ router = APIRouter(prefix="/call-reservations", tags=["call-reservations"])
 @router.get("", response_model=CallReservationListResponse)
 async def list_call_reservations(
     status: Optional[str] = None,
-    current_user=Depends(CurrentUser),
+    current_user = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
     """Return all call reservations, optionally filtered by status.
@@ -43,7 +43,7 @@ async def list_call_reservations(
 async def update_call_reservation(
     reservation_id: str,
     body: CallReservationUpdateRequest,
-    current_user=Depends(CurrentUser),
+    current_user = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
     """Update the status of a call reservation (confirmed / completed)."""

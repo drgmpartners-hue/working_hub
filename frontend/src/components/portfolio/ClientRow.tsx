@@ -133,6 +133,12 @@ export function ClientRow({ index, clients, data, onChange, onRemove }: ClientRo
     update({ imageFile: file, imagePreview: preview });
   }
 
+  // 항상 최신 processImageFile을 참조하는 ref (stale closure 방지)
+  const processImageFileRef = useRef(processImageFile);
+  useEffect(() => {
+    processImageFileRef.current = processImageFile;
+  });
+
   const handlePaste = useCallback(
     (e: React.ClipboardEvent<HTMLDivElement>) => {
       const items = e.clipboardData?.items;
@@ -141,27 +147,31 @@ export function ClientRow({ index, clients, data, onChange, onRemove }: ClientRo
         if (items[i].type.startsWith('image/')) {
           const file = items[i].getAsFile();
           if (file) {
-            processImageFile(file);
+            processImageFileRef.current(file);
             break;
           }
         }
       }
     },
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [data, onChange]
+    []
   );
 
   // window 레벨 paste 이벤트: 이미지가 없을 때 어디서 Ctrl+V 해도 동작
+  const imagePreviewRef = useRef(data.imagePreview);
+  useEffect(() => {
+    imagePreviewRef.current = data.imagePreview;
+  }, [data.imagePreview]);
+
   useEffect(() => {
     const handleWindowPaste = (e: ClipboardEvent) => {
-      if (data.imagePreview) return; // 이미 이미지 있으면 무시
+      if (imagePreviewRef.current) return; // 이미 이미지 있으면 무시
       const items = e.clipboardData?.items;
       if (!items) return;
       for (let i = 0; i < items.length; i++) {
         if (items[i].type.startsWith('image/')) {
           const file = items[i].getAsFile();
           if (file) {
-            processImageFile(file);
+            processImageFileRef.current(file);
             break;
           }
         }
@@ -169,8 +179,7 @@ export function ClientRow({ index, clients, data, onChange, onRemove }: ClientRo
     };
     window.addEventListener('paste', handleWindowPaste);
     return () => window.removeEventListener('paste', handleWindowPaste);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [data.imagePreview]);
+  }, []);
 
   function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];

@@ -4,7 +4,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.session import get_db
 from app.core.config import settings
-from app.core.deps import CurrentUser
+from app.core.deps import CurrentUser, get_current_user
 from app.schemas.portfolio_suggestion import (
     SuggestionCreate,
     SuggestionCreateResponse,
@@ -21,7 +21,7 @@ router = APIRouter(prefix="/portfolios", tags=["portfolio-suggestions"])
 @router.post("/suggestions", response_model=SuggestionCreateResponse, status_code=201)
 async def create_suggestion(
     body: SuggestionCreate,
-    current_user=Depends(CurrentUser),
+    current_user = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
     """Create a portfolio rebalancing suggestion (expires in 7 days)."""
@@ -67,7 +67,7 @@ async def create_suggestion(
 @router.get("/suggestions/{suggestion_id}", response_model=SuggestionDetail)
 async def get_suggestion(
     suggestion_id: str,
-    current_user=Depends(CurrentUser),
+    current_user = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
     """Get a suggestion by ID."""
@@ -80,7 +80,7 @@ async def get_suggestion(
 @router.post("/suggestions/{suggestion_id}/send")
 async def send_suggestion_link(
     suggestion_id: str,
-    current_user=Depends(CurrentUser),
+    current_user = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
     """Return suggestion link and optionally send it by email.
