@@ -5,8 +5,7 @@ import { Button } from '@/components/common/Button';
 import { Card } from '@/components/common/Card';
 import { authLib } from '@/lib/auth';
 import type { ContentProject, ContentVersion } from '@/types/content';
-
-const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+import { API_URL } from '@/lib/api-url';
 
 // Placeholder for project title when there are no headings
 const PROJECT_TITLE_PLACEHOLDER = '보고서 내용';

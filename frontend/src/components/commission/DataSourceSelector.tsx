@@ -5,8 +5,7 @@ import { Button } from '@/components/common/Button';
 import { ExcelUpload, UploadResult } from './ExcelUpload';
 import { authLib } from '@/lib/auth';
 import { Table, TableColumn } from '@/components/common/Table';
-
-const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+import { API_URL } from '@/lib/api-url';
 
 type DataSource = 'crawling' | 'excel';
 

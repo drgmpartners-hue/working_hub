@@ -3,19 +3,25 @@ import uuid
 from typing import Optional
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
+from sqlalchemy.orm import selectinload
 from app.models.client import Client, ClientAccount
 
 
 async def list_clients(db: AsyncSession, user_id: str) -> list[Client]:
     result = await db.execute(
-        select(Client).where(Client.user_id == user_id).order_by(Client.created_at)
+        select(Client)
+        .where(Client.user_id == user_id)
+        .options(selectinload(Client.accounts))
+        .order_by(Client.created_at)
     )
     return result.scalars().all()
 
 
 async def get_client(db: AsyncSession, user_id: str, client_id: str) -> Optional[Client]:
     result = await db.execute(
-        select(Client).where(Client.id == client_id, Client.user_id == user_id)
+        select(Client)
+        .where(Client.id == client_id, Client.user_id == user_id)
+        .options(selectinload(Client.accounts))
     )
     return result.scalar_one_or_none()
 
@@ -23,11 +29,17 @@ async def get_client(db: AsyncSession, user_id: str, client_id: str) -> Optional
 async def create_client(
     db: AsyncSession, user_id: str, name: str, memo: Optional[str] = None
 ) -> Client:
-    client = Client(id=str(uuid.uuid4()), user_id=user_id, name=name, memo=memo)
+    client_id = str(uuid.uuid4())
+    client = Client(id=client_id, user_id=user_id, name=name, memo=memo)
     db.add(client)
     await db.commit()
-    await db.refresh(client)
-    return client
+    # Re-fetch with eager loading to avoid lazy load issues
+    result = await db.execute(
+        select(Client)
+        .where(Client.id == client_id)
+        .options(selectinload(Client.accounts))
+    )
+    return result.scalar_one()
 
 
 async def update_client(
@@ -45,8 +57,13 @@ async def update_client(
     if memo is not None:
         client.memo = memo
     await db.commit()
-    await db.refresh(client)
-    return client
+    # Re-fetch with eager loading
+    result = await db.execute(
+        select(Client)
+        .where(Client.id == client_id)
+        .options(selectinload(Client.accounts))
+    )
+    return result.scalar_one()
 
 
 async def delete_client(db: AsyncSession, user_id: str, client_id: str) -> bool:

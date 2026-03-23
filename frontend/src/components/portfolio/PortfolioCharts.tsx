@@ -342,6 +342,21 @@ export function PortfolioCharts({
           >
             이력 데이터가 없습니다.
           </div>
+        ) : chartData.length < 3 ? (
+          <div
+            style={{
+              height: 220,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              color: '#9CA3AF',
+              fontSize: '0.875rem',
+              textAlign: 'center',
+              padding: '0 20px',
+            }}
+          >
+            데이터가 3개 이상인 경우 그래프가 구현됩니다.
+          </div>
         ) : (
           <ResponsiveContainer width="100%" height={220}>
             <LineChart data={chartData} margin={{ top: 8, right: 16, left: 0, bottom: 4 }}>

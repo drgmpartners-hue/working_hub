@@ -2,8 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { CallReservationForm } from './CallReservationForm';
-
-const API_URL = process.env.NEXT_PUBLIC_API_URL ?? '';
+import { API_URL } from '@/lib/api-url';
 
 interface SuggestionHolding {
   holding_id: string;

@@ -4,8 +4,7 @@ import { useState, useEffect } from 'react';
 import { authLib } from '@/lib/auth';
 import { StockAnalysisPopup } from './StockAnalysisPopup';
 import type { StockItem } from './StockAnalysisPopup';
-
-const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+import { API_URL } from '@/lib/api-url';
 
 interface StockListProps {
   recommendationId: number;

@@ -3,13 +3,12 @@
 import { useState, useEffect } from 'react';
 import dynamic from 'next/dynamic';
 import type { DistributionItem, HistoryPoint, PeriodKey } from '@/components/portfolio/PortfolioCharts';
+import { API_URL } from '@/lib/api-url';
 
 const PortfolioCharts = dynamic(
   () => import('@/components/portfolio/PortfolioCharts').then((m) => m.PortfolioCharts),
   { ssr: false }
 );
-
-const API_URL = process.env.NEXT_PUBLIC_API_URL ?? '';
 
 /* ------------------------------------------------------------------ */
 /*  Types                                                               */

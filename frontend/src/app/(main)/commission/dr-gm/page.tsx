@@ -8,8 +8,7 @@ import { Card } from '@/components/common/Card';
 import { ExcelUpload, UploadResult } from '@/components/commission/ExcelUpload';
 import { CalculationResultTable, CommissionResult } from '@/components/commission/CalculationResultTable';
 import { authLib } from '@/lib/auth';
-
-const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+import { API_URL } from '@/lib/api-url';
 
 type CalcStatus = 'idle' | 'pending' | 'processing' | 'completed' | 'failed';
 

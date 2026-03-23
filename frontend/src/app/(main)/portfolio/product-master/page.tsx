@@ -1,13 +1,13 @@
 'use client';
 
 import { useState, useEffect, useCallback, useRef } from 'react';
+import { useRouter } from 'next/navigation';
 import { Button } from '@/components/common/Button';
 import { Card } from '@/components/common/Card';
 import { Modal } from '@/components/common/Modal';
 import { ProductMasterTable, type ProductMaster, RISK_LEVELS, REGIONS } from '@/components/portfolio/ProductMasterTable';
 import { authLib } from '@/lib/auth';
-
-const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+import { API_URL } from '@/lib/api-url';
 
 /* ------------------------------------------------------------------ */
 /*  Styles                                                              */
@@ -60,6 +60,7 @@ const EMPTY_FORM: AddFormState = {
 /* ------------------------------------------------------------------ */
 
 export default function ProductMasterPage() {
+  const router = useRouter();
   const [items, setItems] = useState<ProductMaster[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -200,6 +201,30 @@ export default function ProductMasterPage() {
 
   return (
     <div style={{ padding: '24px 24px 40px', minHeight: '100vh', backgroundColor: '#F5F7FA' }}>
+      {/* Back to Dashboard */}
+      <button
+        onClick={() => router.push('/dashboard')}
+        style={{
+          display: 'inline-flex',
+          alignItems: 'center',
+          gap: 5,
+          marginBottom: 12,
+          background: 'none',
+          border: 'none',
+          cursor: 'pointer',
+          color: '#6B7280',
+          fontSize: '0.8125rem',
+          padding: 0,
+        }}
+        onMouseEnter={(e) => ((e.currentTarget as HTMLButtonElement).style.color = '#1A1A2E')}
+        onMouseLeave={(e) => ((e.currentTarget as HTMLButtonElement).style.color = '#6B7280')}
+      >
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+          <polyline points="15 18 9 12 15 6" />
+        </svg>
+        대시보드로 돌아가기
+      </button>
+
       {/* Page Header */}
       <div
         style={{

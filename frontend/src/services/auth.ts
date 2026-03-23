@@ -3,8 +3,7 @@
  */
 import { authLib } from '@/lib/auth';
 import type { AuthResponse, LoginRequest, RegisterRequest, User, PasswordChangeRequest } from '@/types/auth';
-
-const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+import { API_URL } from '@/lib/api-url';
 
 async function fetchWithAuth(url: string, options: RequestInit = {}) {
   const headers: Record<string, string> = {

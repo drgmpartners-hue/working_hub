@@ -5,8 +5,7 @@ import { Button } from '@/components/common/Button';
 import { Card } from '@/components/common/Card';
 import { authLib } from '@/lib/auth';
 import type { PortfolioItem } from './TemplateEditPanel';
-
-const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+import { API_URL } from '@/lib/api-url';
 
 interface RebalancingSuggestion {
   product_name: string;

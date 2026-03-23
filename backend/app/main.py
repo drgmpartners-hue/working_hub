@@ -1,6 +1,11 @@
 """FastAPI application with authentication."""
-from fastapi import FastAPI
+import logging
+import traceback
+from fastapi import FastAPI, Request
+from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
+
+logger = logging.getLogger(__name__)
 from app.api.v1 import auth, users, brand, ai_settings, upload, crawling, commission, content, portfolio, stock
 from app.api.v1 import clients as clients_router
 from app.api.v1 import snapshots as snapshots_router
@@ -38,6 +43,15 @@ app.include_router(reports_router.router, prefix="/api/v1")
 app.include_router(client_portal_router.router, prefix="/api/v1")
 app.include_router(portfolio_suggestions_router.router, prefix="/api/v1")
 app.include_router(call_reservations_router.router, prefix="/api/v1")
+
+
+@app.exception_handler(Exception)
+async def global_exception_handler(request: Request, exc: Exception):
+    logger.error("Unhandled error: %s\n%s", exc, traceback.format_exc())
+    return JSONResponse(
+        status_code=500,
+        content={"detail": str(exc)},
+    )
 
 
 @app.get("/health")

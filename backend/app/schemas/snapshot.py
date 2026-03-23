@@ -6,10 +6,14 @@ from datetime import datetime, date
 
 class HoldingUpdateRequest(BaseModel):
     """Fields that can be manually updated on a PortfolioHolding record."""
+    product_name: Optional[str] = None
+    product_code: Optional[str] = None
+    product_type: Optional[str] = None
     risk_level: Optional[str] = None
     region: Optional[str] = None
-    product_type: Optional[str] = None
-    product_name: Optional[str] = None
+    quantity: Optional[float] = None
+    purchase_price: Optional[float] = None
+    current_price: Optional[float] = None
     purchase_amount: Optional[float] = None
     evaluation_amount: Optional[float] = None
     return_amount: Optional[float] = None
@@ -32,6 +36,9 @@ class HoldingResponse(BaseModel):
     product_type: Optional[str] = None
     risk_level: Optional[str] = None
     region: Optional[str] = None
+    quantity: Optional[float] = None
+    purchase_price: Optional[float] = None
+    current_price: Optional[float] = None
     purchase_amount: Optional[float] = None
     evaluation_amount: Optional[float] = None
     return_amount: Optional[float] = None
@@ -49,6 +56,8 @@ class SnapshotResponse(BaseModel):
     image_path: Optional[str] = None
     parsed_data: Optional[Any] = None
     deposit_amount: Optional[float] = None
+    foreign_deposit_amount: Optional[float] = None
+    total_assets: Optional[float] = None
     total_purchase: Optional[float] = None
     total_evaluation: Optional[float] = None
     total_return: Optional[float] = None

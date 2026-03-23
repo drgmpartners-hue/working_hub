@@ -28,7 +28,7 @@ interface ProductMasterTableProps {
 /*  Constants                                                           */
 /* ------------------------------------------------------------------ */
 
-export const RISK_LEVELS = ['절대안정형', '안정형', '성장형', '절대성장형'] as const;
+export const RISK_LEVELS = ['절대안정형', '안정형', '안정성장형', '성장형', '절대성장형'] as const;
 export const REGIONS = ['국내', '미국', '글로벌', '베트남', '인도', '중국', '기타'] as const;
 
 /* ------------------------------------------------------------------ */
@@ -83,6 +83,7 @@ function getRiskColor(risk?: string) {
   switch (risk) {
     case '절대안정형': return '#10B981';
     case '안정형': return '#3B82F6';
+    case '안정성장형': return '#8B5CF6';
     case '성장형': return '#F59E0B';
     case '절대성장형': return '#EF4444';
     default: return '#9CA3AF';

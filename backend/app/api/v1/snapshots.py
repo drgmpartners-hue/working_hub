@@ -142,3 +142,15 @@ async def apply_master(
         ) from exc
 
     return result
+
+
+@router.delete("/{snapshot_id}", status_code=204)
+async def delete_snapshot(
+    snapshot_id: str,
+    _current_user=Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Delete a snapshot and all its holdings."""
+    deleted = await snapshot_service.delete_snapshot(db, snapshot_id)
+    if not deleted:
+        raise HTTPException(status_code=404, detail="Snapshot not found")

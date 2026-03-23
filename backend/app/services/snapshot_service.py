@@ -5,6 +5,7 @@ from datetime import date, datetime, timedelta
 from typing import Optional
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, and_
+from sqlalchemy.orm import selectinload
 from app.models.snapshot import PortfolioSnapshot, PortfolioHolding
 from app.models.client import ClientAccount
 from app.services.vision_service import extract_portfolio_from_image
@@ -41,6 +42,8 @@ async def create_snapshot(
         image_path=image_path,
         parsed_data=extracted,
         deposit_amount=extracted.get("deposit_amount"),
+        foreign_deposit_amount=extracted.get("foreign_deposit_amount"),
+        total_assets=extracted.get("total_assets"),
         total_purchase=extracted.get("total_purchase"),
         total_evaluation=extracted.get("total_evaluation"),
         total_return=extracted.get("total_return"),
@@ -59,6 +62,9 @@ async def create_snapshot(
             product_type=item.get("product_type"),
             risk_level=item.get("risk_level"),
             region=item.get("region"),
+            quantity=item.get("quantity"),
+            purchase_price=item.get("purchase_price"),
+            current_price=item.get("current_price"),
             purchase_amount=item.get("purchase_amount"),
             evaluation_amount=item.get("evaluation_amount"),
             return_amount=item.get("return_amount"),
@@ -70,6 +76,13 @@ async def create_snapshot(
         db.add(holding)
 
     await db.commit()
+
+    # 자동으로 상품 마스터 적용 (종목코드, 위험도, 지역)
+    try:
+        await apply_master_to_snapshot(db, snapshot.id)
+    except (ImportError, Exception):
+        pass  # 마스터 테이블 없어도 무시
+
     await db.refresh(snapshot)
     return snapshot
 
@@ -97,18 +110,11 @@ async def get_snapshot_with_holdings(
     db: AsyncSession, snapshot_id: str
 ) -> Optional[PortfolioSnapshot]:
     result = await db.execute(
-        select(PortfolioSnapshot).where(PortfolioSnapshot.id == snapshot_id)
+        select(PortfolioSnapshot)
+        .where(PortfolioSnapshot.id == snapshot_id)
+        .options(selectinload(PortfolioSnapshot.holdings))
     )
-    snapshot = result.scalar_one_or_none()
-    if snapshot:
-        # Load holdings
-        holdings_result = await db.execute(
-            select(PortfolioHolding)
-            .where(PortfolioHolding.snapshot_id == snapshot_id)
-            .order_by(PortfolioHolding.seq)
-        )
-        snapshot.holdings = holdings_result.scalars().all()
-    return snapshot
+    return result.scalar_one_or_none()
 
 
 async def get_report_data(
@@ -382,6 +388,8 @@ async def apply_master_to_snapshot(
         if master:
             holding.risk_level = master.risk_level
             holding.region = master.region
+            if master.product_code:
+                holding.product_code = master.product_code
             updated_count += 1
         else:
             if holding.product_name not in not_found:
@@ -391,3 +399,24 @@ async def apply_master_to_snapshot(
         await db.commit()
 
     return {"updated": updated_count, "not_found": not_found}
+
+
+async def delete_snapshot(db: AsyncSession, snapshot_id: str) -> bool:
+    """Delete a snapshot and all its holdings. Returns True if deleted, False if not found."""
+    result = await db.execute(
+        select(PortfolioSnapshot).where(PortfolioSnapshot.id == snapshot_id)
+    )
+    snapshot = result.scalar_one_or_none()
+    if snapshot is None:
+        return False
+
+    # Delete holdings first (cascade may handle this, but explicit is safer)
+    holdings_result = await db.execute(
+        select(PortfolioHolding).where(PortfolioHolding.snapshot_id == snapshot_id)
+    )
+    for holding in holdings_result.scalars().all():
+        await db.delete(holding)
+
+    await db.delete(snapshot)
+    await db.commit()
+    return True

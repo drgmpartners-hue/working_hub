@@ -16,8 +16,7 @@ import { ThemeList } from '@/components/investment/ThemeList';
 import { StockList } from '@/components/investment/StockList';
 import { authLib } from '@/lib/auth';
 import type { StockTheme } from '@/components/investment/ThemeList';
-
-const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+import { API_URL } from '@/lib/api-url';
 
 /* ------------------------------------------------------------------ */
 /*  ThemeBasket sub-component                                           */

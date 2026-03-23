@@ -4,8 +4,7 @@ import { useState, useEffect, use } from 'react';
 import { PortalAuthForm } from '@/components/client-portal/PortalAuthForm';
 import { PortalReportView } from '@/components/client-portal/PortalReportView';
 import { SuggestionPanel } from '@/components/client-portal/SuggestionPanel';
-
-const API_URL = process.env.NEXT_PUBLIC_API_URL ?? '';
+import { API_URL } from '@/lib/api-url';
 
 /* ------------------------------------------------------------------ */
 /*  Types                                                               */

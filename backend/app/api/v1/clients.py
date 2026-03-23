@@ -25,10 +25,7 @@ async def list_clients(
     current_user = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    clients = await client_service.list_clients(db, current_user.id)
-    for client in clients:
-        client.accounts = await client_service.list_accounts(db, client.id)
-    return clients
+    return await client_service.list_clients(db, current_user.id)
 
 
 @router.post("", response_model=ClientResponse, status_code=201)
@@ -184,6 +181,6 @@ async def patch_client_portal_info(
     )
     if not client:
         raise HTTPException(status_code=404, detail="Client not found")
-    # Load accounts for full response
-    client.accounts = await client_service.list_accounts(db, client_id)
+    # Eagerly load accounts for full response
+    await db.refresh(client, attribute_names=["accounts"])
     return client

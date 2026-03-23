@@ -3,8 +3,7 @@
 import { useState, useCallback } from 'react';
 import type { Holding } from './SnapshotDataTable';
 import { authLib } from '@/lib/auth';
-
-const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+import { API_URL } from '@/lib/api-url';
 
 /* ------------------------------------------------------------------ */
 /*  Types                                                               */

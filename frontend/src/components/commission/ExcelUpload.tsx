@@ -3,8 +3,7 @@
 import { useState } from 'react';
 import { FileUpload } from '@/components/common/FileUpload';
 import { authLib } from '@/lib/auth';
-
-const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+import { API_URL } from '@/lib/api-url';
 
 export interface UploadResult {
   file_path: string;

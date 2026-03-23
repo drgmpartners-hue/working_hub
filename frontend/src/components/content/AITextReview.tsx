@@ -5,8 +5,7 @@ import { Button } from '@/components/common/Button';
 import { Card } from '@/components/common/Card';
 import { authLib } from '@/lib/auth';
 import type { ContentProject, ContentVersion, AIProvider } from '@/types/content';
-
-const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+import { API_URL } from '@/lib/api-url';
 
 interface AITextReviewProps {
   project: ContentProject;
