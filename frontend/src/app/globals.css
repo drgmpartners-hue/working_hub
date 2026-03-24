@@ -58,20 +58,68 @@ body {
 /* ===== Scrollbar ===== */
 ::-webkit-scrollbar {
   width: 6px;
-  height: 6px;
+  height: 10px;
 }
 
 ::-webkit-scrollbar-track {
-  background: var(--color-surface);
+  background: #E5E7EB;
+  border-radius: 5px;
 }
 
 ::-webkit-scrollbar-thumb {
-  background: var(--color-border);
-  border-radius: 3px;
+  background: #9CA3AF;
+  border-radius: 5px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
   background: var(--color-text-secondary);
+}
+
+
+/* ===== Custom Tooltip (data-tooltip → 검정 배경 툴팁) ===== */
+[data-tooltip] {
+  position: relative;
+}
+
+[data-tooltip]:hover::after {
+  content: attr(data-tooltip);
+  position: absolute;
+  bottom: calc(100% + 8px);
+  left: 50%;
+  transform: translateX(-50%);
+  background: rgba(30, 41, 59, 0.95);
+  color: #fff;
+  font-size: 0.75rem;
+  font-weight: 500;
+  line-height: 1.5;
+  padding: 6px 10px;
+  border-radius: 6px;
+  white-space: normal;
+  word-break: keep-all;
+  max-width: 260px;
+  width: max-content;
+  z-index: 9999;
+  pointer-events: none;
+  opacity: 0;
+  animation: tooltipFadeIn 0.15s ease 0.35s forwards;
+}
+
+[data-tooltip]:hover::before {
+  content: '';
+  position: absolute;
+  bottom: calc(100% + 3px);
+  left: 50%;
+  transform: translateX(-50%);
+  border: 5px solid transparent;
+  border-top-color: rgba(30, 41, 59, 0.95);
+  z-index: 9999;
+  pointer-events: none;
+  opacity: 0;
+  animation: tooltipFadeIn 0.15s ease 0.35s forwards;
+}
+
+@keyframes tooltipFadeIn {
+  to { opacity: 1; }
 }
 
 /* ===== Focus Ring ===== */

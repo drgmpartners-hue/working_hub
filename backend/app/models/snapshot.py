@@ -61,6 +61,8 @@ class PortfolioHolding(Base):
     current_price: Mapped[Optional[float]] = mapped_column(Float, nullable=True)       # 현재가
     purchase_amount: Mapped[Optional[float]] = mapped_column(Float, nullable=True)     # 매입금액
     evaluation_amount: Mapped[Optional[float]] = mapped_column(Float, nullable=True)   # 평가금액
+    total_deposit: Mapped[Optional[float]] = mapped_column(Float, nullable=True)       # 총입금액 (IRP/퇴직연금)
+    total_withdrawal: Mapped[Optional[float]] = mapped_column(Float, nullable=True)    # 총출금액 (IRP/퇴직연금)
     return_amount: Mapped[Optional[float]] = mapped_column(Float, nullable=True)       # 평가손익
     return_rate: Mapped[Optional[float]] = mapped_column(Float, nullable=True)         # 수익률(%)
     weight: Mapped[Optional[float]] = mapped_column(Float, nullable=True)              # 비중(%)

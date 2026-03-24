@@ -34,11 +34,21 @@ async def create_snapshot(
     # Extract data via Gemini Vision
     extracted = await extract_portfolio_from_image(image_bytes, mime_type)
 
+    # Use AI-extracted date if available, otherwise use the provided date
+    ai_date_str = extracted.get("snapshot_date")
+    actual_date = snapshot_date
+    if ai_date_str and isinstance(ai_date_str, str):
+        try:
+            from datetime import datetime as dt
+            actual_date = dt.strptime(ai_date_str, "%Y-%m-%d").date()
+        except (ValueError, TypeError):
+            pass
+
     # Create snapshot record
     snapshot = PortfolioSnapshot(
         id=str(uuid.uuid4()),
         client_account_id=client_account_id,
-        snapshot_date=snapshot_date,
+        snapshot_date=actual_date,
         image_path=image_path,
         parsed_data=extracted,
         deposit_amount=extracted.get("deposit_amount"),
@@ -67,6 +77,8 @@ async def create_snapshot(
             current_price=item.get("current_price"),
             purchase_amount=item.get("purchase_amount"),
             evaluation_amount=item.get("evaluation_amount"),
+            total_deposit=item.get("total_deposit"),
+            total_withdrawal=item.get("total_withdrawal"),
             return_amount=item.get("return_amount"),
             return_rate=item.get("return_rate"),
             weight=item.get("weight"),

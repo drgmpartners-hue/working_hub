@@ -29,6 +29,14 @@ class Client(Base):
     portal_token: Mapped[Optional[str]] = mapped_column(
         String(36), nullable=True, unique=True, default=lambda: str(uuid.uuid4())
     )
+    # 고유번호 (6자리 숫자, 중복 불가)
+    unique_code: Mapped[Optional[str]] = mapped_column(
+        String(6), nullable=True, unique=True, index=True
+    )
+    # 주민번호 (AES 암호화 저장)
+    ssn_encrypted: Mapped[Optional[str]] = mapped_column(
+        String(500), nullable=True
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime, server_default=func.now(), nullable=False
     )

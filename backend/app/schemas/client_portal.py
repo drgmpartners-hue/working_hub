@@ -12,6 +12,7 @@ class PortalCheckResponse(BaseModel):
 
 class PortalVerifyRequest(BaseModel):
     """Request body for POST /client-portal/{token}/verify."""
+    unique_code: Optional[str] = None
     birth_date: date
     phone: str
 
@@ -70,3 +71,4 @@ class ClientPortalUpdate(BaseModel):
     birth_date: Optional[date] = None
     phone: Optional[str] = None
     email: Optional[str] = None
+    ssn: Optional[str] = None  # 평문 주민번호 (저장 시 암호화)

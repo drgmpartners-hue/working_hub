@@ -15,3 +15,5 @@ export type { TabItem } from './Tab';
 export { FileUpload } from './FileUpload';
 
 export { Header } from './Header';
+
+export { Tooltip } from './Tooltip';

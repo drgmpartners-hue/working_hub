@@ -8,13 +8,6 @@ interface CallReservationFormProps {
   onSuccess: () => void;
 }
 
-const TIME_OPTIONS = [
-  { label: '오전 10시', value: '10:00' },
-  { label: '오후 2시', value: '14:00' },
-  { label: '오후 4시', value: '16:00' },
-  { label: '오후 6시', value: '18:00' },
-];
-
 function getTodayString(): string {
   const now = new Date();
   const yyyy = now.getFullYear();
@@ -25,11 +18,15 @@ function getTodayString(): string {
 
 export function CallReservationForm({ suggestId, onSuccess }: CallReservationFormProps) {
   const [preferredDate, setPreferredDate] = useState(getTodayString());
-  const [preferredTime, setPreferredTime] = useState('10:00');
+  const [preferredTime, setPreferredTime] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
   const handleReserve = async () => {
+    if (!preferredTime) {
+      setError('상담 시간을 입력해주세요.');
+      return;
+    }
     setLoading(true);
     setError('');
     try {
@@ -69,10 +66,46 @@ export function CallReservationForm({ suggestId, onSuccess }: CallReservationFor
       }}
     >
       <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-        <span style={{ fontSize: 18 }}>📞</span>
+        <span style={{ fontSize: 18 }}>💬</span>
         <span style={{ fontSize: 16, fontWeight: 700, color: '#111827' }}>
-          담당자와 상담하기
+          담당자와 상담 예약하기
         </span>
+      </div>
+
+      {/* 카카오톡 안내 */}
+      <div
+        style={{
+          backgroundColor: '#FEE500',
+          borderRadius: 12,
+          padding: '14px 16px',
+          display: 'flex',
+          alignItems: 'center',
+          gap: 12,
+        }}
+      >
+        <div
+          style={{
+            width: 36,
+            height: 36,
+            backgroundColor: '#3C1E1E',
+            borderRadius: 10,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            fontSize: 18,
+            flexShrink: 0,
+          }}
+        >
+          💬
+        </div>
+        <div>
+          <p style={{ fontSize: 13, fontWeight: 700, color: '#3C1E1E', margin: 0, marginBottom: 2 }}>
+            카카오톡으로도 상담 가능합니다
+          </p>
+          <p style={{ fontSize: 14, fontWeight: 800, color: '#1A1A1A', margin: 0 }}>
+            ID: kmh_80
+          </p>
+        </div>
       </div>
 
       {/* 날짜 선택 */}
@@ -86,7 +119,7 @@ export function CallReservationForm({ suggestId, onSuccess }: CallReservationFor
             marginBottom: 8,
           }}
         >
-          통화 날짜
+          희망 상담 날짜
         </label>
         <input
           type="date"
@@ -107,7 +140,7 @@ export function CallReservationForm({ suggestId, onSuccess }: CallReservationFor
         />
       </div>
 
-      {/* 시간 선택 */}
+      {/* 시간 직접 입력 */}
       <div>
         <label
           style={{
@@ -118,29 +151,27 @@ export function CallReservationForm({ suggestId, onSuccess }: CallReservationFor
             marginBottom: 8,
           }}
         >
-          통화 시간
+          희망 상담 시간
         </label>
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
-          {TIME_OPTIONS.map((opt) => (
-            <button
-              key={opt.value}
-              onClick={() => setPreferredTime(opt.value)}
-              style={{
-                padding: '12px 8px',
-                fontSize: 14,
-                fontWeight: preferredTime === opt.value ? 700 : 500,
-                color: preferredTime === opt.value ? '#fff' : '#374151',
-                backgroundColor: preferredTime === opt.value ? '#1E3A5F' : '#F9FAFB',
-                border: `1.5px solid ${preferredTime === opt.value ? '#1E3A5F' : '#E5E7EB'}`,
-                borderRadius: 10,
-                cursor: 'pointer',
-                transition: 'all 0.15s ease',
-              }}
-            >
-              {opt.label}
-            </button>
-          ))}
-        </div>
+        <input
+          type="time"
+          value={preferredTime}
+          onChange={(e) => setPreferredTime(e.target.value)}
+          style={{
+            width: '100%',
+            padding: '12px 14px',
+            fontSize: 15,
+            border: '1.5px solid #D1D5DB',
+            borderRadius: 10,
+            outline: 'none',
+            boxSizing: 'border-box',
+            color: '#111827',
+            backgroundColor: '#fff',
+          }}
+        />
+        <p style={{ fontSize: 12, color: '#9CA3AF', marginTop: 6, lineHeight: 1.5 }}>
+          * 담당자의 사정에 따라 예약하신 시간의 ±10분 정도 차이가 있을 수 있습니다.
+        </p>
       </div>
 
       {error && (
@@ -174,7 +205,7 @@ export function CallReservationForm({ suggestId, onSuccess }: CallReservationFor
           transition: 'background-color 0.2s ease',
         }}
       >
-        {loading ? '예약 중...' : '통화 예약하기'}
+        {loading ? '예약 중...' : '상담 예약하기'}
       </button>
     </div>
   );

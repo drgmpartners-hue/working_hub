@@ -32,9 +32,18 @@ from app.models.snapshot import PortfolioSnapshot, PortfolioHolding
 # Depends on product_master
 from app.models.product_master import ProductMaster
 
+# No FK dependencies (global templates)
+from app.models.recommended_portfolio import RecommendedPortfolioItem
+
 # Depends on client_accounts (portal suggestions + reservations)
 from app.models.portfolio_suggestion import PortfolioSuggestion
 from app.models.call_reservation import CallReservation
+
+# Depends on users (API keys)
+from app.models.user_api_key import UserApiKey
+
+# No FK dependencies (market analysis cache)
+from app.models.market_analysis_cache import MarketAnalysisCache
 
 __all__ = [
     "BrandSetting",
@@ -59,4 +68,7 @@ __all__ = [
     "ProductMaster",
     "PortfolioSuggestion",
     "CallReservation",
+    "UserApiKey",
+    "RecommendedPortfolioItem",
+    "MarketAnalysisCache",
 ]

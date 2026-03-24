@@ -16,6 +16,8 @@ class HoldingUpdateRequest(BaseModel):
     current_price: Optional[float] = None
     purchase_amount: Optional[float] = None
     evaluation_amount: Optional[float] = None
+    total_deposit: Optional[float] = None
+    total_withdrawal: Optional[float] = None
     return_amount: Optional[float] = None
     return_rate: Optional[float] = None
     weight: Optional[float] = None
@@ -41,6 +43,8 @@ class HoldingResponse(BaseModel):
     current_price: Optional[float] = None
     purchase_amount: Optional[float] = None
     evaluation_amount: Optional[float] = None
+    total_deposit: Optional[float] = None
+    total_withdrawal: Optional[float] = None
     return_amount: Optional[float] = None
     return_rate: Optional[float] = None
     weight: Optional[float] = None

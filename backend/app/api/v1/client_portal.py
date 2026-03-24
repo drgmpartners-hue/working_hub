@@ -14,6 +14,8 @@ from app.schemas.client_portal import (
     CallReserveRequest,
     CallReserveResponse,
 )
+from sqlalchemy import select
+from app.models.recommended_portfolio import RecommendedPortfolioItem
 from app.services import client_portal_service
 from app.services.email_service import notify_staff_call_reservation
 
@@ -66,7 +68,8 @@ async def verify_client(
 ):
     """Verify client identity and issue portal JWT."""
     jwt_token, error = await client_portal_service.verify_client(
-        db, token, body.birth_date, body.phone
+        db, token, body.birth_date, body.phone,
+        unique_code=getattr(body, 'unique_code', None),
     )
 
     if error == "locked":
@@ -149,6 +152,34 @@ async def get_suggestion(
         created_at=suggestion.created_at,
         expired=expired,
     )
+
+
+@router.get("/{token}/recommended-portfolio")
+async def get_recommended_portfolio_for_portal(
+    token: str,
+    client_id: str = Depends(get_portal_client_id),
+    db: AsyncSession = Depends(get_db),
+):
+    """Return Dr.GM recommended portfolio items ordered by seq."""
+    result = await db.execute(
+        select(RecommendedPortfolioItem).order_by(RecommendedPortfolioItem.seq)
+    )
+    items = result.scalars().all()
+    return [
+        {
+            "id": item.id,
+            "product_name": item.product_name,
+            "product_code": item.product_code,
+            "product_type": item.product_type,
+            "region": item.region,
+            "current_price": item.current_price,
+            "weight_pension": item.weight_pension,
+            "weight_irp": item.weight_irp,
+            "memo": item.memo,
+            "seq": item.seq,
+        }
+        for item in items
+    ]
 
 
 # ---------------------------------------------------------------------------

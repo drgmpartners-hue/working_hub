@@ -30,6 +30,7 @@ interface ProductMasterTableProps {
 
 export const RISK_LEVELS = ['절대안정형', '안정형', '안정성장형', '성장형', '절대성장형'] as const;
 export const REGIONS = ['국내', '미국', '글로벌', '베트남', '인도', '중국', '기타'] as const;
+export const PRODUCT_TYPES = ['ETF', '펀드', '연금저축펀드', 'IRP펀드', 'MMF', '주식', '해외주식', '랩어카운트'] as const;
 
 /* ------------------------------------------------------------------ */
 /*  Styles                                                              */
@@ -107,42 +108,81 @@ function getRegionColor(region?: string) {
 /* ------------------------------------------------------------------ */
 
 interface EditState {
+  product_name: string;
   risk_level: string;
   region: string;
   product_type: string;
+  product_code: string;
 }
 
 /* ------------------------------------------------------------------ */
 /*  Component                                                           */
 /* ------------------------------------------------------------------ */
 
+type SortKey = 'risk_level' | 'region' | 'product_type';
+type SortDir = 'asc' | 'desc';
+
+const SORT_ORDERS: Record<SortKey, string[]> = {
+  risk_level: ['절대안정형', '안정형', '안정성장형', '성장형', '절대성장형'],
+  region: ['국내', '미국', '글로벌', '베트남', '인도', '중국', '기타'],
+  product_type: ['ETF', '펀드', '연금저축펀드', 'IRP펀드', 'MMF', '주식', '해외주식', '랩어카운트'],
+};
+
 export function ProductMasterTable({ items, onUpdate, onDelete }: ProductMasterTableProps) {
   const [editingId, setEditingId] = useState<string | null>(null);
-  const [editState, setEditState] = useState<EditState>({ risk_level: '', region: '', product_type: '' });
+  const [editState, setEditState] = useState<EditState>({ product_name: '', risk_level: '', region: '', product_type: '', product_code: '' });
   const [savingId, setSavingId] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [sortKey, setSortKey] = useState<SortKey | null>(null);
+  const [sortDir, setSortDir] = useState<SortDir>('asc');
+
+  function handleSort(key: SortKey) {
+    if (sortKey === key) {
+      setSortDir((d) => d === 'asc' ? 'desc' : 'asc');
+    } else {
+      setSortKey(key);
+      setSortDir('asc');
+    }
+  }
+
+  const sortedItems = sortKey
+    ? [...items].sort((a, b) => {
+        const order = SORT_ORDERS[sortKey];
+        const av = order.indexOf(a[sortKey] ?? '');
+        const bv = order.indexOf(b[sortKey] ?? '');
+        const ai = av === -1 ? 999 : av;
+        const bi = bv === -1 ? 999 : bv;
+        return sortDir === 'asc' ? ai - bi : bi - ai;
+      })
+    : items;
+
+  const sortArrow = (key: SortKey) => sortKey === key ? (sortDir === 'asc' ? ' ▲' : ' ▼') : '';
 
   function startEdit(item: ProductMaster) {
     setEditingId(item.id);
     setEditState({
+      product_name: item.product_name,
       risk_level: item.risk_level ?? '',
       region: item.region ?? '',
       product_type: item.product_type ?? '',
+      product_code: item.product_code ?? '',
     });
   }
 
   function cancelEdit() {
     setEditingId(null);
-    setEditState({ risk_level: '', region: '', product_type: '' });
+    setEditState({ product_name: '', risk_level: '', region: '', product_type: '', product_code: '' });
   }
 
   async function handleSave(id: string) {
     setSavingId(id);
     try {
       await onUpdate(id, {
+        product_name: editState.product_name.trim() || undefined,
         risk_level: editState.risk_level || undefined,
         region: editState.region || undefined,
         product_type: editState.product_type || undefined,
+        product_code: editState.product_code.trim() || undefined,
       });
       setEditingId(null);
     } finally {
@@ -196,15 +236,15 @@ export function ProductMasterTable({ items, onUpdate, onDelete }: ProductMasterT
           <tr>
             <th style={{ ...thStyle, width: 50, textAlign: 'center' }}>NO</th>
             <th style={thStyle}>상품명</th>
-            <th style={{ ...thStyle, width: 130 }}>위험도</th>
-            <th style={{ ...thStyle, width: 110 }}>지역</th>
-            <th style={{ ...thStyle, width: 140 }}>상품유형</th>
+            <th style={{ ...thStyle, width: 130, cursor: 'pointer', userSelect: 'none' }} onClick={() => handleSort('risk_level')}>위험도{sortArrow('risk_level')}</th>
+            <th style={{ ...thStyle, width: 110, cursor: 'pointer', userSelect: 'none' }} onClick={() => handleSort('region')}>지역{sortArrow('region')}</th>
+            <th style={{ ...thStyle, width: 140, cursor: 'pointer', userSelect: 'none' }} onClick={() => handleSort('product_type')}>상품유형{sortArrow('product_type')}</th>
             <th style={{ ...thStyle, width: 80 }}>종목코드</th>
             <th style={{ ...thStyle, width: 130, textAlign: 'center' }}>작업</th>
           </tr>
         </thead>
         <tbody>
-          {items.map((item, idx) => {
+          {sortedItems.map((item, idx) => {
             const isEditing = editingId === item.id;
             const isSaving = savingId === item.id;
             const isDeleting = deletingId === item.id;
@@ -232,17 +272,27 @@ export function ProductMasterTable({ items, onUpdate, onDelete }: ProductMasterT
 
                 {/* 상품명 */}
                 <td style={{ ...tdStyle, fontWeight: 500, maxWidth: 260 }}>
-                  <span
-                    title={item.product_name}
-                    style={{
-                      display: 'block',
-                      overflow: 'hidden',
-                      textOverflow: 'ellipsis',
-                      whiteSpace: 'nowrap',
-                    }}
-                  >
-                    {item.product_name}
-                  </span>
+                  {isEditing ? (
+                    <input
+                      type="text"
+                      value={editState.product_name}
+                      onChange={(e) => setEditState((s) => ({ ...s, product_name: e.target.value }))}
+                      style={editInputStyle}
+                      autoFocus
+                    />
+                  ) : (
+                    <span
+                      title={item.product_name}
+                      style={{
+                        display: 'block',
+                        overflow: 'hidden',
+                        textOverflow: 'ellipsis',
+                        whiteSpace: 'nowrap',
+                      }}
+                    >
+                      {item.product_name}
+                    </span>
+                  )}
                 </td>
 
                 {/* 위험도 */}
@@ -292,13 +342,16 @@ export function ProductMasterTable({ items, onUpdate, onDelete }: ProductMasterT
                 {/* 상품유형 */}
                 <td style={tdStyle}>
                   {isEditing ? (
-                    <input
-                      type="text"
-                      placeholder="ETF, 펀드, MMF..."
+                    <select
                       value={editState.product_type}
                       onChange={(e) => setEditState((s) => ({ ...s, product_type: e.target.value }))}
-                      style={editInputStyle}
-                    />
+                      style={{ ...editInputStyle, cursor: 'pointer' }}
+                    >
+                      <option value="">선택 안 함</option>
+                      {PRODUCT_TYPES.map((t) => (
+                        <option key={t} value={t}>{t}</option>
+                      ))}
+                    </select>
                   ) : (
                     <span style={{ color: item.product_type ? '#1A1A2E' : '#C4C9D4' }}>
                       {item.product_type ?? '-'}
@@ -308,7 +361,17 @@ export function ProductMasterTable({ items, onUpdate, onDelete }: ProductMasterT
 
                 {/* 종목코드 */}
                 <td style={{ ...tdStyle, color: '#6B7280', fontFamily: 'monospace', fontSize: '0.75rem' }}>
-                  {item.product_code ?? '-'}
+                  {isEditing ? (
+                    <input
+                      type="text"
+                      placeholder="종목코드"
+                      value={editState.product_code}
+                      onChange={(e) => setEditState((s) => ({ ...s, product_code: e.target.value }))}
+                      style={{ ...editInputStyle, fontFamily: 'monospace', fontSize: '0.75rem' }}
+                    />
+                  ) : (
+                    item.product_code ?? '-'
+                  )}
                 </td>
 
                 {/* 작업 */}

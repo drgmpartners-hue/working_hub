@@ -35,12 +35,13 @@ class ClientBase(BaseModel):
 
 
 class ClientCreate(ClientBase):
-    pass
+    ssn: Optional[str] = None  # 평문 주민번호 (저장 시 암호화, 응답에는 포함 안 됨)
 
 
 class ClientUpdate(BaseModel):
     name: Optional[str] = None
     memo: Optional[str] = None
+    ssn: Optional[str] = None  # 평문 주민번호 (저장 시 암호화, 응답에는 포함 안 됨)
 
 
 class ClientResponse(ClientBase):
@@ -52,4 +53,6 @@ class ClientResponse(ClientBase):
     phone: Optional[str] = None
     email: Optional[str] = None
     portal_token: Optional[str] = None
+    unique_code: Optional[str] = None
+    ssn_masked: Optional[str] = None  # 마스킹된 주민번호 (복호화 후 마스킹)
     model_config = ConfigDict(from_attributes=True)

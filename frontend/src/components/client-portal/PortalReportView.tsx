@@ -50,6 +50,19 @@ interface ReportData {
   is_latest: boolean;
 }
 
+interface DrGmItem {
+  id: string;
+  product_name: string;
+  product_code: string | null;
+  product_type: string | null;
+  region: string | null;
+  current_price: number | null;
+  weight_pension: number | null;
+  weight_irp: number | null;
+  memo: string | null;
+  seq: number;
+}
+
 interface PortalReportViewProps {
   token: string;
   portalJwt: string;
@@ -102,6 +115,10 @@ export function PortalReportView({ token, portalJwt, snapshots }: PortalReportVi
   const [historyData, setHistoryData] = useState<HistoryPoint[]>([]);
   const [historyLoading, setHistoryLoading] = useState(false);
 
+  // Dr.GM 추천 포트폴리오
+  const [drGmItems, setDrGmItems] = useState<DrGmItem[]>([]);
+  const [drGmLoaded, setDrGmLoaded] = useState(false);
+
   // 계좌 선택 시 첫 날짜 자동 선택
   const currentAccount = snapshots.find((s) => s.account_id === selectedAccountId);
   const availableDates = currentAccount?.dates ?? [];
@@ -146,6 +163,25 @@ export function PortalReportView({ token, portalJwt, snapshots }: PortalReportVi
 
     fetchReport();
   }, [selectedAccountId, selectedDate, token, portalJwt]);
+
+  // Dr.GM 추천 포트폴리오 로드 (1회)
+  useEffect(() => {
+    if (drGmLoaded) return;
+    const fetchDrGm = async () => {
+      try {
+        const res = await fetch(
+          `${API_URL}/api/v1/client-portal/${token}/recommended-portfolio`,
+          { headers: { Authorization: `Bearer ${portalJwt}` } }
+        );
+        if (res.ok) {
+          const data = await res.json();
+          setDrGmItems(data);
+        }
+      } catch { /* silent */ }
+      finally { setDrGmLoaded(true); }
+    };
+    fetchDrGm();
+  }, [token, portalJwt, drGmLoaded]);
 
   // 기간별 이력 로드
   useEffect(() => {
@@ -466,6 +502,93 @@ export function PortalReportView({ token, portalJwt, snapshots }: PortalReportVi
               <p style={{ fontSize: 14, color: '#78350F', lineHeight: 1.7, margin: 0 }}>
                 {report.ai_comment}
               </p>
+            </div>
+          )}
+
+          {/* Dr.GM 추천 포트폴리오 */}
+          {drGmItems.length > 0 && (
+            <div
+              style={{
+                backgroundColor: '#fff',
+                borderRadius: 14,
+                border: '1px solid #FCD34D',
+                overflow: 'hidden',
+              }}
+            >
+              <div
+                style={{
+                  background: 'linear-gradient(135deg, #F59E0B 0%, #D97706 100%)',
+                  padding: '16px 20px',
+                }}
+              >
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <span style={{ fontSize: 16 }}>⭐</span>
+                  <span style={{ fontSize: 15, fontWeight: 700, color: '#fff' }}>
+                    Dr.GM 추천 포트폴리오
+                  </span>
+                </div>
+                <p style={{ fontSize: 12, color: 'rgba(255,255,255,0.8)', margin: '4px 0 0' }}>
+                  현재 시장 상황에 맞는 추천 포트폴리오입니다.
+                </p>
+              </div>
+              <div style={{ overflowX: 'auto' }}>
+                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+                  <thead>
+                    <tr style={{ backgroundColor: '#FFFBEB' }}>
+                      {(() => {
+                        const isIrp = currentAccount?.account_type === 'IRP' || currentAccount?.account_type === 'irp';
+                        const weightLabel = isIrp ? '비중(IRP)' : '비중(연금저축)';
+                        return ['No.', '상품유형', '상품명', weightLabel].map((h) => (
+                          <th
+                            key={h}
+                            style={{
+                              padding: '10px 12px',
+                              textAlign: h === 'No.' ? 'center' : 'left',
+                              fontSize: 12,
+                              fontWeight: 600,
+                              color: '#92400E',
+                              whiteSpace: 'nowrap',
+                              borderBottom: '1px solid #FDE68A',
+                            }}
+                          >
+                            {h}
+                          </th>
+                        ));
+                      })()}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {drGmItems.map((item, idx) => {
+                      const isIrp = currentAccount?.account_type === 'IRP' || currentAccount?.account_type === 'irp';
+                      const weight = isIrp ? item.weight_irp : item.weight_pension;
+                      return (
+                        <tr key={item.id} style={{ borderBottom: idx < drGmItems.length - 1 ? '1px solid #FEF3C7' : 'none' }}>
+                          <td style={{ padding: '10px 12px', textAlign: 'center', color: '#9CA3AF', fontSize: 12 }}>{idx + 1}</td>
+                          <td style={{ padding: '10px 12px', whiteSpace: 'nowrap' }}>
+                            <span style={{ fontSize: 11, padding: '2px 6px', borderRadius: 4, backgroundColor: '#FEF3C7', color: '#92400E', fontWeight: 600 }}>
+                              {item.product_type || '-'}
+                            </span>
+                          </td>
+                          <td style={{ padding: '10px 12px', color: '#111827', fontSize: 12, lineHeight: 1.4 }}>
+                            <div>{item.product_name}</div>
+                            {item.region && <div style={{ fontSize: 11, color: '#9CA3AF', marginTop: 2 }}>{item.region}</div>}
+                          </td>
+                          <td style={{ padding: '10px 12px', fontWeight: 700, color: '#92400E', whiteSpace: 'nowrap' }}>
+                            {weight != null ? `${(weight * 100).toFixed(1)}%` : '-'}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+              {/* 투자 책임 주의사항 */}
+              <div style={{ padding: '12px 20px 16px', backgroundColor: '#FEF9EE' }}>
+                <p style={{ fontSize: 11, color: '#9CA3AF', lineHeight: 1.6, margin: 0 }}>
+                  ※ 본 추천 포트폴리오는 참고용 정보이며, 투자에 대한 최종 판단과 책임은 고객 본인에게 있습니다.
+                  당사는 고객의 투자판단에 도움이 될 수 있도록 참고자료만을 제공해 드릴 뿐이며, 투자 결과에 대해 어떠한 책임도 지지 않습니다.
+                </p>
+              </div>
             </div>
           )}
         </div>

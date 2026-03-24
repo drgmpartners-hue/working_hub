@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { API_URL } from '@/lib/api-url';
 import { authLib } from '@/lib/auth';
 
@@ -38,6 +38,7 @@ interface ClientAccount {
 interface Client {
   id: string;
   name: string;
+  phone?: string;
   accounts: ClientAccount[];
 }
 
@@ -45,6 +46,7 @@ interface Client {
 interface FlatRow {
   clientId: string;
   clientName: string;
+  phone?: string;
   accountId: string;
   accountType: string;
   accountNumber: string;
@@ -55,6 +57,7 @@ interface FlatRow {
 
 interface NewRow {
   clientName: string;
+  phone: string;
   accountType: string;
   accountNumber: string;
   securitiesCompany: string;
@@ -63,6 +66,7 @@ interface NewRow {
 interface EditState {
   rowKey: string; // `${clientId}-${accountId}`
   clientName: string;
+  phone: string;
   accountType: string;
   accountNumber: string;
   securitiesCompany: string;
@@ -141,11 +145,17 @@ export function ClientManagementModal({ isOpen, onClose, onClientAdded }: Client
   const [addingNew, setAddingNew] = useState(false);
   const [newRow, setNewRow] = useState<NewRow>({
     clientName: '',
+    phone: '',
     accountType: 'irp',
     accountNumber: '',
     securitiesCompany: '',
   });
   const [newSaving, setNewSaving] = useState(false);
+
+  /* Add account to existing client */
+  const [addAccountClientId, setAddAccountClientId] = useState<string | null>(null);
+  const [addAccountForm, setAddAccountForm] = useState({ accountType: 'irp', accountNumber: '', securitiesCompany: '' });
+  const [addAccountSaving, setAddAccountSaving] = useState(false);
 
   /* ---- load clients ---- */
 
@@ -193,6 +203,7 @@ export function ClientManagementModal({ isOpen, onClose, onClientAdded }: Client
         {
           clientId: client.id,
           clientName: client.name,
+          phone: client.phone ?? '',
           accountId: '',
           accountType: '',
           accountNumber: '',
@@ -204,6 +215,7 @@ export function ClientManagementModal({ isOpen, onClose, onClientAdded }: Client
     return client.accounts.map((acc, i) => ({
       clientId: client.id,
       clientName: client.name,
+      phone: client.phone ?? '',
       accountId: acc.id,
       accountType: acc.account_type,
       accountNumber: acc.account_number ?? '',
@@ -248,6 +260,7 @@ export function ClientManagementModal({ isOpen, onClose, onClientAdded }: Client
     setEditState({
       rowKey: `${row.clientId}-${row.accountId}`,
       clientName: row.clientName,
+      phone: row.phone ?? '',
       accountType: row.accountType,
       accountNumber: row.accountNumber,
       securitiesCompany: row.securitiesCompany,
@@ -266,7 +279,7 @@ export function ClientManagementModal({ isOpen, onClose, onClientAdded }: Client
       const clientRes = await fetch(`${API_URL}/api/v1/clients/${row.clientId}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json', ...authLib.getAuthHeader() },
-        body: JSON.stringify({ name: editState.clientName }),
+        body: JSON.stringify({ name: editState.clientName, phone: editState.phone || null }),
       });
       if (!clientRes.ok) {
         const err = await clientRes.json().catch(() => ({}));
@@ -350,6 +363,48 @@ export function ClientManagementModal({ isOpen, onClose, onClientAdded }: Client
     }
   }
 
+  /* ---- add account to existing client ---- */
+
+  function startAddAccount(clientId: string) {
+    setAddAccountClientId(clientId);
+    setAddAccountForm({ accountType: 'irp', accountNumber: '', securitiesCompany: '' });
+  }
+
+  function cancelAddAccount() {
+    setAddAccountClientId(null);
+  }
+
+  async function handleSaveAddAccount() {
+    if (!addAccountClientId) return;
+    setAddAccountSaving(true);
+    try {
+      const res = await fetch(
+        `${API_URL}/api/v1/clients/${addAccountClientId}/accounts`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', ...authLib.getAuthHeader() },
+          body: JSON.stringify({
+            account_type: addAccountForm.accountType,
+            account_number: addAccountForm.accountNumber || undefined,
+            securities_company: addAccountForm.securitiesCompany || undefined,
+          }),
+        }
+      );
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        alert(err?.detail || '계좌 추가 실패');
+        return;
+      }
+      setAddAccountClientId(null);
+      await loadClients();
+      onClientAdded?.();
+    } catch {
+      alert('계좌 추가 중 오류가 발생했습니다.');
+    } finally {
+      setAddAccountSaving(false);
+    }
+  }
+
   /* ---- new row handler ---- */
 
   async function handleSaveNewRow() {
@@ -363,7 +418,7 @@ export function ClientManagementModal({ isOpen, onClose, onClientAdded }: Client
       const clientRes = await fetch(`${API_URL}/api/v1/clients`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', ...authLib.getAuthHeader() },
-        body: JSON.stringify({ name: newRow.clientName.trim() }),
+        body: JSON.stringify({ name: newRow.clientName.trim(), phone: newRow.phone.trim() || null }),
       });
       if (!clientRes.ok) {
         const err = await clientRes.json().catch(() => ({}));
@@ -388,7 +443,7 @@ export function ClientManagementModal({ isOpen, onClose, onClientAdded }: Client
         return;
       }
 
-      setNewRow({ clientName: '', accountType: 'irp', accountNumber: '', securitiesCompany: '' });
+      setNewRow({ clientName: '', phone: '', accountType: 'irp', accountNumber: '', securitiesCompany: '' });
       setAddingNew(false);
       await loadClients();
       onClientAdded?.();
@@ -556,10 +611,11 @@ export function ClientManagementModal({ isOpen, onClose, onClientAdded }: Client
                 <tr>
                   <th style={{ ...thStyle, width: 44, textAlign: 'center' }}>No.</th>
                   <th style={thStyle}>고객명</th>
+                  <th style={{ ...thStyle, minWidth: 110 }}>전화번호</th>
                   <th style={thStyle}>증권사</th>
                   <th style={thStyle}>계좌유형</th>
                   <th style={thStyle}>계좌번호</th>
-                  <th style={{ ...thStyle, width: 100, textAlign: 'center' }}>관리</th>
+                  <th style={{ ...thStyle, width: 120, textAlign: 'center' }}>관리</th>
                 </tr>
               </thead>
               <tbody>
@@ -586,8 +642,8 @@ export function ClientManagementModal({ isOpen, onClose, onClientAdded }: Client
                   const isEditing = editState?.rowKey === rowKey;
 
                   return (
+                    <React.Fragment key={rowKey}>
                     <tr
-                      key={rowKey}
                       style={{
                         backgroundColor: isEditing ? '#F0F4FF' : idx % 2 === 0 ? '#fff' : '#FAFBFC',
                       }}
@@ -609,6 +665,25 @@ export function ClientManagementModal({ isOpen, onClose, onClientAdded }: Client
                           />
                         ) : (
                           row.isFirstForClient ? row.clientName : <span style={{ paddingLeft: 12, color: '#9CA3AF' }}>↳</span>
+                        )}
+                      </td>
+
+                      {/* 전화번호 */}
+                      <td style={tdStyle}>
+                        {isEditing && row.isFirstForClient ? (
+                          <input
+                            type="text"
+                            value={editState!.phone}
+                            onChange={(e) => setEditState((prev) => prev ? { ...prev, phone: e.target.value } : prev)}
+                            style={{ ...inputStyle, fontSize: '0.75rem' }}
+                            placeholder="010-0000-0000"
+                          />
+                        ) : (
+                          row.isFirstForClient ? (
+                            <span style={{ color: row.phone ? '#374151' : '#D1D5DB', fontSize: '0.75rem' }}>
+                              {row.phone || '-'}
+                            </span>
+                          ) : null
                         )}
                       </td>
 
@@ -689,77 +764,95 @@ export function ClientManagementModal({ isOpen, onClose, onClientAdded }: Client
                       {/* 관리 버튼 */}
                       <td style={{ ...tdStyle, textAlign: 'center' }}>
                         {isEditing ? (
-                          <div style={{ display: 'flex', gap: 4, justifyContent: 'center' }}>
-                            <button
-                              onClick={() => handleSaveEdit(row)}
-                              disabled={saving}
-                              style={{
-                                padding: '4px 10px',
-                                fontSize: '0.75rem',
-                                fontWeight: 700,
-                                color: '#fff',
-                                backgroundColor: saving ? '#9CA3AF' : '#1E3A5F',
-                                border: 'none',
-                                borderRadius: 6,
-                                cursor: saving ? 'not-allowed' : 'pointer',
-                              }}
-                            >
+                          <div style={{ display: 'flex', gap: 3, justifyContent: 'center', whiteSpace: 'nowrap' }}>
+                            <button onClick={() => handleSaveEdit(row)} disabled={saving}
+                              style={{ padding: '3px 8px', fontSize: '0.6875rem', fontWeight: 700, color: '#fff', backgroundColor: saving ? '#9CA3AF' : '#1E3A5F', border: 'none', borderRadius: 5, cursor: saving ? 'not-allowed' : 'pointer' }}>
                               {saving ? '...' : '저장'}
                             </button>
-                            <button
-                              onClick={cancelEdit}
-                              style={{
-                                padding: '4px 10px',
-                                fontSize: '0.75rem',
-                                fontWeight: 600,
-                                color: '#374151',
-                                backgroundColor: '#F3F4F6',
-                                border: '1px solid #E1E5EB',
-                                borderRadius: 6,
-                                cursor: 'pointer',
-                              }}
-                            >
+                            <button onClick={cancelEdit}
+                              style={{ padding: '3px 8px', fontSize: '0.6875rem', fontWeight: 600, color: '#374151', backgroundColor: '#F3F4F6', border: '1px solid #E1E5EB', borderRadius: 5, cursor: 'pointer' }}>
                               취소
                             </button>
                           </div>
                         ) : (
-                          <div style={{ display: 'flex', gap: 4, justifyContent: 'center' }}>
-                            <button
-                              onClick={() => startEdit(row)}
-                              title="수정"
-                              style={{
-                                padding: '4px 8px',
-                                fontSize: '0.75rem',
-                                fontWeight: 600,
-                                color: '#1E3A5F',
-                                backgroundColor: '#EEF2F7',
-                                border: '1px solid #CBD5E1',
-                                borderRadius: 6,
-                                cursor: 'pointer',
-                              }}
-                            >
+                          <div style={{ display: 'flex', gap: 3, justifyContent: 'center', whiteSpace: 'nowrap' }}>
+                            {row.isFirstForClient && (
+                              <button onClick={() => startAddAccount(row.clientId)} title="계좌 추가"
+                                style={{ padding: '3px 6px', fontSize: '0.6875rem', fontWeight: 600, color: '#059669', backgroundColor: '#F0FDF4', border: '1px solid #BBF7D0', borderRadius: 5, cursor: 'pointer' }}>
+                                +계좌
+                              </button>
+                            )}
+                            <button onClick={() => startEdit(row)} title="수정"
+                              style={{ padding: '3px 6px', fontSize: '0.6875rem', fontWeight: 600, color: '#1E3A5F', backgroundColor: '#EEF2F7', border: '1px solid #CBD5E1', borderRadius: 5, cursor: 'pointer' }}>
                               수정
                             </button>
-                            <button
-                              onClick={() => handleDeleteAccount(row)}
-                              title="삭제"
-                              style={{
-                                padding: '4px 8px',
-                                fontSize: '0.75rem',
-                                fontWeight: 600,
-                                color: '#EF4444',
-                                backgroundColor: '#FEF2F2',
-                                border: '1px solid #FECACA',
-                                borderRadius: 6,
-                                cursor: 'pointer',
-                              }}
-                            >
+                            <button onClick={() => handleDeleteAccount(row)} title="삭제"
+                              style={{ padding: '3px 6px', fontSize: '0.6875rem', fontWeight: 600, color: '#EF4444', backgroundColor: '#FEF2F2', border: '1px solid #FECACA', borderRadius: 5, cursor: 'pointer' }}>
                               삭제
                             </button>
                           </div>
                         )}
                       </td>
                     </tr>
+                    {/* Inline add-account row */}
+                    {addAccountClientId === row.clientId && row.isFirstForClient && (
+                      <tr style={{ backgroundColor: '#F0FFF4' }}>
+                        <td style={{ ...tdStyle, textAlign: 'center', color: '#9CA3AF', fontSize: '0.75rem' }}>+</td>
+                        <td style={{ ...tdStyle, color: '#059669', fontSize: '0.75rem', fontWeight: 600 }}>
+                          ↳ 계좌 추가
+                        </td>
+                        <td style={tdStyle} />
+                        <td style={tdStyle}>
+                          <select
+                            value={SECURITIES_OPTIONS.find((o) => addAccountForm.securitiesCompany.includes(o.label))?.value ?? ''}
+                            onChange={(e) => {
+                              const label = SECURITIES_OPTIONS.find((o) => o.value === e.target.value)?.label ?? '';
+                              setAddAccountForm((f) => ({ ...f, securitiesCompany: label }));
+                            }}
+                            style={selectStyle}
+                          >
+                            <option value="">증권사</option>
+                            {SECURITIES_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+                          </select>
+                        </td>
+                        <td style={tdStyle}>
+                          <select
+                            value={addAccountForm.accountType}
+                            onChange={(e) => setAddAccountForm((f) => ({ ...f, accountType: e.target.value }))}
+                            style={selectStyle}
+                          >
+                            {ACCOUNT_TYPE_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+                          </select>
+                        </td>
+                        <td style={tdStyle}>
+                          <input
+                            type="text"
+                            value={addAccountForm.accountNumber}
+                            onChange={(e) => setAddAccountForm((f) => ({ ...f, accountNumber: e.target.value }))}
+                            style={inputStyle}
+                            placeholder="계좌번호"
+                          />
+                        </td>
+                        <td style={{ ...tdStyle, textAlign: 'center' }}>
+                          <div style={{ display: 'flex', gap: 4, justifyContent: 'center' }}>
+                            <button
+                              onClick={handleSaveAddAccount}
+                              disabled={addAccountSaving}
+                              style={{ padding: '4px 10px', fontSize: '0.75rem', fontWeight: 700, color: '#fff', backgroundColor: addAccountSaving ? '#9CA3AF' : '#059669', border: 'none', borderRadius: 6, cursor: addAccountSaving ? 'not-allowed' : 'pointer' }}
+                            >
+                              {addAccountSaving ? '...' : '추가'}
+                            </button>
+                            <button
+                              onClick={cancelAddAccount}
+                              style={{ padding: '4px 10px', fontSize: '0.75rem', fontWeight: 600, color: '#374151', backgroundColor: '#F3F4F6', border: '1px solid #E1E5EB', borderRadius: 6, cursor: 'pointer' }}
+                            >
+                              취소
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    )}
+                    </React.Fragment>
                   );
                 })}
 
@@ -777,6 +870,15 @@ export function ClientManagementModal({ isOpen, onClose, onClientAdded }: Client
                         onChange={(e) => setNewRow((prev) => ({ ...prev, clientName: e.target.value }))}
                         style={inputStyle}
                         autoFocus
+                      />
+                    </td>
+                    <td style={tdStyle}>
+                      <input
+                        type="text"
+                        placeholder="010-0000-0000"
+                        value={newRow.phone}
+                        onChange={(e) => setNewRow((prev) => ({ ...prev, phone: e.target.value }))}
+                        style={{ ...inputStyle, fontSize: '0.75rem' }}
                       />
                     </td>
                     <td style={tdStyle}>
@@ -839,7 +941,7 @@ export function ClientManagementModal({ isOpen, onClose, onClientAdded }: Client
                         <button
                           onClick={() => {
                             setAddingNew(false);
-                            setNewRow({ clientName: '', accountType: 'irp', accountNumber: '', securitiesCompany: '' });
+                            setNewRow({ clientName: '', phone: '', accountType: 'irp', accountNumber: '', securitiesCompany: '' });
                           }}
                           style={{
                             padding: '4px 10px',

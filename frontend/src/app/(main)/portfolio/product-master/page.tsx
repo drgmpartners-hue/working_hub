@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 import { Button } from '@/components/common/Button';
 import { Card } from '@/components/common/Card';
 import { Modal } from '@/components/common/Modal';
-import { ProductMasterTable, type ProductMaster, RISK_LEVELS, REGIONS } from '@/components/portfolio/ProductMasterTable';
+import { ProductMasterTable, type ProductMaster, RISK_LEVELS, REGIONS, PRODUCT_TYPES } from '@/components/portfolio/ProductMasterTable';
 import { authLib } from '@/lib/auth';
 import { API_URL } from '@/lib/api-url';
 
@@ -66,6 +66,25 @@ export default function ProductMasterPage() {
   const [error, setError] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [debouncedQuery, setDebouncedQuery] = useState('');
+
+  /* Filters */
+  const [filterRisk, setFilterRisk] = useState('');
+  const [filterRegion, setFilterRegion] = useState('');
+  const [filterType, setFilterType] = useState('');
+  const hasFilter = !!(filterRisk || filterRegion || filterType);
+
+  function resetFilters() {
+    setFilterRisk('');
+    setFilterRegion('');
+    setFilterType('');
+  }
+
+  const filteredItems = items.filter((item) => {
+    if (filterRisk && item.risk_level !== filterRisk) return false;
+    if (filterRegion && item.region !== filterRegion) return false;
+    if (filterType && item.product_type !== filterType) return false;
+    return true;
+  });
   const searchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   /* Modal */
@@ -73,6 +92,12 @@ export default function ProductMasterPage() {
   const [form, setForm] = useState<AddFormState>(EMPTY_FORM);
   const [submitting, setSubmitting] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
+
+  /* Stock search autocomplete */
+  const [stockQuery, setStockQuery] = useState('');
+  const [stockResults, setStockResults] = useState<Array<{ code: string; name: string; nav: number; price: number; type: string }>>([]);
+  const [stockSearching, setStockSearching] = useState(false);
+  const stockSearchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   /* ---------------------------------------------------------------- */
   /*  Debounce search                                                   */
@@ -189,9 +214,46 @@ export default function ProductMasterPage() {
     }
   }
 
+  /* Stock search handler */
+  function handleStockSearch(query: string) {
+    setStockQuery(query);
+    setForm((s) => ({ ...s, product_name: query }));
+    if (stockSearchTimer.current) clearTimeout(stockSearchTimer.current);
+    if (!query.trim() || query.trim().length < 2) {
+      setStockResults([]);
+      return;
+    }
+    stockSearchTimer.current = setTimeout(async () => {
+      setStockSearching(true);
+      try {
+        const res = await fetch(`${API_URL}/api/v1/stock-search?q=${encodeURIComponent(query)}&limit=10`, {
+          headers: authLib.getAuthHeader(),
+        });
+        if (res.ok) {
+          const data = await res.json();
+          setStockResults(data.results ?? []);
+        }
+      } catch { /* silent */ }
+      finally { setStockSearching(false); }
+    }, 400);
+  }
+
+  function handleStockSelect(item: { code: string; name: string; type: string }) {
+    setForm((s) => ({
+      ...s,
+      product_name: item.name,
+      product_code: item.code,
+      product_type: item.type,
+    }));
+    setStockQuery(item.name);
+    setStockResults([]);
+  }
+
   function openModal() {
     setForm(EMPTY_FORM);
     setFormError(null);
+    setStockQuery('');
+    setStockResults([]);
     setModalOpen(true);
   }
 
@@ -252,21 +314,14 @@ export default function ProductMasterPage() {
             상품명과 위험도 · 지역을 매핑하는 마스터 데이터를 관리합니다.
           </p>
         </div>
-        <Button variant="primary" size="md" onClick={openModal}>
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
-            <line x1="12" y1="5" x2="12" y2="19" />
-            <line x1="5" y1="12" x2="19" y2="12" />
-          </svg>
-          신규 등록
-        </Button>
       </div>
 
-      {/* Search bar + summary */}
+      {/* Search bar + filters + 신규등록 */}
       <div
         style={{
           display: 'flex',
           alignItems: 'center',
-          gap: 12,
+          gap: 10,
           marginBottom: 16,
           flexWrap: 'wrap',
         }}
@@ -324,21 +379,44 @@ export default function ProductMasterPage() {
           )}
         </div>
 
+        {/* Filters */}
+        <select value={filterRisk} onChange={(e) => setFilterRisk(e.target.value)}
+          style={{ padding: '7px 10px', fontSize: '0.8125rem', border: '1px solid #E1E5EB', borderRadius: 8, outline: 'none', color: filterRisk ? '#1A1A2E' : '#9CA3AF', cursor: 'pointer', backgroundColor: filterRisk ? '#EFF6FF' : '#fff' }}>
+          <option value="">위험도</option>
+          {RISK_LEVELS.map((r) => <option key={r} value={r}>{r}</option>)}
+        </select>
+        <select value={filterRegion} onChange={(e) => setFilterRegion(e.target.value)}
+          style={{ padding: '7px 10px', fontSize: '0.8125rem', border: '1px solid #E1E5EB', borderRadius: 8, outline: 'none', color: filterRegion ? '#1A1A2E' : '#9CA3AF', cursor: 'pointer', backgroundColor: filterRegion ? '#EFF6FF' : '#fff' }}>
+          <option value="">지역</option>
+          {REGIONS.map((r) => <option key={r} value={r}>{r}</option>)}
+        </select>
+        <select value={filterType} onChange={(e) => setFilterType(e.target.value)}
+          style={{ padding: '7px 10px', fontSize: '0.8125rem', border: '1px solid #E1E5EB', borderRadius: 8, outline: 'none', color: filterType ? '#1A1A2E' : '#9CA3AF', cursor: 'pointer', backgroundColor: filterType ? '#EFF6FF' : '#fff' }}>
+          <option value="">상품유형</option>
+          {PRODUCT_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}
+        </select>
+        {hasFilter && (
+          <button onClick={resetFilters}
+            style={{ padding: '7px 14px', fontSize: '0.8125rem', fontWeight: 600, color: '#EF4444', backgroundColor: '#FEF2F2', border: '1px solid #FECACA', borderRadius: 8, cursor: 'pointer' }}>
+            필터해제
+          </button>
+        )}
+
         {/* Count badge */}
         {!loading && (
-          <span
-            style={{
-              fontSize: '0.8125rem',
-              color: '#6B7280',
-              backgroundColor: '#EEF2F7',
-              padding: '4px 10px',
-              borderRadius: 6,
-              fontWeight: 500,
-            }}
-          >
-            총 {items.length}개
+          <span style={{ fontSize: '0.8125rem', color: '#6B7280', backgroundColor: '#EEF2F7', padding: '4px 10px', borderRadius: 6, fontWeight: 500 }}>
+            {hasFilter ? `${filteredItems.length}/${items.length}개` : `총 ${items.length}개`}
           </span>
         )}
+
+        {/* 신규 등록 (오른쪽 끝) */}
+        <Button variant="primary" size="sm" onClick={openModal} style={{ marginLeft: 'auto' }}>
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
+            <line x1="12" y1="5" x2="12" y2="19" />
+            <line x1="5" y1="12" x2="19" y2="12" />
+          </svg>
+          신규 등록
+        </Button>
       </div>
 
       {/* Table Card */}
@@ -386,7 +464,7 @@ export default function ProductMasterPage() {
           </div>
         ) : (
           <ProductMasterTable
-            items={items}
+            items={filteredItems}
             onUpdate={handleUpdate}
             onDelete={handleDelete}
           />
@@ -401,19 +479,92 @@ export default function ProductMasterPage() {
         maxWidth={480}
       >
         <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-          {/* 상품명 */}
-          <div>
+          {/* 상품명 (with stock search autocomplete) */}
+          <div style={{ position: 'relative' }}>
             <label style={labelStyle}>
               상품명 <span style={{ color: '#EF4444' }}>*</span>
+              <span style={{ fontWeight: 400, textTransform: 'none', letterSpacing: 0, marginLeft: 8, color: '#9CA3AF' }}>
+                2글자 이상 입력 시 ETF 자동 검색 |{' '}
+                <a
+                  href="https://www.nhsec.com/index.jsp"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  title="NH투자증권 > 금융상품 > 펀드 > 펀드검색"
+                  style={{ color: '#2563EB', textDecoration: 'underline', fontWeight: 500 }}
+                >
+                  펀드 검색(NH투자증권)
+                </a>
+              </span>
             </label>
             <input
               type="text"
-              placeholder="상품명을 입력하세요"
-              value={form.product_name}
-              onChange={(e) => setForm((s) => ({ ...s, product_name: e.target.value }))}
+              placeholder="상품명을 입력하세요 (예: KODEX, TIGER, 미국배당...)"
+              value={stockQuery || form.product_name}
+              onChange={(e) => handleStockSearch(e.target.value)}
               style={inputStyle}
               autoFocus
             />
+            {stockSearching && (
+              <div style={{ position: 'absolute', right: 10, top: 28, color: '#9CA3AF', fontSize: '0.75rem' }}>검색 중...</div>
+            )}
+            {stockResults.length > 0 && (
+              <div
+                style={{
+                  position: 'absolute',
+                  top: '100%',
+                  left: 0,
+                  right: 0,
+                  zIndex: 100,
+                  backgroundColor: '#fff',
+                  border: '1px solid #E1E5EB',
+                  borderRadius: 8,
+                  boxShadow: '0 8px 24px rgba(0,0,0,0.12)',
+                  maxHeight: 260,
+                  overflowY: 'auto',
+                  marginTop: 4,
+                }}
+              >
+                {stockResults.map((item) => (
+                  <button
+                    key={item.code}
+                    type="button"
+                    onClick={() => handleStockSelect(item)}
+                    style={{
+                      width: '100%',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                      padding: '8px 12px',
+                      border: 'none',
+                      background: 'none',
+                      cursor: 'pointer',
+                      textAlign: 'left',
+                      borderBottom: '1px solid #F3F4F6',
+                      fontSize: '0.8125rem',
+                    }}
+                    onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = '#F5F7FA'; }}
+                    onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = 'transparent'; }}
+                  >
+                    <div>
+                      <div style={{ fontWeight: 600, color: '#1A1A2E' }}>{item.name}</div>
+                      <div style={{ fontSize: '0.75rem', color: '#6B7280' }}>
+                        <span style={{ fontFamily: 'monospace' }}>{item.code}</span>
+                        <span style={{ margin: '0 6px', color: '#D1D5DB' }}>|</span>
+                        <span>{item.type}</span>
+                      </div>
+                    </div>
+                    <div style={{ textAlign: 'right', flexShrink: 0 }}>
+                      <div style={{ fontWeight: 600, color: '#1E3A5F', fontSize: '0.8125rem' }}>
+                        {item.price?.toLocaleString('ko-KR')}
+                      </div>
+                      <div style={{ fontSize: '0.6875rem', color: '#9CA3AF' }}>
+                        NAV {item.nav?.toLocaleString('ko-KR')}
+                      </div>
+                    </div>
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
 
           {/* 위험도 */}
@@ -450,13 +601,16 @@ export default function ProductMasterPage() {
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
             <div>
               <label style={labelStyle}>상품유형</label>
-              <input
-                type="text"
-                placeholder="ETF, 펀드, MMF..."
+              <select
                 value={form.product_type}
                 onChange={(e) => setForm((s) => ({ ...s, product_type: e.target.value }))}
-                style={inputStyle}
-              />
+                style={{ ...inputStyle, cursor: 'pointer' }}
+              >
+                <option value="">선택 안 함</option>
+                {PRODUCT_TYPES.map((t) => (
+                  <option key={t} value={t}>{t}</option>
+                ))}
+              </select>
             </div>
             <div>
               <label style={labelStyle}>종목코드</label>

@@ -13,6 +13,7 @@ import uuid
 from datetime import datetime, timedelta, date
 from typing import Optional
 from collections import defaultdict
+from app.core.encryption import encrypt_ssn
 
 from jose import jwt
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -137,13 +138,14 @@ async def verify_client(
     portal_token: str,
     birth_date: date,
     phone: str,
+    unique_code: Optional[str] = None,
 ) -> tuple[Optional[str], str]:
     """Verify client identity. Returns (jwt_token, error_message).
 
     Error messages:
     - "locked": account temporarily locked
     - "not_found": no client with that token
-    - "invalid": birth_date or phone mismatch
+    - "invalid": birth_date or phone or unique_code mismatch
     - "": success (jwt_token is set)
     """
     if _is_locked(portal_token):
@@ -153,6 +155,9 @@ async def verify_client(
     if not client:
         return None, "not_found"
 
+    # Verify unique_code (필수)
+    code_match = (client.unique_code or "") == (unique_code or "")
+
     # Verify birth_date and phone
     birth_match = client.birth_date == birth_date
     # Normalize phone for comparison
@@ -160,7 +165,7 @@ async def verify_client(
     stored_phone = (client.phone or "").replace("-", "").replace(" ", "")
     phone_match = stored_phone == phone_norm
 
-    if not (birth_match and phone_match):
+    if not (birth_match and phone_match and code_match):
         _record_failure(portal_token)
         return None, "invalid"
 
@@ -294,6 +299,19 @@ async def get_suggestion(
     return result.scalar_one_or_none()
 
 
+async def get_latest_suggestion_by_snapshot(
+    db: AsyncSession, snapshot_id: str
+) -> Optional[PortfolioSuggestion]:
+    """Fetch the most recent suggestion for a given snapshot."""
+    result = await db.execute(
+        select(PortfolioSuggestion)
+        .where(PortfolioSuggestion.snapshot_id == snapshot_id)
+        .order_by(PortfolioSuggestion.created_at.desc())
+        .limit(1)
+    )
+    return result.scalar_one_or_none()
+
+
 async def create_call_reservation(
     db: AsyncSession,
     suggestion_id: str,
@@ -347,6 +365,7 @@ async def update_client_portal_info(
     birth_date: Optional[date] = None,
     phone: Optional[str] = None,
     email: Optional[str] = None,
+    ssn: Optional[str] = None,
 ) -> Optional[Client]:
     """Update portal-related fields on a client (employee action)."""
     result = await db.execute(
@@ -362,6 +381,8 @@ async def update_client_portal_info(
         client.phone = phone
     if email is not None:
         client.email = email
+    if ssn is not None:
+        client.ssn_encrypted = encrypt_ssn(ssn) if ssn else None
 
     # Ensure portal_token is generated if missing
     if not client.portal_token:

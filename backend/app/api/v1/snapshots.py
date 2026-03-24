@@ -118,6 +118,52 @@ async def update_holding(
 
 
 @router.post(
+    "/{snapshot_id}/holdings",
+    response_model=HoldingResponse,
+    status_code=201,
+)
+async def create_holding(
+    snapshot_id: str,
+    body: dict,
+    current_user=Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Manually add a new holding to a snapshot."""
+    from app.models.snapshot import PortfolioSnapshot, PortfolioHolding
+    from sqlalchemy import select
+    import uuid
+
+    result = await db.execute(select(PortfolioSnapshot).where(PortfolioSnapshot.id == snapshot_id))
+    snapshot = result.scalar_one_or_none()
+    if not snapshot:
+        raise HTTPException(status_code=404, detail="Snapshot not found")
+
+    holding = PortfolioHolding(
+        id=str(uuid.uuid4()),
+        snapshot_id=snapshot_id,
+        product_name=body.get("product_name", ""),
+        product_code=body.get("product_code"),
+        product_type=body.get("product_type"),
+        risk_level=body.get("risk_level"),
+        region=body.get("region"),
+        quantity=body.get("quantity"),
+        purchase_price=body.get("purchase_price"),
+        current_price=body.get("current_price"),
+        purchase_amount=body.get("purchase_amount"),
+        evaluation_amount=body.get("evaluation_amount"),
+        total_deposit=body.get("total_deposit"),
+        total_withdrawal=body.get("total_withdrawal"),
+        return_amount=body.get("return_amount"),
+        return_rate=body.get("return_rate"),
+        seq=body.get("seq"),
+    )
+    db.add(holding)
+    await db.commit()
+    await db.refresh(holding)
+    return holding
+
+
+@router.post(
     "/{snapshot_id}/holdings/apply-master",
     response_model=ApplyMasterResponse,
 )
@@ -142,6 +188,42 @@ async def apply_master(
         ) from exc
 
     return result
+
+
+@router.patch("/{snapshot_id}")
+async def patch_snapshot(
+    snapshot_id: str,
+    body: dict,
+    _current_user=Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Update snapshot metadata (e.g. snapshot_date)."""
+    from app.models.snapshot import PortfolioSnapshot
+    from sqlalchemy import select
+    result = await db.execute(select(PortfolioSnapshot).where(PortfolioSnapshot.id == snapshot_id))
+    snapshot = result.scalar_one_or_none()
+    if not snapshot:
+        raise HTTPException(status_code=404, detail="Snapshot not found")
+    if "snapshot_date" in body:
+        from datetime import date as date_type, datetime
+        val = body["snapshot_date"]
+        if isinstance(val, str):
+            snapshot.snapshot_date = datetime.strptime(val, "%Y-%m-%d").date()
+        elif isinstance(val, date_type):
+            snapshot.snapshot_date = val
+    if "deposit_amount" in body:
+        snapshot.deposit_amount = body["deposit_amount"]
+    if "total_purchase" in body:
+        snapshot.total_purchase = body["total_purchase"]
+    if "total_evaluation" in body:
+        snapshot.total_evaluation = body["total_evaluation"]
+    if "total_return" in body:
+        snapshot.total_return = body["total_return"]
+    if "total_return_rate" in body:
+        snapshot.total_return_rate = body["total_return_rate"]
+    await db.commit()
+    await db.refresh(snapshot)
+    return {"id": snapshot.id, "snapshot_date": str(snapshot.snapshot_date)}
 
 
 @router.delete("/{snapshot_id}", status_code=204)

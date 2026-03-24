@@ -1,10 +1,39 @@
 """Client and ClientAccount CRUD service."""
 import uuid
+import random
 from typing import Optional
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from sqlalchemy.orm import selectinload
 from app.models.client import Client, ClientAccount
+from app.core.encryption import encrypt_ssn, decrypt_ssn, mask_ssn
+
+
+async def _generate_unique_code(db: AsyncSession) -> str:
+    """Generate a 6-digit random code that does not conflict with existing records."""
+    while True:
+        code = str(random.randint(100000, 999999))
+        existing = await db.execute(select(Client).where(Client.unique_code == code))
+        if not existing.scalar_one_or_none():
+            return code
+
+
+def _build_client_response(client: Client) -> dict:
+    """Attach computed ssn_masked field to a Client ORM object for serialisation.
+
+    We cannot use a @property on the ORM model because decryption depends on
+    application-level config, so we attach the value as a plain attribute so
+    that Pydantic's from_attributes mode can read it.
+    """
+    if client.ssn_encrypted:
+        try:
+            plaintext = decrypt_ssn(client.ssn_encrypted)
+            client.ssn_masked = mask_ssn(plaintext)
+        except Exception:
+            client.ssn_masked = None
+    else:
+        client.ssn_masked = None
+    return client
 
 
 async def list_clients(db: AsyncSession, user_id: str) -> list[Client]:
@@ -14,7 +43,8 @@ async def list_clients(db: AsyncSession, user_id: str) -> list[Client]:
         .options(selectinload(Client.accounts))
         .order_by(Client.created_at)
     )
-    return result.scalars().all()
+    clients = result.scalars().all()
+    return [_build_client_response(c) for c in clients]
 
 
 async def get_client(db: AsyncSession, user_id: str, client_id: str) -> Optional[Client]:
@@ -23,14 +53,31 @@ async def get_client(db: AsyncSession, user_id: str, client_id: str) -> Optional
         .where(Client.id == client_id, Client.user_id == user_id)
         .options(selectinload(Client.accounts))
     )
-    return result.scalar_one_or_none()
+    client = result.scalar_one_or_none()
+    if client:
+        _build_client_response(client)
+    return client
 
 
 async def create_client(
-    db: AsyncSession, user_id: str, name: str, memo: Optional[str] = None
+    db: AsyncSession,
+    user_id: str,
+    name: str,
+    memo: Optional[str] = None,
+    ssn: Optional[str] = None,
 ) -> Client:
     client_id = str(uuid.uuid4())
-    client = Client(id=client_id, user_id=user_id, name=name, memo=memo)
+    unique_code = await _generate_unique_code(db)
+    ssn_encrypted = encrypt_ssn(ssn) if ssn else None
+
+    client = Client(
+        id=client_id,
+        user_id=user_id,
+        name=name,
+        memo=memo,
+        unique_code=unique_code,
+        ssn_encrypted=ssn_encrypted,
+    )
     db.add(client)
     await db.commit()
     # Re-fetch with eager loading to avoid lazy load issues
@@ -39,7 +86,8 @@ async def create_client(
         .where(Client.id == client_id)
         .options(selectinload(Client.accounts))
     )
-    return result.scalar_one()
+    client = result.scalar_one()
+    return _build_client_response(client)
 
 
 async def update_client(
@@ -48,6 +96,7 @@ async def update_client(
     client_id: str,
     name: Optional[str],
     memo: Optional[str],
+    ssn: Optional[str] = None,
 ) -> Optional[Client]:
     client = await get_client(db, user_id, client_id)
     if not client:
@@ -56,6 +105,8 @@ async def update_client(
         client.name = name
     if memo is not None:
         client.memo = memo
+    if ssn is not None:
+        client.ssn_encrypted = encrypt_ssn(ssn) if ssn else None
     await db.commit()
     # Re-fetch with eager loading
     result = await db.execute(
@@ -63,7 +114,8 @@ async def update_client(
         .where(Client.id == client_id)
         .options(selectinload(Client.accounts))
     )
-    return result.scalar_one()
+    client = result.scalar_one()
+    return _build_client_response(client)
 
 
 async def delete_client(db: AsyncSession, user_id: str, client_id: str) -> bool:

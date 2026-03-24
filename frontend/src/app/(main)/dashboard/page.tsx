@@ -22,6 +22,31 @@ const CATEGORIES: Array<{
   programs: Program[];
 }> = [
   {
+    id: 'data-management',
+    name: 'DATA 관리',
+    accentColor: '#7C3AED',
+    headerBg: '#F3F0FF',
+    icon: (
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <ellipse cx="12" cy="5" rx="9" ry="3" />
+        <path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3" />
+        <path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5" />
+      </svg>
+    ),
+    programs: [
+      {
+        title: '고객 정보 관리',
+        description: '고객 기본 정보를 등록하고 다른 프로그램과 연동합니다',
+        href: '/customer-management',
+      },
+      {
+        title: '상품 마스터 관리',
+        description: '상품명 · 위험도 · 지역 매핑 마스터 데이터를 관리합니다',
+        href: '/portfolio/product-master',
+      },
+    ],
+  },
+  {
     id: 'business-automation',
     name: '업무 자동화',
     accentColor: '#1E3A5F',
@@ -62,11 +87,6 @@ const CATEGORIES: Array<{
         title: 'IRP 포트폴리오 수익률 관리기',
         description: 'IRP 포트폴리오 수익률을 분석하고 리밸런싱을 제안합니다',
         href: '/portfolio/irp',
-      },
-      {
-        title: '상품 마스터 관리',
-        description: '상품명 · 위험도 · 지역 매핑 마스터 데이터를 관리합니다',
-        href: '/portfolio/product-master',
       },
       {
         title: '주식/ETF 추천 프로그램',

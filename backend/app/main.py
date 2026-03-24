@@ -14,6 +14,10 @@ from app.api.v1 import reports as reports_router
 from app.api.v1 import client_portal as client_portal_router
 from app.api.v1 import portfolio_suggestions as portfolio_suggestions_router
 from app.api.v1 import call_reservations as call_reservations_router
+from app.api.v1 import user_api_keys as user_api_keys_router
+from app.api.v1 import stock_search as stock_search_router
+from app.api.v1 import messaging as messaging_router
+from app.api.v1 import recommended_portfolio as recommended_portfolio_router
 
 app = FastAPI(title="API", version="0.1.0")
 
@@ -43,6 +47,10 @@ app.include_router(reports_router.router, prefix="/api/v1")
 app.include_router(client_portal_router.router, prefix="/api/v1")
 app.include_router(portfolio_suggestions_router.router, prefix="/api/v1")
 app.include_router(call_reservations_router.router, prefix="/api/v1")
+app.include_router(user_api_keys_router.router, prefix="/api/v1")
+app.include_router(stock_search_router.router, prefix="/api/v1")
+app.include_router(messaging_router.router, prefix="/api/v1")
+app.include_router(recommended_portfolio_router.router, prefix="/api/v1")
 
 
 @app.exception_handler(Exception)

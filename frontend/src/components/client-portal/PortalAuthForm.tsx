@@ -10,6 +10,7 @@ interface PortalAuthFormProps {
 }
 
 export function PortalAuthForm({ token, maskedName, onSuccess }: PortalAuthFormProps) {
+  const [uniqueCode, setUniqueCode] = useState('');
   const [birthDate, setBirthDate] = useState('');
   const [phone, setPhone] = useState('');
   const [loading, setLoading] = useState(false);
@@ -43,8 +44,8 @@ export function PortalAuthForm({ token, maskedName, onSuccess }: PortalAuthFormP
 
   const handleSubmit = async () => {
     if (locked) return;
-    if (!birthDate || !phone) {
-      setError('생년월일과 핸드폰번호를 입력해주세요.');
+    if (!uniqueCode || !birthDate || !phone) {
+      setError('고유번호, 생년월일, 핸드폰번호를 모두 입력해주세요.');
       return;
     }
 
@@ -55,7 +56,7 @@ export function PortalAuthForm({ token, maskedName, onSuccess }: PortalAuthFormP
       const res = await fetch(`${API_URL}/api/v1/client-portal/${token}/verify`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ birth_date: birthDate, phone }),
+        body: JSON.stringify({ unique_code: uniqueCode, birth_date: birthDate, phone }),
       });
 
       if (res.ok) {
@@ -100,6 +101,47 @@ export function PortalAuthForm({ token, maskedName, onSuccess }: PortalAuthFormP
 
       {/* 입력 폼 */}
       <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+        <div>
+          <label
+            style={{
+              display: 'block',
+              fontSize: 14,
+              fontWeight: 600,
+              color: '#374151',
+              marginBottom: 8,
+            }}
+          >
+            고유번호
+          </label>
+          <input
+            type="text"
+            placeholder="6자리 숫자"
+            value={uniqueCode}
+            onChange={(e) => {
+              const val = e.target.value.replace(/[^0-9]/g, '');
+              if (val.length <= 6) setUniqueCode(val);
+            }}
+            disabled={locked || loading}
+            maxLength={6}
+            style={{
+              width: '100%',
+              padding: '14px 16px',
+              fontSize: 16,
+              border: '1.5px solid #D1D5DB',
+              borderRadius: 10,
+              outline: 'none',
+              boxSizing: 'border-box',
+              backgroundColor: locked ? '#F9FAFB' : '#fff',
+              color: '#111827',
+              letterSpacing: 4,
+              textAlign: 'center',
+            }}
+          />
+          <p style={{ fontSize: 11, color: '#9CA3AF', marginTop: 4 }}>
+            담당자에게 안내받은 고유번호를 입력해주세요.
+          </p>
+        </div>
+
         <div>
           <label
             style={{

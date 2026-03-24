@@ -27,12 +27,17 @@ interface Holding {
   product_type?: string;
   risk_level?: string;
   region?: string;
+  quantity?: number;
+  purchase_price?: number;
+  current_price?: number;
   purchase_amount?: number;
   evaluation_amount?: number;
   return_amount?: number;
   return_rate?: number;
   weight?: number;
   reference_price?: number;
+  total_deposit?: number;
+  total_withdrawal?: number;
 }
 
 interface ReportData {
@@ -66,6 +71,7 @@ interface ReportViewProps {
   reportData: ReportData | null;
   clientName: string;
   modifiedWeights: Record<string, number>;
+  extraHoldings?: Holding[];
   onWeightChange: (holdingId: string, value: number) => void;
   aiComment?: string;
   onAiCommentChange?: (val: string) => void;
@@ -107,7 +113,7 @@ const FALLBACK_COLORS = ['#1E3A5F', '#3B82F6', '#10B981', '#F59E0B', '#EF4444', 
 const fmt = (n?: number) => (n != null ? n.toLocaleString('ko-KR') : '-');
 
 const accountTypeLabel = (t: string) =>
-  ({ irp: 'IRP', pension1: '연금저축1', pension2: '연금저축2' } as Record<string, string>)[t] || t;
+  ({ irp: 'IRP', pension: '연금저축', pension1: '연금저축', pension2: '연금저축', pension_saving: '연금저축(적립)', pension_hold: '연금저축(거치)', retirement: '퇴직연금' } as Record<string, string>)[t] || t;
 
 const returnRateColor = (rate?: number) => {
   if (rate == null) return '#374151';
@@ -288,6 +294,7 @@ interface WeightEditorProps {
   tdStyle: React.CSSProperties;
   tdLeftStyle: React.CSSProperties;
   totalRowStyle: React.CSSProperties;
+  readOnly?: boolean;
 }
 
 function WeightEditor({
@@ -300,6 +307,7 @@ function WeightEditor({
   tdStyle,
   tdLeftStyle,
   totalRowStyle,
+  readOnly = false,
 }: WeightEditorProps) {
   const totalModified = Object.values(modifiedWeights).reduce((s, v) => s + v, 0);
   const hasModified = Object.keys(modifiedWeights).length > 0;
@@ -319,11 +327,16 @@ function WeightEditor({
               <th style={thStyle}>현재비중</th>
               <th style={{ ...thStyle, color: '#1E3A5F' }}>수정비중</th>
               <th style={thStyle}>변경후금액</th>
-              <th style={thStyle}>(+/-)</th>
+              <th style={thStyle}>Sell/Buy</th>
+              <th style={thStyle}>좌수</th>
             </tr>
           </thead>
           <tbody>
-            {holdings.map((h, idx) => {
+            {[...holdings].sort((a, b) => {
+              const aIsRow1 = (a.product_name ?? '').includes('자동운용상품') || (a.product_name ?? '').includes('예수금') ? 0 : 1;
+              const bIsRow1 = (b.product_name ?? '').includes('자동운용상품') || (b.product_name ?? '').includes('예수금') ? 0 : 1;
+              return aIsRow1 - bIsRow1;
+            }).map((h, idx) => {
               const modW = modifiedWeights[h.id];
               const changedAmt =
                 modW != null && totalEval > 0
@@ -333,18 +346,25 @@ function WeightEditor({
                 changedAmt != null && h.evaluation_amount != null
                   ? changedAmt - h.evaluation_amount
                   : null;
+              const isNew = h.id.startsWith('virtual_');
+              const rowBg = isNew ? '#F0FDF4' : 'transparent';
               return (
                 <tr
                   key={h.id}
-                  onMouseEnter={(e) => { (e.currentTarget as HTMLTableRowElement).style.backgroundColor = '#F9FAFB'; }}
-                  onMouseLeave={(e) => { (e.currentTarget as HTMLTableRowElement).style.backgroundColor = 'transparent'; }}
-                  style={{ transition: 'background-color 0.1s ease' }}
+                  onMouseEnter={(e) => { (e.currentTarget as HTMLTableRowElement).style.backgroundColor = isNew ? '#DCFCE7' : '#F9FAFB'; }}
+                  onMouseLeave={(e) => { (e.currentTarget as HTMLTableRowElement).style.backgroundColor = rowBg; }}
+                  style={{ transition: 'background-color 0.1s ease', backgroundColor: rowBg }}
                 >
                   <td style={{ ...tdStyle, textAlign: 'center', color: '#9CA3AF' }}>
                     {h.seq ?? idx + 1}
                   </td>
                   <td style={tdLeftStyle}>
-                    <div style={{ fontWeight: 500 }}>{h.product_name}</div>
+                    <div style={{ fontWeight: 500, display: 'flex', alignItems: 'center', gap: 6 }}>
+                      {h.product_name}
+                      {h.id.startsWith('virtual_') && (
+                        <span style={{ fontSize: '0.625rem', fontWeight: 700, color: '#059669', backgroundColor: '#ECFDF5', border: '1px solid #A7F3D0', padding: '1px 6px', borderRadius: 4, flexShrink: 0 }}>신규</span>
+                      )}
+                    </div>
                     {h.product_type && (
                       <div style={{ fontSize: '0.6875rem', color: '#9CA3AF', marginTop: 1 }}>
                         {h.product_type}
@@ -360,9 +380,24 @@ function WeightEditor({
                       : '-'}
                   </td>
                   <td style={tdStyle}>
-                    {h.weight != null ? `${(h.weight * 100).toFixed(1)}%` : '-'}
+                    {(() => {
+                      if (h.weight != null) return `${(h.weight * 100).toFixed(1)}%`;
+                      if (totalEval > 0 && (h.evaluation_amount ?? 0) > 0) return `${((h.evaluation_amount! / totalEval) * 100).toFixed(1)}%`;
+                      return '-';
+                    })()}
                   </td>
                   <td style={{ ...tdStyle, padding: '6px 8px' }}>
+                    {readOnly ? (() => {
+                      const isRow1 = (h.product_name ?? '').includes('자동운용상품') || (h.product_name ?? '').includes('예수금');
+                      const isFullSell = modW === 0 && (h.evaluation_amount ?? 0) > 0 && !isRow1;
+                      return (
+                        <span style={{ fontWeight: 600, color: isFullSell ? '#EF4444' : '#1E3A5F' }}>
+                          {modW != null
+                            ? (isFullSell ? '전액매도' : `${modW.toFixed(1)}%`)
+                            : '-'}
+                        </span>
+                      );
+                    })() : (
                     <input
                       type="number"
                       min={0}
@@ -387,6 +422,7 @@ function WeightEditor({
                         boxSizing: 'border-box',
                       }}
                     />
+                    )}
                   </td>
                   <td style={{ ...tdStyle, fontWeight: changedAmt != null ? 600 : undefined }}>
                     {changedAmt != null ? `${fmt(changedAmt)}원` : '-'}
@@ -401,6 +437,18 @@ function WeightEditor({
                     {diffAmt != null
                       ? `${diffAmt > 0 ? '+' : ''}${fmt(diffAmt)}`
                       : '-'}
+                  </td>
+                  <td style={{ ...tdStyle, color: (() => {
+                    if (diffAmt == null || !h.reference_price || h.reference_price <= 0) return '#374151';
+                    return diffAmt < 0 ? '#EF4444' : '#374151';
+                  })() }}>
+                    {(() => {
+                      if (diffAmt == null || !h.reference_price || h.reference_price <= 0) return '-';
+                      const isFund = (h.product_type ?? '').includes('펀드');
+                      const raw = isFund ? diffAmt * 1000 / h.reference_price : diffAmt / h.reference_price;
+                      const shares = raw > 0 ? Math.ceil(raw) : -Math.ceil(Math.abs(raw));
+                      return shares !== 0 ? shares.toLocaleString('ko-KR') : '-';
+                    })()}
                   </td>
                 </tr>
               );
@@ -445,6 +493,7 @@ function WeightEditor({
                     )}원`
                   : '-'}
               </td>
+              <td style={totalRowStyle}>-</td>
               <td style={totalRowStyle}>-</td>
             </tr>
           </tfoot>
@@ -510,6 +559,7 @@ const ReportView = forwardRef<HTMLDivElement, ReportViewProps>(
     reportData,
     clientName,
     modifiedWeights,
+    extraHoldings = [],
     onWeightChange,
     aiComment = '',
     onAiCommentChange,
@@ -654,8 +704,7 @@ const ReportView = forwardRef<HTMLDivElement, ReportViewProps>(
             "'Pretendard', 'Noto Sans KR', -apple-system, BlinkMacSystemFont, sans-serif",
           maxWidth: '900px',
           margin: '0 auto',
-          border: '1px solid #E1E5EB',
-          borderRadius: 12,
+          borderRadius: 0,
         }}
       >
         {/* ===== 1. 헤더 ===== */}
@@ -688,8 +737,8 @@ const ReportView = forwardRef<HTMLDivElement, ReportViewProps>(
               </div>
             </div>
             <div style={{ fontSize: '0.8125rem', color: '#9CA3AF', textAlign: 'right' }}>
-              <div>작성일: {new Date().toLocaleDateString('ko-KR')}</div>
-              <div>조회일: {snap.snapshot_date}</div>
+              <div>작성일: {new Date().toISOString().slice(0, 10).replace(/-/g, '.')}</div>
+              <div>조회일: {snap.snapshot_date?.replace(/-/g, '.')}</div>
             </div>
           </div>
         </div>
@@ -749,33 +798,14 @@ const ReportView = forwardRef<HTMLDivElement, ReportViewProps>(
           </div>
         </div>
 
-        {/* ===== 3. 계좌 유형 섹션 헤더 ===== */}
-        <div
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: 8,
-            marginBottom: 20,
-            padding: '10px 16px',
-            backgroundColor: '#1E3A5F',
-            borderRadius: 8,
-          }}
-        >
-          <span
-            style={{
-              fontSize: '1rem',
-              fontWeight: 800,
-              color: '#FFFFFF',
-              letterSpacing: '-0.3px',
-            }}
-          >
-            {accountTypeLabel(account?.account_type ?? '')} 포트폴리오 분석
-          </span>
-        </div>
-
-        {/* ===== 4. 포트폴리오 분석표 ===== */}
-        <div style={{ marginBottom: 24 }}>
-          <SubTitle>포트폴리오 분석표</SubTitle>
+        {/* ===== 섹션 1: 포트폴리오 확인 ===== */}
+        <div style={{ border: '1px solid #D1D5DB', borderRadius: 10, marginBottom: 28 }}>
+          <div style={{ padding: '12px 16px', backgroundColor: '#111827', borderRadius: '10px 10px 0 0' }}>
+            <span style={{ fontSize: '1rem', fontWeight: 800, color: '#fff', letterSpacing: '-0.3px' }}>
+              1. 포트폴리오 확인 — {accountTypeLabel(account?.account_type ?? '')}
+            </span>
+          </div>
+          <div style={{ padding: '20px 16px' }}>
           <div style={{ overflowX: 'auto' }}>
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.8125rem' }}>
               <thead>
@@ -867,6 +897,19 @@ const ReportView = forwardRef<HTMLDivElement, ReportViewProps>(
             </table>
           </div>
         </div>
+        </div>{/* 섹션 1 닫기 */}
+
+        {/* PDF 페이지 2 시작 */}
+        <div data-pdf-page="2" />
+
+        {/* ===== 섹션 2: 포트폴리오 분석 ===== */}
+        <div style={{ border: '1px solid #D1D5DB', borderRadius: 10, marginBottom: 28 }}>
+          <div style={{ padding: '12px 16px', backgroundColor: '#111827', borderRadius: '10px 10px 0 0' }}>
+            <span style={{ fontSize: '1rem', fontWeight: 800, color: '#fff', letterSpacing: '-0.3px' }}>
+              2. 포트폴리오 분석
+            </span>
+          </div>
+          <div style={{ padding: '20px 16px' }}>
 
         {/* ===== 5. 차트 (지역분산 + 위험도분산) ===== */}
         {(regionData.length > 0 || riskData.length > 0) && (
@@ -1050,47 +1093,54 @@ const ReportView = forwardRef<HTMLDivElement, ReportViewProps>(
           />
         </div>
 
-        {/* ===== 8. 포트폴리오 변경 안내 ===== */}
-        <div
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: 8,
-            marginBottom: 20,
-            marginTop: 8,
-            padding: '10px 16px',
-            backgroundColor: '#374151',
-            borderRadius: 8,
-          }}
-        >
-          <span
-            style={{
-              fontSize: '1rem',
-              fontWeight: 800,
-              color: '#FFFFFF',
-              letterSpacing: '-0.3px',
-            }}
-          >
-            포트폴리오 변경 안내
-          </span>
         </div>
+        </div>{/* 섹션 2 닫기 */}
 
-        <div style={{ marginBottom: 24 }}>
-          <SubTitle>수정비중 입력</SubTitle>
-          <WeightEditor
-            holdings={holdings}
-            totalEval={totalEval}
-            modifiedWeights={modifiedWeights}
-            onWeightChange={onWeightChange}
-            thStyle={thStyle}
-            thLeftStyle={thLeftStyle}
-            tdStyle={tdStyle}
-            tdLeftStyle={tdLeftStyle}
-            totalRowStyle={totalRowStyle}
-          />
-        </div>
+        {/* PDF 페이지 3 시작 */}
+        <div data-pdf-page="3" />
 
-        {/* ===== 9. AI 변경 코멘트 ===== */}
+        {/* ===== 섹션 3: 포트폴리오 변경 안내 ===== */}
+        <div style={{ border: '1px solid #D1D5DB', borderRadius: 10, marginBottom: 28 }}>
+          <div style={{ padding: '12px 16px', backgroundColor: '#111827', borderRadius: '10px 10px 0 0' }}>
+            <span style={{ fontSize: '1rem', fontWeight: 800, color: '#fff', letterSpacing: '-0.3px' }}>
+              3. 포트폴리오 변경 안내
+            </span>
+          </div>
+          <div style={{ padding: '20px 16px' }}>
+
+        {Object.keys(modifiedWeights).length === 0 ? (
+          <div style={{ padding: '40px 20px', textAlign: 'center', color: '#9CA3AF' }}>
+            <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="#D1D5DB" strokeWidth="1.5" style={{ margin: '0 auto 12px', display: 'block' }}>
+              <circle cx="12" cy="12" r="10" />
+              <line x1="12" y1="8" x2="12" y2="12" />
+              <line x1="12" y1="16" x2="12.01" y2="16" />
+            </svg>
+            <p style={{ fontSize: '0.9375rem', fontWeight: 600, color: '#6B7280', marginBottom: 8 }}>
+              저장된 수정 포트폴리오가 없습니다.
+            </p>
+            <p style={{ fontSize: '0.8125rem', color: '#9CA3AF', lineHeight: 1.6 }}>
+              [2. 데이터 확인] 탭에서 수정 포트폴리오를 작성하고 저장한 후<br />
+              이 보고서를 다시 생성해주세요.
+            </p>
+          </div>
+        ) : (
+          <>
+            <div style={{ marginBottom: 24 }}>
+              <WeightEditor
+                holdings={[...holdings, ...extraHoldings]}
+                totalEval={totalEval}
+                modifiedWeights={modifiedWeights}
+                onWeightChange={() => {}}
+                thStyle={thStyle}
+                thLeftStyle={thLeftStyle}
+                tdStyle={tdStyle}
+                tdLeftStyle={tdLeftStyle}
+                totalRowStyle={totalRowStyle}
+                readOnly
+              />
+            </div>
+
+            {/* ===== 9. AI 변경 코멘트 ===== */}
         <div style={{ marginBottom: 28 }}>
           <AiCommentBlock
             label="AI 변경 코멘트"
@@ -1100,6 +1150,10 @@ const ReportView = forwardRef<HTMLDivElement, ReportViewProps>(
             loading={aiChangeCommentLoading}
           />
         </div>
+          </>
+        )}
+        </div>
+        </div>{/* 섹션 3 닫기 */}
 
         {/* Footer */}
         <div

@@ -22,6 +22,7 @@ interface ClientAccount {
 interface Client {
   id: string;
   name: string;
+  unique_code?: string;
   memo?: string;
   accounts: ClientAccount[];
 }
@@ -78,8 +79,8 @@ const ACCOUNT_TYPE_LABELS: Record<string, string> = {
   pension_hold: '연금저축(거치)',
   retirement: '퇴직연금',
   // keep old keys for backward compat
-  pension1: '연금저축1',
-  pension2: '연금저축2',
+  pension1: '연금저축',
+  pension2: '연금저축',
 };
 
 const inputStyle: React.CSSProperties = {
@@ -125,10 +126,15 @@ export function ClientRow({ index, clients, data, onChange, onRemove }: ClientRo
     for (const c of clients) {
       const existing = nameMap.get(c.name);
       if (existing) {
-        // 동일 이름 → 계좌 합침
-        existing.accounts = [...existing.accounts, ...c.accounts.filter(
+        // 동일 이름 → 계좌가 더 많은 쪽을 기준 ID로 사용, 계좌 합침
+        const mergedAccounts = [...existing.accounts, ...c.accounts.filter(
           (a) => !existing.accounts.some((ea) => ea.id === a.id)
         )];
+        if (c.accounts.length > existing.accounts.length) {
+          nameMap.set(c.name, { ...c, accounts: mergedAccounts });
+        } else {
+          existing.accounts = mergedAccounts;
+        }
       } else {
         nameMap.set(c.name, { ...c, accounts: [...c.accounts] });
       }
@@ -190,7 +196,7 @@ export function ClientRow({ index, clients, data, onChange, onRemove }: ClientRo
   }
 
   function handleAccountTypeChange(accountType: string) {
-    const client = clients.find((c) => c.id === data.clientId);
+    const client = uniqueClients.find((c) => c.id === data.clientId);
     const matchingAccount = client?.accounts.find((a) => a.account_type === accountType);
     update({
       accountType: accountType as any,
@@ -450,7 +456,7 @@ export function ClientRow({ index, clients, data, onChange, onRemove }: ClientRo
                           }}
                           onMouseEnter={(e) => { if (data.clientId !== c.id) (e.currentTarget).style.backgroundColor = '#F9FAFB'; }}
                           onMouseLeave={(e) => { if (data.clientId !== c.id) (e.currentTarget).style.backgroundColor = 'transparent'; }}>
-                          <span>{c.name}</span>
+                          <span>{c.unique_code ? `${c.name}(${c.unique_code})` : c.name}</span>
                           <span style={{ color: '#9CA3AF', fontSize: '0.6875rem' }}>
                             {c.accounts.length}개 계좌
                           </span>

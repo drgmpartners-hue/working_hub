@@ -77,6 +77,19 @@ async def get_suggestion(
     return suggestion
 
 
+@router.get("/suggestions/by-snapshot/{snapshot_id}", response_model=SuggestionDetail)
+async def get_suggestion_by_snapshot(
+    snapshot_id: str,
+    current_user = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Get the most recent suggestion for a given snapshot."""
+    suggestion = await client_portal_service.get_latest_suggestion_by_snapshot(db, snapshot_id)
+    if not suggestion:
+        raise HTTPException(status_code=404, detail="No suggestion found for this snapshot")
+    return suggestion
+
+
 @router.post("/suggestions/{suggestion_id}/send")
 async def send_suggestion_link(
     suggestion_id: str,
