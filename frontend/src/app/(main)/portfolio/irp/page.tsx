@@ -4051,46 +4051,53 @@ export default function IRPPage() {
       const pageH = pdf.internal.pageSize.getHeight();
       const margin = 8;
       const contentW = pageW - margin * 2;
+      const maxContentH = pageH - margin * 2;
 
-      // 페이지 구분 마커로 섹션 분할
       const container = reportRef.current;
-      const markers = container.querySelectorAll('[data-pdf-page]');
-      const breakPoints: number[] = [];
-      markers.forEach((m) => {
-        const rect = (m as HTMLElement).getBoundingClientRect();
-        const containerRect = container.getBoundingClientRect();
-        breakPoints.push(rect.top - containerRect.top);
-      });
+
+      // 각 페이지 div를 개별 캡처
+      const pageDivs = container.querySelectorAll('[data-pdf-page]');
 
       // 다운로드 시 숨길 요소 처리
       const noPrintEls = container.querySelectorAll('[data-no-print]');
       noPrintEls.forEach((el) => ((el as HTMLElement).style.display = 'none'));
-      // 전체 캡처
-      const fullCanvas = await html2canvas(container, { scale: 2, useCORS: true });
-      noPrintEls.forEach((el) => ((el as HTMLElement).style.display = ''));
-      const scale = fullCanvas.width / container.offsetWidth;
 
-      // 페이지별 잘라내기
-      const sections = [0, ...breakPoints, container.offsetHeight];
-      for (let i = 0; i < sections.length - 1; i++) {
-        const yStart = Math.round(sections[i] * scale);
-        const yEnd = Math.round(sections[i + 1] * scale);
-        const sectionH = yEnd - yStart;
-        if (sectionH <= 0) continue;
+      let isFirstPage = true;
 
-        const sectionCanvas = document.createElement('canvas');
-        sectionCanvas.width = fullCanvas.width;
-        sectionCanvas.height = sectionH;
-        const ctx = sectionCanvas.getContext('2d');
-        if (!ctx) continue;
-        ctx.drawImage(fullCanvas, 0, yStart, fullCanvas.width, sectionH, 0, 0, fullCanvas.width, sectionH);
+      for (const pageDiv of Array.from(pageDivs)) {
+        const el = pageDiv as HTMLElement;
 
-        const imgData = sectionCanvas.toDataURL('image/png');
-        const imgH = (sectionH * contentW) / fullCanvas.width;
+        // 이 페이지 div를 개별 캡처
+        const pageCanvas = await html2canvas(el, { scale: 2, useCORS: true });
 
-        if (i > 0) pdf.addPage();
-        pdf.addImage(imgData, 'PNG', margin, margin, contentW, Math.min(imgH, pageH - margin * 2));
+        const mmPerPx = contentW / pageCanvas.width;
+        const pageSliceH = Math.floor(maxContentH / mmPerPx);
+
+        // 페이지 내용이 A4 한 페이지보다 길면 자동 분할
+        let offset = 0;
+        while (offset < pageCanvas.height) {
+          const sliceH = Math.min(pageSliceH, pageCanvas.height - offset);
+          if (sliceH <= 0) break;
+
+          const sliceCanvas = document.createElement('canvas');
+          sliceCanvas.width = pageCanvas.width;
+          sliceCanvas.height = sliceH;
+          const ctx = sliceCanvas.getContext('2d');
+          if (!ctx) break;
+          ctx.drawImage(pageCanvas, 0, offset, pageCanvas.width, sliceH, 0, 0, pageCanvas.width, sliceH);
+
+          if (!isFirstPage) pdf.addPage();
+          isFirstPage = false;
+
+          const imgData = sliceCanvas.toDataURL('image/png');
+          const imgH = sliceH * mmPerPx;
+          pdf.addImage(imgData, 'PNG', margin, margin, contentW, imgH);
+
+          offset += sliceH;
+        }
       }
+
+      noPrintEls.forEach((el) => ((el as HTMLElement).style.display = ''));
 
       // file-saver로 다운로드
       const { saveAs } = await import('file-saver');

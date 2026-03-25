@@ -160,6 +160,7 @@ function SectionTitle({ children }: { children: React.ReactNode }) {
 }
 
 function SubTitle({ children }: { children: React.ReactNode }) {
+  if (!children) return null;
   return (
     <div
       style={{
@@ -459,10 +460,10 @@ function WeightEditor({
               <th style={thStyle}>평가금액</th>
               <th style={thStyle}>수익률</th>
               <th style={thStyle}>현재비중</th>
-              <th style={{ ...thStyle, color: '#1E3A5F' }}>수정비중</th>
-              <th style={thStyle}>변경후금액</th>
-              <th style={thStyle}>Sell/Buy</th>
-              <th style={thStyle}>좌수</th>
+              <th style={{ ...thStyle, backgroundColor: '#1E3A5F', color: '#fff', borderLeft: '2px solid #1E3A5F' }}>수정비중</th>
+              <th style={{ ...thStyle, backgroundColor: '#1E3A5F', color: '#fff' }}>변경후금액</th>
+              <th style={{ ...thStyle, backgroundColor: '#1E3A5F', color: '#fff' }}>Sell/Buy</th>
+              <th style={{ ...thStyle, backgroundColor: '#1E3A5F', color: '#fff' }}>좌수</th>
             </tr>
           </thead>
           <tbody>
@@ -521,7 +522,7 @@ function WeightEditor({
                       return '-';
                     })()}
                   </td>
-                  <td style={{ ...tdStyle, padding: '6px 8px' }}>
+                  <td style={{ ...tdStyle, padding: '6px 8px', borderLeft: '2px solid #1E3A5F' }}>
                     {readOnly ? (() => {
                       const isRow1 = (h.product_name ?? '').includes('자동운용상품') || (h.product_name ?? '').includes('예수금');
                       const isFullSell = modW === 0 && (h.evaluation_amount ?? 0) > 0 && !isRow1;
@@ -604,6 +605,7 @@ function WeightEditor({
                 style={{
                   ...totalRowStyle,
                   color: hasModified ? (isValid ? '#10B981' : '#EF4444') : '#1A1A2E',
+                  borderLeft: '2px solid #1E3A5F',
                 }}
               >
                 {hasModified ? (
@@ -635,9 +637,10 @@ function WeightEditor({
         </table>
       </div>
 
-      {/* 합계 경고 메시지 */}
+      {/* 합계 경고 메시지 — 웹에서만 표시 */}
       {hasModified && !isValid && (
         <div
+          data-no-print="true"
           style={{
             marginTop: 8,
             padding: '8px 12px',
@@ -661,6 +664,7 @@ function WeightEditor({
       )}
       {hasModified && isValid && (
         <div
+          data-no-print="true"
           style={{
             marginTop: 8,
             padding: '8px 12px',
@@ -774,7 +778,13 @@ const ReportView = forwardRef<HTMLDivElement, ReportViewProps>(
       borderBottom: '1px solid #F3F4F6',
       whiteSpace: 'nowrap',
     };
-    const tdLeftStyle: React.CSSProperties = { ...tdStyle, textAlign: 'left' };
+    const tdLeftStyle: React.CSSProperties = {
+      ...tdStyle,
+      textAlign: 'left',
+      whiteSpace: 'normal',
+      wordBreak: 'break-word',
+      minWidth: 120,
+    };
     const totalRowStyle: React.CSSProperties = {
       ...tdStyle,
       fontWeight: 700,
@@ -831,19 +841,34 @@ const ReportView = forwardRef<HTMLDivElement, ReportViewProps>(
 
     /* ---------- render ---------- */
 
+    const pageStyle: React.CSSProperties = {
+      backgroundColor: '#FFFFFF',
+      padding: '32px',
+      fontFamily: "'Pretendard', 'Noto Sans KR', -apple-system, BlinkMacSystemFont, sans-serif",
+      maxWidth: '900px',
+      margin: '0 auto',
+      boxSizing: 'border-box',
+    };
+
+    const pageDividerStyle: React.CSSProperties = {
+      height: 20,
+      backgroundColor: '#E5E7EB',
+      margin: '0 auto',
+      maxWidth: '900px',
+    };
+
     return (
       <div
         ref={ref}
         style={{
-          backgroundColor: '#FFFFFF',
-          padding: '32px',
-          fontFamily:
-            "'Pretendard', 'Noto Sans KR', -apple-system, BlinkMacSystemFont, sans-serif",
+          fontFamily: "'Pretendard', 'Noto Sans KR', -apple-system, BlinkMacSystemFont, sans-serif",
           maxWidth: '900px',
           margin: '0 auto',
-          borderRadius: 0,
         }}
       >
+        {/* ==================== PAGE 1 ==================== */}
+        <div data-pdf-page="1" style={pageStyle}>
+
         {/* ===== 1. 헤더 ===== */}
         <div
           style={{
@@ -871,6 +896,7 @@ const ReportView = forwardRef<HTMLDivElement, ReportViewProps>(
               <div style={{ marginTop: 4, fontSize: '0.8125rem', color: '#6B7280' }}>
                 고객명: <strong style={{ color: '#1A1A2E' }}>{clientName}</strong>
                 &nbsp;·&nbsp;{accountTypeLabel(account?.account_type ?? '')}
+                {account?.account_number ? <>&nbsp;·&nbsp;{account.account_number}</> : null}
               </div>
             </div>
             <div style={{ fontSize: '0.8125rem', color: '#9CA3AF', textAlign: 'right' }}>
@@ -887,7 +913,7 @@ const ReportView = forwardRef<HTMLDivElement, ReportViewProps>(
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.8125rem' }}>
               <thead>
                 <tr>
-                  {['구분', '조회일', '계좌번호', '월납입액', '예수금', '납입원금', '평가금액', '수익금액', '총수익률'].map(
+                  {['조회일', '월납입액', '예수금', '납입원금', '평가금액', '수익금액', '총수익률'].map(
                     (h) => (
                       <th key={h} style={thLeftStyle}>
                         {h}
@@ -898,9 +924,7 @@ const ReportView = forwardRef<HTMLDivElement, ReportViewProps>(
               </thead>
               <tbody>
                 <tr>
-                  <td style={tdLeftStyle}>{accountTypeLabel(account?.account_type ?? '')}</td>
                   <td style={tdLeftStyle}>{snap.snapshot_date}</td>
-                  <td style={tdLeftStyle}>{account?.account_number || '-'}</td>
                   <td style={tdLeftStyle}>
                     {account?.monthly_payment ? `${fmt(account.monthly_payment)}원` : '-'}
                   </td>
@@ -1036,8 +1060,12 @@ const ReportView = forwardRef<HTMLDivElement, ReportViewProps>(
         </div>
         </div>{/* 섹션 1 닫기 */}
 
-        {/* PDF 페이지 2 시작 */}
-        <div data-pdf-page="2" />
+        </div>{/* PAGE 1 끝 */}
+
+        <div style={pageDividerStyle} />
+
+        {/* ==================== PAGE 2 ==================== */}
+        <div data-pdf-page="2" style={pageStyle}>
 
         {/* ===== 섹션 2: 포트폴리오 분석 ===== */}
         <div style={{ border: '1px solid #D1D5DB', borderRadius: 10, marginBottom: 28 }}>
@@ -1233,11 +1261,15 @@ const ReportView = forwardRef<HTMLDivElement, ReportViewProps>(
         </div>
         </div>{/* 섹션 2 닫기 */}
 
-        {/* PDF 페이지 3 시작 */}
-        <div data-pdf-page="3" />
+        </div>{/* PAGE 2 끝 */}
+
+        <div style={pageDividerStyle} />
+
+        {/* ==================== PAGE 3 ==================== */}
+        <div data-pdf-page="3" style={pageStyle}>
 
         {/* ===== 섹션 3: 포트폴리오 변경 안내 ===== */}
-        <div style={{ border: '1px solid #D1D5DB', borderRadius: 10, marginBottom: 28 }}>
+        <div style={{ border: '1px solid #D1D5DB', borderRadius: 10, marginBottom: 28, marginTop: 0 }}>
           <div style={{ padding: '12px 16px', backgroundColor: '#111827', borderRadius: '10px 10px 0 0' }}>
             <span style={{ fontSize: '1rem', fontWeight: 800, color: '#fff', letterSpacing: '-0.3px' }}>
               3. 포트폴리오 변경 안내
@@ -1261,55 +1293,92 @@ const ReportView = forwardRef<HTMLDivElement, ReportViewProps>(
             </p>
           </div>
         ) : (
-          <>
-            <div style={{ marginBottom: 24 }}>
-              <WeightEditor
-                holdings={[...holdings, ...extraHoldings]}
-                totalEval={totalEval}
-                modifiedWeights={modifiedWeights}
-                onWeightChange={() => {}}
-                thStyle={thStyle}
-                thLeftStyle={thLeftStyle}
-                tdStyle={tdStyle}
-                tdLeftStyle={tdLeftStyle}
-                totalRowStyle={totalRowStyle}
-                readOnly
-              />
-            </div>
-
-            {/* ===== 9. AI 변경 코멘트 ===== */}
-        <div style={{ marginBottom: 28 }}>
-          <AiCommentBlock
-            label="AI 변경 코멘트"
-            value={aiChangeComment}
-            onChange={onAiChangeCommentChange ?? (() => {})}
-            onGenerate={onGenerateAiChangeComment}
-            loading={aiChangeCommentLoading}
-            managerNote={managerNote}
-            onManagerNoteChange={onManagerNoteChange}
+          <WeightEditor
+            holdings={[...holdings, ...extraHoldings]}
+            totalEval={totalEval}
+            modifiedWeights={modifiedWeights}
+            onWeightChange={() => {}}
+            thStyle={thStyle}
+            thLeftStyle={thLeftStyle}
+            tdStyle={tdStyle}
+            tdLeftStyle={{ ...tdLeftStyle, fontSize: '0.75rem' }}
+            totalRowStyle={totalRowStyle}
+            readOnly
           />
-        </div>
-          </>
         )}
         </div>
         </div>{/* 섹션 3 닫기 */}
 
-        {/* Footer */}
-        <div
-          style={{
-            marginTop: 28,
-            paddingTop: 14,
-            borderTop: '1px solid #E1E5EB',
-            display: 'flex',
-            justifyContent: 'space-between',
-            alignItems: 'center',
-            fontSize: '0.6875rem',
-            color: '#9CA3AF',
-          }}
-        >
-          <span>본 보고서는 참고 자료이며 투자 결과에 대한 책임은 투자자 본인에게 있습니다.</span>
-          <span>Working Hub Manager</span>
-        </div>
+        </div>{/* PAGE 3 끝 */}
+
+        {/* ==================== PAGE 4 ==================== */}
+        {Object.keys(modifiedWeights).length > 0 && (
+          <>
+            <div style={pageDividerStyle} />
+
+            <div data-pdf-page="4" style={pageStyle}>
+
+            {/* ===== 섹션 4: 포트폴리오 변경 분석 리포트 (에디토리얼) ===== */}
+            <div style={{ marginBottom: 28 }}>
+              {/* 매거진 헤더 */}
+              <div style={{ borderBottom: '3px solid #1E3A5F', paddingBottom: 16, marginBottom: 0 }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end' }}>
+                  <div>
+                    <div style={{ fontSize: '0.6875rem', color: '#94A3B8', fontWeight: 500, letterSpacing: '0.15em', textTransform: 'uppercase' }}>
+                      Portfolio Rebalancing Report
+                    </div>
+                    <h2 style={{ margin: '4px 0 0', fontSize: '1.5rem', fontWeight: 800, color: '#0F172A', letterSpacing: '-0.5px' }}>
+                      포트폴리오 변경 분석
+                    </h2>
+                    <div style={{ marginTop: 4, fontSize: '0.8125rem', color: '#6B7280' }}>
+                      {clientName} · {accountTypeLabel(account?.account_type ?? '')}
+                    </div>
+                  </div>
+                  <div style={{ textAlign: 'right', fontSize: '0.75rem', color: '#94A3B8' }}>
+                    <div>기준일 {snap.snapshot_date?.replace(/-/g, '.')}</div>
+                    <div>작성일 {new Date().toISOString().slice(0, 10).replace(/-/g, '.')}</div>
+                  </div>
+                </div>
+              </div>
+
+              {/* 구분선 */}
+              <div style={{ height: 1, backgroundColor: '#E2E8F0', marginBottom: 24 }} />
+
+              {/* 본문 — AI 변경 분석 */}
+              <div style={{ marginBottom: 20 }}>
+                <AiCommentBlock
+                  label=""
+                  value={aiChangeComment}
+                  onChange={onAiChangeCommentChange ?? (() => {})}
+                  onGenerate={onGenerateAiChangeComment}
+                  loading={aiChangeCommentLoading}
+                  managerNote={managerNote}
+                  onManagerNoteChange={onManagerNoteChange}
+                />
+              </div>
+
+            </div>
+
+            {/* Footer */}
+            <div
+              style={{
+                marginTop: 28,
+                paddingTop: 14,
+                borderTop: '1px solid #E1E5EB',
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                fontSize: '0.6875rem',
+                color: '#9CA3AF',
+              }}
+            >
+              <span>본 보고서는 참고 자료이며 투자 결과에 대한 책임은 투자자 본인에게 있습니다.</span>
+              <span>Working Hub Manager</span>
+            </div>
+
+            </div>{/* PAGE 4 끝 */}
+          </>
+        )}
 
         <style>{`@keyframes spin{from{transform:rotate(0deg)}to{transform:rotate(360deg)}}`}</style>
       </div>

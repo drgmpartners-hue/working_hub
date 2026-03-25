@@ -117,29 +117,6 @@ const API_PROVIDERS: ProviderDef[] = [
       ],
     },
   },
-  {
-    key: 'solapi',
-    label: '솔라피 (Solapi)',
-    description: '카카오 알림톡 및 SMS 발송에 사용됩니다.',
-    icon: '💬',
-    color: '#FEE500',
-    fields: [
-      { name: 'api_key', label: 'API Key', placeholder: 'API Key를 입력하세요' },
-      { name: 'api_secret', label: 'API Secret', placeholder: 'API Secret를 입력하세요' },
-    ],
-    guide: {
-      title: '솔라피 API 키 발급 방법',
-      steps: [
-        '솔라피(https://solapi.com)에 접속하여 회원가입합니다.',
-        '대시보드에서 [API Key 관리] 메뉴를 클릭합니다.',
-        '[새 API Key 생성] 버튼을 클릭합니다.',
-        '생성된 API Key와 API Secret을 복사합니다.',
-        '카카오 알림톡 사용 시: [카카오톡 채널 관리] 에서 비즈니스 채널을 연동합니다.',
-        '메시지 템플릿을 등록하고 카카오 심사를 받습니다 (1~2일 소요).',
-        '알림톡 발송 실패 시 SMS로 자동 대체 발송됩니다.',
-      ],
-    },
-  },
 ];
 
 /* ------------------------------------------------------------------ */

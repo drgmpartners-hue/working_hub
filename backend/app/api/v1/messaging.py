@@ -49,7 +49,7 @@ async def send_sms(
     if not client.phone:
         raise HTTPException(400, f"'{client.name}' 고객의 전화번호가 없습니다.")
 
-    result = await solapi_service.send_sms(to=client.phone, text=body.message)
+    result = await solapi_service.send_sms(db=db, to=client.phone, text=body.message)
 
     if not result.get("success"):
         raise HTTPException(500, f"발송 실패: {result.get('error', '알 수 없는 오류')}")
@@ -87,7 +87,7 @@ async def send_portal_link(
             f"포트폴리오 현황을 확인하세요.\n{link}"
         )
 
-    result = await solapi_service.send_sms(to=client.phone, text=msg)
+    result = await solapi_service.send_sms(db=db, to=client.phone, text=msg)
 
     if not result.get("success"):
         raise HTTPException(500, f"발송 실패: {result.get('error', '알 수 없는 오류')}")
@@ -123,7 +123,7 @@ async def send_bulk_sms(
     if not recipients:
         raise HTTPException(400, f"전화번호가 없는 고객: {', '.join(skipped)}")
 
-    send_result = await solapi_service.send_bulk_sms(recipients=recipients)
+    send_result = await solapi_service.send_bulk_sms(db=db, recipients=recipients)
 
     if not send_result.get("success"):
         raise HTTPException(500, f"발송 실패: {send_result.get('error')}")
@@ -136,9 +136,12 @@ async def send_bulk_sms(
 
 
 @router.get("/balance")
-async def check_balance(current_user=Depends(get_current_user)):
+async def check_balance(
+    current_user=Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
     """솔라피 잔액 조회."""
-    result = await solapi_service.get_balance()
+    result = await solapi_service.get_balance(db)
     return result
 
 
