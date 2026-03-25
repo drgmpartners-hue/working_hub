@@ -166,6 +166,44 @@ async def test_api_key(
         return TestResult(success=False, message=f"테스트 중 오류: {str(e)}")
 
 
+@router.post("/test-saved/{provider}", response_model=TestResult)
+async def test_saved_api_key(
+    provider: str,
+    current_user=Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Test a previously saved API key by decrypting it from DB."""
+    if provider not in VALID_PROVIDERS:
+        raise HTTPException(400, f"Invalid provider: {provider}")
+
+    result = await db.execute(
+        select(UserApiKey).where(
+            and_(
+                UserApiKey.user_id == current_user.id,
+                UserApiKey.provider == provider,
+            )
+        )
+    )
+    key = result.scalar_one_or_none()
+    if not key:
+        raise HTTPException(404, f"'{provider}' API 키가 저장되어 있지 않습니다.")
+
+    api_key = _decrypt(key.api_key)
+    api_secret = _decrypt(key.api_secret) if key.api_secret else ""
+
+    try:
+        if provider == "claude":
+            return await _test_claude(api_key)
+        elif provider == "gemini":
+            return await _test_gemini(api_key)
+        elif provider == "kiwoom":
+            return await _test_kiwoom(api_key, api_secret)
+        elif provider == "solapi":
+            return await _test_solapi(api_key, api_secret)
+    except Exception as e:
+        return TestResult(success=False, message=f"테스트 중 오류: {str(e)}")
+
+
 @router.put("/{provider}", response_model=ApiKeyResponse)
 async def update_api_key(
     provider: str,
@@ -295,10 +333,11 @@ async def _test_solapi(api_key: str, api_secret: str) -> TestResult:
     """Test Solapi API by checking balance."""
     if not api_secret:
         return TestResult(success=False, message="API Secret이 필요합니다.")
-    import time, hmac, hashlib
-    timestamp = str(int(time.time() * 1000))
-    signature = hmac.new(api_secret.encode(), timestamp.encode(), hashlib.sha256).hexdigest()
-    auth_header = f"HMAC-SHA256 apiKey={api_key}, date={timestamp}, salt={timestamp}, signature={signature}"
+    import time, hmac as _hmac, uuid as _uuid
+    date = datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%S.000Z")
+    salt = str(_uuid.uuid4())
+    signature = _hmac.new(api_secret.encode(), (date + salt).encode(), hashlib.sha256).hexdigest()
+    auth_header = f"HMAC-SHA256 apiKey={api_key}, date={date}, salt={salt}, signature={signature}"
     async with httpx.AsyncClient(timeout=10) as client:
         res = await client.get(
             "https://api.solapi.com/cash/v1/balance",
@@ -311,4 +350,9 @@ async def _test_solapi(api_key: str, api_secret: str) -> TestResult:
     elif res.status_code == 401 or res.status_code == 403:
         return TestResult(success=False, message="인증 실패: API Key 또는 Secret이 올바르지 않습니다.")
     else:
-        return TestResult(success=False, message=f"API 응답 오류 (status={res.status_code})")
+        detail = ""
+        try:
+            detail = res.json().get("errorMessage", res.text[:100])
+        except Exception:
+            detail = res.text[:100] if res.text else ""
+        return TestResult(success=False, message=f"API 응답 오류 (status={res.status_code}): {detail}")

@@ -279,21 +279,30 @@ export default function SettingsPage() {
   }
 
   async function handleApiSave(providerKey: string) {
-    if (!editForm.api_key.trim()) {
+    const existing = apiKeys.find((k) => k.provider === providerKey);
+
+    // 신규 등록 시에만 필수 체크
+    if (!existing && !editForm.api_key.trim()) {
       setApiMsg({ type: 'error', text: 'API Key를 입력해주세요.' });
       return;
     }
+    // 수정 모드에서 아무것도 입력 안 했으면 변경 없이 닫기
+    if (existing && !editForm.api_key.trim() && !editForm.api_secret.trim()) {
+      setEditingProvider(null);
+      setEditForm({ api_key: '', api_secret: '' });
+      return;
+    }
+
     setApiSaving(true);
     setApiMsg(null);
-
-    const existing = apiKeys.find((k) => k.provider === providerKey);
 
     try {
       let res: Response;
       if (existing) {
-        // Update
-        const body: Record<string, string> = { api_key: editForm.api_key };
-        if (editForm.api_secret) body.api_secret = editForm.api_secret;
+        // Update — 입력된 필드만 전송
+        const body: Record<string, string> = {};
+        if (editForm.api_key.trim()) body.api_key = editForm.api_key;
+        if (editForm.api_secret.trim()) body.api_secret = editForm.api_secret;
         res = await fetch(`${API_URL}/api/v1/user-api-keys/${providerKey}`, {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json', ...authLib.getAuthHeader() },
@@ -362,22 +371,37 @@ export default function SettingsPage() {
   }
 
   async function handleApiTest(providerKey: string) {
-    if (!editForm.api_key.trim()) {
+    const saved = apiKeys.find((k) => k.provider === providerKey);
+    const hasNewKey = editForm.api_key.trim().length > 0;
+
+    // 새로 입력한 키가 있으면 그걸로 테스트, 없으면 저장된 키로 테스트
+    if (!hasNewKey && !saved) {
       setTestResult({ provider: providerKey, success: false, message: 'API Key를 입력해주세요.' });
       return;
     }
+
     setApiTesting(providerKey);
     setTestResult(null);
     try {
-      const res = await fetch(`${API_URL}/api/v1/user-api-keys/test/${providerKey}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', ...authLib.getAuthHeader() },
-        body: JSON.stringify({
-          provider: providerKey,
-          api_key: editForm.api_key,
-          api_secret: editForm.api_secret || undefined,
-        }),
-      });
+      let res: Response;
+      if (hasNewKey) {
+        // 새로 입력한 키로 테스트
+        res = await fetch(`${API_URL}/api/v1/user-api-keys/test/${providerKey}`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', ...authLib.getAuthHeader() },
+          body: JSON.stringify({
+            provider: providerKey,
+            api_key: editForm.api_key,
+            api_secret: editForm.api_secret || undefined,
+          }),
+        });
+      } else {
+        // 저장된 키로 테스트
+        res = await fetch(`${API_URL}/api/v1/user-api-keys/test-saved/${providerKey}`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', ...authLib.getAuthHeader() },
+        });
+      }
       if (res.ok) {
         const data = await res.json();
         setTestResult({ provider: providerKey, success: data.success, message: data.message });
@@ -695,19 +719,27 @@ export default function SettingsPage() {
                       {/* Edit form */}
                       {isEditing && (
                         <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginTop: 8 }}>
-                          {provider.fields.map((f) => (
-                            <div key={f.name}>
-                              <label style={{ ...labelStyle, marginBottom: 3 }}>{f.label}</label>
-                              <input
-                                type="password"
-                                value={editForm[f.name]}
-                                onChange={(e) => setEditForm((prev) => ({ ...prev, [f.name]: e.target.value }))}
-                                style={inputStyle}
-                                placeholder={f.placeholder}
-                                autoFocus={f.name === 'api_key'}
-                              />
-                            </div>
-                          ))}
+                          {provider.fields.map((f) => {
+                            const maskedVal = saved
+                              ? (f.name === 'api_key' ? saved.api_key_masked : saved.api_secret_masked)
+                              : null;
+                            return (
+                              <div key={f.name}>
+                                <label style={{ ...labelStyle, marginBottom: 3 }}>
+                                  {f.label}
+                                  {saved && <span style={{ fontWeight: 400, color: '#9CA3AF', textTransform: 'none', letterSpacing: 0 }}> (빈칸이면 기존 키 유지)</span>}
+                                </label>
+                                <input
+                                  type="text"
+                                  value={editForm[f.name]}
+                                  onChange={(e) => setEditForm((prev) => ({ ...prev, [f.name]: e.target.value }))}
+                                  style={inputStyle}
+                                  placeholder={maskedVal || f.placeholder}
+                                  autoFocus={f.name === 'api_key'}
+                                />
+                              </div>
+                            );
+                          })}
 
                           {/* Test result */}
                           {testResult && testResult.provider === provider.key && (
@@ -818,55 +850,90 @@ export default function SettingsPage() {
 
                     {/* Actions */}
                     {!isEditing && (
-                      <div style={{ display: 'flex', gap: 6, flexShrink: 0 }}>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 6, flexShrink: 0 }}>
                         {saved ? (
                           <>
-                            <button
-                              onClick={() => handleApiToggle(provider.key, saved.is_active)}
-                              title={saved.is_active ? '비활성화' : '활성화'}
-                              style={{
-                                padding: '6px 10px',
-                                fontSize: '0.75rem',
-                                fontWeight: 600,
-                                color: saved.is_active ? '#D97706' : '#059669',
-                                backgroundColor: saved.is_active ? '#FFFBEB' : '#F0FDF4',
-                                border: `1px solid ${saved.is_active ? '#FDE68A' : '#BBF7D0'}`,
-                                borderRadius: 6,
-                                cursor: 'pointer',
-                              }}
-                            >
-                              {saved.is_active ? 'OFF' : 'ON'}
-                            </button>
-                            <button
-                              onClick={() => startEdit(provider.key)}
-                              style={{
-                                padding: '6px 10px',
-                                fontSize: '0.75rem',
-                                fontWeight: 600,
-                                color: '#1E3A5F',
-                                backgroundColor: '#EEF2F7',
-                                border: '1px solid #C7D2E2',
-                                borderRadius: 6,
-                                cursor: 'pointer',
-                              }}
-                            >
-                              수정
-                            </button>
-                            <button
-                              onClick={() => handleApiDelete(provider.key)}
-                              style={{
-                                padding: '6px 10px',
-                                fontSize: '0.75rem',
-                                fontWeight: 600,
-                                color: '#DC2626',
-                                backgroundColor: '#FEF2F2',
-                                border: '1px solid #FECACA',
-                                borderRadius: 6,
-                                cursor: 'pointer',
-                              }}
-                            >
-                              삭제
-                            </button>
+                            <div style={{ display: 'flex', gap: 6 }}>
+                              <button
+                                onClick={() => handleApiTest(provider.key)}
+                                disabled={apiTesting === provider.key}
+                                style={{
+                                  padding: '6px 10px',
+                                  fontSize: '0.75rem',
+                                  fontWeight: 600,
+                                  color: '#059669',
+                                  backgroundColor: '#F0FDF4',
+                                  border: '1px solid #BBF7D0',
+                                  borderRadius: 6,
+                                  cursor: apiTesting === provider.key ? 'not-allowed' : 'pointer',
+                                }}
+                              >
+                                {apiTesting === provider.key ? '테스트 중...' : '연결 테스트'}
+                              </button>
+                              <button
+                                onClick={() => handleApiToggle(provider.key, saved.is_active)}
+                                title={saved.is_active ? '비활성화' : '활성화'}
+                                style={{
+                                  padding: '6px 10px',
+                                  fontSize: '0.75rem',
+                                  fontWeight: 600,
+                                  color: saved.is_active ? '#D97706' : '#059669',
+                                  backgroundColor: saved.is_active ? '#FFFBEB' : '#F0FDF4',
+                                  border: `1px solid ${saved.is_active ? '#FDE68A' : '#BBF7D0'}`,
+                                  borderRadius: 6,
+                                  cursor: 'pointer',
+                                }}
+                              >
+                                {saved.is_active ? 'OFF' : 'ON'}
+                              </button>
+                            </div>
+                            <div style={{ display: 'flex', gap: 6 }}>
+                              <button
+                                onClick={() => startEdit(provider.key)}
+                                style={{
+                                  padding: '6px 10px',
+                                  fontSize: '0.75rem',
+                                  fontWeight: 600,
+                                  color: '#1E3A5F',
+                                  backgroundColor: '#EEF2F7',
+                                  border: '1px solid #C7D2E2',
+                                  borderRadius: 6,
+                                  cursor: 'pointer',
+                                }}
+                              >
+                                수정
+                              </button>
+                              <button
+                                onClick={() => handleApiDelete(provider.key)}
+                                style={{
+                                  padding: '6px 10px',
+                                  fontSize: '0.75rem',
+                                  fontWeight: 600,
+                                  color: '#DC2626',
+                                  backgroundColor: '#FEF2F2',
+                                  border: '1px solid #FECACA',
+                                  borderRadius: 6,
+                                  cursor: 'pointer',
+                                }}
+                              >
+                                삭제
+                              </button>
+                            </div>
+                            {/* Test result for saved key */}
+                            {testResult && testResult.provider === provider.key && (
+                              <div
+                                style={{
+                                  padding: '8px 12px',
+                                  borderRadius: 6,
+                                  fontSize: '0.75rem',
+                                  backgroundColor: testResult.success ? '#F0FDF4' : '#FEF2F2',
+                                  border: `1px solid ${testResult.success ? '#BBF7D0' : '#FECACA'}`,
+                                  color: testResult.success ? '#15803D' : '#DC2626',
+                                }}
+                              >
+                                {testResult.success ? '\u2705' : '\u274C'} {testResult.message}
+                              </div>
+                            )}
                           </>
                         ) : (
                           <button

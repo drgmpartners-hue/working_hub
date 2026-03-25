@@ -1342,19 +1342,23 @@ function Tab2Section({
       if (priceUpdated > 0) showT2Toast(`${priceUpdated}개 현재가 갱신 완료. 저장 중...`);
     } catch { /* 갱신 실패해도 저장은 진행 */ }
 
-    /* 절대안정형 자산 합계 30% 미만 경고 */
-    const safeRatioSum = t2RebalRows
-      .filter((r) => r.riskLevel === '절대안정형')
-      .reduce((s, r) => s + r.rebalRatio, 0);
-    /* 예수금(row1)도 절대안정형에 포함 */
-    const row1 = t2RebalRows.find((r) => r.isRow1);
-    const row1Ratio = row1 ? (100 - t2RebalRows.filter((r) => !r.isRow1).reduce((s, r) => s + r.rebalRatio, 0)) : 0;
-    const totalSafeRatio = safeRatioSum + row1Ratio;
-    if (totalSafeRatio < 30) {
-      const proceed = window.confirm(
-        `⚠️ 경고: 절대안정형 자산의 재조정 비중 합계가 ${totalSafeRatio.toFixed(2)}%로 30% 미만입니다.\n\n안정적인 포트폴리오 운용을 위해 절대안정형 자산(예수금 포함)이 30% 이상이어야 합니다.\n\n그래도 저장하시겠습니까?`
-      );
-      if (!proceed) return;
+    /* 절대안정형 자산 합계 30% 미만 경고 — IRP/퇴직연금 계좌만 해당 */
+    const saveAccountType = t2SelectedAccount?.account_type ?? 'irp';
+    const isIrpOrRetirement = saveAccountType === 'irp';
+    if (isIrpOrRetirement) {
+      const safeRatioSum = t2RebalRows
+        .filter((r) => r.riskLevel === '절대안정형')
+        .reduce((s, r) => s + r.rebalRatio, 0);
+      /* 예수금(row1)도 절대안정형에 포함 */
+      const row1 = t2RebalRows.find((r) => r.isRow1);
+      const row1Ratio = row1 ? (100 - t2RebalRows.filter((r) => !r.isRow1).reduce((s, r) => s + r.rebalRatio, 0)) : 0;
+      const totalSafeRatio = safeRatioSum + row1Ratio;
+      if (totalSafeRatio < 30) {
+        const proceed = window.confirm(
+          `⚠️ 경고: 절대안정형 자산의 재조정 비중 합계가 ${totalSafeRatio.toFixed(2)}%로 30% 미만입니다.\n\n안정적인 포트폴리오 운용을 위해 절대안정형 자산(예수금 포함)이 30% 이상이어야 합니다.\n\n그래도 저장하시겠습니까?`
+        );
+        if (!proceed) return;
+      }
     }
 
     setT2RebalSaving(true);
@@ -2718,6 +2722,7 @@ export default function IRPPage() {
   const [aiChangeComment, setAiChangeComment] = useState('');
   const [aiCommentLoading, setAiCommentLoading] = useState(false);
   const [aiChangeCommentLoading, setAiChangeCommentLoading] = useState(false);
+  const [managerNote, setManagerNote] = useState('');
 
   /* ---------- product master state ---------- */
   const [productMasters, setProductMasters] = useState<ProductMaster[]>([]);
@@ -2747,7 +2752,7 @@ export default function IRPPage() {
   const [smsModalOpen, setSmsModalOpen] = useState(false);
   const [smsModalType, setSmsModalType] = useState<'portal' | 'suggestion'>('portal');
   const [smsMessage, setSmsMessage] = useState('');
-  const [smsTemplates, setSmsTemplates] = useState<Array<{ name: string; text: string }>>([]);
+  const [smsTemplates, setSmsTemplates] = useState<Array<{ id: string; name: string; text: string }>>([]);
   const [smsTemplateName, setSmsTemplateName] = useState('');
 
   /* ---------- load clients and product masters on mount ---------- */
@@ -3739,6 +3744,23 @@ export default function IRPPage() {
             }));
           })(),
           comment_type: 'analysis',
+          changes_summary: (() => {
+            if (!reportData.holdings || Object.keys(modifiedWeights).length === 0) return undefined;
+            const totalEval = reportData.snapshot?.total_evaluation ?? 0;
+            return reportData.holdings
+              .filter((h) => modifiedWeights[h.id] != null)
+              .map((h) => {
+                const before = h.weight ?? (totalEval > 0 && h.evaluation_amount ? parseFloat(((h.evaluation_amount / totalEval) * 100).toFixed(1)) : 0);
+                const after = modifiedWeights[h.id];
+                const diff = after - before;
+                if (after === 0) return `- [전액 매도] ${h.product_name}: ${before.toFixed(1)}% → 0%`;
+                if (diff > 0.5) return `- [비중 확대] ${h.product_name}: ${before.toFixed(1)}% → ${after.toFixed(1)}% (+${diff.toFixed(1)}%p)`;
+                if (diff < -0.5) return `- [비중 축소] ${h.product_name}: ${before.toFixed(1)}% → ${after.toFixed(1)}% (${diff.toFixed(1)}%p)`;
+                return null;
+              })
+              .filter(Boolean)
+              .join('\n') || undefined;
+          })(),
         }),
       });
       if (!res.ok) {
@@ -3789,6 +3811,7 @@ export default function IRPPage() {
             }));
           })(),
           comment_type: 'change',
+          manager_note: managerNote || undefined,
         }),
       });
       if (!res.ok) {
@@ -3900,7 +3923,7 @@ export default function IRPPage() {
     }
   }
 
-  function openSmsModal(linkType: 'portal' | 'suggestion') {
+  async function openSmsModal(linkType: 'portal' | 'suggestion') {
     const client = getReportClient();
     if (!client) { showToast('고객을 선택하세요.'); return; }
     if (!client.portal_token) { showToast('포털 토큰이 없습니다.'); return; }
@@ -3923,26 +3946,49 @@ export default function IRPPage() {
     setSmsTemplateName('');
     setSmsModalOpen(true);
 
-    // localStorage에서 템플릿 로드
+    // DB에서 템플릿 로드
     try {
-      const saved = localStorage.getItem('sms_templates');
-      if (saved) setSmsTemplates(JSON.parse(saved));
+      const res = await fetch(`${API_URL}/api/v1/sms-templates`, { headers: { ...authLib.getAuthHeader() } });
+      if (res.ok) {
+        const data = await res.json();
+        setSmsTemplates(data.map((t: { id: string; name: string; text: string }) => ({ id: t.id, name: t.name, text: t.text })));
+      }
     } catch { /* silent */ }
   }
 
-  function saveSmsTemplate() {
+  async function saveSmsTemplate() {
     if (!smsTemplateName.trim()) { alert('템플릿 이름을 입력하세요.'); return; }
-    const updated = [...smsTemplates.filter((t) => t.name !== smsTemplateName.trim()), { name: smsTemplateName.trim(), text: smsMessage }];
-    setSmsTemplates(updated);
-    localStorage.setItem('sms_templates', JSON.stringify(updated));
-    setSmsTemplateName('');
-    showToast('템플릿이 저장되었습니다.');
+    try {
+      const existing = smsTemplates.find((t) => t.name === smsTemplateName.trim());
+      if (existing) {
+        await fetch(`${API_URL}/api/v1/sms-templates/${existing.id}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json', ...authLib.getAuthHeader() },
+          body: JSON.stringify({ text: smsMessage }),
+        });
+      } else {
+        await fetch(`${API_URL}/api/v1/sms-templates`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', ...authLib.getAuthHeader() },
+          body: JSON.stringify({ name: smsTemplateName.trim(), text: smsMessage }),
+        });
+      }
+      // 다시 로드
+      const res = await fetch(`${API_URL}/api/v1/sms-templates`, { headers: { ...authLib.getAuthHeader() } });
+      if (res.ok) setSmsTemplates(await res.json());
+      setSmsTemplateName('');
+      showToast('템플릿이 저장되었습니다.');
+    } catch { showToast('템플릿 저장 실패'); }
   }
 
-  function deleteSmsTemplate(name: string) {
-    const updated = smsTemplates.filter((t) => t.name !== name);
-    setSmsTemplates(updated);
-    localStorage.setItem('sms_templates', JSON.stringify(updated));
+  async function deleteSmsTemplate(id: string) {
+    try {
+      await fetch(`${API_URL}/api/v1/sms-templates/${id}`, {
+        method: 'DELETE',
+        headers: { ...authLib.getAuthHeader() },
+      });
+      setSmsTemplates((prev) => prev.filter((t) => t.id !== id));
+    } catch { /* silent */ }
   }
 
   async function handleSendSmsConfirm() {
@@ -3977,11 +4023,16 @@ export default function IRPPage() {
     setSaving(true);
     try {
       const html2canvas = (await import('html2canvas')).default;
+      const { saveAs } = await import('file-saver');
+      // 다운로드 시 숨길 요소 처리
+      const noPrintEls = reportRef.current.querySelectorAll('[data-no-print]');
+      noPrintEls.forEach((el) => ((el as HTMLElement).style.display = 'none'));
       const canvas = await html2canvas(reportRef.current, { scale: 2 });
-      const link = document.createElement('a');
-      link.download = `${reportClientName}_보고서_${reportDate}.png`;
-      link.href = canvas.toDataURL('image/png');
-      link.click();
+      noPrintEls.forEach((el) => ((el as HTMLElement).style.display = ''));
+      canvas.toBlob((blob) => {
+        if (blob) saveAs(blob, `${reportClientName}_보고서_${reportDate}.png`);
+        else alert('이미지 생성 실패');
+      }, 'image/png');
     } catch (e) {
       alert(e instanceof Error ? e.message : '이미지 저장 실패');
     } finally {
@@ -4011,8 +4062,12 @@ export default function IRPPage() {
         breakPoints.push(rect.top - containerRect.top);
       });
 
+      // 다운로드 시 숨길 요소 처리
+      const noPrintEls = container.querySelectorAll('[data-no-print]');
+      noPrintEls.forEach((el) => ((el as HTMLElement).style.display = 'none'));
       // 전체 캡처
       const fullCanvas = await html2canvas(container, { scale: 2, useCORS: true });
+      noPrintEls.forEach((el) => ((el as HTMLElement).style.display = ''));
       const scale = fullCanvas.width / container.offsetWidth;
 
       // 페이지별 잘라내기
@@ -4037,7 +4092,10 @@ export default function IRPPage() {
         pdf.addImage(imgData, 'PNG', margin, margin, contentW, Math.min(imgH, pageH - margin * 2));
       }
 
-      pdf.save(`${reportClientName}_보고서_${reportDate}.pdf`);
+      // file-saver로 다운로드
+      const { saveAs } = await import('file-saver');
+      const pdfBlob = pdf.output('blob');
+      saveAs(pdfBlob, `${reportClientName}_보고서_${reportDate}.pdf`);
     } catch (e) {
       alert(e instanceof Error ? e.message : 'PDF 다운로드 실패');
     } finally {
@@ -4927,7 +4985,7 @@ export default function IRPPage() {
                             style={{ padding: '4px 10px', fontSize: '0.75rem', fontWeight: 500, color: '#1E3A5F', backgroundColor: '#EEF2F7', border: '1px solid #C7D2E2', borderRadius: 6, cursor: 'pointer' }}>
                             {t.name}
                           </button>
-                          <button onClick={() => deleteSmsTemplate(t.name)}
+                          <button onClick={() => deleteSmsTemplate(t.id)}
                             style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#D1D5DB', padding: 0, fontSize: '0.75rem', lineHeight: 1 }}>×</button>
                         </div>
                       ))}
@@ -5013,6 +5071,8 @@ export default function IRPPage() {
             onGenerateAiChangeComment={handleGenerateAiChangeComment}
             aiCommentLoading={aiCommentLoading}
             aiChangeCommentLoading={aiChangeCommentLoading}
+            managerNote={managerNote}
+            onManagerNoteChange={setManagerNote}
           />
         </div>
       )}

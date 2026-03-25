@@ -18,6 +18,7 @@ from app.api.v1 import user_api_keys as user_api_keys_router
 from app.api.v1 import stock_search as stock_search_router
 from app.api.v1 import messaging as messaging_router
 from app.api.v1 import recommended_portfolio as recommended_portfolio_router
+from app.api.v1 import sms_templates as sms_templates_router
 
 app = FastAPI(title="API", version="0.1.0")
 
@@ -51,6 +52,7 @@ app.include_router(user_api_keys_router.router, prefix="/api/v1")
 app.include_router(stock_search_router.router, prefix="/api/v1")
 app.include_router(messaging_router.router, prefix="/api/v1")
 app.include_router(recommended_portfolio_router.router, prefix="/api/v1")
+app.include_router(sms_templates_router.router, prefix="/api/v1")
 
 
 @app.exception_handler(Exception)

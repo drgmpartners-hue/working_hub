@@ -64,6 +64,8 @@ class AiCommentRequest(BaseModel):
     holdings: list[Dict[str, Any]] | None = None
     comment_type: str | None = "analysis"  # "analysis" or "change"
     holdings_after: list[Dict[str, Any]] | None = None  # 변경 후 포트폴리오 (change용)
+    manager_note: str | None = None  # 담당자 조절 근거 (change용)
+    changes_summary: str | None = None  # 변경 내역 요약 (analysis용)
 
 
 class AiCommentResponse(BaseModel):
@@ -144,6 +146,7 @@ async def generate_ai_comment(
                 holdings_before=holdings_before,
                 holdings_after=holdings_after,
                 analyses=analyses,
+                manager_note=body.manager_note or "",
             )
         else:
             prompt = build_analysis_comment_prompt(
@@ -154,6 +157,7 @@ async def generate_ai_comment(
                 total_return_rate=body.total_return_rate or 0,
                 holdings_lines=holdings_lines if holdings_lines else ["  (종목 정보 없음)"],
                 analyses=analyses,
+                changes_summary=body.changes_summary or "",
             )
 
         comment = _call_gemini(prompt)

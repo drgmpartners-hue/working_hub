@@ -81,6 +81,8 @@ interface ReportViewProps {
   onGenerateAiChangeComment?: () => void;
   aiCommentLoading?: boolean;
   aiChangeCommentLoading?: boolean;
+  managerNote?: string;
+  onManagerNoteChange?: (val: string) => void;
 }
 
 /* ------------------------------------------------------------------ */
@@ -186,12 +188,99 @@ interface AiCommentBlockProps {
   onChange: (val: string) => void;
   onGenerate?: () => void;
   loading?: boolean;
+  managerNote?: string;
+  onManagerNoteChange?: (val: string) => void;
 }
 
-function AiCommentBlock({ label, value, onChange, onGenerate, loading }: AiCommentBlockProps) {
+function formatHtml(html: string): string {
+  // 태그 앞에 줄바꿈 추가 (블록 레벨 태그)
+  let formatted = html
+    .replace(/>\s*</g, '>\n<')  // 태그 사이 줄바꿈
+    .replace(/(<br\s*\/?>)/gi, '$1\n')  // <br> 뒤 줄바꿈
+    .replace(/(<\/?(b|strong|span|ul|li|ol|p|div|h[1-6])[^>]*>)/gi, '\n$1')  // 블록 태그 앞 줄바꿈
+    .replace(/\n{3,}/g, '\n\n')  // 3줄 이상 → 2줄로
+    .trim();
+  // 들여쓰기 처리
+  const lines = formatted.split('\n');
+  let indent = 0;
+  const result: string[] = [];
+  for (const line of lines) {
+    const trimmed = line.trim();
+    if (!trimmed) { result.push(''); continue; }
+    if (/^<\/(ul|ol|div|li)>/i.test(trimmed)) indent = Math.max(0, indent - 1);
+    result.push('  '.repeat(indent) + trimmed);
+    if (/^<(ul|ol|div|li)\b/i.test(trimmed) && !trimmed.includes('</')) indent++;
+  }
+  return result.join('\n');
+}
+
+function compactHtml(html: string): string {
+  // 편집 후 불필요한 공백/줄바꿈 제거 (원래 형태로 복원)
+  return html
+    .split('\n')
+    .map((l) => l.trim())
+    .filter((l) => l.length > 0)
+    .join('');
+}
+
+function AiCommentBlock({ label, value, onChange, onGenerate, loading, managerNote, onManagerNoteChange }: AiCommentBlockProps) {
+  const [htmlEditMode, setHtmlEditMode] = useState(false);
+  const [htmlEditValue, setHtmlEditValue] = useState('');
+
+  function toggleHtmlEdit() {
+    if (!htmlEditMode) {
+      // 일반 → HTML 수정: 포매팅해서 보여주기
+      setHtmlEditValue(formatHtml(value));
+    } else {
+      // HTML 수정 → 일반: compact로 복원 후 반영
+      onChange(compactHtml(htmlEditValue));
+    }
+    setHtmlEditMode(!htmlEditMode);
+  }
+
   return (
     <div style={{ marginTop: 4 }}>
       <SubTitle>{label}</SubTitle>
+
+      {/* 담당자 입력란 (AI 변경 코멘트용) — 다운로드 시 숨김 */}
+      {onManagerNoteChange != null && (
+        <div
+          data-no-print="true"
+          style={{
+            border: '1px solid #E1E5EB',
+            borderRadius: 8,
+            overflow: 'hidden',
+            backgroundColor: '#FFFBEB',
+            marginBottom: 8,
+          }}
+        >
+          <div style={{ padding: '8px 12px', borderBottom: '1px solid #FDE68A', backgroundColor: '#FEF3C7' }}>
+            <span style={{ fontSize: '0.75rem', fontWeight: 600, color: '#92400E' }}>
+              담당자 의견 (선택사항) — 비중 조절 근거, 매도/매수 이유 등을 입력하면 AI가 참고하여 전문적으로 재편집합니다.
+            </span>
+          </div>
+          <textarea
+            value={managerNote ?? ''}
+            onChange={(e) => onManagerNoteChange(e.target.value)}
+            placeholder="예: 미국 빅테크 비중 축소 → 트럼프 관세 리스크 확대, 인도 시장 확대 → 제조업 이전 수혜 기대..."
+            rows={3}
+            style={{
+              width: '100%',
+              padding: '12px',
+              fontSize: '0.8125rem',
+              color: '#374151',
+              backgroundColor: 'transparent',
+              border: 'none',
+              outline: 'none',
+              resize: 'vertical',
+              lineHeight: 1.6,
+              boxSizing: 'border-box',
+              fontFamily: "'Pretendard', 'Noto Sans KR', -apple-system, sans-serif",
+            }}
+          />
+        </div>
+      )}
+
       <div
         style={{
           border: '1px solid #E1E5EB',
@@ -200,9 +289,10 @@ function AiCommentBlock({ label, value, onChange, onGenerate, loading }: AiComme
           backgroundColor: '#FAFBFC',
         }}
       >
-        {/* Toolbar */}
+        {/* Toolbar — 다운로드 시 숨김 */}
         {onGenerate && (
           <div
+            data-no-print="true"
             style={{
               display: 'flex',
               alignItems: 'center',
@@ -213,68 +303,112 @@ function AiCommentBlock({ label, value, onChange, onGenerate, loading }: AiComme
             }}
           >
             <span style={{ fontSize: '0.75rem', color: '#6B7280' }}>
-              AI가 자동 생성한 코멘트입니다. 직접 수정 가능합니다.
+              직접 수정 가능합니다.
             </span>
-            <button
-              onClick={onGenerate}
-              disabled={loading}
-              style={{
-                display: 'inline-flex',
-                alignItems: 'center',
-                gap: 5,
-                padding: '4px 12px',
-                fontSize: '0.75rem',
-                fontWeight: 600,
-                color: '#fff',
-                backgroundColor: loading ? '#9CA3AF' : '#1E3A5F',
-                border: 'none',
-                borderRadius: 5,
-                cursor: loading ? 'not-allowed' : 'pointer',
-                transition: 'background-color 0.15s',
-              }}
-            >
-              {loading ? (
-                <span
+            <div style={{ display: 'flex', gap: 6 }}>
+              {value && (
+                <button
+                  onClick={toggleHtmlEdit}
                   style={{
-                    display: 'inline-block',
-                    width: 10,
-                    height: 10,
-                    border: '1.5px solid #fff',
-                    borderTopColor: 'transparent',
-                    borderRadius: '50%',
-                    animation: 'spin 0.7s linear infinite',
+                    padding: '4px 10px',
+                    fontSize: '0.75rem',
+                    fontWeight: 600,
+                    color: htmlEditMode ? '#DC2626' : '#6B7280',
+                    backgroundColor: htmlEditMode ? '#FEF2F2' : '#F3F4F6',
+                    border: `1px solid ${htmlEditMode ? '#FECACA' : '#E1E5EB'}`,
+                    borderRadius: 5,
+                    cursor: 'pointer',
                   }}
-                />
-              ) : (
-                <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                  <path d="M12 2L2 7l10 5 10-5-10-5z" />
-                  <path d="M2 17l10 5 10-5" />
-                  <path d="M2 12l10 5 10-5" />
-                </svg>
+                >
+                  {htmlEditMode ? '일반 보기' : 'HTML 수정'}
+                </button>
               )}
-              {loading ? 'AI 생성 중...' : 'AI 코멘트 생성'}
-            </button>
+              <button
+                onClick={onGenerate}
+                disabled={loading}
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: 5,
+                  padding: '4px 12px',
+                  fontSize: '0.75rem',
+                  fontWeight: 600,
+                  color: '#fff',
+                  backgroundColor: loading ? '#9CA3AF' : '#1E3A5F',
+                  border: 'none',
+                  borderRadius: 5,
+                  cursor: loading ? 'not-allowed' : 'pointer',
+                  transition: 'background-color 0.15s',
+                }}
+              >
+                {loading ? (
+                  <span
+                    style={{
+                      display: 'inline-block',
+                      width: 10,
+                      height: 10,
+                      border: '1.5px solid #fff',
+                      borderTopColor: 'transparent',
+                      borderRadius: '50%',
+                      animation: 'spin 0.7s linear infinite',
+                    }}
+                  />
+                ) : (
+                  <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <path d="M12 2L2 7l10 5 10-5-10-5z" />
+                    <path d="M2 17l10 5 10-5" />
+                    <path d="M2 12l10 5 10-5" />
+                  </svg>
+                )}
+                {loading ? 'AI 생성 중...' : 'AI 코멘트 생성'}
+              </button>
+            </div>
           </div>
         )}
-        <textarea
-          value={value}
-          onChange={(e) => onChange(e.target.value)}
-          placeholder="AI 분석 코멘트를 입력하거나 위 버튼으로 자동 생성하세요."
-          rows={4}
-          style={{
-            width: '100%',
-            padding: '12px',
-            fontSize: '0.8125rem',
-            color: '#374151',
-            backgroundColor: 'transparent',
-            border: 'none',
-            outline: 'none',
-            resize: 'vertical',
-            lineHeight: 1.6,
-            boxSizing: 'border-box',
-            fontFamily: "'Pretendard', 'Noto Sans KR', -apple-system, sans-serif",
-          }}
-        />
+        {/* 기본: 일반 보기 (HTML 렌더링 + contentEditable) / HTML 수정: raw textarea */}
+        {htmlEditMode ? (
+          <textarea
+            value={htmlEditValue}
+            onChange={(e) => setHtmlEditValue(e.target.value)}
+            placeholder="HTML 코드를 직접 수정할 수 있습니다."
+            rows={12}
+            style={{
+              width: '100%',
+              padding: '12px',
+              fontSize: '0.8125rem',
+              color: '#374151',
+              backgroundColor: '#FEFCE8',
+              border: 'none',
+              outline: 'none',
+              resize: 'vertical',
+              lineHeight: 1.6,
+              boxSizing: 'border-box',
+              fontFamily: "'Consolas', 'Monaco', monospace",
+            }}
+          />
+        ) : (
+          <div
+            contentEditable
+            suppressContentEditableWarning
+            dangerouslySetInnerHTML={{ __html: value || '<span style="color:#9CA3AF">AI 코멘트를 입력하거나 위 버튼으로 자동 생성하세요.</span>' }}
+            onBlur={(e) => {
+              const html = (e.target as HTMLDivElement).innerHTML;
+              // placeholder 텍스트가 아닌 경우에만 업데이트
+              if (!html.includes('AI 코멘트를 입력하거나')) onChange(html);
+              else if (html !== value) onChange(html);
+            }}
+            style={{
+              padding: '12px',
+              fontSize: '0.8125rem',
+              color: '#374151',
+              lineHeight: 1.7,
+              fontFamily: "'Pretendard', 'Noto Sans KR', -apple-system, sans-serif",
+              minHeight: 80,
+              outline: 'none',
+              cursor: 'text',
+            }}
+          />
+        )}
       </div>
     </div>
   );
@@ -346,7 +480,8 @@ function WeightEditor({
                 changedAmt != null && h.evaluation_amount != null
                   ? changedAmt - h.evaluation_amount
                   : null;
-              const isNew = h.id.startsWith('virtual_');
+              const isRow1Product = h.product_name === '예수금/자동운용상품(고유계정대)' || h.product_name === '자동운용상품(고유계정대)' || h.product_name === '예수금';
+              const isNew = h.id.startsWith('virtual_') && !isRow1Product;
               const rowBg = isNew ? '#F0FDF4' : 'transparent';
               return (
                 <tr
@@ -361,7 +496,7 @@ function WeightEditor({
                   <td style={tdLeftStyle}>
                     <div style={{ fontWeight: 500, display: 'flex', alignItems: 'center', gap: 6 }}>
                       {h.product_name}
-                      {h.id.startsWith('virtual_') && (
+                      {isNew && (
                         <span style={{ fontSize: '0.625rem', fontWeight: 700, color: '#059669', backgroundColor: '#ECFDF5', border: '1px solid #A7F3D0', padding: '1px 6px', borderRadius: 4, flexShrink: 0 }}>신규</span>
                       )}
                     </div>
@@ -569,6 +704,8 @@ const ReportView = forwardRef<HTMLDivElement, ReportViewProps>(
     onGenerateAiChangeComment,
     aiCommentLoading = false,
     aiChangeCommentLoading = false,
+    managerNote = '',
+    onManagerNoteChange,
   }, ref) => {
     const [historyRange, setHistoryRange] = useState<'3m' | '6m' | '1y'>('6m');
 
@@ -1148,6 +1285,8 @@ const ReportView = forwardRef<HTMLDivElement, ReportViewProps>(
             onChange={onAiChangeCommentChange ?? (() => {})}
             onGenerate={onGenerateAiChangeComment}
             loading={aiChangeCommentLoading}
+            managerNote={managerNote}
+            onManagerNoteChange={onManagerNoteChange}
           />
         </div>
           </>

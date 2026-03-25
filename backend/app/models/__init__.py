@@ -45,6 +45,9 @@ from app.models.user_api_key import UserApiKey
 # No FK dependencies (market analysis cache)
 from app.models.market_analysis_cache import MarketAnalysisCache
 
+# Depends on users (SMS templates)
+from app.models.sms_template import SmsTemplate
+
 __all__ = [
     "BrandSetting",
     "AIAPISetting",
@@ -71,4 +74,5 @@ __all__ = [
     "UserApiKey",
     "RecommendedPortfolioItem",
     "MarketAnalysisCache",
+    "SmsTemplate",
 ]
