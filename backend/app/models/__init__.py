@@ -48,6 +48,9 @@ from app.models.market_analysis_cache import MarketAnalysisCache
 # Depends on users (SMS templates)
 from app.models.sms_template import SmsTemplate
 
+# Depends on users + clients + client_accounts (message logs)
+from app.models.message_log import MessageLog
+
 __all__ = [
     "BrandSetting",
     "AIAPISetting",
@@ -75,4 +78,5 @@ __all__ = [
     "RecommendedPortfolioItem",
     "MarketAnalysisCache",
     "SmsTemplate",
+    "MessageLog",
 ]

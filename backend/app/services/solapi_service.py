@@ -158,6 +158,94 @@ async def send_bulk_sms(
         return {"success": False, "error": str(e)}
 
 
+async def get_kakao_templates(db: AsyncSession) -> dict:
+    """Fetch approved KakaoTalk 알림톡 templates from Solapi."""
+    api_key, api_secret, _ = await _get_solapi_keys(db)
+    if not api_key:
+        return {"error": "API Key 미설정"}
+    pf_id = settings.SOLAPI_PF_ID
+    if not pf_id:
+        return {"error": "카카오 채널 ID(SOLAPI_PF_ID)가 설정되지 않았습니다."}
+
+    auth = _make_auth_header(api_key, api_secret)
+    try:
+        async with httpx.AsyncClient(timeout=15) as client:
+            res = await client.get(
+                f"{SOLAPI_BASE}/kakao/v2/templates",
+                params={"pfId": pf_id, "status": "APPROVED", "limit": "100"},
+                headers={"Authorization": auth},
+            )
+        if res.status_code >= 400:
+            logger.error("Solapi get templates failed: %s %s", res.status_code, res.text)
+            return {"error": f"템플릿 조회 실패 ({res.status_code})"}
+        return res.json()
+    except Exception as e:
+        logger.error("Solapi get templates error: %s", e)
+        return {"error": str(e)}
+
+
+async def send_alimtalk(
+    db: AsyncSession,
+    to: str,
+    template_id: str,
+    variables: dict[str, str],
+    fallback_text: str = "",
+    sender: Optional[str] = None,
+) -> dict:
+    """Send KakaoTalk 알림톡 to a single recipient via Solapi."""
+    api_key, api_secret, default_sender = await _get_solapi_keys(db)
+    if not api_key or not api_secret:
+        return {"success": False, "error": "솔라피 API Key가 등록되지 않았습니다."}
+
+    pf_id = settings.SOLAPI_PF_ID
+    if not pf_id:
+        return {"success": False, "error": "카카오 채널 ID(SOLAPI_PF_ID)가 설정되지 않았습니다."}
+
+    from_number = (sender or default_sender).replace("-", "")
+    if not from_number:
+        return {"success": False, "error": "발신번호가 설정되지 않았습니다."}
+
+    phone = to.replace("-", "").replace(" ", "")
+    auth = _make_auth_header(api_key, api_secret)
+
+    message: dict = {
+        "to": phone,
+        "from": from_number,
+        "kakaoOptions": {
+            "pfId": pf_id,
+            "templateId": template_id,
+            "variables": variables,
+            "disableSms": False,
+        },
+    }
+    # SMS 대체 발송용 텍스트 (알림톡 실패 시)
+    if fallback_text:
+        message["text"] = fallback_text
+
+    body = {"message": message}
+
+    try:
+        async with httpx.AsyncClient(timeout=15) as client:
+            res = await client.post(
+                f"{SOLAPI_BASE}/messages/v4/send",
+                json=body,
+                headers={"Authorization": auth, "Content-Type": "application/json"},
+            )
+
+        result = res.json() if res.status_code < 500 else {"error": res.text}
+
+        if res.status_code >= 400:
+            logger.error("Solapi 알림톡 failed: %s %s", res.status_code, result)
+            return {"success": False, "status_code": res.status_code, **result}
+
+        logger.info("Solapi 알림톡 sent to %s: %s", phone, result.get("groupId", ""))
+        return {"success": True, "status_code": res.status_code, **result}
+
+    except Exception as e:
+        logger.error("Solapi 알림톡 error: %s", e)
+        return {"success": False, "error": str(e)}
+
+
 async def get_balance(db: AsyncSession) -> dict:
     """Check Solapi account balance."""
     api_key, api_secret, _ = await _get_solapi_keys(db)

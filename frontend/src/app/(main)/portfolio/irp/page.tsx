@@ -308,6 +308,7 @@ const TABS: TabItem[] = [
   { key: 'data', label: '1. 데이터 입력' },
   { key: 'template', label: '2. 데이터 확인' },
   { key: 'report', label: '3. 보고서' },
+  { key: 'history', label: '4. 내역관리' },
 ];
 
 /* ------------------------------------------------------------------ */
@@ -1392,6 +1393,31 @@ function Tab2Section({
         return;
       }
       showT2Toast('리밸런싱 제안이 저장되었습니다.');
+
+      // 내역관리 기록 저장 (포트폴리오 수정 저장)
+      try {
+        const clientObj = clients.find((c) => c.id === histClientId);
+        const acctObj = t2ClientAccounts.find((a) => a.id === histAccountId);
+        const summaryParts = t2RebalRows
+          .filter((r) => !r.isRow1 && r.rebalRatio > 0)
+          .slice(0, 5)
+          .map((r) => `${r.productName} ${r.rebalRatio.toFixed(1)}%`);
+        const summary = `[포트폴리오 수정] ${clientObj?.name ?? ''} ${accountTypeLabel(acctObj?.account_type ?? 'irp')} - ${summaryParts.join(', ')}${t2RebalRows.length > 6 ? ' 외' : ''}`;
+
+        const logForm = new FormData();
+        logForm.append('client_id', histClientId);
+        if (histAccountId) logForm.append('client_account_id', histAccountId);
+        logForm.append('message_type', 'portfolio_save');
+        logForm.append('message_summary', summary.slice(0, 200));
+        logForm.append('message_text', summary);
+        logForm.append('sent_at', new Date().toISOString());
+
+        await fetch(`${API_URL}/api/v1/message-logs`, {
+          method: 'POST',
+          headers: { ...authLib.getAuthHeader() },
+          body: logForm,
+        });
+      } catch { /* 기록 저장 실패해도 무시 */ }
     } catch {
       showT2Toast('저장 중 오류가 발생했습니다.');
     } finally {
@@ -2671,7 +2697,7 @@ export default function IRPPage() {
   const reportRef = useRef<HTMLDivElement>(null);
 
   /* ---------- global state ---------- */
-  const [activeTab, setActiveTab] = useState<'data' | 'template' | 'report'>('data');
+  const [activeTab, setActiveTab] = useState<'data' | 'template' | 'report' | 'history'>('data');
   const [clients, setClients] = useState<Client[]>([]);
   const [clientsLoading, setClientsLoading] = useState(false);
 
@@ -2708,6 +2734,8 @@ export default function IRPPage() {
   const [riskDist, setRiskDist] = useState<DistributionItem[]>([]);
 
   /* ---------- tab3 state ---------- */
+  const [tab3ClientSearch, setTab3ClientSearch] = useState('');
+  const [tab3ClientId, setTab3ClientId] = useState('');
   const [selectedAccountId, setSelectedAccountId] = useState('');
   const [reportDate, setReportDate] = useState('');
   const [reportDateList, setReportDateList] = useState<string[]>([]);
@@ -2754,6 +2782,31 @@ export default function IRPPage() {
   const [smsMessage, setSmsMessage] = useState('');
   const [smsTemplates, setSmsTemplates] = useState<Array<{ id: string; name: string; text: string }>>([]);
   const [smsTemplateName, setSmsTemplateName] = useState('');
+
+  /* ---------- 알림톡 state ---------- */
+  const [alimtalkModalOpen, setAlimtalkModalOpen] = useState(false);
+  const [alimtalkModalType, setAlimtalkModalType] = useState<'portal' | 'suggestion'>('portal');
+  const [kakaoTemplates, setKakaoTemplates] = useState<Array<{ templateId: string; name: string; content: string; buttons?: Array<{ buttonType: string; buttonName: string; linkMo?: string; linkPc?: string }> }>>([]);
+  const [kakaoTemplatesLoading, setKakaoTemplatesLoading] = useState(false);
+  const [selectedTemplateId, setSelectedTemplateId] = useState('');
+  const [alimtalkSending, setAlimtalkSending] = useState(false);
+
+  /* ---------- tab4 state ---------- */
+  const [tab4ClientSearch, setTab4ClientSearch] = useState('');
+  const [tab4ClientId, setTab4ClientId] = useState('');
+  const [tab4Logs, setTab4Logs] = useState<Array<{
+    id: string; client_id: string; client_name: string; client_account_id?: string;
+    account_type?: string; account_number?: string; securities_company?: string;
+    message_type: string; message_summary: string; message_text?: string;
+    has_image: boolean; sent_at: string; created_at: string;
+  }>>([]);
+  const [tab4LogsTotal, setTab4LogsTotal] = useState(0);
+  const [tab4LogsLoading, setTab4LogsLoading] = useState(false);
+  const [tab4FilterCompany, setTab4FilterCompany] = useState('');
+  const [tab4FilterAccount, setTab4FilterAccount] = useState('');
+  const [tab4FilterPeriod, setTab4FilterPeriod] = useState<'6m' | '1y' | 'all'>('1y');
+  const tab4HistoryRef = useRef<HTMLDivElement>(null);
+  const [tab4PdfSaving, setTab4PdfSaving] = useState(false);
 
   /* ---------- load clients and product masters on mount ---------- */
   useEffect(() => {
@@ -3831,15 +3884,134 @@ export default function IRPPage() {
   /* ---------- tab3: portal link helpers ---------- */
 
   function getReportClientId(): string {
-    const account = clients
-      .flatMap((c) => c.accounts.map((a) => ({ ...a, clientId: c.id })))
-      .find((a) => a.id === selectedAccountId);
-    return account?.clientId ?? '';
+    return tab3ClientId || '';
   }
 
   function getReportClient(): Client | undefined {
-    const clientId = getReportClientId();
-    return clients.find((c) => c.id === clientId);
+    return clients.find((c) => c.id === tab3ClientId);
+  }
+
+  /* ---------- tab3: stepped selection handlers ---------- */
+
+  function handleTab3ClientChange(clientId: string) {
+    setTab3ClientId(clientId);
+    setSelectedAccountId('');
+    setReportDateList([]);
+    setReportDate('');
+    setReportData(null);
+    setReportClientName('');
+    setModifiedWeights({});
+    setAiComment('');
+    setAiChangeComment('');
+  }
+
+  function handleTab3AccountChange(accountId: string) {
+    setSelectedAccountId(accountId);
+    setReportDate('');
+    setReportData(null);
+    setModifiedWeights({});
+    setAiComment('');
+    setAiChangeComment('');
+    // Set client name
+    const client = clients.find((c) => c.id === tab3ClientId);
+    setReportClientName(client ? clientLabel(client) : '');
+    loadReportDates(accountId);
+  }
+
+  /* ---------- tab4: handlers ---------- */
+
+  function handleTab4ClientChange(clientId: string) {
+    setTab4ClientId(clientId);
+    setTab4FilterCompany('');
+    setTab4FilterAccount('');
+    setTab4Logs([]);
+    setTab4LogsTotal(0);
+    if (clientId) loadTab4Logs(clientId, '', '', tab4FilterPeriod);
+  }
+
+  async function loadTab4Logs(
+    clientId: string,
+    accountId: string,
+    company: string,
+    period: '6m' | '1y' | 'all',
+  ) {
+    if (!clientId) return;
+    setTab4LogsLoading(true);
+    try {
+      const params = new URLSearchParams({ client_id: clientId, limit: '200' });
+      if (accountId) params.set('account_id', accountId);
+      if (company) params.set('securities_company', company);
+      if (period !== 'all') {
+        const now = new Date();
+        const from = new Date(now);
+        from.setMonth(from.getMonth() - (period === '6m' ? 6 : 12));
+        params.set('date_from', from.toISOString().slice(0, 10));
+      }
+      const res = await fetch(`${API_URL}/api/v1/message-logs?${params}`, {
+        headers: { ...authLib.getAuthHeader() },
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setTab4Logs(data.items ?? []);
+        setTab4LogsTotal(data.total ?? 0);
+      }
+    } catch { /* silent */ } finally {
+      setTab4LogsLoading(false);
+    }
+  }
+
+  async function handleTab4DownloadImage(logId: string) {
+    try {
+      const res = await fetch(`${API_URL}/api/v1/message-logs/${logId}/image`, {
+        headers: { ...authLib.getAuthHeader() },
+      });
+      if (!res.ok) { showToast('이미지를 찾을 수 없습니다.'); return; }
+      const blob = await res.blob();
+      const { saveAs } = await import('file-saver');
+      saveAs(blob, `report_${logId}.png`);
+    } catch { showToast('다운로드 실패'); }
+  }
+
+  async function handleTab4DownloadPDF() {
+    if (!tab4HistoryRef.current) return;
+    setTab4PdfSaving(true);
+    try {
+      const html2canvas = (await import('html2canvas')).default;
+      const { default: jsPDF } = await import('jspdf');
+      const canvas = await html2canvas(tab4HistoryRef.current, { scale: 2 });
+      const pdf = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
+      const pageW = pdf.internal.pageSize.getWidth();
+      const pageH = pdf.internal.pageSize.getHeight();
+      const margin = 8;
+      const contentW = pageW - margin * 2;
+      const maxContentH = pageH - margin * 2;
+      const mmPerPx = contentW / canvas.width;
+      const pageSliceH = Math.floor(maxContentH / mmPerPx);
+      let offset = 0;
+      let isFirst = true;
+      while (offset < canvas.height) {
+        const sliceH = Math.min(pageSliceH, canvas.height - offset);
+        if (sliceH <= 0) break;
+        const sliceCanvas = document.createElement('canvas');
+        sliceCanvas.width = canvas.width;
+        sliceCanvas.height = sliceH;
+        const ctx = sliceCanvas.getContext('2d');
+        if (!ctx) break;
+        ctx.drawImage(canvas, 0, offset, canvas.width, sliceH, 0, 0, canvas.width, sliceH);
+        if (!isFirst) pdf.addPage();
+        isFirst = false;
+        const imgData = sliceCanvas.toDataURL('image/png');
+        pdf.addImage(imgData, 'PNG', margin, margin, contentW, sliceH * mmPerPx);
+        offset += sliceH;
+      }
+      const { saveAs } = await import('file-saver');
+      const clientName = clients.find((c) => c.id === tab4ClientId)?.name ?? '전체';
+      saveAs(pdf.output('blob'), `발송내역_${clientName}_${new Date().toISOString().slice(0, 10)}.pdf`);
+    } catch (e) {
+      showToast(e instanceof Error ? e.message : 'PDF 다운로드 실패');
+    } finally {
+      setTab4PdfSaving(false);
+    }
   }
 
   function showToast(msg: string) {
@@ -3920,6 +4092,142 @@ export default function IRPPage() {
     } catch {
       showToast('이메일 저장 중 오류가 발생했습니다.');
       setEmailSending(false);
+    }
+  }
+
+  /* ---------- 알림톡 handlers ---------- */
+
+  async function openAlimtalkModal(linkType: 'portal' | 'suggestion') {
+    const client = getReportClient();
+    if (!client) { showToast('고객을 선택하세요.'); return; }
+    if (!client.phone) { showToast(`${client.name} 고객의 전화번호가 없습니다.`); return; }
+
+    setAlimtalkModalType(linkType);
+    setSelectedTemplateId('');
+    setAlimtalkModalOpen(true);
+
+    // 검수 통과된 템플릿 목록 조회
+    setKakaoTemplatesLoading(true);
+    try {
+      const res = await fetch(`${API_URL}/api/v1/messaging/kakao-templates`, {
+        headers: { ...authLib.getAuthHeader() },
+      });
+      if (res.ok) {
+        const data = await res.json();
+        // 솔라피 응답: { templateList: [...] } 또는 배열
+        const list = Array.isArray(data) ? data : data.templateList ?? data.templates ?? [];
+        setKakaoTemplates(list);
+        if (list.length > 0) setSelectedTemplateId(list[0].templateId);
+      } else {
+        const err = await res.json().catch(() => ({}));
+        showToast(err?.detail || '알림톡 템플릿 조회 실패');
+        setKakaoTemplates([]);
+      }
+    } catch {
+      showToast('알림톡 템플릿 조회 오류');
+      setKakaoTemplates([]);
+    } finally {
+      setKakaoTemplatesLoading(false);
+    }
+  }
+
+  function getAlimtalkPreview(): { content: string; variables: Record<string, string> } {
+    const template = kakaoTemplates.find((t) => t.templateId === selectedTemplateId);
+    if (!template) return { content: '', variables: {} };
+
+    const client = getReportClient();
+    const baseUrl = typeof window !== 'undefined' ? window.location.origin : '';
+    const portalToken = client?.portal_token ?? '';
+    const link = alimtalkModalType === 'suggestion'
+      ? `${baseUrl}/client/${portalToken}?suggest=LATEST`
+      : `${baseUrl}/client/${portalToken}`;
+
+    // 템플릿에서 변수 추출하고 자동 매핑
+    const varPattern = /#\{([^}]+)\}/g;
+    const variables: Record<string, string> = {};
+    let match;
+    while ((match = varPattern.exec(template.content)) !== null) {
+      const varName = match[0]; // e.g. "#{고객명}"
+      const key = match[1];     // e.g. "고객명"
+      if (key.includes('고객') || key.includes('이름') || key === 'name') {
+        variables[varName] = client?.name ?? '';
+      } else if (key.includes('링크') || key.includes('link') || key === 'url') {
+        variables[varName] = link;
+      } else {
+        variables[varName] = '';
+      }
+    }
+
+    // 미리보기: 변수 치환
+    let preview = template.content;
+    for (const [k, v] of Object.entries(variables)) {
+      preview = preview.replaceAll(k, v || `[${k}]`);
+    }
+
+    return { content: preview, variables };
+  }
+
+  async function handleSendAlimtalkConfirm() {
+    const clientId = getReportClientId();
+    if (!clientId || !selectedTemplateId) return;
+    const client = getReportClient();
+    if (!client?.phone) return;
+
+    const { variables } = getAlimtalkPreview();
+
+    setAlimtalkSending(true);
+    try {
+      const res = await fetch(`${API_URL}/api/v1/messaging/send-alimtalk`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...authLib.getAuthHeader() },
+        body: JSON.stringify({
+          client_id: clientId,
+          template_id: selectedTemplateId,
+          variables,
+        }),
+      });
+      if (res.ok) {
+        setAlimtalkModalOpen(false);
+        showToast(`✓ ${client.name}님에게 알림톡이 발송되었습니다.`);
+
+        // 내역관리 기록 저장
+        try {
+          const template = kakaoTemplates.find((t) => t.templateId === selectedTemplateId);
+          const logForm = new FormData();
+          logForm.append('client_id', clientId);
+          if (selectedAccountId) logForm.append('client_account_id', selectedAccountId);
+          logForm.append('message_type', alimtalkModalType === 'suggestion' ? 'alimtalk_suggestion' : 'alimtalk_portal');
+          logForm.append('message_summary', `[알림톡] ${template?.name ?? selectedTemplateId}`.slice(0, 200));
+          logForm.append('message_text', getAlimtalkPreview().content);
+          logForm.append('sent_at', new Date().toISOString());
+
+          // 변경제안일 때만 보고서 이미지 첨부
+          if (alimtalkModalType === 'suggestion' && reportRef.current) {
+            try {
+              const html2canvas = (await import('html2canvas')).default;
+              const noPrintEls = reportRef.current.querySelectorAll('[data-no-print]');
+              noPrintEls.forEach((el) => ((el as HTMLElement).style.display = 'none'));
+              const canvas = await html2canvas(reportRef.current, { scale: 1.5 });
+              noPrintEls.forEach((el) => ((el as HTMLElement).style.display = ''));
+              const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, 'image/png'));
+              if (blob) logForm.append('image', blob, `report_${clientId}.png`);
+            } catch { /* ignore */ }
+          }
+
+          await fetch(`${API_URL}/api/v1/message-logs`, {
+            method: 'POST',
+            headers: { ...authLib.getAuthHeader() },
+            body: logForm,
+          });
+        } catch { /* 기록 저장 실패 무시 */ }
+      } else {
+        const err = await res.json().catch(() => ({}));
+        showToast(err?.detail || '알림톡 발송 실패');
+      }
+    } catch {
+      showToast('알림톡 발송 중 오류가 발생했습니다.');
+    } finally {
+      setAlimtalkSending(false);
     }
   }
 
@@ -4005,8 +4313,46 @@ export default function IRPPage() {
         body: JSON.stringify({ client_id: clientId, message: smsMessage }),
       });
       if (res.ok) {
+        // 발송 기록 자동 저장
+        const logFormData = new FormData();
+        logFormData.append('client_id', clientId);
+        if (selectedAccountId) logFormData.append('client_account_id', selectedAccountId);
+        const msgType = smsModalType === 'suggestion' ? 'suggestion_link' : 'portal_link';
+        logFormData.append('message_type', msgType);
+
+        // 링크 URL 제거한 문자 내용 저장
+        const msgWithoutLink = smsMessage.replace(/https?:\/\/\S+/g, '').replace(/\n{2,}/g, '\n').trim();
+        logFormData.append('message_summary', msgWithoutLink.slice(0, 200));
+        logFormData.append('message_text', msgWithoutLink);
+        logFormData.append('sent_at', new Date().toISOString());
+
+        // 변경 제안 링크 발송 시에만 보고서 이미지 캡처
+        if (smsModalType === 'suggestion' && reportRef.current) {
+          try {
+            const html2canvas = (await import('html2canvas')).default;
+            const noPrintEls = reportRef.current.querySelectorAll('[data-no-print]');
+            noPrintEls.forEach((el) => ((el as HTMLElement).style.display = 'none'));
+            const canvas = await html2canvas(reportRef.current, { scale: 1.5 });
+            noPrintEls.forEach((el) => ((el as HTMLElement).style.display = ''));
+            const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, 'image/png'));
+            if (blob) logFormData.append('image', blob, `report_${clientId}.png`);
+          } catch { /* 이미지 캡처 실패 시 무시 */ }
+        }
+
         setSmsModalOpen(false);
         showToast(`✓ ${client.name}님에게 문자가 발송되었습니다.`);
+
+        // 로그 저장 (비동기 — UI 블로킹 없음)
+        try {
+          const logRes = await fetch(`${API_URL}/api/v1/message-logs`, {
+            method: 'POST',
+            headers: { ...authLib.getAuthHeader() },
+            body: logFormData,
+          });
+          if (!logRes.ok) {
+            console.error('발송 기록 저장 실패:', await logRes.text());
+          }
+        } catch (e) { console.error('발송 기록 저장 오류:', e); }
       } else {
         const err = await res.json().catch(() => ({}));
         showToast(err?.detail || '문자 발송 실패');
@@ -4122,6 +4468,18 @@ export default function IRPPage() {
     return account?.clientName?.includes(searchClientName) ?? false;
   });
 
+  /* Unique clients (deduplicated by name) — shared across Tab3 / Tab4 */
+  const mainUniqueClientsMap = new Map<string, { id: string; name: string; unique_code?: string; accounts: ClientAccount[] }>();
+  for (const c of clients) {
+    if (mainUniqueClientsMap.has(c.name)) {
+      const existing = mainUniqueClientsMap.get(c.name)!;
+      existing.accounts = [...existing.accounts, ...c.accounts];
+    } else {
+      mainUniqueClientsMap.set(c.name, { id: c.id, name: c.name, unique_code: c.unique_code, accounts: [...c.accounts] });
+    }
+  }
+  const mainUniqueClients = Array.from(mainUniqueClientsMap.values()).sort((a, b) => a.name.localeCompare(b.name, 'ko'));
+
   const allAccountsForReport = clients.flatMap((c) =>
     c.accounts.map((a) => ({
       accountId: a.id,
@@ -4129,6 +4487,20 @@ export default function IRPPage() {
       label: `${clientLabel(c)} - ${accountTypeLabel(a.account_type)}${a.account_number ? ` (${a.account_number})` : ''}`,
     }))
   );
+
+  /* Tab3: stepped selection derived */
+  const tab3SelectedClientName = clients.find((c) => c.id === tab3ClientId)?.name ?? '';
+  const tab3ClientAccounts: ClientAccount[] = tab3SelectedClientName
+    ? clients.filter((c) => c.name === tab3SelectedClientName).flatMap((c) => c.accounts)
+    : [];
+  const tab3SelectedAccount = tab3ClientAccounts.find((a) => a.id === selectedAccountId);
+
+  /* Tab4: derived */
+  const tab4SelectedClientName = clients.find((c) => c.id === tab4ClientId)?.name ?? '';
+  const tab4ClientAccounts: ClientAccount[] = tab4SelectedClientName
+    ? clients.filter((c) => c.name === tab4SelectedClientName).flatMap((c) => c.accounts)
+    : [];
+  const tab4SecuritiesCompanies = [...new Set(tab4ClientAccounts.map((a) => a.securities_company).filter(Boolean))] as string[];
 
   const getClientNameForSnapshot = (accountId: string): string => {
     const found = clients.flatMap((c) => c.accounts.map((a) => ({ ...a, clientName: c.name }))).find((a) => a.id === accountId);
@@ -4796,45 +5168,88 @@ export default function IRPPage() {
       {/* ===================================================== */}
       {activeTab === 'report' && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-          {/* 컨트롤 바 */}
+          {/* 컨트롤 바 — 고객검색 → 선택 → 계좌유형 → 기준일 */}
           <Card padding={16}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
-              {/* 고객/계좌 선택 */}
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8, flex: 1, minWidth: 220 }}>
-                <label style={{ fontSize: '0.8125rem', fontWeight: 600, color: '#374151', whiteSpace: 'nowrap' }}>
-                  계좌 선택
-                </label>
+            <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'flex-end' }}>
+              {/* 고객 검색 */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 5, minWidth: 140 }}>
+                <label style={{ fontSize: '0.8125rem', fontWeight: 600, color: '#374151' }}>고객 검색</label>
+                <div style={{ position: 'relative' }}>
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#9CA3AF" strokeWidth="2"
+                    style={{ position: 'absolute', left: 8, top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none' }}>
+                    <circle cx="11" cy="11" r="8" /><line x1="21" y1="21" x2="16.65" y2="16.65" />
+                  </svg>
+                  <input
+                    type="text"
+                    placeholder="이름/고유번호"
+                    value={tab3ClientSearch}
+                    onChange={(e) => setTab3ClientSearch(e.target.value)}
+                    style={{ width: '100%', padding: '8px 10px 8px 28px', fontSize: '0.8125rem', border: '1px solid #E1E5EB', borderRadius: 8, outline: 'none', color: '#1A1A2E', boxSizing: 'border-box' }}
+                  />
+                </div>
+              </div>
+
+              {/* 고객 선택 */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 5, minWidth: 160, flex: 1 }}>
+                <label style={{ fontSize: '0.8125rem', fontWeight: 600, color: '#374151' }}>고객 선택</label>
+                <select
+                  value={tab3ClientId}
+                  onChange={(e) => { handleTab3ClientChange(e.target.value); setTab3ClientSearch(''); }}
+                  style={{ padding: '8px 10px', fontSize: '0.8125rem', border: '1px solid #E1E5EB', borderRadius: 8, outline: 'none', color: tab3ClientId ? '#1A1A2E' : '#9CA3AF', backgroundColor: '#fff', cursor: 'pointer' }}
+                >
+                  <option value="">-- 고객 선택 --</option>
+                  {mainUniqueClients
+                    .filter((c) => {
+                      if (!tab3ClientSearch.trim()) return true;
+                      const q = tab3ClientSearch.trim().toLowerCase();
+                      return c.name.toLowerCase().includes(q) || (c.unique_code ?? '').includes(q);
+                    })
+                    .map((c) => (
+                      <option key={c.name} value={c.id}>{clientLabel(c)}</option>
+                    ))}
+                </select>
+              </div>
+
+              {/* 계좌 유형 */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 5, minWidth: 120 }}>
+                <label style={{ fontSize: '0.8125rem', fontWeight: 600, color: '#374151' }}>계좌 유형</label>
                 <select
                   value={selectedAccountId}
-                  onChange={(e) => {
-                    const val = e.target.value;
-                    setSelectedAccountId(val);
-                    const found = allAccountsForReport.find((a) => a.accountId === val);
-                    setReportClientName(found?.clientName ?? '');
-                    loadReportDates(val);
-                  }}
-                  style={{
-                    flex: 1,
-                    padding: '7px 10px',
-                    fontSize: '0.8125rem',
-                    border: '1px solid #E1E5EB',
-                    borderRadius: 8,
-                    outline: 'none',
-                    color: '#1A1A2E',
-                    cursor: 'pointer',
-                  }}
+                  onChange={(e) => handleTab3AccountChange(e.target.value)}
+                  disabled={!tab3ClientId}
+                  style={{ padding: '8px 10px', fontSize: '0.8125rem', border: '1px solid #E1E5EB', borderRadius: 8, outline: 'none', color: selectedAccountId ? '#1A1A2E' : '#9CA3AF', backgroundColor: tab3ClientId ? '#fff' : '#F9FAFB', cursor: tab3ClientId ? 'pointer' : 'not-allowed', opacity: tab3ClientId ? 1 : 0.6 }}
                 >
-                  <option value="">-- 계좌 선택 --</option>
-                  {allAccountsForReport.map((a) => (
-                    <option key={a.accountId} value={a.accountId}>
-                      {a.label}
+                  <option value="">-- 유형 선택 --</option>
+                  {tab3ClientAccounts.map((a) => (
+                    <option key={a.id} value={a.id}>
+                      {accountTypeLabel(a.account_type)}
                     </option>
                   ))}
                 </select>
               </div>
 
-              {/* 날짜 선택 (저장된 스냅샷 날짜) */}
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              {/* 증권사 + 계좌번호 (read-only) */}
+              {tab3SelectedAccount && (
+                <>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 5, minWidth: 100 }}>
+                    <label style={{ fontSize: '0.8125rem', fontWeight: 600, color: '#374151' }}>증권사</label>
+                    <div style={{ padding: '8px 10px', fontSize: '0.8125rem', border: '1px solid #E1E5EB', borderRadius: 8, backgroundColor: '#F9FAFB', color: '#374151' }}>
+                      {tab3SelectedAccount.securities_company || '-'}
+                    </div>
+                  </div>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 5, minWidth: 120 }}>
+                    <label style={{ fontSize: '0.8125rem', fontWeight: 600, color: '#374151' }}>계좌번호</label>
+                    <div style={{ padding: '8px 10px', fontSize: '0.8125rem', border: '1px solid #E1E5EB', borderRadius: 8, backgroundColor: '#F9FAFB', color: '#374151' }}>
+                      {tab3SelectedAccount.account_number || '-'}
+                    </div>
+                  </div>
+                </>
+              )}
+            </div>
+
+            {/* Row 2: 기준일 + 보고서 생성 */}
+            {selectedAccountId && (
+              <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginTop: 12, paddingTop: 12, borderTop: '1px solid #F3F4F6' }}>
                 <label style={{ fontSize: '0.8125rem', fontWeight: 600, color: '#374151', whiteSpace: 'nowrap' }}>
                   기준일
                 </label>
@@ -4854,25 +5269,25 @@ export default function IRPPage() {
                   }}
                 >
                   {reportDateList.length === 0 ? (
-                    <option value="">{reportDateLoading ? '로딩 중...' : '계좌를 선택하세요'}</option>
+                    <option value="">{reportDateLoading ? '로딩 중...' : '날짜를 선택하세요'}</option>
                   ) : (
                     reportDateList.map((d) => (
                       <option key={d} value={d}>{d}</option>
                     ))
                   )}
                 </select>
-              </div>
 
-              <Button
-                variant="primary"
-                size="sm"
-                loading={reportLoading}
-                onClick={loadReport}
-                disabled={!selectedAccountId || !reportDate}
-              >
-                보고서 생성
-              </Button>
-            </div>
+                <Button
+                  variant="primary"
+                  size="sm"
+                  loading={reportLoading}
+                  onClick={loadReport}
+                  disabled={!selectedAccountId || !reportDate}
+                >
+                  보고서 생성
+                </Button>
+              </div>
+            )}
           </Card>
 
           {/* 고객 링크 발송 섹션 */}
@@ -4911,6 +5326,10 @@ export default function IRPPage() {
                       style={{ ...btnBase, color: '#fff', backgroundColor: smsSending ? '#9CA3AF' : '#059669', border: 'none' }}>
                       {smsSending ? '발송 중...' : '문자 발송'}
                     </button>
+                    <button disabled={alimtalkSending} onClick={() => openAlimtalkModal('portal')}
+                      style={{ ...btnBase, color: '#92400E', backgroundColor: alimtalkSending ? '#E5E7EB' : '#FEF3C7', border: '1px solid #FCD34D' }}>
+                      {alimtalkSending ? '발송 중...' : '알림톡 발송'}
+                    </button>
                   </div>
                 </div>
 
@@ -4940,6 +5359,10 @@ export default function IRPPage() {
                       onClick={() => openSmsModal('suggestion')}
                       style={{ ...btnBase, color: '#fff', backgroundColor: smsSending ? '#9CA3AF' : '#059669', border: 'none' }}>
                       {smsSending ? '발송 중...' : '문자 발송'}
+                    </button>
+                    <button disabled={alimtalkSending} onClick={() => openAlimtalkModal('suggestion')}
+                      style={{ ...btnBase, color: '#92400E', backgroundColor: alimtalkSending ? '#E5E7EB' : '#FEF3C7', border: '1px solid #FCD34D' }}>
+                      {alimtalkSending ? '발송 중...' : '알림톡 발송'}
                     </button>
                     <span style={{ fontSize: '0.5625rem', color: '#9CA3AF' }}>* 유효 7일</span>
                   </div>
@@ -5081,6 +5504,385 @@ export default function IRPPage() {
             managerNote={managerNote}
             onManagerNoteChange={setManagerNote}
           />
+        </div>
+      )}
+
+      {/* ===================================================== */}
+      {/* TAB 4: 내역관리                                        */}
+      {/* ===================================================== */}
+      {activeTab === 'history' && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+          {/* 고객 선택 + 필터 */}
+          <Card padding={16}>
+            <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'flex-end' }}>
+              {/* 고객 검색 */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 5, minWidth: 140 }}>
+                <label style={{ fontSize: '0.8125rem', fontWeight: 600, color: '#374151' }}>고객 검색</label>
+                <div style={{ position: 'relative' }}>
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#9CA3AF" strokeWidth="2"
+                    style={{ position: 'absolute', left: 8, top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none' }}>
+                    <circle cx="11" cy="11" r="8" /><line x1="21" y1="21" x2="16.65" y2="16.65" />
+                  </svg>
+                  <input
+                    type="text" placeholder="이름/고유번호"
+                    value={tab4ClientSearch}
+                    onChange={(e) => setTab4ClientSearch(e.target.value)}
+                    style={{ width: '100%', padding: '8px 10px 8px 28px', fontSize: '0.8125rem', border: '1px solid #E1E5EB', borderRadius: 8, outline: 'none', color: '#1A1A2E', boxSizing: 'border-box' }}
+                  />
+                </div>
+              </div>
+
+              {/* 고객 선택 */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 5, minWidth: 160, flex: 1 }}>
+                <label style={{ fontSize: '0.8125rem', fontWeight: 600, color: '#374151' }}>고객 선택</label>
+                <select
+                  value={tab4ClientId}
+                  onChange={(e) => { handleTab4ClientChange(e.target.value); setTab4ClientSearch(''); }}
+                  style={{ padding: '8px 10px', fontSize: '0.8125rem', border: '1px solid #E1E5EB', borderRadius: 8, outline: 'none', color: tab4ClientId ? '#1A1A2E' : '#9CA3AF', backgroundColor: '#fff', cursor: 'pointer' }}
+                >
+                  <option value="">-- 고객 선택 --</option>
+                  {mainUniqueClients
+                    .filter((c) => {
+                      if (!tab4ClientSearch.trim()) return true;
+                      const q = tab4ClientSearch.trim().toLowerCase();
+                      return c.name.toLowerCase().includes(q) || (c.unique_code ?? '').includes(q);
+                    })
+                    .map((c) => (
+                      <option key={c.name} value={c.id}>{clientLabel(c)}</option>
+                    ))}
+                </select>
+              </div>
+
+              {/* 증권사 필터 */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 5, minWidth: 110 }}>
+                <label style={{ fontSize: '0.8125rem', fontWeight: 600, color: '#374151' }}>증권사</label>
+                <select
+                  value={tab4FilterCompany}
+                  onChange={(e) => {
+                    const v = e.target.value;
+                    setTab4FilterCompany(v);
+                    loadTab4Logs(tab4ClientId, tab4FilterAccount, v, tab4FilterPeriod);
+                  }}
+                  disabled={!tab4ClientId}
+                  style={{ padding: '8px 10px', fontSize: '0.8125rem', border: '1px solid #E1E5EB', borderRadius: 8, outline: 'none', color: tab4FilterCompany ? '#1A1A2E' : '#9CA3AF', backgroundColor: tab4ClientId ? '#fff' : '#F9FAFB', cursor: tab4ClientId ? 'pointer' : 'not-allowed' }}
+                >
+                  <option value="">전체</option>
+                  {tab4SecuritiesCompanies.map((c) => (
+                    <option key={c} value={c}>{c}</option>
+                  ))}
+                </select>
+              </div>
+
+              {/* 계좌 필터 */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 5, minWidth: 120 }}>
+                <label style={{ fontSize: '0.8125rem', fontWeight: 600, color: '#374151' }}>계좌</label>
+                <select
+                  value={tab4FilterAccount}
+                  onChange={(e) => {
+                    const v = e.target.value;
+                    setTab4FilterAccount(v);
+                    loadTab4Logs(tab4ClientId, v, tab4FilterCompany, tab4FilterPeriod);
+                  }}
+                  disabled={!tab4ClientId}
+                  style={{ padding: '8px 10px', fontSize: '0.8125rem', border: '1px solid #E1E5EB', borderRadius: 8, outline: 'none', color: tab4FilterAccount ? '#1A1A2E' : '#9CA3AF', backgroundColor: tab4ClientId ? '#fff' : '#F9FAFB', cursor: tab4ClientId ? 'pointer' : 'not-allowed' }}
+                >
+                  <option value="">전체</option>
+                  {tab4ClientAccounts.map((a) => (
+                    <option key={a.id} value={a.id}>
+                      {accountTypeLabel(a.account_type)}{a.account_number ? ` (${a.account_number})` : ''}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {/* 기간 필터 */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 5, minWidth: 100 }}>
+                <label style={{ fontSize: '0.8125rem', fontWeight: 600, color: '#374151' }}>기간</label>
+                <select
+                  value={tab4FilterPeriod}
+                  onChange={(e) => {
+                    const v = e.target.value as '6m' | '1y' | 'all';
+                    setTab4FilterPeriod(v);
+                    loadTab4Logs(tab4ClientId, tab4FilterAccount, tab4FilterCompany, v);
+                  }}
+                  disabled={!tab4ClientId}
+                  style={{ padding: '8px 10px', fontSize: '0.8125rem', border: '1px solid #E1E5EB', borderRadius: 8, outline: 'none', color: '#1A1A2E', backgroundColor: tab4ClientId ? '#fff' : '#F9FAFB', cursor: tab4ClientId ? 'pointer' : 'not-allowed' }}
+                >
+                  <option value="6m">6개월</option>
+                  <option value="1y">1년</option>
+                  <option value="all">전체</option>
+                </select>
+              </div>
+            </div>
+          </Card>
+
+          {/* 고객 기본정보 헤더 */}
+          {tab4ClientId && tab4ClientAccounts.length > 0 && (
+            <Card padding={16}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
+                <div style={{ width: 3, height: 18, borderRadius: 2, backgroundColor: '#1E3A5F', flexShrink: 0 }} />
+                <span style={{ fontSize: '0.9375rem', fontWeight: 700, color: '#1A1A2E' }}>
+                  {clients.find((c) => c.id === tab4ClientId)?.name ?? ''} 고객 정보
+                </span>
+              </div>
+              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                {tab4ClientAccounts.map((a) => (
+                  <div key={a.id} style={{
+                    display: 'flex', gap: 12, padding: '10px 16px', backgroundColor: '#F5F7FA',
+                    borderRadius: 10, border: '1px solid #E1E5EB', fontSize: '0.8125rem',
+                  }}>
+                    <span style={{ fontWeight: 600, color: '#1E3A5F' }}>{a.securities_company || '-'}</span>
+                    <span style={{ color: '#6B7280' }}>|</span>
+                    <span style={{ color: '#374151' }}>{accountTypeLabel(a.account_type)}</span>
+                    <span style={{ color: '#6B7280' }}>|</span>
+                    <span style={{ fontFamily: 'monospace', color: '#374151' }}>{a.account_number || '-'}</span>
+                  </div>
+                ))}
+              </div>
+            </Card>
+          )}
+
+          {/* 발송기록 테이블 + PDF 다운로드 */}
+          {tab4ClientId && (
+            <Card padding={0}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '14px 16px', borderBottom: '1px solid #E1E5EB' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <div style={{ width: 3, height: 18, borderRadius: 2, backgroundColor: '#1E3A5F', flexShrink: 0 }} />
+                  <span style={{ fontSize: '0.9375rem', fontWeight: 700, color: '#1A1A2E' }}>
+                    발송 기록 ({tab4LogsTotal}건)
+                  </span>
+                  {tab4LogsLoading && (
+                    <span style={{ display: 'inline-block', width: 14, height: 14, border: '2px solid #1E3A5F', borderTopColor: 'transparent', borderRadius: '50%', animation: 'spin 0.7s linear infinite' }} />
+                  )}
+                </div>
+                <button
+                  onClick={handleTab4DownloadPDF}
+                  disabled={tab4Logs.length === 0 || tab4PdfSaving}
+                  style={{
+                    display: 'inline-flex', alignItems: 'center', gap: 6,
+                    padding: '7px 14px', fontSize: '0.8125rem', fontWeight: 600,
+                    color: tab4Logs.length > 0 ? '#1E3A5F' : '#9CA3AF',
+                    backgroundColor: tab4Logs.length > 0 ? '#EEF2F7' : '#F9FAFB',
+                    border: '1px solid #E1E5EB', borderRadius: 8, cursor: tab4Logs.length > 0 ? 'pointer' : 'not-allowed',
+                  }}
+                >
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+                    <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+                    <polyline points="14 2 14 8 20 8" />
+                    <line x1="12" y1="18" x2="12" y2="12" />
+                    <polyline points="9 15 12 18 15 15" />
+                  </svg>
+                  {tab4PdfSaving ? '저장 중...' : 'PDF 다운로드'}
+                </button>
+              </div>
+
+              <div ref={tab4HistoryRef}>
+                {tab4Logs.length === 0 ? (
+                  <div style={{ padding: 40, textAlign: 'center', color: '#9CA3AF', fontSize: '0.875rem' }}>
+                    {tab4LogsLoading ? '로딩 중...' : '발송 기록이 없습니다.'}
+                  </div>
+                ) : (
+                  <div style={{ overflowX: 'auto' }}>
+                    <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.8125rem' }}>
+                      <thead>
+                        <tr style={{ backgroundColor: '#F5F7FA', borderBottom: '2px solid #E1E5EB' }}>
+                          <th style={{ padding: '10px 12px', textAlign: 'center', fontWeight: 700, color: '#374151', whiteSpace: 'nowrap', width: 50 }}>No</th>
+                          <th style={{ padding: '10px 12px', textAlign: 'center', fontWeight: 700, color: '#374151', whiteSpace: 'nowrap', width: 110 }}>발송일</th>
+                          <th style={{ padding: '10px 12px', textAlign: 'center', fontWeight: 700, color: '#374151', whiteSpace: 'nowrap', width: 80 }}>유형</th>
+                          <th style={{ padding: '10px 12px', textAlign: 'center', fontWeight: 700, color: '#374151', whiteSpace: 'nowrap', width: 100 }}>계좌</th>
+                          <th style={{ padding: '10px 12px', textAlign: 'left', fontWeight: 700, color: '#374151' }}>발송 내용 요약</th>
+                          <th style={{ padding: '10px 12px', textAlign: 'center', fontWeight: 700, color: '#374151', whiteSpace: 'nowrap', width: 80 }}>보고서</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {tab4Logs.map((log, idx) => (
+                          <tr key={log.id} style={{ borderBottom: '1px solid #F3F4F6' }}
+                            onMouseEnter={(e) => { (e.currentTarget).style.backgroundColor = '#FAFBFC'; }}
+                            onMouseLeave={(e) => { (e.currentTarget).style.backgroundColor = 'transparent'; }}>
+                            <td style={{ padding: '10px 12px', textAlign: 'center', color: '#6B7280' }}>{idx + 1}</td>
+                            <td style={{ padding: '10px 12px', textAlign: 'center', color: '#1A1A2E', whiteSpace: 'nowrap' }}>
+                              {new Date(log.sent_at).toLocaleDateString('ko-KR')}
+                            </td>
+                            <td style={{ padding: '10px 12px', textAlign: 'center' }}>
+                              <span style={{
+                                display: 'inline-block', padding: '2px 8px', borderRadius: 4, fontSize: '0.75rem', fontWeight: 600,
+                                backgroundColor:
+                                  log.message_type === 'portfolio_save' ? '#EDE9FE'
+                                  : log.message_type.includes('suggestion') ? '#FFFBEB'
+                                  : log.message_type.includes('alimtalk') ? '#FEF3C7'
+                                  : '#ECFDF5',
+                                color:
+                                  log.message_type === 'portfolio_save' ? '#6D28D9'
+                                  : log.message_type.includes('suggestion') ? '#92400E'
+                                  : log.message_type.includes('alimtalk') ? '#92400E'
+                                  : '#059669',
+                              }}>
+                                {log.message_type === 'portfolio_save' ? '수정저장'
+                                  : log.message_type === 'suggestion_link' ? '변경제안(SMS)'
+                                  : log.message_type === 'alimtalk_suggestion' ? '변경제안(톡)'
+                                  : log.message_type === 'alimtalk_portal' ? '상시조회(톡)'
+                                  : '상시조회(SMS)'}
+                              </span>
+                            </td>
+                            <td style={{ padding: '10px 12px', textAlign: 'center', fontSize: '0.75rem', color: '#6B7280' }}>
+                              {log.account_type ? accountTypeLabel(log.account_type) : '-'}
+                            </td>
+                            <td style={{ padding: '10px 12px', textAlign: 'left', color: '#374151', maxWidth: 300, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                              {log.message_summary}
+                            </td>
+                            <td style={{ padding: '10px 12px', textAlign: 'center' }}>
+                              {log.has_image ? (
+                                <button
+                                  onClick={() => handleTab4DownloadImage(log.id)}
+                                  style={{
+                                    display: 'inline-flex', alignItems: 'center', gap: 4,
+                                    padding: '4px 10px', fontSize: '0.75rem', fontWeight: 600,
+                                    color: '#1E3A5F', backgroundColor: '#EEF2F7',
+                                    border: '1px solid #D1D9E6', borderRadius: 6, cursor: 'pointer',
+                                  }}
+                                >
+                                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+                                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                                    <polyline points="7 10 12 15 17 10" />
+                                    <line x1="12" y1="15" x2="12" y2="3" />
+                                  </svg>
+                                  다운
+                                </button>
+                              ) : (
+                                <span style={{ color: '#D1D5DB', fontSize: '0.75rem' }}>-</span>
+                              )}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
+            </Card>
+          )}
+
+          {/* 안내 */}
+          {!tab4ClientId && (
+            <div style={{
+              padding: 48, textAlign: 'center', backgroundColor: '#F9FAFB',
+              borderRadius: 14, border: '1px solid #E5E7EB', color: '#9CA3AF', fontSize: '0.875rem',
+            }}>
+              고객을 선택하면 발송 내역을 확인할 수 있습니다.
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* 알림톡 발송 모달 */}
+      {alimtalkModalOpen && (
+        <div style={{ position: 'fixed', inset: 0, zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(0,0,0,0.45)' }}
+          onClick={(e) => { if (e.target === e.currentTarget) setAlimtalkModalOpen(false); }}>
+          <div style={{ backgroundColor: '#fff', borderRadius: 14, padding: 24, width: '100%', maxWidth: 480, maxHeight: '85vh', overflowY: 'auto', boxShadow: '0 20px 60px rgba(0,0,0,0.2)' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+              <h3 style={{ margin: 0, fontSize: '1rem', fontWeight: 700, color: '#1A1A2E' }}>
+                알림톡 발송 {alimtalkModalType === 'suggestion' ? '(변경 제안)' : '(포트폴리오 조회)'}
+              </h3>
+              <button onClick={() => setAlimtalkModalOpen(false)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#9CA3AF', padding: 4 }}>
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+              </button>
+            </div>
+
+            {/* 수신자 정보 */}
+            <div style={{ padding: '10px 14px', backgroundColor: '#F5F7FA', borderRadius: 8, marginBottom: 16, fontSize: '0.8125rem' }}>
+              <span style={{ color: '#6B7280' }}>수신: </span>
+              <span style={{ fontWeight: 600, color: '#1A1A2E' }}>{getReportClient()?.name}</span>
+              <span style={{ color: '#9CA3AF', marginLeft: 8 }}>{getReportClient()?.phone}</span>
+            </div>
+
+            {/* 템플릿 목록 */}
+            <div style={{ marginBottom: 16 }}>
+              <label style={{ display: 'block', fontSize: '0.8125rem', fontWeight: 600, color: '#374151', marginBottom: 8 }}>
+                알림톡 템플릿 선택
+              </label>
+              {kakaoTemplatesLoading ? (
+                <div style={{ padding: 20, textAlign: 'center', color: '#9CA3AF', fontSize: '0.8125rem' }}>
+                  <span style={{ display: 'inline-block', width: 14, height: 14, border: '2px solid #1E3A5F', borderTopColor: 'transparent', borderRadius: '50%', animation: 'spin 0.7s linear infinite', marginRight: 6 }} />
+                  템플릿 로딩 중...
+                </div>
+              ) : kakaoTemplates.length === 0 ? (
+                <div style={{ padding: 20, textAlign: 'center', backgroundColor: '#FEF2F2', borderRadius: 8, fontSize: '0.8125rem', color: '#DC2626' }}>
+                  등록된 알림톡 템플릿이 없습니다.<br />
+                  <span style={{ fontSize: '0.75rem', color: '#9CA3AF' }}>솔라피 콘솔에서 카카오 채널 연결 및 템플릿을 등록해주세요.</span>
+                </div>
+              ) : (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                  {kakaoTemplates.map((t) => (
+                    <button
+                      key={t.templateId}
+                      onClick={() => setSelectedTemplateId(t.templateId)}
+                      style={{
+                        display: 'block', width: '100%', textAlign: 'left',
+                        padding: '12px 14px', borderRadius: 10, cursor: 'pointer',
+                        border: selectedTemplateId === t.templateId ? '2px solid #F7C948' : '1px solid #E1E5EB',
+                        backgroundColor: selectedTemplateId === t.templateId ? '#FFFBEB' : '#fff',
+                        transition: 'all 0.15s',
+                      }}
+                    >
+                      <div style={{ fontSize: '0.8125rem', fontWeight: 600, color: '#1A1A2E', marginBottom: 4 }}>
+                        {t.name}
+                      </div>
+                      <div style={{ fontSize: '0.75rem', color: '#6B7280', lineHeight: 1.5, whiteSpace: 'pre-wrap' }}>
+                        {t.content.length > 120 ? t.content.slice(0, 120) + '...' : t.content}
+                      </div>
+                      {t.buttons && t.buttons.length > 0 && (
+                        <div style={{ display: 'flex', gap: 4, marginTop: 6 }}>
+                          {t.buttons.map((b, i) => (
+                            <span key={i} style={{ display: 'inline-block', padding: '2px 8px', fontSize: '0.6875rem', fontWeight: 600, backgroundColor: '#EEF2F7', color: '#1E3A5F', borderRadius: 4 }}>
+                              {b.buttonName}
+                            </span>
+                          ))}
+                        </div>
+                      )}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* 미리보기 */}
+            {selectedTemplateId && (() => {
+              const { content } = getAlimtalkPreview();
+              return (
+                <div style={{ marginBottom: 16 }}>
+                  <label style={{ display: 'block', fontSize: '0.8125rem', fontWeight: 600, color: '#374151', marginBottom: 6 }}>
+                    발송 미리보기
+                  </label>
+                  <div style={{
+                    padding: '14px 16px', backgroundColor: '#FEF9E7', border: '1px solid #FCD34D',
+                    borderRadius: 10, fontSize: '0.8125rem', color: '#374151', lineHeight: 1.6, whiteSpace: 'pre-wrap',
+                  }}>
+                    {content}
+                  </div>
+                  <p style={{ fontSize: '0.6875rem', color: '#9CA3AF', marginTop: 4 }}>
+                    * 알림톡 발송 실패 시 SMS로 자동 대체 발송됩니다.
+                  </p>
+                </div>
+              );
+            })()}
+
+            {/* 발송 버튼 */}
+            <button
+              onClick={handleSendAlimtalkConfirm}
+              disabled={alimtalkSending || !selectedTemplateId}
+              style={{
+                width: '100%', padding: '12px 0', fontSize: '0.875rem', fontWeight: 700,
+                color: '#fff', backgroundColor: alimtalkSending || !selectedTemplateId ? '#D1D5DB' : '#F59E0B',
+                border: 'none', borderRadius: 10, cursor: alimtalkSending || !selectedTemplateId ? 'not-allowed' : 'pointer',
+                display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
+              }}
+            >
+              {alimtalkSending && (
+                <span style={{ display: 'inline-block', width: 14, height: 14, border: '2px solid #fff', borderTopColor: 'transparent', borderRadius: '50%', animation: 'spin 0.7s linear infinite' }} />
+              )}
+              {alimtalkSending ? '발송 중...' : '알림톡 발송'}
+            </button>
+          </div>
         </div>
       )}
 

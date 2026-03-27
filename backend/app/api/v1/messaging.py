@@ -135,6 +135,53 @@ async def send_bulk_sms(
     }
 
 
+# --- 카카오 알림톡 ---
+
+class SendAlimtalkRequest(BaseModel):
+    """카카오 알림톡 발송."""
+    client_id: str
+    template_id: str
+    variables: dict[str, str]  # e.g. {"#{고객명}": "홍길동", "#{링크}": "https://..."}
+    fallback_text: str = ""    # SMS 대체 발송 텍스트
+
+
+@router.get("/kakao-templates")
+async def get_kakao_templates(
+    current_user=Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """검수 통과된 카카오 알림톡 템플릿 목록 조회."""
+    result = await solapi_service.get_kakao_templates(db)
+    if "error" in result:
+        raise HTTPException(400, result["error"])
+    return result
+
+
+@router.post("/send-alimtalk")
+async def send_alimtalk(
+    body: SendAlimtalkRequest,
+    current_user=Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """고객에게 카카오 알림톡 발송."""
+    client = await _get_client(db, current_user.id, body.client_id)
+    if not client.phone:
+        raise HTTPException(400, f"'{client.name}' 고객의 전화번호가 없습니다.")
+
+    result = await solapi_service.send_alimtalk(
+        db=db,
+        to=client.phone,
+        template_id=body.template_id,
+        variables=body.variables,
+        fallback_text=body.fallback_text,
+    )
+
+    if not result.get("success"):
+        raise HTTPException(500, f"알림톡 발송 실패: {result.get('error', '알 수 없는 오류')}")
+
+    return {"success": True, "client_name": client.name}
+
+
 @router.get("/balance")
 async def check_balance(
     current_user=Depends(get_current_user),

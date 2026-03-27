@@ -22,6 +22,7 @@ class Settings(BaseSettings):
     SOLAPI_API_KEY: str = ""
     SOLAPI_API_SECRET: str = ""
     SOLAPI_SENDER: str = ""  # 발신번호 (등록 후 입력)
+    SOLAPI_PF_ID: str = ""   # 카카오 비즈니스 채널 ID (예: @channelname)
 
     @computed_field
     @property
