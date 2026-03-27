@@ -1298,11 +1298,11 @@ const ReportView = forwardRef<HTMLDivElement, ReportViewProps>(
             totalEval={totalEval}
             modifiedWeights={modifiedWeights}
             onWeightChange={() => {}}
-            thStyle={thStyle}
-            thLeftStyle={thLeftStyle}
-            tdStyle={tdStyle}
-            tdLeftStyle={{ ...tdLeftStyle, fontSize: '0.75rem' }}
-            totalRowStyle={totalRowStyle}
+            thStyle={{ ...thStyle, padding: '5px 8px', fontSize: '0.6875rem' }}
+            thLeftStyle={{ ...thLeftStyle, padding: '5px 8px', fontSize: '0.6875rem' }}
+            tdStyle={{ ...tdStyle, padding: '4px 8px', fontSize: '0.75rem' }}
+            tdLeftStyle={{ ...tdLeftStyle, padding: '4px 8px', fontSize: '0.6875rem' }}
+            totalRowStyle={{ ...totalRowStyle, padding: '4px 8px', fontSize: '0.75rem' }}
             readOnly
           />
         )}
