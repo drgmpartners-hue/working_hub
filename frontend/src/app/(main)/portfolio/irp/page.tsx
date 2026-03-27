@@ -236,7 +236,7 @@ async function getClientAccountId(row: ClientRowData): Promise<string> {
       if (match) return match.id;
     }
   }
-  throw new Error('계좌 정보가 없습니다. 고객정보 관리에서 계좌를 먼저 등록하세요.');
+  throw new Error('계좌 정보가 없습니다. 계좌정보 관리에서 계좌를 먼저 등록하세요.');
 }
 
 /* ------------------------------------------------------------------ */
@@ -2884,7 +2884,7 @@ export default function IRPPage() {
     // 고객 선택 여부 체크
     for (const row of validRows) {
       if (!row.clientId) {
-        alert('고객을 먼저 선택하세요. "고객정보 관리" 버튼에서 고객을 등록하거나 드롭다운에서 선택해 주세요.');
+        alert('고객을 먼저 선택하세요. "계좌정보 관리" 버튼에서 고객을 등록하거나 드롭다운에서 선택해 주세요.');
         return;
       }
     }
@@ -4633,9 +4633,9 @@ export default function IRPPage() {
                     <path d="M23 21v-2a4 4 0 0 0-3-3.87" />
                     <path d="M16 3.13a4 4 0 0 1 0 7.75" />
                   </svg>
-                  고객정보 관리
+                  계좌정보 관리
                 </button>
-                {/* 고객 추가 버튼은 고객정보 관리 팝업에서 처리 */}
+                {/* 고객 추가 버튼은 계좌정보 관리 팝업에서 처리 */}
               </div>
             </div>
           </Card>
@@ -4670,7 +4670,7 @@ export default function IRPPage() {
                 borderRadius: 12,
               }}
             >
-              "고객정보 관리"에서 고객을 등록한 후, 고객을 선택하고 이미지를 붙여넣으세요.
+              "계좌정보 관리"에서 고객을 등록한 후, 고객을 선택하고 이미지를 붙여넣으세요.
             </div>
           )}
 

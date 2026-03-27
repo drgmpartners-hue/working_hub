@@ -20,6 +20,7 @@ from app.api.v1 import messaging as messaging_router
 from app.api.v1 import recommended_portfolio as recommended_portfolio_router
 from app.api.v1 import sms_templates as sms_templates_router
 from app.api.v1 import message_logs as message_logs_router
+from app.api.v1 import field_options as field_options_router
 
 app = FastAPI(title="API", version="0.1.0")
 
@@ -55,6 +56,7 @@ app.include_router(messaging_router.router, prefix="/api/v1")
 app.include_router(recommended_portfolio_router.router, prefix="/api/v1")
 app.include_router(sms_templates_router.router, prefix="/api/v1")
 app.include_router(message_logs_router.router, prefix="/api/v1")
+app.include_router(field_options_router.router, prefix="/api/v1")
 
 
 @app.exception_handler(Exception)

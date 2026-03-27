@@ -323,6 +323,7 @@ async def create_account(
         body.account_type,
         body.account_number,
         body.securities_company,
+        body.representative,
         body.monthly_payment,
     )
 

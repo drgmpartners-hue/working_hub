@@ -60,6 +60,7 @@ class ClientAccount(Base):
     account_type: Mapped[str] = mapped_column(String(20), nullable=False)  # 'irp', 'pension1', 'pension2'
     account_number: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
     securities_company: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+    representative: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)  # 투권인
     monthly_payment: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime, server_default=func.now(), nullable=False

@@ -153,6 +153,7 @@ async def create_account(
     account_type: str,
     account_number: Optional[str] = None,
     securities_company: Optional[str] = None,
+    representative: Optional[str] = None,
     monthly_payment: Optional[int] = None,
 ) -> ClientAccount:
     account = ClientAccount(
@@ -161,6 +162,7 @@ async def create_account(
         account_type=account_type,
         account_number=account_number,
         securities_company=securities_company,
+        representative=representative,
         monthly_payment=monthly_payment,
     )
     db.add(account)

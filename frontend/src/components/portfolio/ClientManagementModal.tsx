@@ -5,27 +5,16 @@ import { API_URL } from '@/lib/api-url';
 import { authLib } from '@/lib/auth';
 
 /* ------------------------------------------------------------------ */
-/*  Constants                                                           */
-/* ------------------------------------------------------------------ */
-
-const ACCOUNT_TYPE_OPTIONS = [
-  { value: 'irp', label: 'IRP' },
-  { value: 'pension', label: '연금저축' },
-  { value: 'pension_saving', label: '연금저축(적립)' },
-  { value: 'pension_hold', label: '연금저축(거치)' },
-  { value: 'retirement', label: '퇴직연금' },
-];
-
-const SECURITIES_OPTIONS = [
-  { value: 'nh', label: 'NH투자증권' },
-  { value: 'samsung', label: '삼성증권' },
-  { value: 'hankook', label: '한국투자증권' },
-  { value: 'hana', label: '하나증권' },
-];
-
-/* ------------------------------------------------------------------ */
 /*  Types                                                               */
 /* ------------------------------------------------------------------ */
+
+interface FieldOption {
+  id: string;
+  field_name: string;
+  value: string;
+  label: string;
+  sort_order: number;
+}
 
 interface ClientAccount {
   id: string;
@@ -33,6 +22,7 @@ interface ClientAccount {
   account_type: string;
   account_number?: string;
   securities_company?: string;
+  representative?: string;
 }
 
 interface Client {
@@ -42,34 +32,32 @@ interface Client {
   accounts: ClientAccount[];
 }
 
-/* Flat row for the table: one account = one row */
 interface FlatRow {
   clientId: string;
   clientName: string;
-  phone?: string;
   accountId: string;
   accountType: string;
   accountNumber: string;
   securitiesCompany: string;
-  /** true if this is the first row for this client (for visual grouping) */
+  representative: string;
   isFirstForClient: boolean;
 }
 
 interface NewRow {
   clientName: string;
-  phone: string;
   accountType: string;
   accountNumber: string;
   securitiesCompany: string;
+  representative: string;
 }
 
 interface EditState {
-  rowKey: string; // `${clientId}-${accountId}`
+  rowKey: string;
   clientName: string;
-  phone: string;
   accountType: string;
   accountNumber: string;
   securitiesCompany: string;
+  representative: string;
 }
 
 interface ClientManagementModalProps {
@@ -92,13 +80,6 @@ const inputStyle: React.CSSProperties = {
   color: '#1A1A2E',
   backgroundColor: '#FFFFFF',
   boxSizing: 'border-box',
-};
-
-const readonlyStyle: React.CSSProperties = {
-  ...inputStyle,
-  backgroundColor: '#F9FAFB',
-  color: '#6B7280',
-  cursor: 'default',
 };
 
 const selectStyle: React.CSSProperties = {
@@ -125,7 +106,193 @@ const tdStyle: React.CSSProperties = {
 };
 
 /* ------------------------------------------------------------------ */
-/*  Component                                                           */
+/*  Field Options Management Sub-Popup                                  */
+/* ------------------------------------------------------------------ */
+
+function FieldOptionPopup({
+  fieldName,
+  title,
+  onClose,
+  options,
+  onReload,
+}: {
+  fieldName: string;
+  title: string;
+  onClose: () => void;
+  options: FieldOption[];
+  onReload: () => void;
+}) {
+  const [newValue, setNewValue] = useState('');
+  const [newLabel, setNewLabel] = useState('');
+  const [editId, setEditId] = useState<string | null>(null);
+  const [editValue, setEditValue] = useState('');
+  const [editLabel, setEditLabel] = useState('');
+  const [saving, setSaving] = useState(false);
+
+  async function handleAdd() {
+    if (!newLabel.trim()) return;
+    setSaving(true);
+    try {
+      const val = newValue.trim() || newLabel.trim().toLowerCase().replace(/\s+/g, '_');
+      const res = await fetch(`${API_URL}/api/v1/field-options/${fieldName}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...authLib.getAuthHeader() },
+        body: JSON.stringify({ field_name: fieldName, value: val, label: newLabel.trim(), sort_order: options.length }),
+      });
+      if (res.ok) {
+        setNewValue('');
+        setNewLabel('');
+        onReload();
+      }
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function handleUpdate(id: string) {
+    if (!editLabel.trim()) return;
+    setSaving(true);
+    try {
+      const val = editValue.trim() || editLabel.trim().toLowerCase().replace(/\s+/g, '_');
+      await fetch(`${API_URL}/api/v1/field-options/${fieldName}/${id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json', ...authLib.getAuthHeader() },
+        body: JSON.stringify({ value: val, label: editLabel.trim() }),
+      });
+      setEditId(null);
+      onReload();
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function handleDelete(id: string) {
+    if (!window.confirm('삭제하시겠습니까?')) return;
+    await fetch(`${API_URL}/api/v1/field-options/${fieldName}/${id}`, {
+      method: 'DELETE',
+      headers: { ...authLib.getAuthHeader() },
+    });
+    onReload();
+  }
+
+  return (
+    <div
+      style={{
+        position: 'fixed',
+        inset: 0,
+        zIndex: 1200,
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        backgroundColor: 'rgba(0,0,0,0.4)',
+      }}
+      onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
+    >
+      <div
+        style={{
+          backgroundColor: '#fff',
+          borderRadius: 12,
+          width: '100%',
+          maxWidth: 420,
+          maxHeight: '60vh',
+          display: 'flex',
+          flexDirection: 'column',
+          boxShadow: '0 16px 48px rgba(0,0,0,0.2)',
+          overflow: 'hidden',
+        }}
+      >
+        {/* Header */}
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '14px 20px', borderBottom: '1px solid #E1E5EB' }}>
+          <h3 style={{ margin: 0, fontSize: '0.9375rem', fontWeight: 700, color: '#1A1A2E' }}>{title} 관리</h3>
+          <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#9CA3AF', padding: 4, borderRadius: 4 }}>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" /></svg>
+          </button>
+        </div>
+
+        {/* List */}
+        <div style={{ flex: 1, overflowY: 'auto', padding: '12px 20px' }}>
+          {options.length === 0 && (
+            <div style={{ textAlign: 'center', color: '#9CA3AF', fontSize: '0.8125rem', padding: '20px 0' }}>
+              등록된 항목이 없습니다.
+            </div>
+          )}
+          {options.map((opt) => (
+            <div key={opt.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 0', borderBottom: '1px solid #F3F4F6' }}>
+              {editId === opt.id ? (
+                <>
+                  <input
+                    value={editValue}
+                    onChange={(e) => setEditValue(e.target.value)}
+                    style={{ ...inputStyle, flex: '0 0 80px', fontSize: '0.75rem' }}
+                    placeholder="코드"
+                  />
+                  <input
+                    value={editLabel}
+                    onChange={(e) => setEditLabel(e.target.value)}
+                    style={{ ...inputStyle, flex: 1, fontSize: '0.75rem' }}
+                    placeholder="표시명"
+                    autoFocus
+                  />
+                  <button onClick={() => handleUpdate(opt.id)} disabled={saving}
+                    style={{ padding: '3px 8px', fontSize: '0.6875rem', fontWeight: 700, color: '#fff', backgroundColor: '#1E3A5F', border: 'none', borderRadius: 4, cursor: 'pointer', whiteSpace: 'nowrap' }}>
+                    저장
+                  </button>
+                  <button onClick={() => setEditId(null)}
+                    style={{ padding: '3px 8px', fontSize: '0.6875rem', fontWeight: 600, color: '#374151', backgroundColor: '#F3F4F6', border: '1px solid #E1E5EB', borderRadius: 4, cursor: 'pointer', whiteSpace: 'nowrap' }}>
+                    취소
+                  </button>
+                </>
+              ) : (
+                <>
+                  <span style={{ flex: '0 0 80px', fontSize: '0.75rem', color: '#9CA3AF', fontFamily: 'monospace' }}>{opt.value}</span>
+                  <span style={{ flex: 1, fontSize: '0.8125rem', color: '#1A1A2E', fontWeight: 600 }}>{opt.label}</span>
+                  <button onClick={() => { setEditId(opt.id); setEditValue(opt.value); setEditLabel(opt.label); }}
+                    style={{ padding: '2px 6px', fontSize: '0.6875rem', fontWeight: 600, color: '#1E3A5F', backgroundColor: '#EEF2F7', border: '1px solid #CBD5E1', borderRadius: 4, cursor: 'pointer' }}>
+                    수정
+                  </button>
+                  <button onClick={() => handleDelete(opt.id)}
+                    style={{ padding: '2px 6px', fontSize: '0.6875rem', fontWeight: 600, color: '#EF4444', backgroundColor: '#FEF2F2', border: '1px solid #FECACA', borderRadius: 4, cursor: 'pointer' }}>
+                    삭제
+                  </button>
+                </>
+              )}
+            </div>
+          ))}
+        </div>
+
+        {/* Add new */}
+        <div style={{ padding: '12px 20px', borderTop: '1px solid #E1E5EB', backgroundColor: '#FAFBFC' }}>
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+            <input
+              value={newValue}
+              onChange={(e) => setNewValue(e.target.value)}
+              style={{ ...inputStyle, flex: '0 0 80px', fontSize: '0.75rem' }}
+              placeholder="코드"
+            />
+            <input
+              value={newLabel}
+              onChange={(e) => setNewLabel(e.target.value)}
+              style={{ ...inputStyle, flex: 1, fontSize: '0.75rem' }}
+              placeholder="표시명 입력"
+              onKeyDown={(e) => { if (e.key === 'Enter') handleAdd(); }}
+            />
+            <button onClick={handleAdd} disabled={saving || !newLabel.trim()}
+              style={{
+                padding: '5px 14px', fontSize: '0.75rem', fontWeight: 700, color: '#fff',
+                backgroundColor: !newLabel.trim() ? '#9CA3AF' : '#059669',
+                border: 'none', borderRadius: 6, cursor: !newLabel.trim() ? 'not-allowed' : 'pointer', whiteSpace: 'nowrap',
+              }}>
+              추가
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/*  Main Component                                                      */
 /* ------------------------------------------------------------------ */
 
 export function ClientManagementModal({ isOpen, onClose, onClientAdded }: ClientManagementModalProps) {
@@ -145,20 +312,46 @@ export function ClientManagementModal({ isOpen, onClose, onClientAdded }: Client
   const [addingNew, setAddingNew] = useState(false);
   const [newRow, setNewRow] = useState<NewRow>({
     clientName: '',
-    phone: '',
     accountType: 'irp',
     accountNumber: '',
     securitiesCompany: '',
+    representative: '',
   });
   const [newSaving, setNewSaving] = useState(false);
 
   /* Add account to existing client */
   const [addAccountClientId, setAddAccountClientId] = useState<string | null>(null);
-  const [addAccountForm, setAddAccountForm] = useState({ accountType: 'irp', accountNumber: '', securitiesCompany: '' });
+  const [addAccountForm, setAddAccountForm] = useState({ accountType: 'irp', accountNumber: '', securitiesCompany: '', representative: '' });
   const [addAccountSaving, setAddAccountSaving] = useState(false);
 
-  /* ---- load clients ---- */
+  /* Field options */
+  const [fieldOptions, setFieldOptions] = useState<Record<string, FieldOption[]>>({
+    securities: [],
+    account_type: [],
+    representative: [],
+  });
+  const [optionPopup, setOptionPopup] = useState<{ fieldName: string; title: string } | null>(null);
 
+  /* ---- load field options ---- */
+  const loadFieldOptions = useCallback(async () => {
+    const fields = ['securities', 'account_type', 'representative'];
+    const results: Record<string, FieldOption[]> = {};
+    await Promise.all(
+      fields.map(async (f) => {
+        try {
+          const res = await fetch(`${API_URL}/api/v1/field-options/${f}`, {
+            headers: { ...authLib.getAuthHeader() },
+          });
+          results[f] = res.ok ? await res.json() : [];
+        } catch {
+          results[f] = [];
+        }
+      })
+    );
+    setFieldOptions(results);
+  }, []);
+
+  /* ---- load clients ---- */
   const loadClients = useCallback(async () => {
     setLoading(true);
     try {
@@ -192,40 +385,50 @@ export function ClientManagementModal({ isOpen, onClose, onClientAdded }: Client
   useEffect(() => {
     if (isOpen) {
       loadClients();
+      loadFieldOptions();
     }
-  }, [isOpen, loadClients]);
+  }, [isOpen, loadClients, loadFieldOptions]);
+
+  /* ---- helpers for options ---- */
+  const securitiesOptions = fieldOptions.securities;
+  const accountTypeOptions = fieldOptions.account_type;
+  const representativeOptions = fieldOptions.representative;
+
+  function getAccountTypeLabel(value: string) {
+    return accountTypeOptions.find((o) => o.value === value)?.label ?? value;
+  }
+
+  function getSecuritiesLabel(value: string) {
+    return securitiesOptions.find((o) => o.value === value || o.label === value)?.label ?? value;
+  }
 
   /* ---- build flat rows ---- */
-
   const flatRows: FlatRow[] = clients.flatMap((client) => {
     if (client.accounts.length === 0) {
-      return [
-        {
-          clientId: client.id,
-          clientName: client.name,
-          phone: client.phone ?? '',
-          accountId: '',
-          accountType: '',
-          accountNumber: '',
-          securitiesCompany: '',
-          isFirstForClient: true,
-        },
-      ];
+      return [{
+        clientId: client.id,
+        clientName: client.name,
+        accountId: '',
+        accountType: '',
+        accountNumber: '',
+        securitiesCompany: '',
+        representative: '',
+        isFirstForClient: true,
+      }];
     }
     return client.accounts.map((acc, i) => ({
       clientId: client.id,
       clientName: client.name,
-      phone: client.phone ?? '',
       accountId: acc.id,
       accountType: acc.account_type,
       accountNumber: acc.account_number ?? '',
       securitiesCompany: acc.securities_company ?? '',
+      representative: acc.representative ?? '',
       isFirstForClient: i === 0,
     }));
   });
 
   /* ---- filter ---- */
-
   const filteredRows = flatRows.filter((row) => {
     if (searchKeyword) {
       const kw = searchKeyword.toLowerCase();
@@ -235,18 +438,12 @@ export function ClientManagementModal({ isOpen, onClose, onClientAdded }: Client
     }
     if (filterAccountType && row.accountType !== filterAccountType) return false;
     if (filterSecurities) {
-      const secLabel = SECURITIES_OPTIONS.find((s) => s.value === filterSecurities)?.label ?? filterSecurities;
+      const secLabel = securitiesOptions.find((s) => s.value === filterSecurities)?.label ?? filterSecurities;
       if (!row.securitiesCompany.toLowerCase().includes(secLabel.toLowerCase()) &&
           !row.securitiesCompany.toLowerCase().includes(filterSecurities.toLowerCase())) return false;
     }
     return true;
   });
-
-  /* ---- helpers ---- */
-
-  function getAccountTypeLabel(value: string) {
-    return ACCOUNT_TYPE_OPTIONS.find((o) => o.value === value)?.label ?? value;
-  }
 
   function resetFilters() {
     setSearchKeyword('');
@@ -255,15 +452,14 @@ export function ClientManagementModal({ isOpen, onClose, onClientAdded }: Client
   }
 
   /* ---- edit handlers ---- */
-
   function startEdit(row: FlatRow) {
     setEditState({
       rowKey: `${row.clientId}-${row.accountId}`,
       clientName: row.clientName,
-      phone: row.phone ?? '',
       accountType: row.accountType,
       accountNumber: row.accountNumber,
       securitiesCompany: row.securitiesCompany,
+      representative: row.representative,
     });
   }
 
@@ -275,11 +471,10 @@ export function ClientManagementModal({ isOpen, onClose, onClientAdded }: Client
     if (!editState) return;
     setSaving(true);
     try {
-      /* Update client name */
       const clientRes = await fetch(`${API_URL}/api/v1/clients/${row.clientId}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json', ...authLib.getAuthHeader() },
-        body: JSON.stringify({ name: editState.clientName, phone: editState.phone || null }),
+        body: JSON.stringify({ name: editState.clientName }),
       });
       if (!clientRes.ok) {
         const err = await clientRes.json().catch(() => ({}));
@@ -287,7 +482,6 @@ export function ClientManagementModal({ isOpen, onClose, onClientAdded }: Client
         return;
       }
 
-      /* Update account if exists */
       if (row.accountId) {
         const accRes = await fetch(
           `${API_URL}/api/v1/clients/${row.clientId}/accounts/${row.accountId}`,
@@ -298,6 +492,7 @@ export function ClientManagementModal({ isOpen, onClose, onClientAdded }: Client
               account_type: editState.accountType || undefined,
               account_number: editState.accountNumber || undefined,
               securities_company: editState.securitiesCompany || undefined,
+              representative: editState.representative || undefined,
             }),
           }
         );
@@ -319,7 +514,6 @@ export function ClientManagementModal({ isOpen, onClose, onClientAdded }: Client
   }
 
   /* ---- delete handlers ---- */
-
   async function handleDeleteAccount(row: FlatRow) {
     if (!row.accountId) {
       if (!window.confirm(`"${row.clientName}" 고객을 삭제하시겠습니까?`)) return;
@@ -364,10 +558,9 @@ export function ClientManagementModal({ isOpen, onClose, onClientAdded }: Client
   }
 
   /* ---- add account to existing client ---- */
-
   function startAddAccount(clientId: string) {
     setAddAccountClientId(clientId);
-    setAddAccountForm({ accountType: 'irp', accountNumber: '', securitiesCompany: '' });
+    setAddAccountForm({ accountType: 'irp', accountNumber: '', securitiesCompany: '', representative: '' });
   }
 
   function cancelAddAccount() {
@@ -387,6 +580,7 @@ export function ClientManagementModal({ isOpen, onClose, onClientAdded }: Client
             account_type: addAccountForm.accountType,
             account_number: addAccountForm.accountNumber || undefined,
             securities_company: addAccountForm.securitiesCompany || undefined,
+            representative: addAccountForm.representative || undefined,
           }),
         }
       );
@@ -406,7 +600,6 @@ export function ClientManagementModal({ isOpen, onClose, onClientAdded }: Client
   }
 
   /* ---- new row handler ---- */
-
   async function handleSaveNewRow() {
     if (!newRow.clientName.trim()) {
       alert('고객명을 입력하세요.');
@@ -414,11 +607,10 @@ export function ClientManagementModal({ isOpen, onClose, onClientAdded }: Client
     }
     setNewSaving(true);
     try {
-      /* Create client */
       const clientRes = await fetch(`${API_URL}/api/v1/clients`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', ...authLib.getAuthHeader() },
-        body: JSON.stringify({ name: newRow.clientName.trim(), phone: newRow.phone.trim() || null }),
+        body: JSON.stringify({ name: newRow.clientName.trim() }),
       });
       if (!clientRes.ok) {
         const err = await clientRes.json().catch(() => ({}));
@@ -427,7 +619,6 @@ export function ClientManagementModal({ isOpen, onClose, onClientAdded }: Client
       }
       const createdClient: Client = await clientRes.json();
 
-      /* Create account */
       const accRes = await fetch(`${API_URL}/api/v1/clients/${createdClient.id}/accounts`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', ...authLib.getAuthHeader() },
@@ -435,6 +626,7 @@ export function ClientManagementModal({ isOpen, onClose, onClientAdded }: Client
           account_type: newRow.accountType,
           account_number: newRow.accountNumber || undefined,
           securities_company: newRow.securitiesCompany || undefined,
+          representative: newRow.representative || undefined,
         }),
       });
       if (!accRes.ok) {
@@ -443,7 +635,7 @@ export function ClientManagementModal({ isOpen, onClose, onClientAdded }: Client
         return;
       }
 
-      setNewRow({ clientName: '', phone: '', accountType: 'irp', accountNumber: '', securitiesCompany: '' });
+      setNewRow({ clientName: '', accountType: 'irp', accountNumber: '', securitiesCompany: '', representative: '' });
       setAddingNew(false);
       await loadClients();
       onClientAdded?.();
@@ -454,11 +646,18 @@ export function ClientManagementModal({ isOpen, onClose, onClientAdded }: Client
     }
   }
 
+  /* ---- clickable header style ---- */
+  const clickableThStyle: React.CSSProperties = {
+    ...thStyle,
+    cursor: 'pointer',
+    position: 'relative',
+    userSelect: 'none',
+  };
+
   /* ---- guard ---- */
   if (!isOpen) return null;
 
   /* ---- render ---- */
-
   return (
     <div
       style={{
@@ -477,7 +676,7 @@ export function ClientManagementModal({ isOpen, onClose, onClientAdded }: Client
           backgroundColor: '#fff',
           borderRadius: 14,
           width: '100%',
-          maxWidth: 820,
+          maxWidth: 920,
           maxHeight: '80vh',
           display: 'flex',
           flexDirection: 'column',
@@ -497,7 +696,7 @@ export function ClientManagementModal({ isOpen, onClose, onClientAdded }: Client
           }}
         >
           <h2 style={{ margin: 0, fontSize: '1.0625rem', fontWeight: 800, color: '#1A1A2E' }}>
-            고객 정보 관리
+            계좌 정보 관리
           </h2>
           <button
             onClick={onClose}
@@ -535,12 +734,7 @@ export function ClientManagementModal({ isOpen, onClose, onClientAdded }: Client
         >
           <div style={{ position: 'relative', flex: '1 1 180px', minWidth: 160 }}>
             <svg
-              width="13"
-              height="13"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="#9CA3AF"
-              strokeWidth="2"
+              width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#9CA3AF" strokeWidth="2"
               style={{ position: 'absolute', left: 9, top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none' }}
             >
               <circle cx="11" cy="11" r="8" />
@@ -551,11 +745,7 @@ export function ClientManagementModal({ isOpen, onClose, onClientAdded }: Client
               placeholder="고객명 또는 계좌번호 검색"
               value={searchKeyword}
               onChange={(e) => setSearchKeyword(e.target.value)}
-              style={{
-                ...inputStyle,
-                paddingLeft: 28,
-                fontSize: '0.8125rem',
-              }}
+              style={{ ...inputStyle, paddingLeft: 28, fontSize: '0.8125rem' }}
             />
           </div>
 
@@ -565,8 +755,8 @@ export function ClientManagementModal({ isOpen, onClose, onClientAdded }: Client
             style={{ ...selectStyle, flex: '0 1 150px', minWidth: 130 }}
           >
             <option value="">계좌유형 전체</option>
-            {ACCOUNT_TYPE_OPTIONS.map((o) => (
-              <option key={o.value} value={o.value}>{o.label}</option>
+            {accountTypeOptions.map((o) => (
+              <option key={o.id} value={o.value}>{o.label}</option>
             ))}
           </select>
 
@@ -576,23 +766,16 @@ export function ClientManagementModal({ isOpen, onClose, onClientAdded }: Client
             style={{ ...selectStyle, flex: '0 1 150px', minWidth: 130 }}
           >
             <option value="">증권사 전체</option>
-            {SECURITIES_OPTIONS.map((o) => (
-              <option key={o.value} value={o.value}>{o.label}</option>
+            {securitiesOptions.map((o) => (
+              <option key={o.id} value={o.value}>{o.label}</option>
             ))}
           </select>
 
           <button
             onClick={resetFilters}
             style={{
-              padding: '5px 12px',
-              fontSize: '0.8125rem',
-              fontWeight: 600,
-              color: '#6B7280',
-              backgroundColor: '#F3F4F6',
-              border: '1px solid #E1E5EB',
-              borderRadius: 7,
-              cursor: 'pointer',
-              whiteSpace: 'nowrap',
+              padding: '5px 12px', fontSize: '0.8125rem', fontWeight: 600, color: '#6B7280',
+              backgroundColor: '#F3F4F6', border: '1px solid #E1E5EB', borderRadius: 7, cursor: 'pointer', whiteSpace: 'nowrap',
             }}
           >
             초기화
@@ -611,25 +794,35 @@ export function ClientManagementModal({ isOpen, onClose, onClientAdded }: Client
                 <tr>
                   <th style={{ ...thStyle, width: 44, textAlign: 'center' }}>No.</th>
                   <th style={thStyle}>고객명</th>
-                  <th style={{ ...thStyle, minWidth: 110 }}>전화번호</th>
-                  <th style={thStyle}>증권사</th>
-                  <th style={thStyle}>계좌유형</th>
+                  <th
+                    style={clickableThStyle}
+                    onClick={() => setOptionPopup({ fieldName: 'securities', title: '증권사' })}
+                    title="클릭하여 증권사 목록 관리"
+                  >
+                    증권사 <span style={{ fontSize: '0.625rem', opacity: 0.7 }}>&#9881;</span>
+                  </th>
+                  <th
+                    style={clickableThStyle}
+                    onClick={() => setOptionPopup({ fieldName: 'account_type', title: '계좌유형' })}
+                    title="클릭하여 계좌유형 목록 관리"
+                  >
+                    계좌유형 <span style={{ fontSize: '0.625rem', opacity: 0.7 }}>&#9881;</span>
+                  </th>
                   <th style={thStyle}>계좌번호</th>
+                  <th
+                    style={clickableThStyle}
+                    onClick={() => setOptionPopup({ fieldName: 'representative', title: '투권인' })}
+                    title="클릭하여 투권인 목록 관리"
+                  >
+                    투권인 <span style={{ fontSize: '0.625rem', opacity: 0.7 }}>&#9881;</span>
+                  </th>
                   <th style={{ ...thStyle, width: 120, textAlign: 'center' }}>관리</th>
                 </tr>
               </thead>
               <tbody>
                 {filteredRows.length === 0 && !addingNew && (
                   <tr>
-                    <td
-                      colSpan={6}
-                      style={{
-                        ...tdStyle,
-                        textAlign: 'center',
-                        color: '#9CA3AF',
-                        padding: '32px 0',
-                      }}
-                    >
+                    <td colSpan={7} style={{ ...tdStyle, textAlign: 'center', color: '#9CA3AF', padding: '32px 0' }}>
                       {searchKeyword || filterAccountType || filterSecurities
                         ? '검색 결과가 없습니다.'
                         : '등록된 고객이 없습니다. 신규 등록 버튼을 눌러 추가하세요.'}
@@ -643,11 +836,7 @@ export function ClientManagementModal({ isOpen, onClose, onClientAdded }: Client
 
                   return (
                     <React.Fragment key={rowKey}>
-                    <tr
-                      style={{
-                        backgroundColor: isEditing ? '#F0F4FF' : idx % 2 === 0 ? '#fff' : '#FAFBFC',
-                      }}
-                    >
+                    <tr style={{ backgroundColor: isEditing ? '#F0F4FF' : idx % 2 === 0 ? '#fff' : '#FAFBFC' }}>
                       {/* No. */}
                       <td style={{ ...tdStyle, textAlign: 'center', color: '#9CA3AF', fontSize: '0.75rem' }}>
                         {idx + 1}
@@ -664,26 +853,7 @@ export function ClientManagementModal({ isOpen, onClose, onClientAdded }: Client
                             autoFocus
                           />
                         ) : (
-                          row.isFirstForClient ? row.clientName : <span style={{ paddingLeft: 12, color: '#9CA3AF' }}>↳</span>
-                        )}
-                      </td>
-
-                      {/* 전화번호 */}
-                      <td style={tdStyle}>
-                        {isEditing && row.isFirstForClient ? (
-                          <input
-                            type="text"
-                            value={editState!.phone}
-                            onChange={(e) => setEditState((prev) => prev ? { ...prev, phone: e.target.value } : prev)}
-                            style={{ ...inputStyle, fontSize: '0.75rem' }}
-                            placeholder="010-0000-0000"
-                          />
-                        ) : (
-                          row.isFirstForClient ? (
-                            <span style={{ color: row.phone ? '#374151' : '#D1D5DB', fontSize: '0.75rem' }}>
-                              {row.phone || '-'}
-                            </span>
-                          ) : null
+                          row.isFirstForClient ? row.clientName : <span style={{ paddingLeft: 12, color: '#9CA3AF' }}>&#8627;</span>
                         )}
                       </td>
 
@@ -692,19 +862,19 @@ export function ClientManagementModal({ isOpen, onClose, onClientAdded }: Client
                         {isEditing && row.accountId ? (
                           <select
                             value={
-                              SECURITIES_OPTIONS.find((o) =>
-                                editState!.securitiesCompany.includes(o.label)
+                              securitiesOptions.find((o) =>
+                                editState!.securitiesCompany === o.label || editState!.securitiesCompany === o.value
                               )?.value ?? editState!.securitiesCompany
                             }
                             onChange={(e) => {
-                              const label = SECURITIES_OPTIONS.find((o) => o.value === e.target.value)?.label ?? e.target.value;
+                              const label = securitiesOptions.find((o) => o.value === e.target.value)?.label ?? e.target.value;
                               setEditState((prev) => prev ? { ...prev, securitiesCompany: label } : prev);
                             }}
                             style={selectStyle}
                           >
                             <option value="">선택</option>
-                            {SECURITIES_OPTIONS.map((o) => (
-                              <option key={o.value} value={o.value}>{o.label}</option>
+                            {securitiesOptions.map((o) => (
+                              <option key={o.id} value={o.value}>{o.label}</option>
                             ))}
                           </select>
                         ) : (
@@ -723,22 +893,15 @@ export function ClientManagementModal({ isOpen, onClose, onClientAdded }: Client
                             style={selectStyle}
                           >
                             <option value="">선택</option>
-                            {ACCOUNT_TYPE_OPTIONS.map((o) => (
-                              <option key={o.value} value={o.value}>{o.label}</option>
+                            {accountTypeOptions.map((o) => (
+                              <option key={o.id} value={o.value}>{o.label}</option>
                             ))}
                           </select>
                         ) : (
-                          <span
-                            style={{
-                              display: 'inline-block',
-                              fontSize: '0.75rem',
-                              fontWeight: 600,
-                              color: '#1E3A5F',
-                              backgroundColor: '#EEF2F7',
-                              padding: '2px 8px',
-                              borderRadius: 5,
-                            }}
-                          >
+                          <span style={{
+                            display: 'inline-block', fontSize: '0.75rem', fontWeight: 600, color: '#1E3A5F',
+                            backgroundColor: '#EEF2F7', padding: '2px 8px', borderRadius: 5,
+                          }}>
                             {row.accountType ? getAccountTypeLabel(row.accountType) : '-'}
                           </span>
                         )}
@@ -757,6 +920,26 @@ export function ClientManagementModal({ isOpen, onClose, onClientAdded }: Client
                         ) : (
                           <span style={{ color: row.accountNumber ? '#374151' : '#D1D5DB', fontFamily: 'monospace', fontSize: '0.8125rem' }}>
                             {row.accountNumber || '미등록'}
+                          </span>
+                        )}
+                      </td>
+
+                      {/* 투권인 */}
+                      <td style={tdStyle}>
+                        {isEditing && row.accountId ? (
+                          <select
+                            value={editState!.representative}
+                            onChange={(e) => setEditState((prev) => prev ? { ...prev, representative: e.target.value } : prev)}
+                            style={selectStyle}
+                          >
+                            <option value="">선택</option>
+                            {representativeOptions.map((o) => (
+                              <option key={o.id} value={o.label}>{o.label}</option>
+                            ))}
+                          </select>
+                        ) : (
+                          <span style={{ color: row.representative ? '#374151' : '#D1D5DB', fontSize: '0.8125rem' }}>
+                            {row.representative || '-'}
                           </span>
                         )}
                       </td>
@@ -794,25 +977,25 @@ export function ClientManagementModal({ isOpen, onClose, onClientAdded }: Client
                         )}
                       </td>
                     </tr>
+
                     {/* Inline add-account row */}
                     {addAccountClientId === row.clientId && row.isFirstForClient && (
                       <tr style={{ backgroundColor: '#F0FFF4' }}>
                         <td style={{ ...tdStyle, textAlign: 'center', color: '#9CA3AF', fontSize: '0.75rem' }}>+</td>
                         <td style={{ ...tdStyle, color: '#059669', fontSize: '0.75rem', fontWeight: 600 }}>
-                          ↳ 계좌 추가
+                          &#8627; 계좌 추가
                         </td>
-                        <td style={tdStyle} />
                         <td style={tdStyle}>
                           <select
-                            value={SECURITIES_OPTIONS.find((o) => addAccountForm.securitiesCompany.includes(o.label))?.value ?? ''}
+                            value={securitiesOptions.find((o) => addAccountForm.securitiesCompany === o.label)?.value ?? ''}
                             onChange={(e) => {
-                              const label = SECURITIES_OPTIONS.find((o) => o.value === e.target.value)?.label ?? '';
+                              const label = securitiesOptions.find((o) => o.value === e.target.value)?.label ?? '';
                               setAddAccountForm((f) => ({ ...f, securitiesCompany: label }));
                             }}
                             style={selectStyle}
                           >
                             <option value="">증권사</option>
-                            {SECURITIES_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+                            {securitiesOptions.map((o) => <option key={o.id} value={o.value}>{o.label}</option>)}
                           </select>
                         </td>
                         <td style={tdStyle}>
@@ -821,7 +1004,7 @@ export function ClientManagementModal({ isOpen, onClose, onClientAdded }: Client
                             onChange={(e) => setAddAccountForm((f) => ({ ...f, accountType: e.target.value }))}
                             style={selectStyle}
                           >
-                            {ACCOUNT_TYPE_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+                            {accountTypeOptions.map((o) => <option key={o.id} value={o.value}>{o.label}</option>)}
                           </select>
                         </td>
                         <td style={tdStyle}>
@@ -832,6 +1015,16 @@ export function ClientManagementModal({ isOpen, onClose, onClientAdded }: Client
                             style={inputStyle}
                             placeholder="계좌번호"
                           />
+                        </td>
+                        <td style={tdStyle}>
+                          <select
+                            value={addAccountForm.representative}
+                            onChange={(e) => setAddAccountForm((f) => ({ ...f, representative: e.target.value }))}
+                            style={selectStyle}
+                          >
+                            <option value="">투권인</option>
+                            {representativeOptions.map((o) => <option key={o.id} value={o.label}>{o.label}</option>)}
+                          </select>
                         </td>
                         <td style={{ ...tdStyle, textAlign: 'center' }}>
                           <div style={{ display: 'flex', gap: 4, justifyContent: 'center' }}>
@@ -859,101 +1052,66 @@ export function ClientManagementModal({ isOpen, onClose, onClientAdded }: Client
                 {/* New row (inline) */}
                 {addingNew && (
                   <tr style={{ backgroundColor: '#F0FFF4' }}>
-                    <td style={{ ...tdStyle, textAlign: 'center', color: '#9CA3AF', fontSize: '0.75rem' }}>
-                      *
-                    </td>
+                    <td style={{ ...tdStyle, textAlign: 'center', color: '#9CA3AF', fontSize: '0.75rem' }}>*</td>
                     <td style={tdStyle}>
-                      <input
-                        type="text"
-                        placeholder="고객명 입력"
-                        value={newRow.clientName}
+                      <input type="text" placeholder="고객명 입력" value={newRow.clientName}
                         onChange={(e) => setNewRow((prev) => ({ ...prev, clientName: e.target.value }))}
-                        style={inputStyle}
-                        autoFocus
-                      />
-                    </td>
-                    <td style={tdStyle}>
-                      <input
-                        type="text"
-                        placeholder="010-0000-0000"
-                        value={newRow.phone}
-                        onChange={(e) => setNewRow((prev) => ({ ...prev, phone: e.target.value }))}
-                        style={{ ...inputStyle, fontSize: '0.75rem' }}
-                      />
+                        style={inputStyle} autoFocus />
                     </td>
                     <td style={tdStyle}>
                       <select
-                        value={
-                          SECURITIES_OPTIONS.find((o) =>
-                            newRow.securitiesCompany.includes(o.label)
-                          )?.value ?? ''
-                        }
+                        value={securitiesOptions.find((o) => newRow.securitiesCompany === o.label)?.value ?? ''}
                         onChange={(e) => {
-                          const label = SECURITIES_OPTIONS.find((o) => o.value === e.target.value)?.label ?? '';
+                          const label = securitiesOptions.find((o) => o.value === e.target.value)?.label ?? '';
                           setNewRow((prev) => ({ ...prev, securitiesCompany: label }));
                         }}
                         style={selectStyle}
                       >
                         <option value="">선택</option>
-                        {SECURITIES_OPTIONS.map((o) => (
-                          <option key={o.value} value={o.value}>{o.label}</option>
-                        ))}
+                        {securitiesOptions.map((o) => <option key={o.id} value={o.value}>{o.label}</option>)}
                       </select>
                     </td>
                     <td style={tdStyle}>
-                      <select
-                        value={newRow.accountType}
+                      <select value={newRow.accountType}
                         onChange={(e) => setNewRow((prev) => ({ ...prev, accountType: e.target.value }))}
                         style={selectStyle}
                       >
-                        {ACCOUNT_TYPE_OPTIONS.map((o) => (
-                          <option key={o.value} value={o.value}>{o.label}</option>
-                        ))}
+                        {accountTypeOptions.map((o) => <option key={o.id} value={o.value}>{o.label}</option>)}
                       </select>
                     </td>
                     <td style={tdStyle}>
-                      <input
-                        type="text"
-                        placeholder="계좌번호 입력"
-                        value={newRow.accountNumber}
+                      <input type="text" placeholder="계좌번호 입력" value={newRow.accountNumber}
                         onChange={(e) => setNewRow((prev) => ({ ...prev, accountNumber: e.target.value }))}
-                        style={inputStyle}
-                      />
+                        style={inputStyle} />
+                    </td>
+                    <td style={tdStyle}>
+                      <select value={newRow.representative}
+                        onChange={(e) => setNewRow((prev) => ({ ...prev, representative: e.target.value }))}
+                        style={selectStyle}
+                      >
+                        <option value="">선택</option>
+                        {representativeOptions.map((o) => <option key={o.id} value={o.label}>{o.label}</option>)}
+                      </select>
                     </td>
                     <td style={{ ...tdStyle, textAlign: 'center' }}>
                       <div style={{ display: 'flex', gap: 4, justifyContent: 'center' }}>
-                        <button
-                          onClick={handleSaveNewRow}
-                          disabled={newSaving}
+                        <button onClick={handleSaveNewRow} disabled={newSaving}
                           style={{
-                            padding: '4px 10px',
-                            fontSize: '0.75rem',
-                            fontWeight: 700,
-                            color: '#fff',
-                            backgroundColor: newSaving ? '#9CA3AF' : '#059669',
-                            border: 'none',
-                            borderRadius: 6,
+                            padding: '4px 10px', fontSize: '0.75rem', fontWeight: 700, color: '#fff',
+                            backgroundColor: newSaving ? '#9CA3AF' : '#059669', border: 'none', borderRadius: 6,
                             cursor: newSaving ? 'not-allowed' : 'pointer',
-                          }}
-                        >
+                          }}>
                           {newSaving ? '...' : '저장'}
                         </button>
                         <button
                           onClick={() => {
                             setAddingNew(false);
-                            setNewRow({ clientName: '', phone: '', accountType: 'irp', accountNumber: '', securitiesCompany: '' });
+                            setNewRow({ clientName: '', accountType: 'irp', accountNumber: '', securitiesCompany: '', representative: '' });
                           }}
                           style={{
-                            padding: '4px 10px',
-                            fontSize: '0.75rem',
-                            fontWeight: 600,
-                            color: '#374151',
-                            backgroundColor: '#F3F4F6',
-                            border: '1px solid #E1E5EB',
-                            borderRadius: 6,
-                            cursor: 'pointer',
-                          }}
-                        >
+                            padding: '4px 10px', fontSize: '0.75rem', fontWeight: 600, color: '#374151',
+                            backgroundColor: '#F3F4F6', border: '1px solid #E1E5EB', borderRadius: 6, cursor: 'pointer',
+                          }}>
                           취소
                         </button>
                       </div>
@@ -982,22 +1140,11 @@ export function ClientManagementModal({ isOpen, onClose, onClientAdded }: Client
           </span>
           <div style={{ display: 'flex', gap: 8 }}>
             <button
-              onClick={() => {
-                setAddingNew(true);
-                setEditState(null);
-              }}
+              onClick={() => { setAddingNew(true); setEditState(null); }}
               style={{
-                display: 'inline-flex',
-                alignItems: 'center',
-                gap: 5,
-                padding: '8px 16px',
-                fontSize: '0.875rem',
-                fontWeight: 700,
-                color: '#fff',
-                backgroundColor: '#1E3A5F',
-                border: 'none',
-                borderRadius: 8,
-                cursor: 'pointer',
+                display: 'inline-flex', alignItems: 'center', gap: 5,
+                padding: '8px 16px', fontSize: '0.875rem', fontWeight: 700, color: '#fff',
+                backgroundColor: '#1E3A5F', border: 'none', borderRadius: 8, cursor: 'pointer',
               }}
             >
               <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
@@ -1006,24 +1153,27 @@ export function ClientManagementModal({ isOpen, onClose, onClientAdded }: Client
               </svg>
               신규 등록
             </button>
-            <button
-              onClick={onClose}
+            <button onClick={onClose}
               style={{
-                padding: '8px 18px',
-                fontSize: '0.875rem',
-                fontWeight: 600,
-                color: '#374151',
-                backgroundColor: '#F3F4F6',
-                border: '1px solid #E1E5EB',
-                borderRadius: 8,
-                cursor: 'pointer',
-              }}
-            >
+                padding: '8px 18px', fontSize: '0.875rem', fontWeight: 600, color: '#374151',
+                backgroundColor: '#F3F4F6', border: '1px solid #E1E5EB', borderRadius: 8, cursor: 'pointer',
+              }}>
               닫기
             </button>
           </div>
         </div>
       </div>
+
+      {/* Field Options Popup */}
+      {optionPopup && (
+        <FieldOptionPopup
+          fieldName={optionPopup.fieldName}
+          title={optionPopup.title}
+          options={fieldOptions[optionPopup.fieldName] || []}
+          onClose={() => setOptionPopup(null)}
+          onReload={loadFieldOptions}
+        />
+      )}
     </div>
   );
 }

@@ -48,6 +48,9 @@ from app.models.market_analysis_cache import MarketAnalysisCache
 # Depends on users (SMS templates)
 from app.models.sms_template import SmsTemplate
 
+# Depends on users (field options for dropdowns)
+from app.models.field_option import FieldOption
+
 # Depends on users + clients + client_accounts (message logs)
 from app.models.message_log import MessageLog
 
@@ -79,4 +82,5 @@ __all__ = [
     "MarketAnalysisCache",
     "SmsTemplate",
     "MessageLog",
+    "FieldOption",
 ]

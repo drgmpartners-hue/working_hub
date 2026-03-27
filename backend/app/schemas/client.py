@@ -8,6 +8,7 @@ class AccountBase(BaseModel):
     account_type: str  # 'irp', 'pension1', 'pension2'
     account_number: Optional[str] = None
     securities_company: Optional[str] = None
+    representative: Optional[str] = None  # 투권인
     monthly_payment: Optional[int] = None
 
 
@@ -19,6 +20,7 @@ class AccountUpdate(BaseModel):
     account_type: Optional[str] = None
     account_number: Optional[str] = None
     securities_company: Optional[str] = None
+    representative: Optional[str] = None  # 투권인
     monthly_payment: Optional[int] = None
 
 
