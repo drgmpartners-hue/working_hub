@@ -8,6 +8,7 @@ from sqlalchemy import select, and_
 from sqlalchemy.orm import selectinload
 from app.models.snapshot import PortfolioSnapshot, PortfolioHolding
 from app.models.client import ClientAccount
+from app.models.product_master import ProductMaster
 from app.services.vision_service import extract_portfolio_from_image
 from app.schemas.snapshot import HoldingUpdateRequest
 
@@ -31,8 +32,12 @@ async def create_snapshot(
     with open(image_path, "wb") as f:
         f.write(image_bytes)
 
-    # Extract data via Gemini Vision
-    extracted = await extract_portfolio_from_image(image_bytes, mime_type)
+    # Load known product names for better OCR accuracy
+    pm_result = await db.execute(select(ProductMaster.product_name))
+    known_names = [row[0] for row in pm_result.all() if row[0]]
+
+    # Extract data via Gemini Vision (with product name reference)
+    extracted = await extract_portfolio_from_image(image_bytes, mime_type, known_names or None)
 
     # Use AI-extracted date if available, otherwise use the provided date
     ai_date_str = extracted.get("snapshot_date")
