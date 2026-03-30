@@ -154,6 +154,7 @@ interface ExtractionResult {
   holdings: HoldingEdit[];
   applyingMaster: boolean;
   toastMsg: string;
+  rowIndex?: number; // index in rows[] for image cleanup
   depositAmount?: number;
   foreignDepositAmount?: number;
   totalAssets?: number;
@@ -2757,7 +2758,7 @@ export default function IRPPage() {
 
   /* ---------- product register modal state ---------- */
   const [registerModalOpen, setRegisterModalOpen] = useState(false);
-  const [loadMasterTarget, setLoadMasterTarget] = useState<{ snapshotId: string; holdingId: string; productName: string } | null>(null);
+  const [loadMasterTarget, setLoadMasterTarget] = useState<{ snapshotId: string; holdingId: string; productName: string; accountType?: string } | null>(null);
   const [loadMasterSearch, setLoadMasterSearch] = useState('');
   const [registerForm, setRegisterForm] = useState({
     product_name: '',
@@ -2875,7 +2876,8 @@ export default function IRPPage() {
   /* ---------- tab1: process ---------- */
 
   async function handleProcess() {
-    const validRows = rows.filter((r) => r.imageFile);
+    const validRowsWithIndex = rows.map((r, idx) => ({ ...r, _origIdx: idx })).filter((r) => r.imageFile);
+    const validRows = validRowsWithIndex;
     if (validRows.length === 0) {
       alert('이미지가 필요합니다.');
       return;
@@ -2982,6 +2984,7 @@ export default function IRPPage() {
           holdings: holdingEdits,
           applyingMaster: false,
           toastMsg: '',
+          rowIndex: (row as any)._origIdx,
           depositAmount: snap.deposit_amount,
           foreignDepositAmount: snap.foreign_deposit_amount,
           totalAssets: snap.total_assets,
@@ -3203,10 +3206,10 @@ export default function IRPPage() {
     await loadClients();
 
     // 전체 저장 완료 후 이미지 자동 삭제
-    if (failCount === 0) {
+    if (failCount === 0 && er.rowIndex != null) {
       setRows((prev) =>
-        prev.map((r) => {
-          if (r.clientName === er.clientName && r.accountType === er.accountType && r.imagePreview) {
+        prev.map((r, idx) => {
+          if (idx === er.rowIndex && r.imagePreview) {
             URL.revokeObjectURL(r.imagePreview);
             return { ...r, imageFile: null, imagePreview: '' };
           }
@@ -4952,7 +4955,7 @@ export default function IRPPage() {
                                     {/* 불러오기 아이콘 */}
                                     <button type="button" data-tooltip="상품 마스터에서 불러오기"
                                       onClick={() => {
-                                        setLoadMasterTarget({ snapshotId: er.snapshotId, holdingId: h.holdingId, productName: h.productName });
+                                        setLoadMasterTarget({ snapshotId: er.snapshotId, holdingId: h.holdingId, productName: h.productName, accountType: er.accountType });
                                         setLoadMasterSearch(h.productName);
                                       }}
                                       style={{ width: 22, height: 22, display: 'flex', alignItems: 'center', justifyContent: 'center', border: '1px solid #93C5FD', borderRadius: 4, backgroundColor: '#EFF6FF', cursor: 'pointer', color: '#2563EB', fontSize: '0.6rem' }}>
@@ -6286,8 +6289,20 @@ export default function IRPPage() {
       {loadMasterTarget && (() => {
         const searchLower = loadMasterSearch.toLowerCase();
         const targetName = loadMasterTarget.productName.toLowerCase();
+        // 현재 계좌유형에 따라 상품 필터링 (연금저축↔IRP 교차 제외)
+        const acctType = loadMasterTarget.accountType || '';
+        const typeFiltered = productMasters.filter((m) => {
+          const pName = m.product_name.toLowerCase();
+          const pType = (m.product_type || '').toLowerCase();
+          if (acctType === 'pension1' || acctType === 'pension2' || acctType === '연금저축') {
+            if (pType.includes('irp') || pName.includes('irp')) return false;
+          } else if (acctType === 'irp' || acctType === 'IRP') {
+            if (pType.includes('연금저축') || pName.includes('연금저축')) return false;
+          }
+          return true;
+        });
         // 유사도 점수: 원래 상품명과 비슷한 순서대로
-        const scored = productMasters.map((m) => {
+        const scored = typeFiltered.map((m) => {
           const name = m.product_name.toLowerCase();
           let score = 0;
           if (name === targetName) score = 100;
