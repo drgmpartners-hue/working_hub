@@ -32,9 +32,20 @@ async def create_snapshot(
     with open(image_path, "wb") as f:
         f.write(image_bytes)
 
-    # Load known product names for better OCR accuracy
+    # Load known product names filtered by account type for better OCR accuracy
+    account = await db.get(ClientAccount, client_account_id)
+    account_type = account.account_type if account else None
+
     pm_result = await db.execute(select(ProductMaster.product_name))
-    known_names = [row[0] for row in pm_result.all() if row[0]]
+    all_names = [row[0] for row in pm_result.all() if row[0]]
+
+    # Filter: 연금저축 계좌 → IRP 펀드 제외, IRP 계좌 → 연금저축 펀드 제외
+    if account_type in ("pension1", "pension2"):
+        known_names = [n for n in all_names if "irp" not in n.lower()]
+    elif account_type == "irp":
+        known_names = [n for n in all_names if "연금저축" not in n]
+    else:
+        known_names = all_names
 
     # Extract data via Gemini Vision (with product name reference)
     extracted = await extract_portfolio_from_image(image_bytes, mime_type, known_names or None)

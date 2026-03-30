@@ -3202,6 +3202,19 @@ export default function IRPPage() {
     setSavingAll(null);
     await loadClients();
 
+    // 전체 저장 완료 후 이미지 자동 삭제
+    if (failCount === 0) {
+      setRows((prev) =>
+        prev.map((r) => {
+          if (r.clientName === er.clientName && r.accountType === er.accountType && r.imagePreview) {
+            URL.revokeObjectURL(r.imagePreview);
+            return { ...r, imageFile: null, imagePreview: '' };
+          }
+          return r;
+        })
+      );
+    }
+
     // 3초 후 토스트 제거
     setTimeout(() => {
       setExtractionResults((prev) =>
