@@ -6618,10 +6618,10 @@ export default function IRPPage() {
         const filtered = scored
           .filter((m) => {
             if (!searchLower) return true;
-            return normalize(m.product_name).includes(normSearch) || (m.product_code || '').toLowerCase().includes(searchLower);
+            return normalize(m.product_name).includes(normSearch) || m.product_name.toLowerCase().includes(searchLower) || (m.product_code || '').toLowerCase().includes(searchLower);
           })
-          .filter((m) => searchLower ? true : m.score >= 30)
-          .sort((a, b) => b.score - a.score);
+          .sort((a, b) => b.score - a.score)
+          .slice(0, searchLower ? 50 : 20);
 
         return (
           <div style={{ position: 'fixed', inset: 0, zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(0,0,0,0.45)' }}
