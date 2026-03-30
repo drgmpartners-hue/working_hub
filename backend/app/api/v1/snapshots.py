@@ -83,6 +83,45 @@ async def get_report_data(
     return data
 
 
+@router.get("/latest-dates")
+async def get_latest_dates(
+    current_user=Depends(get_current_user),
+    db: AsyncSession=Depends(get_db),
+):
+    """Return latest snapshot date per client_account_id, grouped by client name."""
+    from sqlalchemy import select, func
+    from app.models.snapshot import PortfolioSnapshot
+    from app.models.client import ClientAccount, Client
+
+    # Subquery: latest snapshot_date per account
+    sub = (
+        select(
+            PortfolioSnapshot.client_account_id,
+            func.max(PortfolioSnapshot.snapshot_date).label("latest_date"),
+        )
+        .group_by(PortfolioSnapshot.client_account_id)
+        .subquery()
+    )
+    rows = await db.execute(
+        select(
+            Client.id.label("client_id"),
+            Client.name,
+            sub.c.latest_date,
+        )
+        .join(ClientAccount, ClientAccount.client_id == Client.id)
+        .join(sub, sub.c.client_account_id == ClientAccount.id)
+        .where(Client.user_id == current_user.id)
+    )
+    # Group by client: take the most recent date across all accounts
+    result: dict[str, str] = {}
+    for row in rows.all():
+        cid = row.client_id
+        d = str(row.latest_date) if row.latest_date else ""
+        if cid not in result or d > result[cid]:
+            result[cid] = d
+    return result  # {client_id: "2026-03-30", ...}
+
+
 @router.get("/{snapshot_id}", response_model=SnapshotResponse)
 async def get_snapshot(
     snapshot_id: str,

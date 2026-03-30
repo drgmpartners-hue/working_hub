@@ -188,9 +188,10 @@ function todayString(): string {
   return new Date().toISOString().slice(0, 10);
 }
 
-/** 고객명 표시: 이름(고유번호) */
-function clientLabel(c: { name: string; unique_code?: string }): string {
-  return c.unique_code ? `${c.name}(${c.unique_code})` : c.name;
+/** 고객명 표시: 이름(고유번호) | 최근저장일 */
+function clientLabel(c: { name: string; unique_code?: string }, latestDate?: string): string {
+  const base = c.unique_code ? `${c.name}(${c.unique_code})` : c.name;
+  return latestDate ? `${base} | ${latestDate}` : base;
 }
 
 function makeDefaultRow(accountType: 'irp' | 'pension1' | 'pension2' = 'irp'): ClientRowData {
@@ -368,6 +369,9 @@ interface Tab2SectionProps {
   setSelectedSnapshotIds: React.Dispatch<React.SetStateAction<Set<string>>>;
   onGoToReport: () => void;
   onProductMasterCreated: (pm: ProductMaster) => void;
+  clientLatestDates: Record<string, string>;
+  clientSortByDate: boolean;
+  setClientSortByDate: (v: boolean) => void;
 }
 
 /* ------------------------------------------------------------------ */
@@ -403,6 +407,9 @@ function Tab2Section({
   setSelectedSnapshotIds,
   onGoToReport,
   onProductMasterCreated,
+  clientLatestDates,
+  clientSortByDate,
+  setClientSortByDate,
 }: Tab2SectionProps) {
   /* ---- Area 1 local state ---- */
   const [t2DatePage, setT2DatePage] = useState(0);
@@ -862,7 +869,15 @@ function Tab2Section({
       uniqueClientsMap.set(c.name, { id: c.id, name: c.name, unique_code: c.unique_code, accounts: [...c.accounts] });
     }
   }
-  const uniqueClients = Array.from(uniqueClientsMap.values()).sort((a, b) => a.name.localeCompare(b.name, 'ko'));
+  const uniqueClients = Array.from(uniqueClientsMap.values()).sort((a, b) => {
+    if (clientSortByDate) {
+      const da = clientLatestDates[a.id] || '';
+      const db_ = clientLatestDates[b.id] || '';
+      if (da !== db_) return db_.localeCompare(da); // 최신순
+      return a.name.localeCompare(b.name, 'ko');
+    }
+    return a.name.localeCompare(b.name, 'ko');
+  });
 
   /* ---- Derived: accounts for selected client (all accounts across same-name clients) ---- */
   /* When histClientId is set, find the name of that client, then collect all accounts from all clients with that name */
@@ -1050,16 +1065,58 @@ function Tab2Section({
         });
         if (sugRes.ok) {
           const sug = await sugRes.json();
-          const weights: Record<string, number> = sug.suggested_weights ?? {};
-          if (Object.keys(weights).length > 0) {
+          const rawWeights: Record<string, unknown> = sug.suggested_weights ?? {};
+          const prices: Record<string, number> = (rawWeights._prices as Record<string, number>) ?? {};
+          // Remove _prices from weights map
+          const cleanWeights: Record<string, number> = {};
+          for (const [k, v] of Object.entries(rawWeights)) {
+            if (k !== '_prices' && typeof v === 'number') cleanWeights[k] = v;
+          }
+
+          if (Object.keys(cleanWeights).length > 0) {
             setT2RebalRows((prev) => {
+              // Apply weights to existing rows
               const updated = prev.map((r) => {
-                if (r.id in weights) {
-                  return { ...r, rebalRatio: parseFloat((weights[r.id] * 100).toFixed(2)) };
+                if (r.id in cleanWeights) {
+                  return { ...r, rebalRatio: parseFloat((cleanWeights[r.id] * 100).toFixed(2)) };
                 }
                 return r;
               });
-              return recalcRebalRows(updated);
+
+              // Add new products (new:xxx keys) that aren't in existing rows
+              const existingIds = new Set(prev.map((r) => r.id));
+              const newRows: typeof prev = [];
+              for (const [key, weight] of Object.entries(cleanWeights)) {
+                if (key.startsWith('new:') && !existingIds.has(key)) {
+                  const prodName = key.replace('new:', '');
+                  const master = productMasters.find((m) => m.product_name === prodName);
+                  const cPrice = prices[key] ?? 0;
+                  newRows.push({
+                    id: `__new_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+                    productName: prodName,
+                    productCode: master?.product_code ?? '',
+                    riskLevel: master?.risk_level ?? '',
+                    region: master?.region ?? '',
+                    quantity: 0,
+                    purchasePrice: 0,
+                    currentPrice: cPrice,
+                    purchaseAmount: 0,
+                    evaluationAmount: 0,
+                    returnAmount: 0,
+                    returnRate: 0,
+                    evalRatio: 0,
+                    rebalRatio: parseFloat((weight * 100).toFixed(2)),
+                    rebalAmount: 0,
+                    sellBuy: 0,
+                    shares: 0,
+                    productType: master?.product_type ?? '',
+                    isRow1: false,
+                    fullSell: false,
+                  });
+                }
+              }
+
+              return recalcRebalRows([...updated, ...newRows]);
             });
           }
         }
@@ -1541,8 +1598,17 @@ function Tab2Section({
           </div>
 
           {/* 고객 선택 */}
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 5, minWidth: 160, flex: 1 }}>
-            <label style={{ fontSize: '0.8125rem', fontWeight: 600, color: '#374151' }}>고객 선택</label>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 5, minWidth: 220, flex: 1 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+              <label style={{ fontSize: '0.8125rem', fontWeight: 600, color: '#374151' }}>고객 선택</label>
+              <button
+                onClick={() => setClientSortByDate(!clientSortByDate)}
+                title={clientSortByDate ? '이름순 정렬' : '최근 저장일순 정렬'}
+                style={{ padding: '2px 6px', fontSize: '0.6875rem', fontWeight: 600, color: clientSortByDate ? '#fff' : '#6B7280', backgroundColor: clientSortByDate ? '#1E3A5F' : '#F3F4F6', border: '1px solid #D1D5DB', borderRadius: 4, cursor: 'pointer' }}
+              >
+                {clientSortByDate ? '저장일순' : '이름순'}
+              </button>
+            </div>
             <select
               value={histClientId}
               onChange={(e) => { handleT2ClientChange(e.target.value); setT2ClientSearch(''); }}
@@ -1556,7 +1622,7 @@ function Tab2Section({
                   return c.name.toLowerCase().includes(q) || (c.unique_code ?? '').includes(q);
                 })
                 .map((c) => (
-                  <option key={c.name} value={c.id}>{clientLabel(c)}</option>
+                  <option key={c.name} value={c.id}>{clientLabel(c, clientLatestDates[c.id])}</option>
                 ))}
             </select>
           </div>
@@ -2702,6 +2768,17 @@ export default function IRPPage() {
   const [clients, setClients] = useState<Client[]>([]);
   const [clientsLoading, setClientsLoading] = useState(false);
 
+  /* ---------- client latest dates & sort ---------- */
+  const [clientLatestDates, setClientLatestDates] = useState<Record<string, string>>({});
+  const [clientSortByDate, setClientSortByDate] = useState(false);
+
+  const loadClientLatestDates = useCallback(async () => {
+    try {
+      const res = await fetch(`${API_URL}/api/v1/snapshots/latest-dates`, { headers: { ...authLib.getAuthHeader() } });
+      if (res.ok) setClientLatestDates(await res.json());
+    } catch { /* ignore */ }
+  }, []);
+
   /* ---------- client management modal ---------- */
   const [clientMgmtOpen, setClientMgmtOpen] = useState(false);
 
@@ -2865,6 +2942,7 @@ export default function IRPPage() {
   useEffect(() => {
     loadClients();
     loadProductMasters();
+    loadClientLatestDates();
   }, []);
 
   async function loadClients() {
@@ -3256,6 +3334,7 @@ export default function IRPPage() {
 
     setSavingAll(null);
     await loadClients();
+    loadClientLatestDates();
 
     // 전체 저장 완료 후 이미지 자동 삭제
     if (failCount === 0 && er.rowIndex != null) {
@@ -4546,7 +4625,15 @@ export default function IRPPage() {
       mainUniqueClientsMap.set(c.name, { id: c.id, name: c.name, unique_code: c.unique_code, accounts: [...c.accounts] });
     }
   }
-  const mainUniqueClients = Array.from(mainUniqueClientsMap.values()).sort((a, b) => a.name.localeCompare(b.name, 'ko'));
+  const mainUniqueClients = Array.from(mainUniqueClientsMap.values()).sort((a, b) => {
+    if (clientSortByDate) {
+      const da = clientLatestDates[a.id] || '';
+      const db_ = clientLatestDates[b.id] || '';
+      if (da !== db_) return db_.localeCompare(da);
+      return a.name.localeCompare(b.name, 'ko');
+    }
+    return a.name.localeCompare(b.name, 'ko');
+  });
 
   const allAccountsForReport = clients.flatMap((c) =>
     c.accounts.map((a) => ({
@@ -5250,6 +5337,9 @@ export default function IRPPage() {
           setSelectedSnapshotIds={setSelectedSnapshotIds}
           onGoToReport={() => setActiveTab('report')}
           onProductMasterCreated={(pm) => setProductMasters((prev) => [...prev, pm])}
+          clientLatestDates={clientLatestDates}
+          clientSortByDate={clientSortByDate}
+          setClientSortByDate={setClientSortByDate}
         />
       )}
 
@@ -5280,8 +5370,17 @@ export default function IRPPage() {
               </div>
 
               {/* 고객 선택 */}
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 5, minWidth: 160, flex: 1 }}>
-                <label style={{ fontSize: '0.8125rem', fontWeight: 600, color: '#374151' }}>고객 선택</label>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 5, minWidth: 220, flex: 1 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                  <label style={{ fontSize: '0.8125rem', fontWeight: 600, color: '#374151' }}>고객 선택</label>
+                  <button
+                    onClick={() => setClientSortByDate(!clientSortByDate)}
+                    title={clientSortByDate ? '이름순 정렬' : '최근 저장일순 정렬'}
+                    style={{ padding: '2px 6px', fontSize: '0.6875rem', fontWeight: 600, color: clientSortByDate ? '#fff' : '#6B7280', backgroundColor: clientSortByDate ? '#1E3A5F' : '#F3F4F6', border: '1px solid #D1D5DB', borderRadius: 4, cursor: 'pointer' }}
+                  >
+                    {clientSortByDate ? '저장일순' : '이름순'}
+                  </button>
+                </div>
                 <select
                   value={tab3ClientId}
                   onChange={(e) => { handleTab3ClientChange(e.target.value); setTab3ClientSearch(''); }}
@@ -5295,7 +5394,7 @@ export default function IRPPage() {
                       return c.name.toLowerCase().includes(q) || (c.unique_code ?? '').includes(q);
                     })
                     .map((c) => (
-                      <option key={c.name} value={c.id}>{clientLabel(c)}</option>
+                      <option key={c.name} value={c.id}>{clientLabel(c, clientLatestDates[c.id])}</option>
                     ))}
                 </select>
               </div>
@@ -5638,7 +5737,7 @@ export default function IRPPage() {
                       return c.name.toLowerCase().includes(q) || (c.unique_code ?? '').includes(q);
                     })
                     .map((c) => (
-                      <option key={c.name} value={c.id}>{clientLabel(c)}</option>
+                      <option key={c.name} value={c.id}>{clientLabel(c, clientLatestDates[c.id])}</option>
                     ))}
                 </select>
               </div>
@@ -6464,23 +6563,64 @@ export default function IRPPage() {
           }
           return true;
         });
-        // 유사도 점수: 원래 상품명과 비슷한 순서대로
+        // 유사도 점수: 특수문자/공백 모두 제거 후 비교 + LCS 기반
+        const normalize = (s: string) => s.replace(/[^가-힣a-zA-Z0-9]/g, '').toLowerCase();
+        const normTarget = normalize(targetName);
+
+        // LCS(Longest Common Substring) 길이 계산
+        const lcsLength = (a: string, b: string): number => {
+          if (!a || !b) return 0;
+          const m = a.length, n = b.length;
+          let max = 0;
+          // 메모리 효율적 1D DP
+          const prev = new Array(n + 1).fill(0);
+          for (let i = 1; i <= m; i++) {
+            const curr = new Array(n + 1).fill(0);
+            for (let j = 1; j <= n; j++) {
+              if (a[i - 1] === b[j - 1]) {
+                curr[j] = prev[j - 1] + 1;
+                if (curr[j] > max) max = curr[j];
+              }
+            }
+            for (let j = 0; j <= n; j++) prev[j] = curr[j];
+          }
+          return max;
+        };
+
         const scored = typeFiltered.map((m) => {
-          const name = m.product_name.toLowerCase();
+          const normName = normalize(m.product_name);
           let score = 0;
-          if (name === targetName) score = 100;
-          else if (name.includes(targetName) || targetName.includes(name)) score = 80;
+
+          // 1. 정규화 후 정확 일치
+          if (normName === normTarget) {
+            score = 100;
+          }
+          // 2. 정규화 후 포함 관계 (한쪽이 다른쪽에 포함)
+          else if (normName.includes(normTarget) || normTarget.includes(normName)) {
+            const shorter = Math.min(normName.length, normTarget.length);
+            const longer = Math.max(normName.length, normTarget.length);
+            score = Math.round(85 * (shorter / longer));
+            if (score < 50) score = 50; // 포함되면 최소 50점
+          }
+          // 3. LCS 비율 기반 유사도
           else {
-            // 공통 단어 수
-            const words1 = targetName.split(/\s+/);
-            const words2 = name.split(/\s+/);
-            const common = words1.filter((w) => words2.some((w2) => w2.includes(w) || w.includes(w2))).length;
-            score = common * 20;
+            const lcs = lcsLength(normTarget, normName);
+            const shorter = Math.min(normTarget.length, normName.length);
+            if (shorter > 0) {
+              const ratio = lcs / shorter;
+              score = Math.round(ratio * 80);
+            }
           }
           return { ...m, score };
         });
+
+        const normSearch = normalize(searchLower);
         const filtered = scored
-          .filter((m) => !searchLower || m.product_name.toLowerCase().includes(searchLower) || (m.product_code || '').toLowerCase().includes(searchLower))
+          .filter((m) => {
+            if (!searchLower) return true;
+            return normalize(m.product_name).includes(normSearch) || (m.product_code || '').toLowerCase().includes(searchLower);
+          })
+          .filter((m) => searchLower ? true : m.score >= 30)
           .sort((a, b) => b.score - a.score);
 
         return (
