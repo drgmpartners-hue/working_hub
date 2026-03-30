@@ -1603,7 +1603,7 @@ function Tab2Section({
               <label style={{ fontSize: '0.8125rem', fontWeight: 600, color: '#374151' }}>고객 선택</label>
               <button
                 onClick={() => setClientSortByDate(!clientSortByDate)}
-                title={clientSortByDate ? '이름순 정렬' : '최근 저장일순 정렬'}
+                title={clientSortByDate ? '이름순으로 전환' : '저장일순으로 전환 (저장일 = 데이터 입력 최신일)'}
                 style={{ padding: '2px 6px', fontSize: '0.6875rem', fontWeight: 600, color: clientSortByDate ? '#fff' : '#6B7280', backgroundColor: clientSortByDate ? '#1E3A5F' : '#F3F4F6', border: '1px solid #D1D5DB', borderRadius: 4, cursor: 'pointer' }}
               >
                 {clientSortByDate ? '저장일순' : '이름순'}
@@ -2770,12 +2770,17 @@ export default function IRPPage() {
 
   /* ---------- client latest dates & sort ---------- */
   const [clientLatestDates, setClientLatestDates] = useState<Record<string, string>>({});
+  const [suggestionLatestDates, setSuggestionLatestDates] = useState<Record<string, string>>({});
   const [clientSortByDate, setClientSortByDate] = useState(false);
 
   const loadClientLatestDates = useCallback(async () => {
     try {
-      const res = await fetch(`${API_URL}/api/v1/snapshots/latest-dates`, { headers: { ...authLib.getAuthHeader() } });
-      if (res.ok) setClientLatestDates(await res.json());
+      const [snapRes, suggRes] = await Promise.all([
+        fetch(`${API_URL}/api/v1/snapshots/latest-dates`, { headers: { ...authLib.getAuthHeader() } }),
+        fetch(`${API_URL}/api/v1/portfolios/suggestions/latest-dates/all`, { headers: { ...authLib.getAuthHeader() } }),
+      ]);
+      if (snapRes.ok) setClientLatestDates(await snapRes.json());
+      if (suggRes.ok) setSuggestionLatestDates(await suggRes.json());
     } catch { /* ignore */ }
   }, []);
 
@@ -4627,8 +4632,8 @@ export default function IRPPage() {
   }
   const mainUniqueClients = Array.from(mainUniqueClientsMap.values()).sort((a, b) => {
     if (clientSortByDate) {
-      const da = clientLatestDates[a.id] || '';
-      const db_ = clientLatestDates[b.id] || '';
+      const da = suggestionLatestDates[a.id] || '';
+      const db_ = suggestionLatestDates[b.id] || '';
       if (da !== db_) return db_.localeCompare(da);
       return a.name.localeCompare(b.name, 'ko');
     }
@@ -5375,7 +5380,7 @@ export default function IRPPage() {
                   <label style={{ fontSize: '0.8125rem', fontWeight: 600, color: '#374151' }}>고객 선택</label>
                   <button
                     onClick={() => setClientSortByDate(!clientSortByDate)}
-                    title={clientSortByDate ? '이름순 정렬' : '최근 저장일순 정렬'}
+                    title={clientSortByDate ? '이름순으로 전환' : '저장일순으로 전환 (저장일 = 수정 포트폴리오 최신 저장일)'}
                     style={{ padding: '2px 6px', fontSize: '0.6875rem', fontWeight: 600, color: clientSortByDate ? '#fff' : '#6B7280', backgroundColor: clientSortByDate ? '#1E3A5F' : '#F3F4F6', border: '1px solid #D1D5DB', borderRadius: 4, cursor: 'pointer' }}
                   >
                     {clientSortByDate ? '저장일순' : '이름순'}
@@ -5394,7 +5399,7 @@ export default function IRPPage() {
                       return c.name.toLowerCase().includes(q) || (c.unique_code ?? '').includes(q);
                     })
                     .map((c) => (
-                      <option key={c.name} value={c.id}>{clientLabel(c, clientLatestDates[c.id])}</option>
+                      <option key={c.name} value={c.id}>{clientLabel(c, suggestionLatestDates[c.id])}</option>
                     ))}
                 </select>
               </div>

@@ -13,7 +13,8 @@ from app.schemas.portfolio_suggestion import (
 from app.services import client_portal_service
 from app.services.email_service import send_suggestion_email
 from app.models.client import ClientAccount, Client
-from sqlalchemy import select, and_
+from app.models.portfolio_suggestion import PortfolioSuggestion
+from sqlalchemy import select, and_, func
 
 router = APIRouter(prefix="/portfolios", tags=["portfolio-suggestions"])
 
@@ -141,3 +142,35 @@ async def send_suggestion_link(
         "email_sent": email_sent,
         "expires_at": suggestion.expires_at.isoformat() if suggestion.expires_at else None,
     }
+
+
+@router.get("/suggestions/latest-dates/all")
+async def get_suggestion_latest_dates(
+    current_user=Depends(get_current_user),
+    db: AsyncSession=Depends(get_db),
+):
+    """Return latest suggestion created_at per client, grouped by client_id."""
+    sub = (
+        select(
+            PortfolioSuggestion.account_id,
+            func.max(PortfolioSuggestion.created_at).label("latest_date"),
+        )
+        .group_by(PortfolioSuggestion.account_id)
+        .subquery()
+    )
+    rows = await db.execute(
+        select(
+            Client.id.label("client_id"),
+            sub.c.latest_date,
+        )
+        .join(ClientAccount, ClientAccount.client_id == Client.id)
+        .join(sub, sub.c.account_id == ClientAccount.id)
+        .where(Client.user_id == current_user.id)
+    )
+    result: dict[str, str] = {}
+    for row in rows.all():
+        cid = row.client_id
+        d = row.latest_date.strftime("%Y-%m-%d") if row.latest_date else ""
+        if cid not in result or d > result[cid]:
+            result[cid] = d
+    return result
