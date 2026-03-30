@@ -412,21 +412,86 @@ async def apply_master_to_snapshot(
     if not holdings:
         return {"updated": 0, "not_found": []}
 
-    # Collect distinct product names
-    product_names = list({h.product_name for h in holdings})
+    # Fetch ALL master records for fuzzy matching
+    master_result = await db.execute(select(ProductMaster))
+    all_masters: list[ProductMaster] = list(master_result.scalars().all())
 
-    # Fetch matching master records in one query
-    master_result = await db.execute(
-        select(ProductMaster).where(ProductMaster.product_name.in_(product_names))
-    )
-    master_rows = master_result.scalars().all()
-    master_map: dict[str, ProductMaster] = {m.product_name: m for m in master_rows}
+    # Build exact match map
+    master_map: dict[str, ProductMaster] = {m.product_name: m for m in all_masters}
+
+    def _normalize(s: str) -> str:
+        """Remove spaces, parens content suffixes, and lowercase for comparison."""
+        import re
+        s = re.sub(r'\s+', '', s)  # remove all whitespace
+        s = s.lower()
+        return s
+
+    def _find_best_master(name: str) -> ProductMaster | None:
+        """Try exact match first, then fuzzy containment matching."""
+        # 1. Exact match
+        if name in master_map:
+            return master_map[name]
+
+        # 2. Normalized exact match
+        norm_name = _normalize(name)
+        for m in all_masters:
+            if _normalize(m.product_name) == norm_name:
+                return m
+
+        # 3. Containment: master name contained in holding name or vice versa
+        #    (handles suffix differences like C-Pe vs C-P1e, class suffixes etc.)
+        best_match: ProductMaster | None = None
+        best_len = 0
+        for m in all_masters:
+            mn = _normalize(m.product_name)
+            # Skip very short names (e.g. "예수금") to avoid false positives
+            if len(mn) < 6:
+                if mn == norm_name:
+                    return m
+                continue
+            # Check if one contains the other
+            if mn in norm_name or norm_name in mn:
+                # Prefer longer match (more specific)
+                if len(mn) > best_len:
+                    best_len = len(mn)
+                    best_match = m
+
+        if best_match:
+            return best_match
+
+        # 4. Keyword overlap: compare meaningful parts
+        #    Split by common delimiters and check overlap ratio
+        import re
+        def _keywords(s: str) -> set[str]:
+            parts = re.split(r'[()（）\[\]&+·\s]+', s)
+            return {p.lower() for p in parts if len(p) >= 2}
+
+        name_kws = _keywords(name)
+        if not name_kws:
+            return None
+
+        best_ratio = 0.0
+        best_match = None
+        for m in all_masters:
+            m_kws = _keywords(m.product_name)
+            if not m_kws:
+                continue
+            # Jaccard-like: intersection / min(len) for partial match
+            common = name_kws & m_kws
+            if not common:
+                continue
+            ratio = len(common) / min(len(name_kws), len(m_kws))
+            if ratio > best_ratio and ratio >= 0.5:
+                best_ratio = ratio
+                best_match = m
+
+        return best_match
 
     updated_count = 0
     not_found: list[str] = []
 
     for holding in holdings:
-        master = master_map.get(holding.product_name)
+        master = _find_best_master(holding.product_name)
         if master:
             holding.risk_level = master.risk_level
             holding.region = master.region
