@@ -51,6 +51,9 @@ from app.models.sms_template import SmsTemplate
 # Depends on users (field options for dropdowns)
 from app.models.field_option import FieldOption
 
+# No FK dependencies (product name change memo)
+from app.models.product_name_change import ProductNameChange
+
 # Depends on users + clients + client_accounts (message logs)
 from app.models.message_log import MessageLog
 
@@ -83,4 +86,5 @@ __all__ = [
     "SmsTemplate",
     "MessageLog",
     "FieldOption",
+    "ProductNameChange",
 ]

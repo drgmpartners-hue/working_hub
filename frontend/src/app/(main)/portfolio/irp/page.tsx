@@ -2705,6 +2705,58 @@ export default function IRPPage() {
   /* ---------- client management modal ---------- */
   const [clientMgmtOpen, setClientMgmtOpen] = useState(false);
 
+  /* ---------- product name change memo ---------- */
+  const [nameChangeMemoOpen, setNameChangeMemoOpen] = useState(false);
+  const [nameChanges, setNameChanges] = useState<{id:string; old_keyword:string; new_keyword:string; memo?:string}[]>([]);
+  const [ncLoading, setNcLoading] = useState(false);
+  const [ncNewOld, setNcNewOld] = useState('');
+  const [ncNewNew, setNcNewNew] = useState('');
+  const [ncNewMemo, setNcNewMemo] = useState('');
+  const [ncEditId, setNcEditId] = useState<string|null>(null);
+  const [ncEditOld, setNcEditOld] = useState('');
+  const [ncEditNew, setNcEditNew] = useState('');
+  const [ncEditMemo, setNcEditMemo] = useState('');
+
+  const loadNameChanges = useCallback(async () => {
+    setNcLoading(true);
+    try {
+      const res = await fetch(`${API_URL}/api/v1/product-name-changes`, { headers: { Authorization: `Bearer ${authLib.getToken()}` } });
+      if (res.ok) setNameChanges(await res.json());
+    } catch { /* ignore */ }
+    setNcLoading(false);
+  }, []);
+
+  const addNameChange = async () => {
+    if (!ncNewOld.trim() || !ncNewNew.trim()) return;
+    try {
+      const res = await fetch(`${API_URL}/api/v1/product-name-changes`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${authLib.getToken()}` },
+        body: JSON.stringify({ old_keyword: ncNewOld.trim(), new_keyword: ncNewNew.trim(), memo: ncNewMemo.trim() || null }),
+      });
+      if (res.ok) { setNcNewOld(''); setNcNewNew(''); setNcNewMemo(''); loadNameChanges(); }
+    } catch { /* ignore */ }
+  };
+
+  const updateNameChange = async (id: string) => {
+    try {
+      await fetch(`${API_URL}/api/v1/product-name-changes/${id}`, {
+        method: 'PUT', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${authLib.getToken()}` },
+        body: JSON.stringify({ old_keyword: ncEditOld.trim(), new_keyword: ncEditNew.trim(), memo: ncEditMemo.trim() || null }),
+      });
+      setNcEditId(null); loadNameChanges();
+    } catch { /* ignore */ }
+  };
+
+  const deleteNameChange = async (id: string) => {
+    if (!confirm('삭제하시겠습니까?')) return;
+    try {
+      await fetch(`${API_URL}/api/v1/product-name-changes/${id}`, {
+        method: 'DELETE', headers: { Authorization: `Bearer ${authLib.getToken()}` },
+      });
+      loadNameChanges();
+    } catch { /* ignore */ }
+  };
+
   /* ---------- tab1 state ---------- */
   const [rows, setRows] = useState<ClientRowData[]>([makeDefaultRow()]);
   const [processing, setProcessing] = useState(false);
@@ -4651,6 +4703,28 @@ export default function IRPPage() {
                   </svg>
                   계좌정보 관리
                 </button>
+                <button
+                  onClick={() => { setNameChangeMemoOpen(true); loadNameChanges(); }}
+                  style={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: 5,
+                    padding: '6px 14px',
+                    fontSize: '0.8125rem',
+                    fontWeight: 600,
+                    color: '#1E3A5F',
+                    backgroundColor: '#fff',
+                    border: '1px solid #1E3A5F',
+                    borderRadius: 7,
+                    cursor: 'pointer',
+                  }}
+                >
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
+                    <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
+                  </svg>
+                  상품명 변경 메모
+                </button>
                 {/* 고객 추가 버튼은 계좌정보 관리 팝업에서 처리 */}
               </div>
             </div>
@@ -6277,6 +6351,95 @@ export default function IRPPage() {
 
       {/* spin animation */}
       <style>{`@keyframes spin{from{transform:rotate(0deg)}to{transform:rotate(360deg)}}`}</style>
+
+      {/* 상품명 변경 메모 팝업 */}
+      {nameChangeMemoOpen && (
+        <div style={{ position: 'fixed', inset: 0, zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(0,0,0,0.5)' }}>
+          <div style={{ backgroundColor: '#fff', borderRadius: 12, width: 640, maxHeight: '80vh', display: 'flex', flexDirection: 'column', boxShadow: '0 20px 60px rgba(0,0,0,0.3)' }}>
+            {/* 헤더 */}
+            <div style={{ padding: '20px 24px 12px', borderBottom: '1px solid #E5E7EB', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <div>
+                <h3 style={{ margin: 0, fontSize: '1.125rem', fontWeight: 700, color: '#1E3A5F' }}>상품명 변경 메모</h3>
+                <p style={{ margin: '4px 0 0', fontSize: '0.75rem', color: '#6B7280' }}>
+                  상품명 전체가 아닌, 변경된 키워드를 중심으로 입력하세요. (예: 이스트스프링 → 카디안)
+                </p>
+              </div>
+              <button onClick={() => setNameChangeMemoOpen(false)} style={{ background: 'none', border: 'none', fontSize: '1.25rem', cursor: 'pointer', color: '#6B7280' }}>✕</button>
+            </div>
+
+            {/* 등록 폼 */}
+            <div style={{ padding: '16px 24px', borderBottom: '1px solid #F3F4F6', display: 'flex', gap: 8, alignItems: 'flex-end', flexWrap: 'wrap' }}>
+              <div style={{ flex: 1, minWidth: 120 }}>
+                <label style={{ fontSize: '0.75rem', color: '#374151', fontWeight: 600 }}>변경 전 키워드</label>
+                <input value={ncNewOld} onChange={e => setNcNewOld(e.target.value)} placeholder="예: 이스트스프링"
+                  style={{ width: '100%', padding: '6px 10px', border: '1px solid #D1D5DB', borderRadius: 6, fontSize: '0.8125rem', marginTop: 2 }} />
+              </div>
+              <div style={{ fontSize: '1.25rem', color: '#9CA3AF', paddingBottom: 4 }}>→</div>
+              <div style={{ flex: 1, minWidth: 120 }}>
+                <label style={{ fontSize: '0.75rem', color: '#374151', fontWeight: 600 }}>변경 후 키워드</label>
+                <input value={ncNewNew} onChange={e => setNcNewNew(e.target.value)} placeholder="예: 카디안"
+                  style={{ width: '100%', padding: '6px 10px', border: '1px solid #D1D5DB', borderRadius: 6, fontSize: '0.8125rem', marginTop: 2 }} />
+              </div>
+              <div style={{ flex: 1, minWidth: 100 }}>
+                <label style={{ fontSize: '0.75rem', color: '#374151', fontWeight: 600 }}>메모 (선택)</label>
+                <input value={ncNewMemo} onChange={e => setNcNewMemo(e.target.value)} placeholder="변경사유"
+                  style={{ width: '100%', padding: '6px 10px', border: '1px solid #D1D5DB', borderRadius: 6, fontSize: '0.8125rem', marginTop: 2 }} />
+              </div>
+              <button onClick={addNameChange} style={{ padding: '6px 16px', backgroundColor: '#1E3A5F', color: '#fff', border: 'none', borderRadius: 6, fontSize: '0.8125rem', fontWeight: 600, cursor: 'pointer', whiteSpace: 'nowrap' }}>추가</button>
+            </div>
+
+            {/* 목록 */}
+            <div style={{ flex: 1, overflowY: 'auto', padding: '12px 24px 20px' }}>
+              {ncLoading ? (
+                <p style={{ textAlign: 'center', color: '#9CA3AF', fontSize: '0.875rem' }}>로딩 중...</p>
+              ) : nameChanges.length === 0 ? (
+                <p style={{ textAlign: 'center', color: '#9CA3AF', fontSize: '0.875rem', padding: '24px 0' }}>등록된 변경 메모가 없습니다.</p>
+              ) : (
+                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.8125rem' }}>
+                  <thead>
+                    <tr style={{ borderBottom: '2px solid #E5E7EB' }}>
+                      <th style={{ padding: '8px 6px', textAlign: 'left', color: '#374151', fontWeight: 600 }}>변경 전</th>
+                      <th style={{ padding: '8px 2px', width: 30, textAlign: 'center' }}></th>
+                      <th style={{ padding: '8px 6px', textAlign: 'left', color: '#374151', fontWeight: 600 }}>변경 후</th>
+                      <th style={{ padding: '8px 6px', textAlign: 'left', color: '#374151', fontWeight: 600 }}>메모</th>
+                      <th style={{ padding: '8px 6px', width: 100, textAlign: 'center', color: '#374151', fontWeight: 600 }}>관리</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {nameChanges.map(nc => (
+                      <tr key={nc.id} style={{ borderBottom: '1px solid #F3F4F6' }}>
+                        {ncEditId === nc.id ? (
+                          <>
+                            <td style={{ padding: '6px' }}><input value={ncEditOld} onChange={e => setNcEditOld(e.target.value)} style={{ width: '100%', padding: '4px 8px', border: '1px solid #D1D5DB', borderRadius: 4, fontSize: '0.8125rem' }} /></td>
+                            <td style={{ textAlign: 'center', color: '#9CA3AF' }}>→</td>
+                            <td style={{ padding: '6px' }}><input value={ncEditNew} onChange={e => setNcEditNew(e.target.value)} style={{ width: '100%', padding: '4px 8px', border: '1px solid #D1D5DB', borderRadius: 4, fontSize: '0.8125rem' }} /></td>
+                            <td style={{ padding: '6px' }}><input value={ncEditMemo} onChange={e => setNcEditMemo(e.target.value)} style={{ width: '100%', padding: '4px 8px', border: '1px solid #D1D5DB', borderRadius: 4, fontSize: '0.8125rem' }} /></td>
+                            <td style={{ padding: '6px', textAlign: 'center' }}>
+                              <button onClick={() => updateNameChange(nc.id)} style={{ padding: '3px 10px', backgroundColor: '#1E3A5F', color: '#fff', border: 'none', borderRadius: 4, fontSize: '0.75rem', cursor: 'pointer', marginRight: 4 }}>저장</button>
+                              <button onClick={() => setNcEditId(null)} style={{ padding: '3px 10px', backgroundColor: '#6B7280', color: '#fff', border: 'none', borderRadius: 4, fontSize: '0.75rem', cursor: 'pointer' }}>취소</button>
+                            </td>
+                          </>
+                        ) : (
+                          <>
+                            <td style={{ padding: '8px 6px', color: '#DC2626', fontWeight: 500 }}>{nc.old_keyword}</td>
+                            <td style={{ textAlign: 'center', color: '#9CA3AF' }}>→</td>
+                            <td style={{ padding: '8px 6px', color: '#059669', fontWeight: 500 }}>{nc.new_keyword}</td>
+                            <td style={{ padding: '8px 6px', color: '#6B7280' }}>{nc.memo || '-'}</td>
+                            <td style={{ padding: '8px 6px', textAlign: 'center' }}>
+                              <button onClick={() => { setNcEditId(nc.id); setNcEditOld(nc.old_keyword); setNcEditNew(nc.new_keyword); setNcEditMemo(nc.memo || ''); }} style={{ padding: '3px 10px', backgroundColor: '#3B82F6', color: '#fff', border: 'none', borderRadius: 4, fontSize: '0.75rem', cursor: 'pointer', marginRight: 4 }}>수정</button>
+                              <button onClick={() => deleteNameChange(nc.id)} style={{ padding: '3px 10px', backgroundColor: '#EF4444', color: '#fff', border: 'none', borderRadius: 4, fontSize: '0.75rem', cursor: 'pointer' }}>삭제</button>
+                            </td>
+                          </>
+                        )}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Client Management Modal */}
       <ClientManagementModal

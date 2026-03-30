@@ -9,6 +9,7 @@ from sqlalchemy.orm import selectinload
 from app.models.snapshot import PortfolioSnapshot, PortfolioHolding
 from app.models.client import ClientAccount
 from app.models.product_master import ProductMaster
+from app.models.product_name_change import ProductNameChange
 from app.services.vision_service import extract_portfolio_from_image
 from app.schemas.snapshot import HoldingUpdateRequest
 
@@ -47,8 +48,21 @@ async def create_snapshot(
     else:
         known_names = all_names
 
+    # Load product name change mappings (old_keyword → new_keyword)
+    pnc_result = await db.execute(select(ProductNameChange.old_keyword, ProductNameChange.new_keyword))
+    name_changes = [(row[0], row[1]) for row in pnc_result.all()]
+
     # Extract data via Gemini Vision (with product name reference)
     extracted = await extract_portfolio_from_image(image_bytes, mime_type, known_names or None)
+
+    # Apply product name change mappings to extracted holdings
+    if name_changes:
+        for holding in extracted.get("holdings", []):
+            pname = holding.get("product_name", "")
+            for old_kw, new_kw in name_changes:
+                if old_kw in pname:
+                    pname = pname.replace(old_kw, new_kw)
+            holding["product_name"] = pname
 
     # Use AI-extracted date if available, otherwise use the provided date
     ai_date_str = extracted.get("snapshot_date")
