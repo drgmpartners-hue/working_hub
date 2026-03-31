@@ -274,10 +274,31 @@ async def get_report_for_date(
     # AI comment only for latest snapshot
     ai_comment = snapshot.parsed_data.get("ai_comment") if (is_latest and snapshot.parsed_data) else None
 
+    # Compute region/risk distribution from holdings
+    total_eval = sum(h.evaluation_amount or 0 for h in holdings)
+    region_map: dict[str, float] = {}
+    risk_map: dict[str, float] = {}
+    for h in holdings:
+        amt = h.evaluation_amount or 0
+        r = h.region or "미분류"
+        region_map[r] = region_map.get(r, 0) + amt
+        rl = h.risk_level or "미분류"
+        risk_map[rl] = risk_map.get(rl, 0) + amt
+
+    region_dist = [
+        {"name": k, "value": round(v / total_eval * 100, 2) if total_eval else 0}
+        for k, v in region_map.items()
+    ]
+    risk_dist = [
+        {"name": k, "value": round(v / total_eval * 100, 2) if total_eval else 0}
+        for k, v in risk_map.items()
+    ]
+
     return {
         "snapshot_id": snapshot.id,
         "account_id": account_id,
         "account_type": account.account_type,
+        "account_number": account.account_number or "",
         "snapshot_date": str(snapshot.snapshot_date),
         "deposit_amount": snapshot.deposit_amount,
         "total_purchase": snapshot.total_purchase,
@@ -285,6 +306,8 @@ async def get_report_for_date(
         "total_return": snapshot.total_return,
         "total_return_rate": snapshot.total_return_rate,
         "holdings": holdings_data,
+        "region_distribution": region_dist,
+        "risk_distribution": risk_dist,
         "ai_comment": ai_comment,
         "is_latest": is_latest,
     }

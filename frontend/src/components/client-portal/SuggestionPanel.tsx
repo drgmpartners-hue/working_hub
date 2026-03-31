@@ -7,13 +7,20 @@ import { API_URL } from '@/lib/api-url';
 interface SuggestionHolding {
   holding_id: string;
   product_name: string;
+  product_code: string | null;
+  product_type: string | null;
+  risk_level: string | null;
+  region: string | null;
   current_weight: number;
   suggested_weight: number;
+  evaluation_amount: number | null;
 }
 
 interface SuggestionData {
   id: string;
-  ai_comment: string;
+  account_id: string;
+  snapshot_id: string;
+  ai_comment: string | null;
   expires_at: string;
   is_expired: boolean;
   holdings: SuggestionHolding[];
@@ -142,6 +149,7 @@ export function SuggestionPanel({ token, suggestId, portalJwt }: SuggestionPanel
             justifyContent: 'center',
             margin: '0 auto 16px',
             fontSize: 28,
+            color: '#fff',
           }}
         >
           ✓
@@ -157,6 +165,11 @@ export function SuggestionPanel({ token, suggestId, portalJwt }: SuggestionPanel
       </div>
     );
   }
+
+  // 비중 변경된 종목만 필터
+  const changedHoldings = suggestion.holdings.filter(
+    (h) => Math.abs(h.suggested_weight - h.current_weight) > 0.001
+  );
 
   return (
     <div
@@ -178,7 +191,7 @@ export function SuggestionPanel({ token, suggestId, portalJwt }: SuggestionPanel
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
           <span style={{ fontSize: 18 }}>✨</span>
           <span style={{ fontSize: 16, fontWeight: 700, color: '#fff' }}>
-            담당자 추천 포트폴리오 변경안
+            포트폴리오 변경 제안
           </span>
         </div>
         <p style={{ fontSize: 12, color: 'rgba(255,255,255,0.7)', margin: 0 }}>
@@ -193,79 +206,76 @@ export function SuggestionPanel({ token, suggestId, portalJwt }: SuggestionPanel
 
       {/* 제안 내용 */}
       <div style={{ padding: 24, display: 'flex', flexDirection: 'column', gap: 20 }}>
-        {/* 비중 변경 표 */}
-        {suggestion.holdings && suggestion.holdings.length > 0 && (
+        {/* 수정 포트폴리오 전체 비중 표 */}
+        {suggestion.holdings.length > 0 && (
           <div>
-            <p style={{ fontSize: 13, fontWeight: 600, color: '#374151', marginBottom: 12 }}>
-              비중 변경 내역
+            <p style={{ fontSize: 14, fontWeight: 700, color: '#111827', marginBottom: 12 }}>
+              수정 포트폴리오
             </p>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-              {suggestion.holdings.map((h) => {
-                const diff = h.suggested_weight - h.current_weight;
-                return (
-                  <div
-                    key={h.holding_id}
-                    style={{
-                      backgroundColor: '#F9FAFB',
-                      borderRadius: 10,
-                      padding: '12px 14px',
-                    }}
-                  >
-                    <p
-                      style={{
-                        fontSize: 13,
-                        fontWeight: 600,
-                        color: '#111827',
-                        marginBottom: 6,
-                        lineHeight: 1.4,
-                      }}
-                    >
-                      {h.product_name}
-                    </p>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                      <span
+            <div style={{ overflowX: 'auto' }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+                <thead>
+                  <tr style={{ backgroundColor: '#F0F4FF' }}>
+                    {['상품명', '현재 비중', '변경 비중', '변동'].map((h) => (
+                      <th
+                        key={h}
                         style={{
-                          fontSize: 13,
-                          color: '#6B7280',
-                          backgroundColor: '#E5E7EB',
-                          padding: '2px 8px',
-                          borderRadius: 6,
-                        }}
-                      >
-                        {(h.current_weight * 100).toFixed(1)}%
-                      </span>
-                      <span style={{ fontSize: 12, color: '#9CA3AF' }}>→</span>
-                      <span
-                        style={{
-                          fontSize: 13,
-                          fontWeight: 700,
-                          color: '#1E3A5F',
-                          backgroundColor: '#DBEAFE',
-                          padding: '2px 8px',
-                          borderRadius: 6,
-                        }}
-                      >
-                        {(h.suggested_weight * 100).toFixed(1)}%
-                      </span>
-                      <span
-                        style={{
+                          padding: '10px 12px',
+                          textAlign: h === '상품명' ? 'left' : 'center',
                           fontSize: 12,
                           fontWeight: 600,
-                          color: diff > 0 ? '#059669' : diff < 0 ? '#DC2626' : '#9CA3AF',
-                          marginLeft: 'auto',
+                          color: '#4338CA',
+                          whiteSpace: 'nowrap',
+                          borderBottom: '1px solid #C7D2FE',
                         }}
                       >
-                        {diff > 0 ? '+' : ''}{(diff * 100).toFixed(1)}%p
-                      </span>
-                    </div>
-                  </div>
-                );
-              })}
+                        {h}
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {suggestion.holdings.map((h, idx) => {
+                    const diff = h.suggested_weight - h.current_weight;
+                    const changed = Math.abs(diff) > 0.001;
+                    return (
+                      <tr
+                        key={h.holding_id}
+                        style={{
+                          borderBottom: idx < suggestion.holdings.length - 1 ? '1px solid #F3F4F6' : 'none',
+                          backgroundColor: changed ? '#FFFBEB' : 'transparent',
+                        }}
+                      >
+                        <td style={{ padding: '10px 12px', color: '#111827', fontSize: 12, lineHeight: 1.4 }}>
+                          {h.product_name}
+                        </td>
+                        <td style={{ padding: '10px 12px', textAlign: 'center', color: '#6B7280' }}>
+                          {(h.current_weight * 100).toFixed(1)}%
+                        </td>
+                        <td style={{ padding: '10px 12px', textAlign: 'center', fontWeight: 700, color: '#1E3A5F' }}>
+                          {(h.suggested_weight * 100).toFixed(1)}%
+                        </td>
+                        <td style={{ padding: '10px 12px', textAlign: 'center' }}>
+                          <span
+                            style={{
+                              fontSize: 12,
+                              fontWeight: 600,
+                              color: diff > 0.001 ? '#059669' : diff < -0.001 ? '#DC2626' : '#9CA3AF',
+                            }}
+                          >
+                            {diff > 0.001 ? '+' : ''}{changed ? `${(diff * 100).toFixed(1)}%p` : '-'}
+                          </span>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
             </div>
           </div>
         )}
 
-        {/* AI 코멘트 */}
+        {/* AI 변경 분석 코멘트 */}
         {suggestion.ai_comment && (
           <div
             style={{
@@ -275,14 +285,25 @@ export function SuggestionPanel({ token, suggestId, portalJwt }: SuggestionPanel
               padding: '14px 16px',
             }}
           >
-            <p style={{ fontSize: 12, fontWeight: 700, color: '#4338CA', marginBottom: 6 }}>
-              AI 변경 이유
-            </p>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+              <span style={{ fontSize: 16 }}>🤖</span>
+              <p style={{ fontSize: 13, fontWeight: 700, color: '#4338CA', margin: 0 }}>
+                AI 포트폴리오 변경 분석
+              </p>
+            </div>
             <p style={{ fontSize: 14, color: '#1E1B4B', lineHeight: 1.7, margin: 0 }}>
               {suggestion.ai_comment}
             </p>
           </div>
         )}
+
+        {/* 투자 책임 주의사항 */}
+        <div style={{ padding: '4px 0' }}>
+          <p style={{ fontSize: 11, color: '#9CA3AF', lineHeight: 1.6, margin: 0 }}>
+            ※ 본 자료는 참고용 정보이며, 투자에 대한 최종 판단과 책임은 고객 본인에게 있습니다.
+            당사는 고객의 투자판단에 도움이 될 수 있도록 참고자료만을 제공해 드릴 뿐이며, 투자 결과에 대해 어떠한 책임도 지지 않습니다.
+          </p>
+        </div>
 
         {/* 통화 예약 폼 */}
         <CallReservationForm suggestId={suggestId} onSuccess={() => setReserved(true)} />

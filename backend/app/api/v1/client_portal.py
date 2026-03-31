@@ -10,7 +10,6 @@ from app.schemas.client_portal import (
     PortalVerifyRequest,
     PortalTokenResponse,
     SnapshotsListResponse,
-    SuggestionResponse,
     CallReserveRequest,
     CallReserveResponse,
 )
@@ -152,29 +151,57 @@ async def get_history(
     return await snapshot_service.get_snapshot_history(db, account_id, period)
 
 
-@router.get("/{token}/suggestion/{suggest_id}", response_model=SuggestionResponse)
+@router.get("/{token}/suggestion/{suggest_id}")
 async def get_suggestion(
     token: str,
     suggest_id: str,
     client_id: str = Depends(get_portal_client_id),
     db: AsyncSession = Depends(get_db),
 ):
-    """Return suggestion content and expiry status."""
+    """Return suggestion content with holdings detail and expiry status."""
+    from app.models.snapshot import PortfolioSnapshot, PortfolioHolding
+    from sqlalchemy import select
+
     suggestion = await client_portal_service.get_suggestion(db, suggest_id)
     if not suggestion:
         raise HTTPException(status_code=404, detail="Suggestion not found")
 
     expired = datetime.utcnow() > suggestion.expires_at
-    return SuggestionResponse(
-        id=suggestion.id,
-        account_id=suggestion.account_id,
-        snapshot_id=suggestion.snapshot_id,
-        suggested_weights=suggestion.suggested_weights,
-        ai_comment=suggestion.ai_comment,
-        expires_at=suggestion.expires_at,
-        created_at=suggestion.created_at,
-        expired=expired,
+
+    # Load holdings from the snapshot to get product names + current weights
+    holdings_result = await db.execute(
+        select(PortfolioHolding)
+        .where(PortfolioHolding.snapshot_id == suggestion.snapshot_id)
+        .order_by(PortfolioHolding.seq)
     )
+    holdings = holdings_result.scalars().all()
+
+    suggested_weights = suggestion.suggested_weights or {}
+    holdings_data = []
+    for h in holdings:
+        holdings_data.append({
+            "holding_id": h.id,
+            "product_name": h.product_name,
+            "product_code": h.product_code,
+            "product_type": h.product_type,
+            "risk_level": h.risk_level,
+            "region": h.region,
+            "current_weight": h.weight or 0,
+            "suggested_weight": suggested_weights.get(h.id, h.weight or 0),
+            "evaluation_amount": h.evaluation_amount,
+        })
+
+    return {
+        "id": suggestion.id,
+        "account_id": suggestion.account_id,
+        "snapshot_id": suggestion.snapshot_id,
+        "suggested_weights": suggested_weights,
+        "ai_comment": suggestion.ai_comment,
+        "expires_at": suggestion.expires_at.isoformat(),
+        "created_at": suggestion.created_at.isoformat() if suggestion.created_at else None,
+        "is_expired": expired,
+        "holdings": holdings_data,
+    }
 
 
 @router.get("/{token}/recommended-portfolio")
