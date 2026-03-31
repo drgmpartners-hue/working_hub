@@ -3915,9 +3915,16 @@ export default function IRPPage() {
 
               for (const [key, w] of Object.entries(weights)) {
                 const pctValue = isDecimal ? parseFloat((w * 100).toFixed(2)) : parseFloat((w as number).toFixed(2));
-                if (key.startsWith('new:')) {
-                  const productName = key.slice(4);
-                  const virtualId = `virtual_${productName}`;
+                const isNewKey = key.startsWith('new:');
+                const isVirtualKey = key.startsWith('virtual_');
+                if (isNewKey || isVirtualKey) {
+                  const productName = isNewKey ? key.slice(4) : key.slice(8); // 'new:xxx' or 'virtual_xxx'
+                  const virtualId = isVirtualKey ? key : `virtual_${productName}`;
+                  // 이미 existingHoldings에 같은 virtual_id가 있으면 스킵
+                  if (existingHoldings.some((h) => h.id === virtualId)) {
+                    converted[virtualId] = pctValue;
+                    continue;
+                  }
                   const pm = productMasters.find((m) => m.product_name === productName);
                   existingHoldings.push({
                     id: virtualId,
