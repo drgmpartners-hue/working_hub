@@ -3883,7 +3883,12 @@ export default function IRPPage() {
               const converted: Record<string, number> = {};
               const existingHoldings = [...(data.holdings ?? [])];
 
+              // Normalize: if any weight > 1, values are already percentage (0-100), otherwise decimal (0-1)
+              const maxW = Math.max(...Object.values(weights).map(v => Math.abs(v as number)));
+              const isDecimal = maxW <= 1;
+
               for (const [key, w] of Object.entries(weights)) {
+                const pctValue = isDecimal ? parseFloat((w * 100).toFixed(2)) : parseFloat((w as number).toFixed(2));
                 if (key.startsWith('new:')) {
                   const productName = key.slice(4);
                   const virtualId = `virtual_${productName}`;
@@ -3902,9 +3907,9 @@ export default function IRPPage() {
                     weight: 0,
                     reference_price: prices[key] ?? 0,
                   });
-                  converted[virtualId] = parseFloat((w * 100).toFixed(2));
+                  converted[virtualId] = pctValue;
                 } else {
-                  converted[key] = parseFloat((w * 100).toFixed(2));
+                  converted[key] = pctValue;
                   // 기존 holding에도 현재가 반영
                   const existH = existingHoldings.find((h) => h.id === key);
                   if (existH && prices[key]) {
