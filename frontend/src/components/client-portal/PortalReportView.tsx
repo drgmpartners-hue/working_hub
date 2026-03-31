@@ -136,7 +136,11 @@ export function PortalReportView({ token, portalJwt, snapshots }: PortalReportVi
         );
         if (res.ok) {
           const data = await res.json();
-          setHistoryData(data.history ?? []);
+          const items = (data.history ?? []).map((h: Record<string, unknown>) => ({
+            date: h.snapshot_date ?? h.date ?? '',
+            return_rate: h.total_return_rate ?? h.return_rate ?? null,
+          }));
+          setHistoryData(items);
         }
       } catch { /* silent */ }
       finally { setHistoryLoading(false); }

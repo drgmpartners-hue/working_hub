@@ -114,11 +114,11 @@ export default function ClientPortalPage({
         alignItems: 'center',
       }}
     >
-      {/* 모바일 컨테이너 */}
+      {/* 반응형 컨테이너 - 모바일: 전체, 웹: 최대 720px */}
       <div
         style={{
           width: '100%',
-          maxWidth: 480,
+          maxWidth: 720,
           minHeight: '100vh',
           backgroundColor: '#fff',
           display: 'flex',
