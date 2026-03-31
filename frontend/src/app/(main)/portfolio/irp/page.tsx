@@ -3867,9 +3867,9 @@ export default function IRPPage() {
         return;
       }
       const data: ReportData = await res.json();
-      // 예수금 항목이 없으면 강제 추가
+      // 예수금 항목이 없으면 강제 추가 (부분 매칭)
       const hasDeposit = data.holdings?.some((h) =>
-        h.product_name === '예수금' || h.product_name === '예수금/자동운용상품(고유계정대)' || h.product_name === '자동운용상품(고유계정대)'
+        (h.product_name ?? '').includes('예수금') || (h.product_name ?? '').includes('자동운용상품')
       );
       if (!hasDeposit) {
         const depositAmt = data.snapshot?.deposit_amount ?? 0;
