@@ -16,11 +16,13 @@ class UserCreate(UserBase):
 
 class UserUpdate(BaseModel):
     nickname: Optional[str] = None
+    phone: Optional[str] = None
     profile_image: Optional[str] = None
 
 
 class UserResponse(UserBase):
     id: str
+    phone: Optional[str] = None
     is_active: bool
     created_at: datetime
     updated_at: datetime

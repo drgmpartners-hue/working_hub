@@ -16,7 +16,7 @@ from app.schemas.client_portal import (
 from sqlalchemy import select
 from app.models.recommended_portfolio import RecommendedPortfolioItem
 from app.services import client_portal_service
-from app.services.email_service import notify_staff_call_reservation
+
 
 router = APIRouter(prefix="/client-portal", tags=["client-portal"])
 
@@ -262,13 +262,25 @@ async def create_call_reservation(
         phone=body.phone,
     )
 
-    # Notify staff asynchronously — failure must not break the response
-    await notify_staff_call_reservation(
-        reservation_id=reservation.id,
-        client_name=body.client_name or "미입력",
-        preferred_date=str(reservation.preferred_date),
-        preferred_time=reservation.preferred_time,
-    )
+    # Notify the staff member who created this suggestion via SMS
+    try:
+        if suggestion.created_by:
+            from app.models.user import User
+            user_result = await db.execute(
+                select(User).where(User.id == suggestion.created_by)
+            )
+            staff = user_result.scalar_one_or_none()
+            if staff and staff.phone:
+                from app.services.solapi_service import send_sms
+                sms_text = (
+                    f"[통화예약 알림]\n"
+                    f"고객: {body.client_name or '미입력'}\n"
+                    f"희망일시: {reservation.preferred_date} {reservation.preferred_time}\n"
+                    f"고객연락처: {body.phone or '없음'}"
+                )
+                await send_sms(to=staff.phone, text=sms_text)
+    except Exception:
+        pass  # 알림 실패가 예약 응답을 방해하지 않음
 
     return CallReserveResponse(
         id=reservation.id,

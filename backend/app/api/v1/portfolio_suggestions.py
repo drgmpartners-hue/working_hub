@@ -53,6 +53,7 @@ async def create_suggestion(
         snapshot_id=body.snapshot_id,
         suggested_weights=body.suggested_weights,
         ai_comment=body.ai_comment,
+        created_by=current_user.id,
     )
 
     portal_token = client.portal_token if client else "NO_TOKEN"

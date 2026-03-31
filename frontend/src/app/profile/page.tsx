@@ -20,6 +20,7 @@ function ProfileContent() {
 
   const [formData, setFormData] = useState({
     name: '',
+    phone: '',
   });
 
   const [passwordData, setPasswordData] = useState({
@@ -30,7 +31,7 @@ function ProfileContent() {
 
   useEffect(() => {
     if (user) {
-      setFormData({ name: user.nickname || '' });
+      setFormData({ name: user.nickname || '', phone: user.phone || '' });
     }
   }, [user]);
 
@@ -40,7 +41,7 @@ function ProfileContent() {
     setMessage({ type: '', text: '' });
 
     try {
-      await authService.updateProfile({ nickname: formData.name });
+      await authService.updateProfile({ nickname: formData.name, phone: formData.phone });
       await fetchUser();
       setIsEditing(false);
       setMessage({ type: 'success', text: 'Profile updated successfully' });
@@ -139,7 +140,20 @@ function ProfileContent() {
                   id="name"
                   type="text"
                   value={formData.name}
-                  onChange={(e) => setFormData({ name: e.target.value })}
+                  onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                  className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
+                />
+              </div>
+              <div>
+                <label htmlFor="phone" className="block text-sm font-medium text-gray-700">
+                  전화번호 (알림 수신용)
+                </label>
+                <input
+                  id="phone"
+                  type="tel"
+                  placeholder="010-0000-0000"
+                  value={formData.phone}
+                  onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
                   className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
                 />
               </div>
@@ -169,6 +183,10 @@ function ProfileContent() {
               <div>
                 <label className="block text-sm font-medium text-gray-500">Name</label>
                 <p className="mt-1 text-gray-900">{user.nickname || '-'}</p>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-500">전화번호</label>
+                <p className="mt-1 text-gray-900">{user.phone || '미등록'}</p>
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-500">Member since</label>
