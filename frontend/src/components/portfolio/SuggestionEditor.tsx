@@ -285,23 +285,30 @@ export function SuggestionEditor({ holdings, snapshotId, accountId, totalEvaluat
               const afterAmount = afterEval(h.id);
               const diffAmount = diff(h.id);
               const diffColor = diffAmount > 0 ? '#10B981' : diffAmount < 0 ? '#EF4444' : '#374151';
+              const isNewItem = h.id.startsWith('virtual_');
+              const isRow1Product = h.product_name === '예수금/자동운용상품(고유계정대)' || h.product_name === '자동운용상품(고유계정대)' || h.product_name === '예수금';
 
               return (
                 <tr
                   key={h.id}
                   onMouseEnter={(e) => {
-                    (e.currentTarget as HTMLTableRowElement).style.backgroundColor = '#F9FAFB';
+                    (e.currentTarget as HTMLTableRowElement).style.backgroundColor = isNewItem ? '#EFF6FF' : '#F9FAFB';
                   }}
                   onMouseLeave={(e) => {
-                    (e.currentTarget as HTMLTableRowElement).style.backgroundColor = 'transparent';
+                    (e.currentTarget as HTMLTableRowElement).style.backgroundColor = isNewItem ? '#F0F7FF' : 'transparent';
                   }}
-                  style={{ transition: 'background-color 0.1s ease' }}
+                  style={{ transition: 'background-color 0.1s ease', backgroundColor: isNewItem ? '#F0F7FF' : 'transparent' }}
                 >
                   <td style={{ ...tdStyle, textAlign: 'center', color: '#9CA3AF' }}>
                     {h.seq ?? idx + 1}
                   </td>
                   <td style={{ ...tdStyle, textAlign: 'left' }}>
-                    <div style={{ fontWeight: 500, color: '#1A1A2E' }}>{h.product_name}</div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                      <span style={{ fontWeight: 500, color: '#1A1A2E' }}>{h.product_name}</span>
+                      {isNewItem && !isRow1Product && (
+                        <span style={{ fontSize: '0.625rem', fontWeight: 700, color: '#1D4ED8', backgroundColor: '#DBEAFE', border: '1px solid #93C5FD', padding: '1px 6px', borderRadius: 4, flexShrink: 0 }}>신규</span>
+                      )}
+                    </div>
                     {h.product_type && (
                       <div style={{ fontSize: '0.6875rem', color: '#9CA3AF', marginTop: 1 }}>
                         {h.product_type}

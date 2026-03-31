@@ -77,6 +77,8 @@ class SnapshotListItem(BaseModel):
     snapshot_date: date
     total_evaluation: Optional[float] = None
     total_return_rate: Optional[float] = None
+    has_suggestion: bool = False
+    has_report: bool = False
     created_at: datetime
     model_config = ConfigDict(from_attributes=True)
 

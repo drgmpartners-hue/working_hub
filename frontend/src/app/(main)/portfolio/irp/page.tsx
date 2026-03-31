@@ -1709,12 +1709,15 @@ function Tab2Section({
                         style={{
                           display: 'flex', alignItems: 'center', gap: 8,
                           padding: '8px 14px', borderRadius: 8,
-                          border: `1px solid ${isActive ? '#1E3A5F' : '#E1E5EB'}`,
-                          backgroundColor: isActive ? '#EEF2F7' : '#fff',
+                          border: `1px solid ${isActive ? '#1E3A5F' : (item as any).has_suggestion ? '#3B82F6' : '#E1E5EB'}`,
+                          backgroundColor: isActive ? '#EEF2F7' : (item as any).has_suggestion ? '#EFF6FF' : '#fff',
                           cursor: 'pointer', transition: 'all 0.15s ease',
                           fontWeight: isActive ? 700 : 500, fontSize: '0.8125rem', color: '#1A1A2E',
                         }}
                       >
+                        {(item as any).has_suggestion && (
+                          <span style={{ width: 6, height: 6, borderRadius: '50%', backgroundColor: '#3B82F6', flexShrink: 0 }} />
+                        )}
                         {item.snapshot_date}
                         {rate != null && (
                           <span style={{ fontSize: '0.75rem', fontWeight: 600, color: rc }}>
@@ -3806,8 +3809,10 @@ export default function IRPPage() {
 
   /* ---------- tab3: load snapshot dates for selected account ---------- */
 
+  const [reportDateItems, setReportDateItems] = useState<Array<{ date: string; has_report: boolean }>>([]);
+
   async function loadReportDates(accountId: string) {
-    if (!accountId) { setReportDateList([]); setReportDate(''); return; }
+    if (!accountId) { setReportDateList([]); setReportDate(''); setReportDateItems([]); return; }
     setReportDateLoading(true);
     try {
       const res = await fetch(`${API_URL}/api/v1/snapshots?account_id=${accountId}`, {
@@ -3815,19 +3820,23 @@ export default function IRPPage() {
       });
       if (res.ok) {
         const data = await res.json();
-        const dates: string[] = (data as Array<{ snapshot_date: string }>)
-          .map((s) => s.snapshot_date)
-          .sort((a: string, b: string) => b.localeCompare(a));
+        const items = (data as Array<{ snapshot_date: string; has_report?: boolean }>)
+          .map((s) => ({ date: s.snapshot_date, has_report: s.has_report ?? false }))
+          .sort((a, b) => b.date.localeCompare(a.date));
+        setReportDateItems(items);
+        const dates = items.map((i) => i.date);
         setReportDateList(dates);
         if (dates.length > 0) setReportDate(dates[0]);
         else setReportDate('');
       } else {
         setReportDateList([]);
         setReportDate('');
+        setReportDateItems([]);
       }
     } catch {
       setReportDateList([]);
       setReportDate('');
+      setReportDateItems([]);
     } finally {
       setReportDateLoading(false);
     }
@@ -5578,8 +5587,10 @@ export default function IRPPage() {
                   {reportDateList.length === 0 ? (
                     <option value="">{reportDateLoading ? '로딩 중...' : '날짜를 선택하세요'}</option>
                   ) : (
-                    reportDateList.map((d) => (
-                      <option key={d} value={d}>{d}</option>
+                    reportDateItems.map((item) => (
+                      <option key={item.date} value={item.date}>
+                        {item.date}{item.has_report ? ' ✓ 보고서 저장됨' : ''}
+                      </option>
                     ))
                   )}
                 </select>

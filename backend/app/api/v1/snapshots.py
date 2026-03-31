@@ -45,7 +45,41 @@ async def list_snapshots(
     current_user = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    return await snapshot_service.list_snapshots(db, account_id, date_from, date_to)
+    from sqlalchemy import select
+    from app.models.portfolio_suggestion import PortfolioSuggestion
+    snapshots = await snapshot_service.list_snapshots(db, account_id, date_from, date_to)
+    snap_ids = [s.id for s in snapshots]
+    sug_snap_ids: set[str] = set()
+    report_snap_ids: set[str] = set()
+    if snap_ids:
+        from sqlalchemy import and_
+        # suggestions without ai_comment = Tab 2 save
+        sug_result = await db.execute(
+            select(PortfolioSuggestion.snapshot_id).where(
+                PortfolioSuggestion.snapshot_id.in_(snap_ids)
+            ).distinct()
+        )
+        sug_snap_ids = {row[0] for row in sug_result.all()}
+        # suggestions with ai_comment = Tab 3 report save
+        report_result = await db.execute(
+            select(PortfolioSuggestion.snapshot_id).where(
+                and_(
+                    PortfolioSuggestion.snapshot_id.in_(snap_ids),
+                    PortfolioSuggestion.ai_comment.isnot(None),
+                    PortfolioSuggestion.ai_comment != '',
+                )
+            ).distinct()
+        )
+        report_snap_ids = {row[0] for row in report_result.all()}
+    return [
+        SnapshotListItem(
+            id=s.id, client_account_id=s.client_account_id,
+            snapshot_date=s.snapshot_date, total_evaluation=s.total_evaluation,
+            total_return_rate=s.total_return_rate, has_suggestion=s.id in sug_snap_ids,
+            has_report=s.id in report_snap_ids,
+            created_at=s.created_at,
+        ) for s in snapshots
+    ]
 
 
 @router.get("/history", response_model=SnapshotHistoryResponse)
