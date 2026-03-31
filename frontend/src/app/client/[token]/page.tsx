@@ -84,7 +84,7 @@ export default function ClientPortalPage({
       });
       if (res.ok) {
         const data = await res.json();
-        setSnapshots(data.snapshots ?? data ?? []);
+        setSnapshots(data.accounts ?? []);
         return true;
       }
       return false;

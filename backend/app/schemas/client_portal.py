@@ -27,6 +27,7 @@ class SnapshotDateEntry(BaseModel):
     """Single account's snapshot dates."""
     account_id: str
     account_type: str
+    account_number: str = ""
     dates: list[str]  # ISO date strings "YYYY-MM-DD"
 
 

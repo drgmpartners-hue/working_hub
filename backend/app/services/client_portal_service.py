@@ -196,6 +196,7 @@ async def get_client_snapshots(
             {
                 "account_id": account.id,
                 "account_type": account.account_type,
+                "account_number": account.account_number or "",
                 "dates": dates,
             }
         )
