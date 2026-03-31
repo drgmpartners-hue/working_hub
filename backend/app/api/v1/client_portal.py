@@ -222,7 +222,7 @@ async def get_suggestion(
             "purchase_amount": h.purchase_amount,
             "return_amount": h.return_amount,
             "return_rate": rr,
-            "current_price": h.current_price or h.reference_price,
+            "current_price": h.reference_price or h.current_price,
             "reference_price": h.reference_price or h.current_price,
             "quantity": h.quantity,
         })

@@ -18,7 +18,9 @@ interface SuggestionHolding {
   return_amount?: number | null;
   return_rate?: number | null;
   current_price?: number | null;
+  reference_price?: number | null;
   quantity?: number | null;
+  is_new?: boolean;
 }
 
 interface SuggestionData {
@@ -144,7 +146,7 @@ export function SuggestionPanel({ token, suggestId, portalJwt }: SuggestionPanel
   const isNewItem = (h: SuggestionHolding) => {
     const isDeposit = (h.product_name ?? '').includes('예수금') || (h.product_name ?? '').includes('자동운용상품');
     if (isDeposit) return false;
-    return (h as any).is_new === true || (h.current_weight === 0 && h.suggested_weight > 0);
+    return h.is_new === true || (h.current_weight === 0 && h.suggested_weight > 0);
   };
 
   return (
@@ -245,11 +247,11 @@ export function SuggestionPanel({ token, suggestId, portalJwt }: SuggestionPanel
                             {sellBuyLabel}
                           </td>
                           <td style={{ padding: '10px 8px', textAlign: 'right', whiteSpace: 'nowrap', color: '#374151' }}>
-                            {(h.current_price || (h as any).reference_price) ? fmt(h.current_price || (h as any).reference_price) : '-'}
+                            {(h.reference_price || h.current_price) ? fmt(h.reference_price || h.current_price || 0) : '-'}
                           </td>
                           <td style={{ padding: '10px 8px', textAlign: 'right', whiteSpace: 'nowrap', color: '#374151' }}>
                             {(() => {
-                              const price = h.current_price || (h as any).reference_price;
+                              const price = h.reference_price || h.current_price;
                               if (!price || price <= 0 || sellBuyAmt === 0) return '-';
                               const isFund = ((h.product_type ?? '') + (h.product_name ?? '')).includes('펀드') || ((h.product_type ?? '') + (h.product_name ?? '')).includes('신탁');
                               const raw = isFund ? Math.abs(sellBuyAmt) * 1000 / price : Math.abs(sellBuyAmt) / price;
