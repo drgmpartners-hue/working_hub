@@ -140,8 +140,12 @@ export function SuggestionPanel({ token, suggestId, portalJwt }: SuggestionPanel
   // AI 코멘트 분리
   const { analysis: aiAnalysis, change: aiChange } = splitAiComment(suggestion.ai_comment);
 
-  // 신규 상품 판별: current_weight === 0 이고 suggested_weight > 0
-  const isNew = (h: SuggestionHolding) => h.current_weight === 0 && h.suggested_weight > 0;
+  // 신규 상품 판별
+  const isNewItem = (h: SuggestionHolding) => {
+    const isDeposit = (h.product_name ?? '').includes('예수금') || (h.product_name ?? '').includes('자동운용상품');
+    if (isDeposit) return false;
+    return (h as any).is_new === true || (h.current_weight === 0 && h.suggested_weight > 0);
+  };
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
@@ -188,7 +192,7 @@ export function SuggestionPanel({ token, suggestId, portalJwt }: SuggestionPanel
                     const sugW = h.suggested_weight;
                     const diff = sugW - curW;
                     const changed = Math.abs(diff) > 0.001;
-                    const isNewItem = isNew(h);
+                    const isNewProduct = isNewItem(h);
 
                     // Sell/Buy 금액 계산
                     const totalEval = suggestion.holdings.reduce((s, x) => s + (x.evaluation_amount ?? 0), 0);
@@ -211,7 +215,7 @@ export function SuggestionPanel({ token, suggestId, portalJwt }: SuggestionPanel
                         <td style={{ padding: '10px 8px', color: '#111827', fontSize: 11, lineHeight: 1.4, position: 'sticky', left: 0, backgroundColor: changed ? '#FFFBEB' : '#fff', zIndex: 1, minWidth: 110 }}>
                           <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
                             {h.product_name}
-                            {isNewItem && (
+                            {isNewProduct && (
                               <span style={{ fontSize: 9, padding: '1px 5px', borderRadius: 4, backgroundColor: '#DBEAFE', color: '#1D4ED8', fontWeight: 700, whiteSpace: 'nowrap' }}>신규</span>
                             )}
                           </div>
@@ -223,7 +227,7 @@ export function SuggestionPanel({ token, suggestId, portalJwt }: SuggestionPanel
                           {(h.return_rate ?? 0) >= 0 ? '+' : ''}{(h.return_rate ?? 0).toFixed(2)}%
                         </td>
                         <td style={{ padding: '10px 8px', textAlign: 'center', color: '#6B7280' }}>
-                          {isNewItem ? '-' : `${(curW * 100).toFixed(1)}%`}
+                          {isNewProduct ? '-' : `${(curW * 100).toFixed(1)}%`}
                         </td>
                         <td style={{ padding: '10px 8px', textAlign: 'center', fontWeight: 700, color: '#1E3A5F' }}>
                           {(sugW * 100).toFixed(1)}%

@@ -185,13 +185,23 @@ async def get_suggestion(
 
     raw_weights = suggestion.suggested_weights or {}
     # Normalize: if any weight > 1, treat as percentage and convert to 0-1
-    max_w = max(raw_weights.values()) if raw_weights else 0
+    numeric_vals = [v for v in raw_weights.values() if isinstance(v, (int, float))]
+    max_w = max(numeric_vals) if numeric_vals else 0
     suggested_weights = {
-        k: v / 100 if max_w > 1 else v
+        k: (v / 100 if max_w > 1 else v) if isinstance(v, (int, float)) else v
         for k, v in raw_weights.items()
     } if raw_weights else {}
+
+    # Calculate total evaluation for weight computation
+    total_eval = sum(h.evaluation_amount or 0 for h in holdings)
+
     holdings_data = []
+    matched_ids = set()
     for h in holdings:
+        # Calculate current weight if not stored
+        cur_weight = h.weight
+        if (cur_weight is None or cur_weight == 0) and total_eval > 0 and h.evaluation_amount:
+            cur_weight = h.evaluation_amount / total_eval
         holdings_data.append({
             "holding_id": h.id,
             "product_name": h.product_name,
@@ -199,14 +209,53 @@ async def get_suggestion(
             "product_type": h.product_type,
             "risk_level": h.risk_level,
             "region": h.region,
-            "current_weight": h.weight or 0,
-            "suggested_weight": suggested_weights.get(h.id, h.weight or 0),
+            "current_weight": cur_weight or 0,
+            "suggested_weight": suggested_weights.get(h.id, cur_weight or 0),
             "evaluation_amount": h.evaluation_amount,
             "purchase_amount": h.purchase_amount,
             "return_amount": h.return_amount,
             "return_rate": h.return_rate,
             "current_price": h.current_price,
             "quantity": h.quantity,
+        })
+        matched_ids.add(h.id)
+
+    # Add virtual/new items from suggested_weights that aren't in snapshot holdings
+    from app.models.product_master import ProductMaster
+    for key, sw in suggested_weights.items():
+        if key in matched_ids or key == '_prices' or not isinstance(sw, (int, float)):
+            continue
+        # This is a new product (virtual_ or __new__ or new:)
+        product_name = key
+        if key.startswith('virtual_'):
+            product_name = key[8:]
+        elif key.startswith('__new__'):
+            product_name = key[7:]  # might be timestamp, need lookup
+        elif key.startswith('new:'):
+            product_name = key[4:]
+
+        # Try to find product info from master
+        pm_result = await db.execute(
+            select(ProductMaster).where(ProductMaster.product_name == product_name).limit(1)
+        )
+        pm = pm_result.scalar_one_or_none()
+
+        holdings_data.append({
+            "holding_id": key,
+            "product_name": pm.product_name if pm else product_name,
+            "product_code": pm.product_code if pm else None,
+            "product_type": pm.product_type if pm else None,
+            "risk_level": pm.risk_level if pm else None,
+            "region": pm.region if pm else None,
+            "current_weight": 0,
+            "suggested_weight": sw,
+            "evaluation_amount": 0,
+            "purchase_amount": 0,
+            "return_amount": 0,
+            "return_rate": 0,
+            "current_price": pm.current_price if pm and hasattr(pm, 'current_price') else None,
+            "quantity": 0,
+            "is_new": True,
         })
 
     return {
