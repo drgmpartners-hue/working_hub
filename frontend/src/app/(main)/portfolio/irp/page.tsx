@@ -2348,15 +2348,17 @@ function Tab2Section({
                   const rowBg = isRow1 ? '#EEF2F7' : 'transparent';
                   const stickyBg = isRow1 ? '#EEF2F7' : '#fff';
                   const isAdded = r.id.startsWith('__new__');
+                  const addedBg = isAdded && !isRow1 ? '#F0F7FF' : rowBg;
+                  const addedStickyBg = isAdded && !isRow1 ? '#F0F7FF' : stickyBg;
                   return (
                     <tr
                       key={r.id}
-                      style={{ backgroundColor: rowBg, transition: 'background-color 0.1s' }}
-                      onMouseEnter={(e) => { if (!isRow1) (e.currentTarget as HTMLTableRowElement).style.backgroundColor = '#F9FAFB'; }}
-                      onMouseLeave={(e) => { (e.currentTarget as HTMLTableRowElement).style.backgroundColor = rowBg; }}
+                      style={{ backgroundColor: addedBg, transition: 'background-color 0.1s' }}
+                      onMouseEnter={(e) => { if (!isRow1) (e.currentTarget as HTMLTableRowElement).style.backgroundColor = isAdded ? '#EFF6FF' : '#F9FAFB'; }}
+                      onMouseLeave={(e) => { (e.currentTarget as HTMLTableRowElement).style.backgroundColor = addedBg; }}
                     >
-                      <td style={{ ...tdStyle, position: 'sticky', left: 0, zIndex: 1, background: stickyBg, textAlign: 'center', color: '#9CA3AF' }}>{idx + 1}</td>
-                      <td style={{ ...tdStyle, position: 'sticky', left: 36, zIndex: 1, background: stickyBg, textAlign: 'left', borderRight: '2px solid #E1E5EB', whiteSpace: 'normal', wordBreak: 'keep-all' }}>
+                      <td style={{ ...tdStyle, position: 'sticky', left: 0, zIndex: 1, background: addedStickyBg, textAlign: 'center', color: '#9CA3AF' }}>{idx + 1}</td>
+                      <td style={{ ...tdStyle, position: 'sticky', left: 36, zIndex: 1, background: addedStickyBg, textAlign: 'left', borderRight: '2px solid #E1E5EB', whiteSpace: 'normal', wordBreak: 'keep-all' }}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
                           {/* 순서 이동 화살표 */}
                           {!isRow1 && (
@@ -2368,7 +2370,10 @@ function Tab2Section({
                             </div>
                           )}
                           <div>
-                            <div style={{ fontWeight: isRow1 ? 700 : 500, color: '#1A1A2E', fontSize: '0.8125rem' }}>{r.productName}</div>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 5, fontWeight: isRow1 ? 700 : 500, color: '#1A1A2E', fontSize: '0.8125rem' }}>
+                              {r.productName}
+                              {isAdded && !isRow1 && <span style={{ fontSize: '0.625rem', fontWeight: 700, color: '#1D4ED8', backgroundColor: '#DBEAFE', border: '1px solid #93C5FD', padding: '1px 6px', borderRadius: 4, flexShrink: 0 }}>신규</span>}
+                            </div>
                             {(r.productType || r.riskLevel) && <div style={{ fontSize: '0.6875rem', color: '#9CA3AF' }}>{[r.productType, r.riskLevel, r.region].filter(Boolean).join(' | ')}</div>}
                           </div>
                           {isAdded && (
@@ -3952,6 +3957,15 @@ export default function IRPPage() {
               setReportExtraHoldings(newHoldings);
               setModifiedWeights(converted);
             }
+
+            // 담당자 의견: 24시간 이내면 복원
+            if (sug.manager_note && sug.created_at) {
+              const createdAt = new Date(sug.created_at);
+              const hoursSince = (Date.now() - createdAt.getTime()) / (1000 * 60 * 60);
+              if (hoursSince <= 24) {
+                setManagerNote(sug.manager_note);
+              }
+            }
           }
         } catch { /* suggestion 없음 - 무시 */ }
       }
@@ -4592,6 +4606,7 @@ export default function IRPPage() {
             Object.entries(modifiedWeights).map(([id, val]) => [id, val / 100])
           ),
           ai_comment: `[포트폴리오 분석]\n${aiComment}\n\n[변경 분석]\n${aiChangeComment}`,
+          manager_note: managerNote || null,
         }),
       });
       let suggestionId = '';

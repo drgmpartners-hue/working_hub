@@ -24,6 +24,7 @@ class PortfolioSuggestion(Base):
     snapshot_id: Mapped[str] = mapped_column(String(36), nullable=False)
     suggested_weights: Mapped[Any] = mapped_column(JSONB, nullable=False)
     ai_comment: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    manager_note: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     created_by: Mapped[Optional[str]] = mapped_column(String(36), nullable=True)
     expires_at: Mapped[datetime] = mapped_column(DateTime, nullable=False)
     created_at: Mapped[Optional[datetime]] = mapped_column(

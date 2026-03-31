@@ -366,6 +366,7 @@ async def create_suggestion(
     snapshot_id: str,
     suggested_weights: dict,
     ai_comment: Optional[str] = None,
+    manager_note: Optional[str] = None,
     created_by: Optional[str] = None,
 ) -> PortfolioSuggestion:
     """Create a new portfolio suggestion (expires in 7 days)."""
@@ -375,6 +376,7 @@ async def create_suggestion(
         snapshot_id=snapshot_id,
         suggested_weights=suggested_weights,
         ai_comment=ai_comment,
+        manager_note=manager_note,
         created_by=created_by,
         expires_at=datetime.utcnow() + timedelta(days=7),
     )

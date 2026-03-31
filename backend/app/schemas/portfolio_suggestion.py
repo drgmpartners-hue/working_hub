@@ -10,6 +10,7 @@ class SuggestionCreate(BaseModel):
     snapshot_id: str
     suggested_weights: dict  # {holding_id: weight}
     ai_comment: Optional[str] = None
+    manager_note: Optional[str] = None
 
 
 class SuggestionCreateResponse(BaseModel):
@@ -26,6 +27,7 @@ class SuggestionDetail(BaseModel):
     snapshot_id: str
     suggested_weights: dict
     ai_comment: Optional[str] = None
+    manager_note: Optional[str] = None
     expires_at: datetime
     created_at: Optional[datetime] = None
     model_config = ConfigDict(from_attributes=True)
