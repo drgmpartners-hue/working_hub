@@ -24,28 +24,29 @@ interface AccountSnapshot {
 interface HoldingItem {
   id: string;
   product_name: string;
-  risk_level: string;
-  region: string;
-  purchase_amount: number;
-  current_amount: number;
-  profit_loss: number;
-  return_rate: number;
+  risk_level: string | null;
+  region: string | null;
+  purchase_amount: number | null;
+  evaluation_amount: number | null;
+  return_amount: number | null;
+  return_rate: number | null;
+  weight: number | null;
 }
 
 interface ReportData {
+  snapshot_id: string;
   account_id: string;
   account_type: string;
-  account_number: string;
+  account_number?: string;
   snapshot_date: string;
-  monthly_payment: number;
-  deposit: number;
-  principal: number;
-  current_value: number;
-  profit_loss: number;
-  total_return_rate: number;
+  deposit_amount: number | null;
+  total_purchase: number;
+  total_evaluation: number;
+  total_return: number | null;
+  total_return_rate: number | null;
   holdings: HoldingItem[];
-  region_distribution: DistributionItem[];
-  risk_distribution: DistributionItem[];
+  region_distribution?: DistributionItem[];
+  risk_distribution?: DistributionItem[];
   ai_comment: string | null;
   is_latest: boolean;
 }
@@ -195,7 +196,7 @@ export function PortalReportView({ token, portalJwt, snapshots }: PortalReportVi
           period: activePeriod,
         });
         const res = await fetch(
-          `${API_URL}/api/v1/snapshots/history?${params}`,
+          `${API_URL}/api/v1/client-portal/${token}/history?${params}`,
           { headers: { Authorization: `Bearer ${portalJwt}` } }
         );
         if (res.ok) {
@@ -350,7 +351,7 @@ export function PortalReportView({ token, portalJwt, snapshots }: PortalReportVi
             <div style={{ marginBottom: 16 }}>
               <p style={{ fontSize: 12, opacity: 0.7, marginBottom: 4 }}>평가금액</p>
               <p style={{ fontSize: 28, fontWeight: 700, letterSpacing: -0.5 }}>
-                {fmt(report.current_value)}
+                {fmt(report.total_evaluation ?? 0)}
                 <span style={{ fontSize: 14, fontWeight: 400, marginLeft: 4 }}>원</span>
               </p>
             </div>
@@ -358,12 +359,12 @@ export function PortalReportView({ token, portalJwt, snapshots }: PortalReportVi
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 12 }}>
               <div>
                 <p style={{ fontSize: 11, opacity: 0.6, marginBottom: 4 }}>납입원금</p>
-                <p style={{ fontSize: 14, fontWeight: 600 }}>{fmt(report.principal)}원</p>
+                <p style={{ fontSize: 14, fontWeight: 600 }}>{fmt(report.total_purchase ?? 0)}원</p>
               </div>
               <div>
                 <p style={{ fontSize: 11, opacity: 0.6, marginBottom: 4 }}>평가손익</p>
                 <p style={{ fontSize: 14, fontWeight: 600 }}>
-                  {report.profit_loss >= 0 ? '+' : ''}{fmt(report.profit_loss)}원
+                  {(report.total_return ?? 0) >= 0 ? '+' : ''}{fmt(report.total_return ?? 0)}원
                 </p>
               </div>
               <div>
@@ -372,10 +373,10 @@ export function PortalReportView({ token, portalJwt, snapshots }: PortalReportVi
                   style={{
                     fontSize: 16,
                     fontWeight: 700,
-                    color: report.total_return_rate >= 0 ? '#6EE7B7' : '#FCA5A5',
+                    color: (report.total_return_rate ?? 0) >= 0 ? '#6EE7B7' : '#FCA5A5',
                   }}
                 >
-                  {report.total_return_rate >= 0 ? '+' : ''}{report.total_return_rate.toFixed(2)}%
+                  {(report.total_return_rate ?? 0) >= 0 ? '+' : ''}{(report.total_return_rate ?? 0).toFixed(2)}%
                 </p>
               </div>
             </div>
@@ -452,10 +453,10 @@ export function PortalReportView({ token, portalJwt, snapshots }: PortalReportVi
                         {h.region || '-'}
                       </td>
                       <td style={{ padding: '12px 12px', color: '#111827', whiteSpace: 'nowrap', fontWeight: 600 }}>
-                        {fmt(h.current_amount)}
+                        {fmt(h.evaluation_amount ?? 0)}
                       </td>
                       <td style={{ padding: '12px 12px', whiteSpace: 'nowrap' }}>
-                        <ReturnBadge rate={h.return_rate} />
+                        <ReturnBadge rate={h.return_rate ?? 0} />
                       </td>
                     </tr>
                   ))}
@@ -476,8 +477,8 @@ export function PortalReportView({ token, portalJwt, snapshots }: PortalReportVi
             <PortfolioCharts
               accountId={selectedAccountId}
               snapshotId={null}
-              regionDistribution={report.region_distribution}
-              riskDistribution={report.risk_distribution}
+              regionDistribution={report.region_distribution ?? []}
+              riskDistribution={report.risk_distribution ?? []}
               historyData={historyData}
               historyLoading={historyLoading}
               activePeriod={activePeriod}

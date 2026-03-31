@@ -129,6 +129,29 @@ async def get_report(
     return report
 
 
+@router.get("/{token}/history")
+async def get_history(
+    token: str,
+    account_id: str,
+    period: Optional[str] = None,
+    client_id: str = Depends(get_portal_client_id),
+    db: AsyncSession = Depends(get_db),
+):
+    """Return snapshot history for charts (portal version)."""
+    from app.services import snapshot_service
+    # Verify account belongs to client
+    from app.models.client import ClientAccount
+    from sqlalchemy import select, and_
+    result = await db.execute(
+        select(ClientAccount).where(
+            and_(ClientAccount.id == account_id, ClientAccount.client_id == client_id)
+        )
+    )
+    if not result.scalar_one_or_none():
+        raise HTTPException(status_code=404, detail="Account not found")
+    return await snapshot_service.get_snapshot_history(db, account_id, period)
+
+
 @router.get("/{token}/suggestion/{suggest_id}", response_model=SuggestionResponse)
 async def get_suggestion(
     token: str,
