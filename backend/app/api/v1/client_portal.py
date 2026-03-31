@@ -9,7 +9,6 @@ from app.schemas.client_portal import (
     PortalCheckResponse,
     PortalVerifyRequest,
     PortalTokenResponse,
-    SnapshotsListResponse,
     CallReserveRequest,
     CallReserveResponse,
 )
@@ -94,15 +93,22 @@ async def verify_client(
 # Protected endpoints (portal JWT required)
 # ---------------------------------------------------------------------------
 
-@router.get("/{token}/snapshots", response_model=SnapshotsListResponse)
+@router.get("/{token}/snapshots")
 async def get_snapshots(
     token: str,
     client_id: str = Depends(get_portal_client_id),
     db: AsyncSession = Depends(get_db),
 ):
-    """Return snapshot date list grouped by account."""
+    """Return snapshot date list grouped by account + client info."""
+    from app.models.client import Client
+    client_result = await db.execute(select(Client).where(Client.id == client_id))
+    client = client_result.scalar_one_or_none()
     accounts = await client_portal_service.get_client_snapshots(db, client_id)
-    return SnapshotsListResponse(accounts=accounts)
+    return {
+        "accounts": accounts,
+        "client_name": client.name if client else "",
+        "unique_code": client.unique_code if client else "",
+    }
 
 
 @router.get("/{token}/report")
@@ -177,7 +183,13 @@ async def get_suggestion(
     )
     holdings = holdings_result.scalars().all()
 
-    suggested_weights = suggestion.suggested_weights or {}
+    raw_weights = suggestion.suggested_weights or {}
+    # Normalize: if any weight > 1, treat as percentage and convert to 0-1
+    max_w = max(raw_weights.values()) if raw_weights else 0
+    suggested_weights = {
+        k: v / 100 if max_w > 1 else v
+        for k, v in raw_weights.items()
+    } if raw_weights else {}
     holdings_data = []
     for h in holdings:
         holdings_data.append({

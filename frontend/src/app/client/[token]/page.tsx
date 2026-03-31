@@ -37,6 +37,8 @@ export default function ClientPortalPage({
   const [maskedName, setMaskedName] = useState('');
   const [portalJwt, setPortalJwt] = useState('');
   const [snapshots, setSnapshots] = useState<AccountSnapshot[]>([]);
+  const [clientName, setClientName] = useState('');
+  const [uniqueCode, setUniqueCode] = useState('');
   const [initError, setInitError] = useState('');
 
   // 초기: 토큰 유효성 + 이름 마스킹 조회
@@ -85,6 +87,8 @@ export default function ClientPortalPage({
       if (res.ok) {
         const data = await res.json();
         setSnapshots(data.accounts ?? []);
+        if (data.client_name) setClientName(data.client_name);
+        if (data.unique_code) setUniqueCode(data.unique_code);
         return true;
       }
       return false;
@@ -158,6 +162,13 @@ export default function ClientPortalPage({
               <p style={{ fontSize: 11, color: '#9CA3AF' }}>Working Hub Manager</p>
             </div>
           </div>
+          {/* 고객 정보 */}
+          {clientName && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 10 }}>
+              <span style={{ fontSize: 14, fontWeight: 700, color: '#1E3A5F' }}>{clientName}</span>
+              {uniqueCode && <span style={{ fontSize: 12, color: '#6B7280' }}>({uniqueCode})</span>}
+            </div>
+          )}
         </div>
 
         {/* 콘텐츠 영역 */}

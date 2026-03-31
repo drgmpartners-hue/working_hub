@@ -296,7 +296,11 @@ export function PortalReportView({ token, portalJwt, snapshots }: PortalReportVi
                 <span style={{ fontSize: 18 }}>🤖</span>
                 <p style={{ fontSize: 14, fontWeight: 700, color: '#92400E' }}>AI 분석 코멘트</p>
               </div>
-              <p style={{ fontSize: 14, color: '#78350F', lineHeight: 1.7, margin: 0, whiteSpace: 'pre-wrap' }}>{report.ai_comment}</p>
+              {/<[a-z][\s\S]*>/i.test(report.ai_comment!) ? (
+                <div style={{ fontSize: 14, color: '#78350F', lineHeight: 1.7 }} dangerouslySetInnerHTML={{ __html: report.ai_comment! }} />
+              ) : (
+                <p style={{ fontSize: 14, color: '#78350F', lineHeight: 1.7, margin: 0, whiteSpace: 'pre-wrap' }}>{report.ai_comment}</p>
+              )}
             </div>
           )}
 

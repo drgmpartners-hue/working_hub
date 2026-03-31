@@ -50,10 +50,13 @@ function splitAiComment(comment: string | null): { analysis: string; change: str
 }
 
 /* AI 코멘트 렌더링 - 줄바꿈과 구조 유지 */
+const hasHtml = (s: string) => /<[a-z][\s\S]*>/i.test(s);
+
 function AiCommentBlock({ text, title, bgColor, borderColor, titleColor }: {
   text: string; title: string; bgColor: string; borderColor: string; titleColor: string;
 }) {
   if (!text) return null;
+  const isHtml = hasHtml(text);
   return (
     <div style={{ backgroundColor: bgColor, border: `1px solid ${borderColor}`, borderRadius: 12, overflow: 'hidden' }}>
       <div style={{ padding: '12px 16px', backgroundColor: borderColor + '33', borderBottom: `1px solid ${borderColor}` }}>
@@ -63,7 +66,11 @@ function AiCommentBlock({ text, title, bgColor, borderColor, titleColor }: {
         </div>
       </div>
       <div style={{ padding: '14px 16px' }}>
-        <div style={{ fontSize: 14, color: '#1E1B4B', lineHeight: 1.8, whiteSpace: 'pre-wrap' }}>{text}</div>
+        {isHtml ? (
+          <div style={{ fontSize: 14, color: '#1E1B4B', lineHeight: 1.8 }} dangerouslySetInnerHTML={{ __html: text }} />
+        ) : (
+          <div style={{ fontSize: 14, color: '#1E1B4B', lineHeight: 1.8, whiteSpace: 'pre-wrap' }}>{text}</div>
+        )}
       </div>
     </div>
   );
