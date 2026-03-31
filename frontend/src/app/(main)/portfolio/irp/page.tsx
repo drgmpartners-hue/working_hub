@@ -3867,32 +3867,6 @@ export default function IRPPage() {
         return;
       }
       const data: ReportData = await res.json();
-      // 예수금 항목이 없으면 강제 추가 (부분 매칭)
-      const hasDeposit = data.holdings?.some((h) =>
-        (h.product_name ?? '').includes('예수금') || (h.product_name ?? '').includes('자동운용상품')
-      );
-      if (!hasDeposit) {
-        const depositAmt = data.snapshot?.deposit_amount ?? 0;
-        data.holdings = [
-          {
-            id: '__deposit__',
-            product_name: '예수금/자동운용상품(고유계정대)',
-            product_code: undefined,
-            product_type: undefined,
-            risk_level: undefined,
-            region: undefined,
-            purchase_amount: depositAmt,
-            evaluation_amount: depositAmt,
-            return_amount: 0,
-            return_rate: 0,
-            weight: depositAmt > 0 && (data.snapshot?.total_evaluation ?? 0) > 0
-              ? depositAmt / (data.snapshot?.total_evaluation ?? 1)
-              : 0,
-            seq: 0,
-          },
-          ...(data.holdings ?? []),
-        ];
-      }
       setReportData(data);
       // 서버에서 AI 코멘트가 포함된 경우 자동 적용
       if (data.ai_comment) setAiComment(data.ai_comment);
