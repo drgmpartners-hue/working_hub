@@ -252,8 +252,13 @@ async def get_report_for_date(
     )
     holdings = holdings_result.scalars().all()
 
-    holdings_data = [
-        {
+    holdings_data = []
+    for h in holdings:
+        # Calculate return_rate if not stored
+        rr = h.return_rate
+        if rr is None and h.purchase_amount and h.purchase_amount > 0 and h.evaluation_amount is not None:
+            rr = round((h.evaluation_amount - h.purchase_amount) / h.purchase_amount * 100, 2)
+        holdings_data.append({
             "id": h.id,
             "product_name": h.product_name,
             "product_code": h.product_code,
@@ -263,13 +268,12 @@ async def get_report_for_date(
             "purchase_amount": h.purchase_amount,
             "evaluation_amount": h.evaluation_amount,
             "return_amount": h.return_amount,
-            "return_rate": h.return_rate,
+            "return_rate": rr,
             "weight": h.weight,
             "reference_price": h.reference_price,
+            "current_price": h.current_price,
             "seq": h.seq,
-        }
-        for h in holdings
-    ]
+        })
 
     # AI comment - show for all snapshots if available
     ai_comment = snapshot.parsed_data.get("ai_comment") if snapshot.parsed_data else None

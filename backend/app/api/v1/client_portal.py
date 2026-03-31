@@ -205,6 +205,10 @@ async def get_suggestion(
         cur_weight = h.weight
         if (cur_weight is None or cur_weight == 0) and total_eval > 0 and h.evaluation_amount:
             cur_weight = h.evaluation_amount / total_eval
+        # Calculate return_rate if not stored
+        rr = h.return_rate
+        if rr is None and h.purchase_amount and h.purchase_amount > 0 and h.evaluation_amount is not None:
+            rr = round((h.evaluation_amount - h.purchase_amount) / h.purchase_amount * 100, 2)
         holdings_data.append({
             "holding_id": h.id,
             "product_name": h.product_name,
@@ -217,8 +221,9 @@ async def get_suggestion(
             "evaluation_amount": h.evaluation_amount,
             "purchase_amount": h.purchase_amount,
             "return_amount": h.return_amount,
-            "return_rate": h.return_rate,
-            "current_price": h.current_price,
+            "return_rate": rr,
+            "current_price": h.current_price or h.reference_price,
+            "reference_price": h.reference_price or h.current_price,
             "quantity": h.quantity,
         })
         matched_ids.add(h.id)

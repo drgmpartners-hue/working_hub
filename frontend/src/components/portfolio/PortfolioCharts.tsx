@@ -397,6 +397,8 @@ export function PortfolioCharts({
             borderRadius: 12,
             padding: 20,
             backgroundColor: '#fff',
+            overflow: 'hidden',
+            minWidth: 0,
           }}
         >
           <DonutChart
@@ -411,6 +413,8 @@ export function PortfolioCharts({
             borderRadius: 12,
             padding: 20,
             backgroundColor: '#fff',
+            overflow: 'hidden',
+            minWidth: 0,
           }}
         >
           <DonutChart

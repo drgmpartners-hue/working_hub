@@ -254,6 +254,8 @@ export function PortalReportView({ token, portalJwt, snapshots }: PortalReportVi
                 <tbody>
                   {sortedHoldings.map((h, i) => {
                     const returnAmt = h.return_amount ?? ((h.evaluation_amount ?? 0) - (h.purchase_amount ?? 0));
+                    // Calculate return_rate if null
+                    const rr = h.return_rate ?? ((h.purchase_amount && h.purchase_amount > 0) ? ((h.evaluation_amount ?? 0) - h.purchase_amount) / h.purchase_amount * 100 : 0);
                     return (
                       <tr key={h.id} style={{ borderBottom: i < sortedHoldings.length - 1 ? '1px solid #F3F4F6' : 'none' }}>
                         <td style={{ padding: '10px 12px', color: '#111827', fontSize: 12, lineHeight: 1.4, position: 'sticky', left: 0, backgroundColor: '#fff', zIndex: 1, minWidth: 120 }}>
@@ -264,8 +266,8 @@ export function PortalReportView({ token, portalJwt, snapshots }: PortalReportVi
                         <td style={{ padding: '10px 12px', textAlign: 'right', whiteSpace: 'nowrap', color: returnAmt >= 0 ? '#059669' : '#DC2626', fontWeight: 600 }}>
                           {returnAmt >= 0 ? '+' : ''}{fmt(returnAmt)}
                         </td>
-                        <td style={{ padding: '10px 12px', textAlign: 'right', whiteSpace: 'nowrap', fontWeight: 700, color: (h.return_rate ?? 0) >= 0 ? '#059669' : '#DC2626' }}>
-                          {(h.return_rate ?? 0) >= 0 ? '+' : ''}{(h.return_rate ?? 0).toFixed(2)}%
+                        <td style={{ padding: '10px 12px', textAlign: 'right', whiteSpace: 'nowrap', fontWeight: 700, color: rr >= 0 ? '#059669' : '#DC2626' }}>
+                          {rr >= 0 ? '+' : ''}{rr.toFixed(2)}%
                         </td>
                       </tr>
                     );

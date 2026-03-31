@@ -245,10 +245,17 @@ export function SuggestionPanel({ token, suggestId, portalJwt }: SuggestionPanel
                             {sellBuyLabel}
                           </td>
                           <td style={{ padding: '10px 8px', textAlign: 'right', whiteSpace: 'nowrap', color: '#374151' }}>
-                            {h.current_price ? fmt(h.current_price) : '-'}
+                            {(h.current_price || (h as any).reference_price) ? fmt(h.current_price || (h as any).reference_price) : '-'}
                           </td>
                           <td style={{ padding: '10px 8px', textAlign: 'right', whiteSpace: 'nowrap', color: '#374151' }}>
-                            {h.quantity ? fmt(h.quantity) : '-'}
+                            {(() => {
+                              const price = h.current_price || (h as any).reference_price;
+                              if (!price || price <= 0 || sellBuyAmt === 0) return '-';
+                              const isFund = ((h.product_type ?? '') + (h.product_name ?? '')).includes('펀드') || ((h.product_type ?? '') + (h.product_name ?? '')).includes('신탁');
+                              const raw = isFund ? Math.abs(sellBuyAmt) * 1000 / price : Math.abs(sellBuyAmt) / price;
+                              const shares = sellBuyAmt > 0 ? Math.ceil(raw) : -Math.ceil(raw);
+                              return fmt(shares);
+                            })()}
                           </td>
                         </tr>
                       );
@@ -293,8 +300,8 @@ export function SuggestionPanel({ token, suggestId, portalJwt }: SuggestionPanel
             </p>
           </div>
 
-          {/* 통화 예약 */}
-          <CallReservationForm suggestId={suggestId} onSuccess={() => setReserved(true)} />
+          {/* 통화 예약 - 추후 활성화 */}
+          {/* <CallReservationForm suggestId={suggestId} onSuccess={() => setReserved(true)} /> */}
         </div>
       </div>
     </div>
