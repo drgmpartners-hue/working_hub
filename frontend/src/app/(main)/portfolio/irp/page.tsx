@@ -4357,7 +4357,7 @@ export default function IRPPage() {
     const baseUrl = typeof window !== 'undefined' ? window.location.origin : '';
     const portalToken = client?.portal_token ?? '';
     const link = alimtalkModalType === 'suggestion'
-      ? `${baseUrl}/client/${portalToken}?suggest=LATEST`
+      ? (reportSaved && savedSuggestionId ? `${baseUrl}/client/${portalToken}?suggest=${savedSuggestionId}` : `${baseUrl}/client/${portalToken}?suggest=LATEST`)
       : `${baseUrl}/client/${portalToken}`;
 
     // 템플릿에서 변수 추출하고 자동 매핑
@@ -4369,6 +4369,16 @@ export default function IRPPage() {
       const key = match[1];     // e.g. "고객명"
       if (key.includes('고객') || key.includes('이름') || key === 'name') {
         variables[varName] = client?.name ?? '';
+      } else if (key.includes('상품') || key.includes('계좌') || key === 'product') {
+        const acctType = reportData?.account?.account_type ?? '';
+        const label = acctType === 'irp' || acctType === 'IRP' ? 'IRP' : acctType.includes('연금') ? '연금저축' : acctType;
+        variables[varName] = label;
+      } else if (key.includes('변경제안') || key.includes('제안링크')) {
+        // 변경제안링크는 https:// 제외한 도메인+경로
+        const sugLink = (reportSaved && savedSuggestionId)
+          ? `${baseUrl.replace('https://', '')}/client/${portalToken}?suggest=${savedSuggestionId}`
+          : `${baseUrl.replace('https://', '')}/client/${portalToken}?suggest=LATEST`;
+        variables[varName] = sugLink;
       } else if (key.includes('링크') || key.includes('link') || key === 'url') {
         variables[varName] = link;
       } else {
