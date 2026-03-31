@@ -3958,6 +3958,19 @@ export default function IRPPage() {
               setModifiedWeights(converted);
             }
 
+            // AI 코멘트 복원 (suggestion에 저장된 경우)
+            if (sug.ai_comment) {
+              const changeIdx = sug.ai_comment.indexOf('[변경 분석]');
+              if (changeIdx !== -1) {
+                const analysis = sug.ai_comment.substring(0, changeIdx).replace('[포트폴리오 분석]', '').trim();
+                const change = sug.ai_comment.substring(changeIdx).replace('[변경 분석]', '').trim();
+                if (analysis && !aiComment) setAiComment(analysis);
+                if (change && !aiChangeComment) setAiChangeComment(change);
+              } else if (!aiComment) {
+                setAiComment(sug.ai_comment);
+              }
+            }
+
             // 담당자 의견: 24시간 이내면 복원
             if (sug.manager_note && sug.created_at) {
               const createdAt = new Date(sug.created_at);

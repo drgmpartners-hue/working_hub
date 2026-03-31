@@ -187,63 +187,91 @@ export function SuggestionPanel({ token, suggestId, portalJwt }: SuggestionPanel
                   </tr>
                 </thead>
                 <tbody>
-                  {suggestion.holdings.map((h, idx) => {
-                    const curW = h.current_weight;
-                    const sugW = h.suggested_weight;
-                    const diff = sugW - curW;
-                    const changed = Math.abs(diff) > 0.001;
-                    const isNewProduct = isNewItem(h);
-
-                    // Sell/Buy 금액 계산
+                  {(() => {
                     const totalEval = suggestion.holdings.reduce((s, x) => s + (x.evaluation_amount ?? 0), 0);
-                    const sellBuyAmt = Math.round(totalEval * Math.abs(diff));
-                    let sellBuyLabel = '-';
-                    let sellBuyColor = '#9CA3AF';
-                    if (diff > 0.001) {
-                      sellBuyLabel = `Buy ${fmt(sellBuyAmt)}`;
-                      sellBuyColor = '#059669';
-                    } else if (diff < -0.001) {
-                      sellBuyLabel = `Sell ${fmt(sellBuyAmt)}`;
-                      sellBuyColor = '#DC2626';
-                    }
+                    let totalEvalSum = 0;
+                    let totalSellBuy = 0;
 
-                    return (
-                      <tr key={h.holding_id} style={{
-                        borderBottom: idx < suggestion.holdings.length - 1 ? '1px solid #F3F4F6' : 'none',
-                        backgroundColor: changed ? '#FFFBEB' : 'transparent',
-                      }}>
-                        <td style={{ padding: '10px 8px', color: '#111827', fontSize: 11, lineHeight: 1.4, position: 'sticky', left: 0, backgroundColor: changed ? '#FFFBEB' : '#fff', zIndex: 1, minWidth: 110 }}>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-                            {h.product_name}
-                            {isNewProduct && (
-                              <span style={{ fontSize: 9, padding: '1px 5px', borderRadius: 4, backgroundColor: '#DBEAFE', color: '#1D4ED8', fontWeight: 700, whiteSpace: 'nowrap' }}>신규</span>
-                            )}
-                          </div>
+                    const rows = suggestion.holdings.map((h, idx) => {
+                      const curW = h.current_weight;
+                      const sugW = h.suggested_weight;
+                      const isNewProduct = isNewItem(h);
+
+                      // Sell/Buy = (총평가 × 수정비중) - 현재평가금액
+                      const afterAmt = Math.round(totalEval * sugW);
+                      const sellBuyAmt = afterAmt - (h.evaluation_amount ?? 0);
+                      totalEvalSum += (h.evaluation_amount ?? 0);
+                      totalSellBuy += sellBuyAmt;
+
+                      let sellBuyLabel = '-';
+                      let sellBuyColor = '#9CA3AF';
+                      if (sellBuyAmt > 0) {
+                        sellBuyLabel = `Buy ${fmt(sellBuyAmt)}`;
+                        sellBuyColor = '#059669';
+                      } else if (sellBuyAmt < 0) {
+                        sellBuyLabel = `Sell ${fmt(Math.abs(sellBuyAmt))}`;
+                        sellBuyColor = '#DC2626';
+                      }
+
+                      const changed = Math.abs(sellBuyAmt) > 0;
+                      const newBg = isNewProduct ? '#F0F7FF' : changed ? '#FFFBEB' : 'transparent';
+
+                      return (
+                        <tr key={h.holding_id} style={{
+                          borderBottom: '1px solid #F3F4F6',
+                          backgroundColor: newBg,
+                        }}>
+                          <td style={{ padding: '10px 8px', color: '#111827', fontSize: 11, lineHeight: 1.4, position: 'sticky', left: 0, backgroundColor: newBg === 'transparent' ? '#fff' : newBg, zIndex: 1, minWidth: 110 }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                              {h.product_name}
+                              {isNewProduct && (
+                                <span style={{ fontSize: 9, padding: '1px 5px', borderRadius: 4, backgroundColor: '#DBEAFE', color: '#1D4ED8', fontWeight: 700, whiteSpace: 'nowrap' }}>신규</span>
+                              )}
+                            </div>
+                          </td>
+                          <td style={{ padding: '10px 8px', textAlign: 'right', whiteSpace: 'nowrap', color: '#374151' }}>
+                            {fmt(h.evaluation_amount ?? 0)}
+                          </td>
+                          <td style={{ padding: '10px 8px', textAlign: 'center', whiteSpace: 'nowrap', fontWeight: 600, color: (h.return_rate ?? 0) >= 0 ? '#059669' : '#DC2626' }}>
+                            {(h.return_rate ?? 0) >= 0 ? '+' : ''}{(h.return_rate ?? 0).toFixed(2)}%
+                          </td>
+                          <td style={{ padding: '10px 8px', textAlign: 'center', color: '#6B7280' }}>
+                            {isNewProduct ? '-' : `${(curW * 100).toFixed(1)}%`}
+                          </td>
+                          <td style={{ padding: '10px 8px', textAlign: 'center', fontWeight: 700, color: '#1E3A5F' }}>
+                            {(sugW * 100).toFixed(1)}%
+                          </td>
+                          <td style={{ padding: '10px 8px', textAlign: 'center', fontWeight: 600, color: sellBuyColor, whiteSpace: 'nowrap', fontSize: 11 }}>
+                            {sellBuyLabel}
+                          </td>
+                          <td style={{ padding: '10px 8px', textAlign: 'right', whiteSpace: 'nowrap', color: '#374151' }}>
+                            {h.current_price ? fmt(h.current_price) : '-'}
+                          </td>
+                          <td style={{ padding: '10px 8px', textAlign: 'right', whiteSpace: 'nowrap', color: '#374151' }}>
+                            {h.quantity ? fmt(h.quantity) : '-'}
+                          </td>
+                        </tr>
+                      );
+                    });
+
+                    // 합계 행
+                    rows.push(
+                      <tr key="__total__" style={{ backgroundColor: '#F0F4FF', borderTop: '2px solid #C7D2FE', fontWeight: 700 }}>
+                        <td style={{ padding: '10px 8px', fontSize: 12, color: '#1E3A5F', position: 'sticky', left: 0, backgroundColor: '#F0F4FF', zIndex: 1 }}>합계</td>
+                        <td style={{ padding: '10px 8px', textAlign: 'right', whiteSpace: 'nowrap', color: '#1E3A5F', fontSize: 12 }}>{fmt(totalEvalSum)}</td>
+                        <td style={{ padding: '10px 8px' }}></td>
+                        <td style={{ padding: '10px 8px' }}></td>
+                        <td style={{ padding: '10px 8px' }}></td>
+                        <td style={{ padding: '10px 8px', textAlign: 'center', whiteSpace: 'nowrap', fontSize: 11, color: totalSellBuy >= 0 ? '#059669' : '#DC2626' }}>
+                          {totalSellBuy >= 0 ? '+' : ''}{fmt(totalSellBuy)}
                         </td>
-                        <td style={{ padding: '10px 8px', textAlign: 'right', whiteSpace: 'nowrap', color: '#374151' }}>
-                          {fmt(h.evaluation_amount ?? 0)}
-                        </td>
-                        <td style={{ padding: '10px 8px', textAlign: 'center', whiteSpace: 'nowrap', fontWeight: 600, color: (h.return_rate ?? 0) >= 0 ? '#059669' : '#DC2626' }}>
-                          {(h.return_rate ?? 0) >= 0 ? '+' : ''}{(h.return_rate ?? 0).toFixed(2)}%
-                        </td>
-                        <td style={{ padding: '10px 8px', textAlign: 'center', color: '#6B7280' }}>
-                          {isNewProduct ? '-' : `${(curW * 100).toFixed(1)}%`}
-                        </td>
-                        <td style={{ padding: '10px 8px', textAlign: 'center', fontWeight: 700, color: '#1E3A5F' }}>
-                          {(sugW * 100).toFixed(1)}%
-                        </td>
-                        <td style={{ padding: '10px 8px', textAlign: 'center', fontWeight: 600, color: sellBuyColor, whiteSpace: 'nowrap', fontSize: 11 }}>
-                          {sellBuyLabel}
-                        </td>
-                        <td style={{ padding: '10px 8px', textAlign: 'right', whiteSpace: 'nowrap', color: '#374151' }}>
-                          {h.current_price ? fmt(h.current_price) : '-'}
-                        </td>
-                        <td style={{ padding: '10px 8px', textAlign: 'right', whiteSpace: 'nowrap', color: '#374151' }}>
-                          {h.quantity ? fmt(h.quantity) : '-'}
-                        </td>
+                        <td style={{ padding: '10px 8px' }}></td>
+                        <td style={{ padding: '10px 8px' }}></td>
                       </tr>
                     );
-                  })}
+
+                    return rows;
+                  })()}
                 </tbody>
               </table>
             </div>

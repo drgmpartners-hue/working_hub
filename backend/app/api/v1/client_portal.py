@@ -192,6 +192,9 @@ async def get_suggestion(
         for k, v in raw_weights.items()
     } if raw_weights else {}
 
+    # Extract saved prices for new products
+    saved_prices = raw_weights.get('_prices', {}) if isinstance(raw_weights.get('_prices'), dict) else {}
+
     # Calculate total evaluation for weight computation
     total_eval = sum(h.evaluation_amount or 0 for h in holdings)
 
@@ -253,7 +256,7 @@ async def get_suggestion(
             "purchase_amount": 0,
             "return_amount": 0,
             "return_rate": 0,
-            "current_price": pm.current_price if pm and hasattr(pm, 'current_price') else None,
+            "current_price": saved_prices.get(key) or saved_prices.get(f"new:{product_name}") or (pm.current_price if pm and hasattr(pm, 'current_price') else None),
             "quantity": 0,
             "is_new": True,
         })
