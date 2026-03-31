@@ -481,8 +481,8 @@ function WeightEditor({
                 changedAmt != null && h.evaluation_amount != null
                   ? changedAmt - h.evaluation_amount
                   : null;
-              const isRow1Product = h.product_name === '예수금/자동운용상품(고유계정대)' || h.product_name === '자동운용상품(고유계정대)' || h.product_name === '예수금';
-              const isNew = h.id.startsWith('virtual_') && !isRow1Product;
+              const isRow1Product = (h.product_name ?? '').includes('예수금') || (h.product_name ?? '').includes('자동운용상품');
+              const isNew = (h.id.startsWith('virtual_') || h.id.startsWith('__new__')) && !isRow1Product;
               const rowBg = isNew ? '#F0FDF4' : 'transparent';
               return (
                 <tr

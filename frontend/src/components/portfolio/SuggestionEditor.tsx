@@ -285,8 +285,8 @@ export function SuggestionEditor({ holdings, snapshotId, accountId, totalEvaluat
               const afterAmount = afterEval(h.id);
               const diffAmount = diff(h.id);
               const diffColor = diffAmount > 0 ? '#10B981' : diffAmount < 0 ? '#EF4444' : '#374151';
-              const isNewItem = h.id.startsWith('virtual_');
-              const isRow1Product = h.product_name === '예수금/자동운용상품(고유계정대)' || h.product_name === '자동운용상품(고유계정대)' || h.product_name === '예수금';
+              const isNewItem = h.id.startsWith('virtual_') || h.id.startsWith('__new__');
+              const isRow1Product = (h.product_name ?? '').includes('예수금') || (h.product_name ?? '').includes('자동운용상품');
 
               return (
                 <tr
