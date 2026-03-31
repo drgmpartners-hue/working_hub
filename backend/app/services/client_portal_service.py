@@ -271,8 +271,8 @@ async def get_report_for_date(
         for h in holdings
     ]
 
-    # AI comment only for latest snapshot
-    ai_comment = snapshot.parsed_data.get("ai_comment") if (is_latest and snapshot.parsed_data) else None
+    # AI comment - show for all snapshots if available
+    ai_comment = snapshot.parsed_data.get("ai_comment") if snapshot.parsed_data else None
 
     # Compute region/risk distribution from holdings
     total_eval = sum(h.evaluation_amount or 0 for h in holdings)

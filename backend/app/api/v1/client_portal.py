@@ -148,7 +148,8 @@ async def get_history(
     )
     if not result.scalar_one_or_none():
         raise HTTPException(status_code=404, detail="Account not found")
-    return await snapshot_service.get_snapshot_history(db, account_id, period)
+    raw_items = await snapshot_service.get_history_with_weights(db, account_id, period)
+    return {"history": raw_items, "account_id": account_id, "period": period}
 
 
 @router.get("/{token}/suggestion/{suggest_id}")
@@ -189,6 +190,11 @@ async def get_suggestion(
             "current_weight": h.weight or 0,
             "suggested_weight": suggested_weights.get(h.id, h.weight or 0),
             "evaluation_amount": h.evaluation_amount,
+            "purchase_amount": h.purchase_amount,
+            "return_amount": h.return_amount,
+            "return_rate": h.return_rate,
+            "current_price": h.current_price,
+            "quantity": h.quantity,
         })
 
     return {

@@ -389,8 +389,8 @@ export function PortfolioCharts({
         )}
       </div>
 
-      {/* 분산 차트 2개 */}
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+      {/* 분산 차트 2개 - 웹: 가로, 모바일: 세로 */}
+      <div style={{ display: 'grid', gap: 16 }} className="chart-distribution-grid">
         <div
           style={{
             border: '1px solid #E1E5EB',
@@ -420,6 +420,12 @@ export function PortfolioCharts({
           />
         </div>
       </div>
+      <style>{`
+        .chart-distribution-grid { grid-template-columns: 1fr 1fr; }
+        @media (max-width: 640px) {
+          .chart-distribution-grid { grid-template-columns: 1fr; }
+        }
+      `}</style>
     </div>
   );
 }
