@@ -2886,6 +2886,9 @@ export default function IRPPage() {
   const [aiCommentLoading, setAiCommentLoading] = useState(false);
   const [aiChangeCommentLoading, setAiChangeCommentLoading] = useState(false);
   const [managerNote, setManagerNote] = useState('');
+  const [reportSaved, setReportSaved] = useState(false);
+  const [savedSuggestionId, setSavedSuggestionId] = useState('');
+  const [reportSaving, setReportSaving] = useState(false);
 
   /* ---------- product master state ---------- */
   const [productMasters, setProductMasters] = useState<ProductMaster[]>([]);
@@ -3841,6 +3844,8 @@ export default function IRPPage() {
     setReportData(null);
     setModifiedWeights({});
     setAiComment('');
+    setReportSaved(false);
+    setSavedSuggestionId('');
     setAiChangeComment('');
     try {
       const res = await fetch(
@@ -4513,6 +4518,74 @@ export default function IRPPage() {
       showToast('문자 발송 중 오류가 발생했습니다.');
     } finally {
       setSmsSending(false);
+    }
+  }
+
+  /* ---------- 보고서 저장 (이미지 + suggestion 생성 + 내역관리 기록) ---------- */
+  async function handleSaveReport() {
+    if (!reportRef.current || !reportData) return;
+    if (!aiComment || !aiChangeComment) {
+      alert('AI 분석 코멘트 2개를 모두 생성해주세요.');
+      return;
+    }
+    setReportSaving(true);
+    try {
+      const html2canvas = (await import('html2canvas')).default;
+
+      // 1) 보고서 이미지 캡처
+      const noPrintEls = reportRef.current.querySelectorAll('[data-no-print]');
+      noPrintEls.forEach((el) => ((el as HTMLElement).style.display = 'none'));
+      const canvas = await html2canvas(reportRef.current, { scale: 2 });
+      noPrintEls.forEach((el) => ((el as HTMLElement).style.display = ''));
+
+      const imageBlob = await new Promise<Blob | null>((resolve) =>
+        canvas.toBlob((b) => resolve(b), 'image/png')
+      );
+      if (!imageBlob) { alert('이미지 생성 실패'); return; }
+
+      // 2) Suggestion 생성 (변경제안 링크용)
+      const snapshotId = reportData.snapshot?.id;
+      const accountId = reportData.account?.id;
+      if (!snapshotId || !accountId) { alert('스냅샷 정보가 없습니다.'); return; }
+
+      const suggestRes = await fetch(`${API_URL}/api/v1/portfolios/suggestions`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...authLib.getAuthHeader() },
+        body: JSON.stringify({
+          account_id: accountId,
+          snapshot_id: snapshotId,
+          suggested_weights: modifiedWeights,
+          ai_comment: `[포트폴리오 분석]\n${aiComment}\n\n[변경 분석]\n${aiChangeComment}`,
+        }),
+      });
+      let suggestionId = '';
+      if (suggestRes.ok) {
+        const suggestData = await suggestRes.json();
+        suggestionId = suggestData.suggestion_id || suggestData.id || '';
+        setSavedSuggestionId(suggestionId);
+      }
+
+      // 3) 4번 탭 내역관리에 기록 추가
+      const logForm = new FormData();
+      logForm.append('client_id', tab3ClientId);
+      logForm.append('client_account_id', accountId);
+      logForm.append('log_type', 'suggestion');
+      logForm.append('message_text', `[보고서 저장] ${reportClientName} - ${reportDate} | AI 분석 완료`);
+      logForm.append('sent_at', new Date().toISOString());
+      logForm.append('image', imageBlob, `${reportClientName}_보고서_${reportDate}.png`);
+
+      await fetch(`${API_URL}/api/v1/message-logs`, {
+        method: 'POST',
+        headers: { ...authLib.getAuthHeader() },
+        body: logForm,
+      });
+
+      setReportSaved(true);
+      showToast('보고서가 저장되었습니다.');
+    } catch (e) {
+      alert(e instanceof Error ? e.message : '보고서 저장 실패');
+    } finally {
+      setReportSaving(false);
     }
   }
 
@@ -5490,7 +5563,7 @@ export default function IRPPage() {
             const portalToken = client?.portal_token;
             const baseUrl = typeof window !== 'undefined' ? window.location.origin : '';
             const permanentLink = portalToken ? `${baseUrl}/client/${portalToken}` : null;
-            const suggestLink = portalToken ? `${baseUrl}/client/${portalToken}?suggest=LATEST` : null;
+            const suggestLink = (portalToken && reportSaved && savedSuggestionId) ? `${baseUrl}/client/${portalToken}?suggest=${savedSuggestionId}` : null;
             const btnBase: React.CSSProperties = {
               display: 'inline-flex', alignItems: 'center', gap: 5,
               padding: '6px 12px', fontSize: '0.75rem', fontWeight: 600,
@@ -5533,32 +5606,39 @@ export default function IRPPage() {
                     <span style={{ fontSize: 12 }}>✨</span>
                     <span style={{ fontSize: '0.8125rem', fontWeight: 700, color: '#92400E' }}>변경 제안 링크</span>
                   </div>
-                  <div style={{ fontSize: '0.6875rem', color: '#6B7280', marginBottom: 6 }}>위 항목 + Dr.GM 추천 · 수정 포트폴리오 · AI 변경 분석</div>
-                  <div style={{ padding: '6px 10px', backgroundColor: '#fff', border: '1px solid #FCD34D', borderRadius: 6, fontSize: '0.6875rem', color: portalToken ? '#92400E' : '#9CA3AF', fontFamily: 'monospace', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', marginBottom: 4 }}>
-                    {suggestLink ?? '포털 토큰 없음'}
+                  <div style={{ fontSize: '0.6875rem', color: '#6B7280', marginBottom: 6 }}>위 항목 + 수정 포트폴리오 · AI 변경 분석</div>
+                  <div style={{ padding: '6px 10px', backgroundColor: '#fff', border: '1px solid #FCD34D', borderRadius: 6, fontSize: '0.6875rem', color: suggestLink ? '#92400E' : '#9CA3AF', fontFamily: 'monospace', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', marginBottom: 4 }}>
+                    {suggestLink ?? (reportSaved ? '생성 중...' : '보고서를 저장하면 링크가 생성됩니다')}
                   </div>
                   <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
                     <button onClick={() => {
-                      if (!suggestLink) { showToast('포털 토큰이 없습니다.'); return; }
+                      if (!reportSaved) { alert('보고서를 먼저 저장해 주세요.'); return; }
+                      if (!suggestLink) { showToast('링크가 아직 생성되지 않았습니다.'); return; }
                       navigator.clipboard.writeText(suggestLink).then(
                         () => showToast('변경 제안 링크가 복사되었습니다.'),
                         () => showToast('복사에 실패했습니다.')
                       );
                     }}
-                      style={{ ...btnBase, color: '#374151', backgroundColor: '#fff', border: '1px solid #D1D5DB' }}>
+                      style={{ ...btnBase, color: '#374151', backgroundColor: '#fff', border: '1px solid #D1D5DB', opacity: reportSaved ? 1 : 0.5 }}>
                       링크 복사
                     </button>
                     <button
-                      disabled={smsSending}
-                      onClick={() => openSmsModal('suggestion')}
-                      style={{ ...btnBase, color: '#fff', backgroundColor: smsSending ? '#9CA3AF' : '#059669', border: 'none' }}>
+                      disabled={smsSending || !reportSaved}
+                      onClick={() => {
+                        if (!reportSaved) { alert('보고서를 먼저 저장해 주세요.'); return; }
+                        openSmsModal('suggestion');
+                      }}
+                      style={{ ...btnBase, color: '#fff', backgroundColor: (smsSending || !reportSaved) ? '#9CA3AF' : '#059669', border: 'none' }}>
                       {smsSending ? '발송 중...' : '문자 발송'}
                     </button>
-                    <button disabled={alimtalkSending} onClick={() => openAlimtalkModal('suggestion')}
-                      style={{ ...btnBase, color: '#92400E', backgroundColor: alimtalkSending ? '#E5E7EB' : '#FEF3C7', border: '1px solid #FCD34D' }}>
+                    <button disabled={alimtalkSending || !reportSaved} onClick={() => {
+                        if (!reportSaved) { alert('보고서를 먼저 저장해 주세요.'); return; }
+                        openAlimtalkModal('suggestion');
+                      }}
+                      style={{ ...btnBase, color: '#92400E', backgroundColor: (alimtalkSending || !reportSaved) ? '#E5E7EB' : '#FEF3C7', border: '1px solid #FCD34D' }}>
                       {alimtalkSending ? '발송 중...' : '알림톡 발송'}
                     </button>
-                    <span style={{ fontSize: '0.5625rem', color: '#9CA3AF' }}>* 유효 7일</span>
+                    {reportSaved && <span style={{ fontSize: '0.5625rem', color: '#9CA3AF' }}>* 유효 7일</span>}
                   </div>
                 </div>
 
@@ -5659,7 +5739,8 @@ export default function IRPPage() {
 
           {/* 저장 버튼들 */}
           {reportData && (
-            <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+            <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', alignItems: 'center' }}>
+              {reportSaved && <span style={{ fontSize: '0.75rem', color: '#059669', fontWeight: 600, marginRight: 'auto' }}>✓ 보고서 저장 완료</span>}
               <Button variant="secondary" size="sm" loading={saving} onClick={handleSaveImage}>
                 <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                   <rect x="3" y="3" width="18" height="18" rx="2" />
@@ -5675,6 +5756,21 @@ export default function IRPPage() {
                   <line x1="12" y1="15" x2="12" y2="3" />
                 </svg>
                 PDF 다운로드
+              </Button>
+              <Button
+                variant={reportSaved ? 'secondary' : 'primary'}
+                size="sm"
+                loading={reportSaving}
+                onClick={handleSaveReport}
+                disabled={reportSaved}
+                style={reportSaved ? {} : { backgroundColor: '#D97706', borderColor: '#D97706' }}
+              >
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z" />
+                  <polyline points="17 21 17 13 7 13 7 21" />
+                  <polyline points="7 3 7 8 15 8" />
+                </svg>
+                {reportSaved ? '저장 완료' : '보고서 저장'}
               </Button>
             </div>
           )}
