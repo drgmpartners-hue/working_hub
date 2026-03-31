@@ -188,31 +188,15 @@ async def get_report_data(
     )
     holdings = list(holdings_result.scalars().all())
 
-    # 예수금 항목이 없으면 강제 추가
-    has_deposit = any(
-        '예수금' in (h.product_name or '') or '자동운용상품' in (h.product_name or '')
-        for h in holdings
-    )
-    if not has_deposit and snapshot.deposit_amount and snapshot.deposit_amount > 0:
-        total_eval = snapshot.total_evaluation or 1
-        # Create a virtual deposit holding (not saved to DB)
-        class _VirtualHolding:
-            pass
-        dep = _VirtualHolding()
-        dep.id = '__deposit__'
-        dep.seq = 0
-        dep.product_name = '예수금/자동운용상품(고유계정대)'
-        dep.product_code = None
-        dep.product_type = None
-        dep.risk_level = None
-        dep.region = None
-        dep.purchase_amount = snapshot.deposit_amount
-        dep.evaluation_amount = snapshot.deposit_amount
-        dep.return_amount = 0
-        dep.return_rate = 0
-        dep.weight = snapshot.deposit_amount / total_eval if total_eval > 0 else 0
-        dep.reference_price = None
-        holdings = [dep] + holdings
+    # 예수금/자동운용상품 중복 제거: 첫 번째만 유지
+    deposit_indices = [
+        i for i, h in enumerate(holdings)
+        if '예수금' in (h.product_name or '') or '자동운용상품' in (h.product_name or '')
+    ]
+    if len(deposit_indices) > 1:
+        # 평가금액이 큰 쪽을 유지
+        keep_idx = max(deposit_indices, key=lambda i: holdings[i].evaluation_amount or 0)
+        holdings = [h for i, h in enumerate(holdings) if i not in deposit_indices or i == keep_idx]
 
     # Get all historical snapshots for return rate chart (최대 12개월)
     history_result = await db.execute(

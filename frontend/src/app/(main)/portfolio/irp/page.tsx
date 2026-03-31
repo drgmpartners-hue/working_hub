@@ -3727,6 +3727,19 @@ export default function IRPPage() {
       });
       if (!res.ok) return;
       const snap: Snapshot = await res.json();
+
+      // 예수금/자동운용상품 중복 제거 (OCR에서 중복 추출된 경우)
+      const depositIndices = snap.holdings
+        .map((h, i) => ({ i, name: h.product_name ?? '' }))
+        .filter((x) => x.name.includes('예수금') || x.name.includes('자동운용상품'));
+      if (depositIndices.length > 1) {
+        const keepIdx = depositIndices.reduce((best, cur) =>
+          (snap.holdings[cur.i].evaluation_amount ?? 0) > (snap.holdings[best.i].evaluation_amount ?? 0) ? cur : best
+        ).i;
+        const removeSet = new Set(depositIndices.map((d) => d.i).filter((i) => i !== keepIdx));
+        snap.holdings = snap.holdings.filter((_, i) => !removeSet.has(i));
+      }
+
       setActiveSnapshot(snap);
 
       // Build distribution data from holdings
