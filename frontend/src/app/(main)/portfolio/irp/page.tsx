@@ -4554,7 +4554,9 @@ export default function IRPPage() {
         body: JSON.stringify({
           account_id: accountId,
           snapshot_id: snapshotId,
-          suggested_weights: modifiedWeights,
+          suggested_weights: Object.fromEntries(
+            Object.entries(modifiedWeights).map(([id, val]) => [id, val / 100])
+          ),
           ai_comment: `[포트폴리오 분석]\n${aiComment}\n\n[변경 분석]\n${aiChangeComment}`,
         }),
       });
