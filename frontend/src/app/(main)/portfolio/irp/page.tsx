@@ -1184,13 +1184,21 @@ function Tab2Section({
     /* Other rows */
     for (const h of otherHoldings) {
       const master = productMasters.find((m) => m.product_name === h.product_name);
-      const isFund = (master?.product_type || h.product_type || '').includes('펀드');
-      const calcPurchAmt = (h.quantity != null && h.purchase_price != null)
-        ? (isFund ? Math.ceil(h.quantity * h.purchase_price / 1000) : h.quantity * h.purchase_price)
-        : h.purchase_amount;
-      const calcEvalAmt = (h.quantity != null && h.current_price != null)
-        ? (isFund ? Math.ceil(h.quantity * h.current_price / 1000) : h.quantity * h.current_price)
-        : h.evaluation_amount;
+      const pType = (master?.product_type || h.product_type || '').toLowerCase();
+      const pName = (h.product_name || '').toLowerCase();
+      const isFund = pType.includes('펀드') || pType.includes('신탁');
+      // MMF, 정기예금, RP, CMA, 예수금 등 현금성 상품은 DB 값 직접 사용
+      const isCashLike = pType.includes('mmf') || pType.includes('rp') || pType.includes('cma')
+        || pName.includes('정기예금') || pName.includes('예수금') || pName.includes('자동운용상품')
+        || pName.includes('mmf') || pName.includes('cma');
+      const calcPurchAmt = isCashLike ? h.purchase_amount
+        : (h.quantity != null && h.purchase_price != null)
+          ? (isFund ? Math.ceil(h.quantity * h.purchase_price / 1000) : h.quantity * h.purchase_price)
+          : h.purchase_amount;
+      const calcEvalAmt = isCashLike ? h.evaluation_amount
+        : (h.quantity != null && h.current_price != null)
+          ? (isFund ? Math.ceil(h.quantity * h.current_price / 1000) : h.quantity * h.current_price)
+          : h.evaluation_amount;
       const purchAmt = calcPurchAmt ?? 0;
       const evalAmt = calcEvalAmt ?? 0;
       const retAmt = evalAmt - purchAmt;
