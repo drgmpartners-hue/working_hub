@@ -157,6 +157,13 @@ APPROVED_TEMPLATES = [
         "buttons": [{"buttonType": "WL", "buttonName": "변경 제안 링크", "linkMo": "https://#{변경제안링크}", "linkPc": "https://#{변경제안링크}"}],
         "status": "APPROVED",
     },
+    {
+        "templateId": "KA01TP260325080018463aWwtx45VKlZ",
+        "name": "상시조회 페이지 개설 안내",
+        "content": "Dr.GM 연금저축/IRP 관리\n상시조회 페이지 개설 안내\n\n종합자산관리전문회사 Dr.GM에서\n#{고객명}님께 안내드립니다.\n\n고객님께서 요청하신 연금저축/IRP 운용현황 상시조회 페이지를 안내해 드리니 아래 버튼을 통해 운용내역을 확인해 보시기 바랍니다.\n\n📢 포트폴리오 수정 안내 링크는 별도로 발송될 예정입니다.",
+        "buttons": [{"buttonType": "WL", "buttonName": "상시조회페이지", "linkMo": "https://working-hub.vercel.app/client/#{상시조회링크}", "linkPc": "https://working-hub.vercel.app/client/#{상시조회링크}"}],
+        "status": "APPROVED",
+    },
 ]
 
 
