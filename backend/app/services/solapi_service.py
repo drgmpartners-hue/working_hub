@@ -172,7 +172,7 @@ async def get_kakao_templates(db: AsyncSession) -> dict:
         async with httpx.AsyncClient(timeout=15) as client:
             res = await client.get(
                 f"{SOLAPI_BASE}/kakao/v2/templates",
-                params={"pfId": pf_id, "status": "APPROVED", "limit": "100"},
+                params={"status": "APPROVED", "limit": "100"},
                 headers={"Authorization": auth},
             )
         if res.status_code >= 400:
