@@ -245,6 +245,25 @@ export function PortalAuthForm({ token, maskedName, onSuccess }: PortalAuthFormP
         {loading ? '확인 중...' : locked ? '잠금됨' : '확인'}
       </button>
 
+      {/* 웹 최적화 안내 */}
+      <div
+        style={{
+          backgroundColor: '#FEF3C7',
+          border: '1.5px solid #F59E0B',
+          borderRadius: 10,
+          padding: '14px 16px',
+          textAlign: 'center',
+        }}
+      >
+        <p style={{ fontSize: 13, fontWeight: 700, color: '#92400E', marginBottom: 4 }}>
+          PC/태블릿 웹 브라우저에서의 확인을 권장합니다.
+        </p>
+        <p style={{ fontSize: 12, color: '#92400E', lineHeight: 1.5 }}>
+          포트폴리오 상세 내역은 컴퓨터 웹 화면에 최적화되어 있습니다.<br />
+          모바일에서도 확인 가능하지만, 넓은 화면에서 보시면 더 편리합니다.
+        </p>
+      </div>
+
       <p style={{ textAlign: 'center', fontSize: 12, color: '#9CA3AF' }}>
         본 화면은 고객 확인 전용 페이지입니다.
       </p>
