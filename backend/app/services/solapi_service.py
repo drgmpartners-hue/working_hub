@@ -32,22 +32,8 @@ def _decrypt(value: str) -> str:
 
 
 async def _get_solapi_keys(db: AsyncSession) -> tuple[str, str, str]:
-    """DB에서 솔라피 API 키를 가져옵니다 (어떤 유저든 등록한 키 사용)."""
-    from app.models.user_api_key import UserApiKey
-
-    result = await db.execute(
-        select(UserApiKey).where(
-            UserApiKey.provider == "solapi",
-            UserApiKey.is_active == True,
-        ).limit(1)
-    )
-    key = result.scalar_one_or_none()
-    if not key:
-        return "", "", ""
-
-    api_key = _decrypt(key.api_key)
-    api_secret = _decrypt(key.api_secret) if key.api_secret else ""
-    return api_key, api_secret, settings.SOLAPI_SENDER
+    """환경변수에서 솔라피 API 키를 가져옵니다."""
+    return settings.SOLAPI_API_KEY, settings.SOLAPI_API_SECRET, settings.SOLAPI_SENDER
 
 
 def _make_auth_header(api_key: str, api_secret: str) -> str:
