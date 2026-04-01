@@ -33,6 +33,10 @@ def _decrypt(value: str) -> str:
 
 async def _get_solapi_keys(db: AsyncSession) -> tuple[str, str, str]:
     """환경변수에서 솔라피 API 키를 가져옵니다."""
+    logger.info("Solapi keys check: API_KEY=%s, SECRET=%s, SENDER=%s",
+                settings.SOLAPI_API_KEY[:4] + "..." if settings.SOLAPI_API_KEY else "EMPTY",
+                settings.SOLAPI_API_SECRET[:4] + "..." if settings.SOLAPI_API_SECRET else "EMPTY",
+                settings.SOLAPI_SENDER or "EMPTY")
     return settings.SOLAPI_API_KEY, settings.SOLAPI_API_SECRET, settings.SOLAPI_SENDER
 
 
