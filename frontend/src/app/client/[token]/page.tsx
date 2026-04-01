@@ -40,6 +40,7 @@ export default function ClientPortalPage({
   const [clientName, setClientName] = useState('');
   const [uniqueCode, setUniqueCode] = useState('');
   const [initError, setInitError] = useState('');
+  const [selectedAccountId, setSelectedAccountId] = useState('');
 
   // 초기: 토큰 유효성 + 이름 마스킹 조회
   useEffect(() => {
@@ -157,10 +158,26 @@ export default function ClientPortalPage({
             </div>
             <div>
               <p style={{ fontSize: 15, fontWeight: 700, color: '#111827', lineHeight: 1.2 }}>
-                포트폴리오 확인
+                {suggestId ? '포트폴리오 변경 제안' : '포트폴리오 상시 조회'}
               </p>
               <p style={{ fontSize: 11, color: '#9CA3AF' }}>Working Hub Manager</p>
             </div>
+          </div>
+          {/* 페이지 구분 배너 */}
+          <div style={{
+            marginTop: 8,
+            padding: '6px 14px',
+            borderRadius: 6,
+            backgroundColor: suggestId ? '#FEF3C7' : '#DBEAFE',
+            border: `1px solid ${suggestId ? '#F59E0B' : '#3B82F6'}`,
+          }}>
+            <span style={{
+              fontSize: 12,
+              fontWeight: 700,
+              color: suggestId ? '#92400E' : '#1E40AF',
+            }}>
+              {suggestId ? '변경 제안 보고서 - 수정 포트폴리오 및 AI 분석을 확인하세요' : '상시 조회 - 현재 포트폴리오 현황을 확인하세요'}
+            </span>
           </div>
           {/* 고객 정보 */}
           {clientName && (
@@ -250,6 +267,7 @@ export default function ClientPortalPage({
                   token={token}
                   portalJwt={portalJwt}
                   snapshots={snapshots}
+                  onAccountChange={setSelectedAccountId}
                 />
               )}
 
@@ -259,6 +277,7 @@ export default function ClientPortalPage({
                   token={token}
                   suggestId={suggestId}
                   portalJwt={portalJwt}
+                  selectedAccountId={selectedAccountId}
                 />
               )}
             </div>

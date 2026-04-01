@@ -4627,15 +4627,25 @@ export default function IRPPage() {
       const accountId = reportData.account?.id;
       if (!snapshotId || !accountId) { alert('스냅샷 정보가 없습니다.'); return; }
 
+      // Build weights + prices for new products
+      const sugWeights: Record<string, number> = {};
+      const sugPrices: Record<string, number> = {};
+      const holdings = reportData.holdings || [];
+      for (const [id, val] of Object.entries(modifiedWeights)) {
+        sugWeights[id] = val / 100;
+        // Find the holding's reference price
+        const h = holdings.find((hh: { id: string }) => hh.id === id);
+        const price = h?.reference_price ?? h?.current_price ?? 0;
+        if (price > 0) sugPrices[id] = price;
+      }
+
       const suggestRes = await fetch(`${API_URL}/api/v1/portfolios/suggestions`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', ...authLib.getAuthHeader() },
         body: JSON.stringify({
           account_id: accountId,
           snapshot_id: snapshotId,
-          suggested_weights: Object.fromEntries(
-            Object.entries(modifiedWeights).map(([id, val]) => [id, val / 100])
-          ),
+          suggested_weights: { ...sugWeights, _prices: sugPrices },
           ai_comment: `[포트폴리오 분석]\n${aiComment}\n\n[변경 분석]\n${aiChangeComment}`,
           manager_note: managerNote || null,
         }),

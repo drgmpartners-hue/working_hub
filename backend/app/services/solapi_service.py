@@ -148,27 +148,21 @@ async def send_bulk_sms(
         return {"success": False, "error": str(e)}
 
 
-async def get_kakao_templates(db: AsyncSession) -> dict:
-    """Fetch approved KakaoTalk 알림톡 templates from Solapi."""
-    api_key, api_secret, _ = await _get_solapi_keys(db)
-    if not api_key:
-        return {"error": "API Key 미설정"}
+"""사전 등록된 알림톡 템플릿 목록 (솔라피 API 호출 대신 직접 관리)"""
+APPROVED_TEMPLATES = [
+    {
+        "templateId": "KA01TP260325081439503hloPyUsSPOl",
+        "name": "수정 포트 안내",
+        "content": "종합자산관리전문회사 Dr.GM에서\n#{고객명}님께 안내드립니다.\n\n고객님께서 신청하신 투자권유대행 서비스에 따라 #{상품명} 포트폴리오 점검 결과를 안내해 드립니다.\n\n운용성과를 확인하시고, 추천 '수정 포트폴리오' 내역을 검토해 주시기 바랍니다.\n\n📢 링크 유지기간은 7일입니다.",
+        "buttons": [{"buttonType": "WL", "buttonName": "변경 제안 링크", "linkMo": "https://#{변경제안링크}", "linkPc": "https://#{변경제안링크}"}],
+        "status": "APPROVED",
+    },
+]
 
-    auth = _make_auth_header(api_key, api_secret)
-    try:
-        async with httpx.AsyncClient(timeout=15) as client:
-            res = await client.get(
-                f"{SOLAPI_BASE}/kakao/v2/templates",
-                params={"status": "APPROVED", "limit": "100"},
-                headers={"Authorization": auth},
-            )
-        if res.status_code >= 400:
-            logger.error("Solapi get templates failed: %s %s", res.status_code, res.text)
-            return {"error": f"템플릿 조회 실패 ({res.status_code})"}
-        return res.json()
-    except Exception as e:
-        logger.error("Solapi get templates error: %s", e)
-        return {"error": str(e)}
+
+async def get_kakao_templates(db: AsyncSession) -> dict:
+    """사전 등록된 알림톡 템플릿 목록 반환 (IP 제한 우회)."""
+    return {"templateList": APPROVED_TEMPLATES}
 
 
 async def send_alimtalk(

@@ -37,6 +37,7 @@ interface SuggestionPanelProps {
   token: string;
   suggestId: string;
   portalJwt: string;
+  selectedAccountId?: string;
 }
 
 const fmt = (n: number) => n.toLocaleString('ko-KR');
@@ -78,7 +79,7 @@ function AiCommentBlock({ text, title, bgColor, borderColor, titleColor }: {
   );
 }
 
-export function SuggestionPanel({ token, suggestId, portalJwt }: SuggestionPanelProps) {
+export function SuggestionPanel({ token, suggestId, portalJwt, selectedAccountId }: SuggestionPanelProps) {
   const [suggestion, setSuggestion] = useState<SuggestionData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -118,6 +119,11 @@ export function SuggestionPanel({ token, suggestId, portalJwt }: SuggestionPanel
   }
 
   if (!suggestion) return null;
+
+  // Hide suggestion panel when the user is viewing a different account tab
+  if (selectedAccountId && suggestion.account_id && selectedAccountId !== suggestion.account_id) {
+    return null;
+  }
 
   if (suggestion.is_expired) {
     return (
@@ -201,7 +207,9 @@ export function SuggestionPanel({ token, suggestId, portalJwt }: SuggestionPanel
 
                       // Sell/Buy = (총평가 × 수정비중) - 현재평가금액
                       const afterAmt = Math.round(totalEval * sugW);
-                      const sellBuyAmt = afterAmt - (h.evaluation_amount ?? 0);
+                      const rawSellBuy = afterAmt - (h.evaluation_amount ?? 0);
+                      // 절대값이 50,000원 미만이면 0으로 처리 (소량 잔차 무시)
+                      const sellBuyAmt = Math.abs(rawSellBuy) < 50000 ? 0 : rawSellBuy;
                       totalEvalSum += (h.evaluation_amount ?? 0);
                       totalSellBuy += sellBuyAmt;
 

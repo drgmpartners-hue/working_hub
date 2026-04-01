@@ -56,6 +56,7 @@ interface PortalReportViewProps {
   token: string;
   portalJwt: string;
   snapshots: AccountSnapshot[];
+  onAccountChange?: (accountId: string) => void;
 }
 
 /* ------------------------------------------------------------------ */
@@ -89,7 +90,7 @@ function computeDistribution(holdings: HoldingItem[], key: 'region' | 'risk_leve
 /*  Main component                                                      */
 /* ------------------------------------------------------------------ */
 
-export function PortalReportView({ token, portalJwt, snapshots }: PortalReportViewProps) {
+export function PortalReportView({ token, portalJwt, snapshots, onAccountChange }: PortalReportViewProps) {
   const [selectedAccountId, setSelectedAccountId] = useState<string>(snapshots[0]?.account_id ?? '');
   const [selectedDate, setSelectedDate] = useState<string>('');
   const [report, setReport] = useState<ReportData | null>(null);
@@ -105,6 +106,11 @@ export function PortalReportView({ token, portalJwt, snapshots }: PortalReportVi
   useEffect(() => {
     if (availableDates.length > 0) setSelectedDate(availableDates[0]);
     else { setSelectedDate(''); setReport(null); }
+  }, [selectedAccountId]);
+
+  // Notify parent when selected account changes
+  useEffect(() => {
+    if (selectedAccountId) onAccountChange?.(selectedAccountId);
   }, [selectedAccountId]);
 
   useEffect(() => {
