@@ -163,9 +163,6 @@ async def get_kakao_templates(db: AsyncSession) -> dict:
     api_key, api_secret, _ = await _get_solapi_keys(db)
     if not api_key:
         return {"error": "API Key 미설정"}
-    pf_id = settings.SOLAPI_PF_ID
-    if not pf_id:
-        return {"error": "카카오 채널 ID(SOLAPI_PF_ID)가 설정되지 않았습니다."}
 
     auth = _make_auth_header(api_key, api_secret)
     try:
