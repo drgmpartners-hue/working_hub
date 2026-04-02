@@ -268,7 +268,7 @@ export function SuggestionPanel({ token, suggestId, portalJwt, selectedAccountId
         <div style={{ padding: 20, display: 'flex', flexDirection: 'column', gap: 20 }}>
           {/* 수정 포트폴리오 테이블 - full_table 있으면 그대로, 없으면 holdings 기반 */}
           {(suggestion.full_table || suggestion.holdings.length > 0) && (() => {
-            const ft = suggestion.full_table;
+            const ft = suggestion.full_table ? [...suggestion.full_table].sort((a, b) => a.seq - b.seq) : null;
             const headers = ['상품명', '평가금액', '수익률', '현재비중', '수정비중', 'Sell/Buy', '기준가', '좌수'];
             const thBase = { padding: '10px 8px', fontSize: 11, fontWeight: 600 as const, color: '#4338CA', whiteSpace: 'nowrap' as const, borderBottom: '1px solid #C7D2FE' };
             const tdBase = { padding: '10px 8px', fontSize: 11 };
