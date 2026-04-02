@@ -23,6 +23,29 @@ interface SuggestionHolding {
   is_new?: boolean;
 }
 
+interface FullTableRow {
+  seq: number;
+  product_name: string;
+  product_code: string;
+  product_type: string;
+  risk_level: string;
+  region: string;
+  quantity: number;
+  reference_price: number;
+  purchase_amount: number;
+  evaluation_amount: number;
+  return_amount: number;
+  return_rate: number;
+  eval_ratio: number;
+  rebal_ratio: number;
+  rebal_amount: number;
+  sell_buy: number;
+  shares: number;
+  is_new: boolean;
+  is_deposit: boolean;
+  full_sell?: boolean;
+}
+
 interface SuggestionData {
   id: string;
   account_id: string;
@@ -31,6 +54,7 @@ interface SuggestionData {
   expires_at: string;
   is_expired: boolean;
   holdings: SuggestionHolding[];
+  full_table?: FullTableRow[];
 }
 
 interface SuggestionPanelProps {
@@ -242,120 +266,137 @@ export function SuggestionPanel({ token, suggestId, portalJwt, selectedAccountId
         </div>
 
         <div style={{ padding: 20, display: 'flex', flexDirection: 'column', gap: 20 }}>
-          {/* 수정 포트폴리오 테이블 */}
-          {suggestion.holdings.length > 0 && (
-            <div style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch', borderRadius: 10, border: '1px solid #E5E7EB' }}>
-              <table style={{ width: '100%', minWidth: 650, borderCollapse: 'collapse', fontSize: 12 }}>
-                <thead>
-                  <tr style={{ backgroundColor: '#F0F4FF' }}>
-                    {['상품명', '평가금액', '수익률', '현재비중', '수정비중', 'Sell/Buy', '기준가', '좌수'].map((h, i) => (
-                      <th key={h} style={{
-                        padding: '10px 8px', textAlign: i === 0 ? 'left' : 'center', fontSize: 11,
-                        fontWeight: 600, color: '#4338CA', whiteSpace: 'nowrap', borderBottom: '1px solid #C7D2FE',
-                        ...(i === 0 ? { position: 'sticky' as const, left: 0, backgroundColor: '#F0F4FF', zIndex: 1, minWidth: 110 } : {}),
-                      }}>{h}</th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {(() => {
-                    const totalEval = suggestion.holdings.reduce((s, x) => s + (x.evaluation_amount ?? 0), 0);
-                    let totalEvalSum = 0;
-                    let totalSellBuy = 0;
+          {/* 수정 포트폴리오 테이블 - full_table 있으면 그대로, 없으면 holdings 기반 */}
+          {(suggestion.full_table || suggestion.holdings.length > 0) && (() => {
+            const ft = suggestion.full_table;
+            const headers = ['상품명', '평가금액', '수익률', '현재비중', '수정비중', 'Sell/Buy', '기준가', '좌수'];
+            const thBase = { padding: '10px 8px', fontSize: 11, fontWeight: 600 as const, color: '#4338CA', whiteSpace: 'nowrap' as const, borderBottom: '1px solid #C7D2FE' };
+            const tdBase = { padding: '10px 8px', fontSize: 11 };
 
-                    const rows = suggestion.holdings.map((h, idx) => {
-                      const curW = h.current_weight;
-                      const sugW = h.suggested_weight;
-                      const isNewProduct = isNewItem(h);
-
-                      // Sell/Buy = (총평가 × 수정비중) - 현재평가금액
-                      const afterAmt = Math.round(totalEval * sugW);
-                      const rawSellBuy = afterAmt - (h.evaluation_amount ?? 0);
-                      // 절대값이 50,000원 미만이면 0으로 처리 (소량 잔차 무시)
-                      const sellBuyAmt = Math.abs(rawSellBuy) < 50000 ? 0 : rawSellBuy;
-                      totalEvalSum += (h.evaluation_amount ?? 0);
-                      totalSellBuy += sellBuyAmt;
-
-                      let sellBuyLabel = '-';
-                      let sellBuyColor = '#9CA3AF';
-                      if (sellBuyAmt > 0) {
-                        sellBuyLabel = `Buy ${fmt(sellBuyAmt)}`;
-                        sellBuyColor = '#059669';
-                      } else if (sellBuyAmt < 0) {
-                        sellBuyLabel = `Sell ${fmt(Math.abs(sellBuyAmt))}`;
-                        sellBuyColor = '#DC2626';
-                      }
-
-                      const changed = Math.abs(sellBuyAmt) > 0;
-                      const newBg = isNewProduct ? '#F0F7FF' : changed ? '#FFFBEB' : 'transparent';
-
-                      return (
-                        <tr key={h.holding_id} style={{
-                          borderBottom: '1px solid #F3F4F6',
-                          backgroundColor: newBg,
-                        }}>
-                          <td style={{ padding: '10px 8px', color: '#111827', fontSize: 11, lineHeight: 1.4, position: 'sticky', left: 0, backgroundColor: newBg === 'transparent' ? '#fff' : newBg, zIndex: 1, minWidth: 110 }}>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-                              {h.product_name}
-                              {isNewProduct && (
-                                <span style={{ fontSize: 9, padding: '1px 5px', borderRadius: 4, backgroundColor: '#DBEAFE', color: '#1D4ED8', fontWeight: 700, whiteSpace: 'nowrap' }}>신규</span>
-                              )}
-                            </div>
-                          </td>
-                          <td style={{ padding: '10px 8px', textAlign: 'right', whiteSpace: 'nowrap', color: '#374151' }}>
-                            {fmt(h.evaluation_amount ?? 0)}
-                          </td>
-                          <td style={{ padding: '10px 8px', textAlign: 'center', whiteSpace: 'nowrap', fontWeight: 600, color: (h.return_rate ?? 0) >= 0 ? '#059669' : '#DC2626' }}>
-                            {(h.return_rate ?? 0) >= 0 ? '+' : ''}{(h.return_rate ?? 0).toFixed(2)}%
-                          </td>
-                          <td style={{ padding: '10px 8px', textAlign: 'center', color: '#6B7280' }}>
-                            {isNewProduct ? '-' : `${(curW * 100).toFixed(1)}%`}
-                          </td>
-                          <td style={{ padding: '10px 8px', textAlign: 'center', fontWeight: 700, color: '#1E3A5F' }}>
-                            {(sugW * 100).toFixed(1)}%
-                          </td>
-                          <td style={{ padding: '10px 8px', textAlign: 'center', fontWeight: 600, color: sellBuyColor, whiteSpace: 'nowrap', fontSize: 11 }}>
-                            {sellBuyLabel}
-                          </td>
-                          <td style={{ padding: '10px 8px', textAlign: 'right', whiteSpace: 'nowrap', color: '#374151' }}>
-                            {(h.reference_price || h.current_price) ? fmt(h.reference_price || h.current_price || 0) : '-'}
-                          </td>
-                          <td style={{ padding: '10px 8px', textAlign: 'right', whiteSpace: 'nowrap', color: '#374151' }}>
-                            {(() => {
-                              const price = h.reference_price || h.current_price;
-                              if (!price || price <= 0 || sellBuyAmt === 0) return '-';
-                              const isFund = ((h.product_type ?? '') + (h.product_name ?? '')).includes('펀드') || ((h.product_type ?? '') + (h.product_name ?? '')).includes('신탁');
-                              const raw = isFund ? Math.abs(sellBuyAmt) * 1000 / price : Math.abs(sellBuyAmt) / price;
-                              const shares = sellBuyAmt > 0 ? Math.ceil(raw) : -Math.ceil(raw);
-                              return fmt(shares);
-                            })()}
-                          </td>
-                        </tr>
-                      );
-                    });
-
-                    // 합계 행
-                    rows.push(
-                      <tr key="__total__" style={{ backgroundColor: '#F0F4FF', borderTop: '2px solid #C7D2FE', fontWeight: 700 }}>
-                        <td style={{ padding: '10px 8px', fontSize: 12, color: '#1E3A5F', position: 'sticky', left: 0, backgroundColor: '#F0F4FF', zIndex: 1 }}>합계</td>
-                        <td style={{ padding: '10px 8px', textAlign: 'right', whiteSpace: 'nowrap', color: '#1E3A5F', fontSize: 12 }}>{fmt(totalEvalSum)}</td>
-                        <td style={{ padding: '10px 8px' }}></td>
-                        <td style={{ padding: '10px 8px' }}></td>
-                        <td style={{ padding: '10px 8px' }}></td>
-                        <td style={{ padding: '10px 8px', textAlign: 'center', whiteSpace: 'nowrap', fontSize: 11, color: totalSellBuy >= 0 ? '#059669' : '#DC2626' }}>
+            if (ft && ft.length > 0) {
+              // _full_table 모드: 저장된 데이터 그대로 표시
+              const totalEval = ft.reduce((s, r) => s + (r.evaluation_amount ?? 0), 0);
+              const totalSellBuy = ft.reduce((s, r) => s + (r.sell_buy ?? 0), 0);
+              return (
+                <div style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch', borderRadius: 10, border: '1px solid #E5E7EB' }}>
+                  <table style={{ width: '100%', minWidth: 650, borderCollapse: 'collapse', fontSize: 12 }}>
+                    <thead>
+                      <tr style={{ backgroundColor: '#F0F4FF' }}>
+                        {headers.map((h, i) => (
+                          <th key={h} style={{ ...thBase, textAlign: i === 0 ? 'left' : 'center',
+                            ...(i === 0 ? { position: 'sticky' as const, left: 0, backgroundColor: '#F0F4FF', zIndex: 1, minWidth: 110 } : {}),
+                          }}>{h}</th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {ft.map((r, idx) => {
+                        const bg = r.is_new ? '#F0F7FF' : r.sell_buy !== 0 ? '#FFFBEB' : 'transparent';
+                        const sbColor = r.sell_buy > 0 ? '#059669' : r.sell_buy < 0 ? '#DC2626' : '#9CA3AF';
+                        const sbLabel = r.sell_buy > 0 ? `Buy ${fmt(r.sell_buy)}` : r.sell_buy < 0 ? `Sell ${fmt(Math.abs(r.sell_buy))}` : '-';
+                        return (
+                          <tr key={idx} style={{ borderBottom: '1px solid #F3F4F6', backgroundColor: bg }}>
+                            <td style={{ ...tdBase, color: '#111827', lineHeight: 1.4, position: 'sticky', left: 0, backgroundColor: bg === 'transparent' ? '#fff' : bg, zIndex: 1, minWidth: 110 }}>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                                {r.product_name}
+                                {r.is_new && <span style={{ fontSize: 9, padding: '1px 5px', borderRadius: 4, backgroundColor: '#DBEAFE', color: '#1D4ED8', fontWeight: 700, whiteSpace: 'nowrap' }}>신규</span>}
+                              </div>
+                            </td>
+                            <td style={{ ...tdBase, textAlign: 'right', color: '#374151' }}>{fmt(r.evaluation_amount)}</td>
+                            <td style={{ ...tdBase, textAlign: 'center', fontWeight: 600, color: r.return_rate >= 0 ? '#059669' : '#DC2626' }}>
+                              {r.return_rate >= 0 ? '+' : ''}{r.return_rate.toFixed(2)}%
+                            </td>
+                            <td style={{ ...tdBase, textAlign: 'center', color: '#6B7280' }}>{r.is_new ? '-' : `${r.eval_ratio.toFixed(1)}%`}</td>
+                            <td style={{ ...tdBase, textAlign: 'center', fontWeight: 700, color: '#1E3A5F' }}>{r.rebal_ratio.toFixed(1)}%</td>
+                            <td style={{ ...tdBase, textAlign: 'center', fontWeight: 600, color: sbColor, whiteSpace: 'nowrap' }}>{sbLabel}</td>
+                            <td style={{ ...tdBase, textAlign: 'right', color: '#374151' }}>{r.reference_price > 0 ? fmt(r.reference_price) : '-'}</td>
+                            <td style={{ ...tdBase, textAlign: 'right', color: '#374151' }}>{r.shares !== 0 ? fmt(r.shares) : '-'}</td>
+                          </tr>
+                        );
+                      })}
+                      <tr style={{ backgroundColor: '#F0F4FF', borderTop: '2px solid #C7D2FE', fontWeight: 700 }}>
+                        <td style={{ ...tdBase, fontSize: 12, color: '#1E3A5F', position: 'sticky', left: 0, backgroundColor: '#F0F4FF', zIndex: 1 }}>합계</td>
+                        <td style={{ ...tdBase, textAlign: 'right', color: '#1E3A5F', fontSize: 12 }}>{fmt(totalEval)}</td>
+                        <td style={tdBase}></td><td style={tdBase}></td><td style={tdBase}></td>
+                        <td style={{ ...tdBase, textAlign: 'center', fontSize: 11, color: totalSellBuy >= 0 ? '#059669' : '#DC2626' }}>
                           {totalSellBuy >= 0 ? '+' : ''}{fmt(totalSellBuy)}
                         </td>
-                        <td style={{ padding: '10px 8px' }}></td>
-                        <td style={{ padding: '10px 8px' }}></td>
+                        <td style={tdBase}></td><td style={tdBase}></td>
                       </tr>
-                    );
+                    </tbody>
+                  </table>
+                </div>
+              );
+            }
 
-                    return rows;
-                  })()}
-                </tbody>
-              </table>
-            </div>
-          )}
+            // Legacy: holdings 기반 계산 (이전 데이터 호환)
+            const totalEval = suggestion.holdings.reduce((s, x) => s + (x.evaluation_amount ?? 0), 0);
+            let totalSellBuy = 0;
+            const legacyRows = suggestion.holdings.map((h) => {
+              const sugW = h.suggested_weight;
+              const afterAmt = Math.round(totalEval * sugW);
+              const rawSellBuy = afterAmt - (h.evaluation_amount ?? 0);
+              const sellBuyAmt = Math.abs(rawSellBuy) < 50000 ? 0 : rawSellBuy;
+              totalSellBuy += sellBuyAmt;
+              const sbColor = sellBuyAmt > 0 ? '#059669' : sellBuyAmt < 0 ? '#DC2626' : '#9CA3AF';
+              const sbLabel = sellBuyAmt > 0 ? `Buy ${fmt(sellBuyAmt)}` : sellBuyAmt < 0 ? `Sell ${fmt(Math.abs(sellBuyAmt))}` : '-';
+              const isNew = isNewItem(h);
+              const bg = isNew ? '#F0F7FF' : Math.abs(sellBuyAmt) > 0 ? '#FFFBEB' : 'transparent';
+              const price = h.reference_price || h.current_price || 0;
+              let shares = 0;
+              if (price > 0 && sellBuyAmt !== 0) {
+                const isFund = ((h.product_type ?? '') + (h.product_name ?? '')).includes('펀드') || ((h.product_type ?? '') + (h.product_name ?? '')).includes('신탁');
+                const raw = isFund ? Math.abs(sellBuyAmt) * 1000 / price : Math.abs(sellBuyAmt) / price;
+                shares = sellBuyAmt > 0 ? Math.ceil(raw) : -Math.ceil(raw);
+              }
+              return { h, sugW, sellBuyAmt, sbColor, sbLabel, isNew, bg, price, shares };
+            });
+            return (
+              <div style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch', borderRadius: 10, border: '1px solid #E5E7EB' }}>
+                <table style={{ width: '100%', minWidth: 650, borderCollapse: 'collapse', fontSize: 12 }}>
+                  <thead>
+                    <tr style={{ backgroundColor: '#F0F4FF' }}>
+                      {headers.map((hdr, i) => (
+                        <th key={hdr} style={{ ...thBase, textAlign: i === 0 ? 'left' : 'center',
+                          ...(i === 0 ? { position: 'sticky' as const, left: 0, backgroundColor: '#F0F4FF', zIndex: 1, minWidth: 110 } : {}),
+                        }}>{hdr}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {legacyRows.map(({ h, sugW, sbColor, sbLabel, isNew, bg, price, shares }) => (
+                      <tr key={h.holding_id} style={{ borderBottom: '1px solid #F3F4F6', backgroundColor: bg }}>
+                        <td style={{ ...tdBase, color: '#111827', lineHeight: 1.4, position: 'sticky', left: 0, backgroundColor: bg === 'transparent' ? '#fff' : bg, zIndex: 1, minWidth: 110 }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                            {h.product_name}
+                            {isNew && <span style={{ fontSize: 9, padding: '1px 5px', borderRadius: 4, backgroundColor: '#DBEAFE', color: '#1D4ED8', fontWeight: 700, whiteSpace: 'nowrap' }}>신규</span>}
+                          </div>
+                        </td>
+                        <td style={{ ...tdBase, textAlign: 'right', color: '#374151' }}>{fmt(h.evaluation_amount ?? 0)}</td>
+                        <td style={{ ...tdBase, textAlign: 'center', fontWeight: 600, color: (h.return_rate ?? 0) >= 0 ? '#059669' : '#DC2626' }}>
+                          {(h.return_rate ?? 0) >= 0 ? '+' : ''}{(h.return_rate ?? 0).toFixed(2)}%
+                        </td>
+                        <td style={{ ...tdBase, textAlign: 'center', color: '#6B7280' }}>{isNew ? '-' : `${(h.current_weight * 100).toFixed(1)}%`}</td>
+                        <td style={{ ...tdBase, textAlign: 'center', fontWeight: 700, color: '#1E3A5F' }}>{(sugW * 100).toFixed(1)}%</td>
+                        <td style={{ ...tdBase, textAlign: 'center', fontWeight: 600, color: sbColor, whiteSpace: 'nowrap' }}>{sbLabel}</td>
+                        <td style={{ ...tdBase, textAlign: 'right', color: '#374151' }}>{price > 0 ? fmt(price) : '-'}</td>
+                        <td style={{ ...tdBase, textAlign: 'right', color: '#374151' }}>{shares !== 0 ? fmt(shares) : '-'}</td>
+                      </tr>
+                    ))}
+                    <tr style={{ backgroundColor: '#F0F4FF', borderTop: '2px solid #C7D2FE', fontWeight: 700 }}>
+                      <td style={{ ...tdBase, fontSize: 12, color: '#1E3A5F', position: 'sticky', left: 0, backgroundColor: '#F0F4FF', zIndex: 1 }}>합계</td>
+                      <td style={{ ...tdBase, textAlign: 'right', color: '#1E3A5F', fontSize: 12 }}>{fmt(suggestion.holdings.reduce((s, x) => s + (x.evaluation_amount ?? 0), 0))}</td>
+                      <td style={tdBase}></td><td style={tdBase}></td><td style={tdBase}></td>
+                      <td style={{ ...tdBase, textAlign: 'center', fontSize: 11, color: totalSellBuy >= 0 ? '#059669' : '#DC2626' }}>
+                        {totalSellBuy >= 0 ? '+' : ''}{fmt(totalSellBuy)}
+                      </td>
+                      <td style={tdBase}></td><td style={tdBase}></td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            );
+          })()}
 
           {/* AI 포트폴리오 변경 분석 */}
           <AiCommentBlock

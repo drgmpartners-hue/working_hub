@@ -194,7 +194,6 @@ async def get_suggestion(
 
     # Extract saved prices for new products
     raw_prices = raw_weights.get('_prices')
-    print(f"[PORTAL DEBUG] _prices type={type(raw_prices)}, value={raw_prices}", flush=True)
     if isinstance(raw_prices, dict):
         saved_prices = raw_prices
     elif isinstance(raw_prices, str):
@@ -205,7 +204,6 @@ async def get_suggestion(
             saved_prices = {}
     else:
         saved_prices = {}
-    print(f"[PORTAL DEBUG] saved_prices={saved_prices}", flush=True)
 
     # Calculate total evaluation for weight computation
     total_eval = sum(h.evaluation_amount or 0 for h in holdings)
@@ -305,6 +303,9 @@ async def get_suggestion(
             if ai_analysis or ai_change:
                 ai_comment = f"[포트폴리오 분석]\n{ai_analysis}\n\n[변경 분석]\n{ai_change}"
 
+    # _full_table: 2번탭에서 저장한 전체 테이블 데이터
+    full_table = raw_weights.get('_full_table') if isinstance(raw_weights.get('_full_table'), list) else None
+
     return {
         "id": suggestion.id,
         "account_id": suggestion.account_id,
@@ -315,6 +316,7 @@ async def get_suggestion(
         "created_at": suggestion.created_at.isoformat() if suggestion.created_at else None,
         "is_expired": expired,
         "holdings": holdings_data,
+        "full_table": full_table,
     }
 
 

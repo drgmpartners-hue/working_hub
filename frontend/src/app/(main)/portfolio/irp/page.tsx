@@ -1448,6 +1448,30 @@ function Tab2Section({
         if (r.currentPrice > 0) suggested_prices[key] = r.currentPrice;
       }
 
+      // 전체 테이블 데이터 저장 (3번탭, 포털에서 그대로 사용)
+      const fullTable = rows.map((r, idx) => ({
+        seq: idx + 1,
+        product_name: r.productName,
+        product_code: r.productCode,
+        product_type: r.productType || '',
+        risk_level: r.riskLevel || '',
+        region: r.region || '',
+        quantity: r.quantity,
+        reference_price: r.currentPrice,
+        purchase_amount: r.purchaseAmount,
+        evaluation_amount: r.evaluationAmount,
+        return_amount: r.returnAmount,
+        return_rate: r.returnRate,
+        eval_ratio: r.evalRatio,
+        rebal_ratio: r.rebalRatio,
+        rebal_amount: r.rebalAmount,
+        sell_buy: r.sellBuy,
+        shares: r.shares,
+        is_new: r.id.startsWith('__'),
+        is_deposit: r.isRow1,
+        full_sell: r.fullSell,
+      }));
+
       const res = await fetch(`${API_URL}/api/v1/portfolios/suggestions`, {
         method: 'POST',
         headers: {
@@ -1457,7 +1481,7 @@ function Tab2Section({
         body: JSON.stringify({
           account_id: histAccountId,
           snapshot_id: activeSnapshotId,
-          suggested_weights: { ...suggested_weights, _prices: suggested_prices },
+          suggested_weights: { ...suggested_weights, _prices: suggested_prices, _full_table: fullTable },
         }),
       });
 
@@ -4721,22 +4745,59 @@ export default function IRPPage() {
       const accountId = reportData.account?.id;
       if (!snapshotId || !accountId) { alert('스냅샷 정보가 없습니다.'); return; }
 
-      // Build weights + prices for new products
+      // Build weights + prices for all products (including new/virtual)
       const sugWeights: Record<string, number> = {};
       const sugPrices: Record<string, number> = {};
-      const holdings = reportData.holdings || [];
+      const allHoldings = [...(reportData.holdings || []), ...reportExtraHoldings];
       for (const [id, val] of Object.entries(modifiedWeights)) {
         sugWeights[id] = val / 100;
-        // Find the holding's reference price
-        const h = holdings.find((hh: { id: string }) => hh.id === id);
+        // Find the holding's reference price (original + extra/new holdings)
+        const h = allHoldings.find((hh: { id: string }) => hh.id === id);
         const price = h?.reference_price ?? h?.current_price ?? 0;
         if (price > 0) sugPrices[id] = price;
       }
 
+      // _full_table: 3번탭 저장 시에도 2번탭에서 저장된 전체 테이블 유지
+      // (ReportView의 WeightEditor 데이터로 재구성)
+      const totalEval = allHoldings.reduce((s, h) => s + (h.evaluation_amount ?? 0), 0);
+      const fullTable = allHoldings
+        .filter((h) => modifiedWeights[h.id] !== undefined || (h.product_name ?? '').match(/예수금|자동운용상품/))
+        .map((h, idx) => {
+          const w = modifiedWeights[h.id] ?? 0;
+          const rebalAmt = Math.round(totalEval * w / 100);
+          const sellBuy = rebalAmt - (h.evaluation_amount ?? 0);
+          const price = h.reference_price ?? h.current_price ?? 0;
+          const isFund = (h.product_type ?? '').includes('펀드') || (h.product_name ?? '').includes('신탁');
+          const shares = price > 0 && Math.abs(sellBuy) >= 50000
+            ? (isFund ? Math.floor(Math.abs(sellBuy) * 1000 / price) * (sellBuy >= 0 ? 1 : -1) : Math.floor(Math.abs(sellBuy) / price) * (sellBuy >= 0 ? 1 : -1))
+            : 0;
+          return {
+            seq: idx + 1,
+            product_name: h.product_name,
+            product_code: h.product_code || '',
+            product_type: h.product_type || '',
+            risk_level: h.risk_level || '',
+            region: h.region || '',
+            quantity: h.quantity ?? 0,
+            reference_price: price,
+            purchase_amount: h.purchase_amount ?? 0,
+            evaluation_amount: h.evaluation_amount ?? 0,
+            return_amount: h.return_amount ?? 0,
+            return_rate: h.return_rate ?? 0,
+            eval_ratio: totalEval > 0 ? parseFloat(((h.evaluation_amount ?? 0) / totalEval * 100).toFixed(2)) : 0,
+            rebal_ratio: w,
+            rebal_amount: rebalAmt,
+            sell_buy: Math.abs(sellBuy) < 50000 ? 0 : sellBuy,
+            shares,
+            is_new: h.id.startsWith('virtual_'),
+            is_deposit: (h.product_name ?? '').match(/예수금|자동운용상품/) !== null,
+          };
+        });
+
       const sugPayload = {
         account_id: accountId,
         snapshot_id: snapshotId,
-        suggested_weights: { ...sugWeights, _prices: sugPrices },
+        suggested_weights: { ...sugWeights, _prices: sugPrices, _full_table: fullTable },
         ai_comment: `[포트폴리오 분석]\n${aiComment}\n\n[변경 분석]\n${aiChangeComment}`,
         manager_note: managerNote || null,
       };
