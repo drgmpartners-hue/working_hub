@@ -1517,6 +1517,7 @@ function Tab2Section({
     fontWeight: 600,
     color: '#6B7280',
     textAlign: 'right',
+    verticalAlign: 'middle',
     backgroundColor: '#F5F7FA',
     borderBottom: '1px solid #E1E5EB',
     whiteSpace: 'nowrap',
@@ -1526,6 +1527,7 @@ function Tab2Section({
     fontSize: '0.8125rem',
     color: '#374151',
     textAlign: 'right',
+    verticalAlign: 'middle',
     borderBottom: '1px solid #F3F4F6',
     whiteSpace: 'nowrap',
   };
@@ -2070,7 +2072,7 @@ function Tab2Section({
             <div style={{ width: 3, height: 18, borderRadius: 2, backgroundColor: '#F59E0B', flexShrink: 0 }} />
             <span style={sectionTitleStyle}>Dr.GM 추천 포트폴리오</span>
             {/* 연금저축/IRP 토글 */}
-            <div style={{ marginLeft: 12, display: 'flex', borderRadius: 6, overflow: 'hidden', border: '1px solid #E1E5EB' }}>
+            <div style={{ marginLeft: 'auto', display: 'flex', borderRadius: 6, overflow: 'hidden', border: '1px solid #E1E5EB' }}>
               <button onClick={() => setDrGmAccountType('pension')}
                 style={{ padding: '5px 14px', fontSize: '0.75rem', fontWeight: 600, border: 'none', cursor: 'pointer',
                   backgroundColor: drGmAccountType === 'pension' ? '#F59E0B' : '#fff',
@@ -2100,7 +2102,7 @@ function Tab2Section({
             </div>
           </div>
           {/* 헤더 2열: 버튼들 */}
-          <div style={{ display: 'flex', gap: 8, marginBottom: 12, flexWrap: 'wrap' }}>
+          <div style={{ display: 'flex', gap: 8, marginBottom: 12, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
             <button onClick={refreshDrGmPrices} disabled={drGmRefreshing}
               style={{ padding: '6px 14px', fontSize: '0.8125rem', fontWeight: 600, color: '#374151', backgroundColor: '#FEF3C7', border: '1px solid #FCD34D', borderRadius: 7, cursor: drGmRefreshing ? 'not-allowed' : 'pointer', opacity: drGmRefreshing ? 0.6 : 1 }}>
               {drGmRefreshing ? '갱신 중...' : '현재가 갱신'}
@@ -2142,8 +2144,8 @@ function Tab2Section({
               <table style={{ borderCollapse: 'collapse', fontSize: '0.8125rem', minWidth: 1100, width: '100%' }}>
                 <thead>
                   <tr style={{ backgroundColor: '#FFFBEB' }}>
-                    <th style={{ ...thStyle, backgroundColor: '#FFFBEB', textAlign: 'center', minWidth: 36 }}>No.</th>
-                    <th style={{ ...thStyle, backgroundColor: '#FFFBEB', textAlign: 'left', minWidth: 220 }}>상품명</th>
+                    <th style={{ ...thStyle, backgroundColor: '#FFFBEB', textAlign: 'center', minWidth: 36, position: 'sticky', left: 0, zIndex: 2 }}>No.</th>
+                    <th style={{ ...thStyle, backgroundColor: '#FFFBEB', textAlign: 'left', minWidth: 220, position: 'sticky', left: 36, zIndex: 2, borderRight: '2px solid #E1E5EB' }}>상품명</th>
                     <th style={{ ...thStyle, backgroundColor: '#FFFBEB', minWidth: 80 }}>종목코드</th>
                     <th style={{ ...thStyle, backgroundColor: '#FFFBEB', minWidth: 80 }}>현재가</th>
                     <th style={{ ...thStyle, backgroundColor: '#F59E0B', color: '#fff', minWidth: 90 }}>비중(연금저축)</th>
@@ -2172,8 +2174,8 @@ function Tab2Section({
                     <tr key={r.id} style={{ transition: 'background-color 0.1s' }}
                       onMouseEnter={(e) => { (e.currentTarget as HTMLTableRowElement).style.backgroundColor = '#FFFBEB'; }}
                       onMouseLeave={(e) => { (e.currentTarget as HTMLTableRowElement).style.backgroundColor = 'transparent'; }}>
-                      <td style={{ ...tdStyle, textAlign: 'center', color: '#9CA3AF' }}>{idx + 1}</td>
-                      <td style={{ ...tdStyle, textAlign: 'left', padding: '5px 8px', whiteSpace: 'normal', wordBreak: 'keep-all' }}>
+                      <td style={{ ...tdStyle, textAlign: 'center', color: '#9CA3AF', position: 'sticky', left: 0, backgroundColor: '#fff', zIndex: 1 }}>{idx + 1}</td>
+                      <td style={{ ...tdStyle, textAlign: 'left', padding: '5px 8px', whiteSpace: 'normal', wordBreak: 'keep-all', position: 'sticky', left: 36, backgroundColor: '#fff', zIndex: 1, borderRight: '2px solid #E1E5EB' }}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
                           <div style={{ display: 'flex', flexDirection: 'column', gap: 0, flexShrink: 0 }}>
                             <button type="button" onClick={() => moveDrGmRow(r.id, -1)} disabled={idx === 0}
@@ -2256,8 +2258,8 @@ function Tab2Section({
                   return (
                   <tfoot>
                     <tr style={{ backgroundColor: '#FFFBEB' }}>
-                      <td style={totalRowStyle} />
-                      <td style={{ ...totalRowStyle, textAlign: 'left' }}>합계</td>
+                      <td style={{ ...totalRowStyle, position: 'sticky', left: 0, backgroundColor: '#FFFBEB', zIndex: 1 }} />
+                      <td style={{ ...totalRowStyle, textAlign: 'left', position: 'sticky', left: 36, backgroundColor: '#FFFBEB', zIndex: 1, borderRight: '2px solid #E1E5EB' }}>합계</td>
                       <td style={totalRowStyle} />
                       <td style={totalRowStyle} />
                       <td style={{ ...totalRowStyle, backgroundColor: '#FDE68A' }}>
