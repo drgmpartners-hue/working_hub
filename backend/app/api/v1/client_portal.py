@@ -193,9 +193,19 @@ async def get_suggestion(
     } if raw_weights else {}
 
     # Extract saved prices for new products
-    saved_prices = raw_weights.get('_prices', {}) if isinstance(raw_weights.get('_prices'), dict) else {}
+    raw_prices = raw_weights.get('_prices')
+    print(f"[PORTAL DEBUG] _prices type={type(raw_prices)}, value={raw_prices}", flush=True)
+    if isinstance(raw_prices, dict):
+        saved_prices = raw_prices
+    elif isinstance(raw_prices, str):
+        import json as _json
+        try:
+            saved_prices = _json.loads(raw_prices)
+        except Exception:
+            saved_prices = {}
+    else:
+        saved_prices = {}
     print(f"[PORTAL DEBUG] saved_prices={saved_prices}", flush=True)
-    print(f"[PORTAL DEBUG] raw_weights keys={list(raw_weights.keys())}", flush=True)
 
     # Calculate total evaluation for weight computation
     total_eval = sum(h.evaluation_amount or 0 for h in holdings)
