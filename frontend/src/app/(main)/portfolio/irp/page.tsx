@@ -6037,7 +6037,6 @@ export default function IRPPage() {
                 size="sm"
                 loading={reportSaving}
                 onClick={handleSaveReport}
-                disabled={reportSaved}
                 style={reportSaved ? {} : { backgroundColor: '#D97706', borderColor: '#D97706' }}
               >
                 <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -6045,7 +6044,7 @@ export default function IRPPage() {
                   <polyline points="17 21 17 13 7 13 7 21" />
                   <polyline points="7 3 7 8 15 8" />
                 </svg>
-                {reportSaved ? '저장 완료' : '보고서 저장'}
+                {reportSaving ? '저장 중...' : reportSaved ? '다시 저장' : '보고서 저장'}
               </Button>
             </div>
           )}
