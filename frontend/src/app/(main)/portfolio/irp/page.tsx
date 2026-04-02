@@ -4375,7 +4375,9 @@ export default function IRPPage() {
     while ((match = varPattern.exec(template.content)) !== null) {
       const varName = match[0]; // e.g. "#{고객명}"
       const key = match[1];     // e.g. "고객명"
-      if (key.includes('고객') || key.includes('이름') || key === 'name') {
+      if (key === '고유번호' || key.includes('고유번호')) {
+        variables[varName] = client?.unique_code ?? '';
+      } else if (key.includes('고객') || key.includes('이름') || key === 'name') {
         variables[varName] = client?.name ?? '';
       } else if (key.includes('상품') || key.includes('계좌') || key === 'product') {
         const acctType = reportData?.account?.account_type ?? '';
@@ -4387,6 +4389,9 @@ export default function IRPPage() {
           ? `${baseUrl.replace('https://', '')}/client/${portalToken}?suggest=${savedSuggestionId}`
           : `${baseUrl.replace('https://', '')}/client/${portalToken}?suggest=LATEST`;
         variables[varName] = sugLink;
+      } else if (key.includes('상시조회')) {
+        // 상시조회링크는 https:// 제외한 경로
+        variables[varName] = `${baseUrl.replace('https://', '')}/client/${portalToken}`;
       } else if (key.includes('링크') || key.includes('link') || key === 'url') {
         variables[varName] = link;
       } else {
