@@ -4368,11 +4368,19 @@ export default function IRPPage() {
       ? (reportSaved && savedSuggestionId ? `${baseUrl}/client/${portalToken}?suggest=${savedSuggestionId}` : `${baseUrl}/client/${portalToken}?suggest=LATEST`)
       : `${baseUrl}/client/${portalToken}`;
 
-    // 템플릿에서 변수 추출하고 자동 매핑
+    // 템플릿 본문 + 버튼 URL에서 변수 추출하고 자동 매핑
     const varPattern = /#\{([^}]+)\}/g;
     const variables: Record<string, string> = {};
+    // 본문 + 버튼 URL 합쳐서 변수 추출
+    let fullText = template.content;
+    if (template.buttons) {
+      for (const btn of template.buttons) {
+        if (btn.linkMo) fullText += ' ' + btn.linkMo;
+        if (btn.linkPc) fullText += ' ' + btn.linkPc;
+      }
+    }
     let match;
-    while ((match = varPattern.exec(template.content)) !== null) {
+    while ((match = varPattern.exec(fullText)) !== null) {
       const varName = match[0]; // e.g. "#{고객명}"
       const key = match[1];     // e.g. "고객명"
       if (key === '고유번호' || key.includes('고유번호')) {
