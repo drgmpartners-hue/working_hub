@@ -211,6 +211,7 @@ async def send_alimtalk(
         message["text"] = fallback_text
 
     body = {"message": message}
+    logger.info("Alimtalk send - template: %s, variables: %s", template_id, variables)
 
     try:
         async with httpx.AsyncClient(timeout=15) as client:
