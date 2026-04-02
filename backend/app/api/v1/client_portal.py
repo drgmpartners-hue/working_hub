@@ -194,6 +194,8 @@ async def get_suggestion(
 
     # Extract saved prices for new products
     saved_prices = raw_weights.get('_prices', {}) if isinstance(raw_weights.get('_prices'), dict) else {}
+    print(f"[PORTAL DEBUG] saved_prices={saved_prices}", flush=True)
+    print(f"[PORTAL DEBUG] raw_weights keys={list(raw_weights.keys())}", flush=True)
 
     # Calculate total evaluation for weight computation
     total_eval = sum(h.evaluation_amount or 0 for h in holdings)
@@ -222,8 +224,8 @@ async def get_suggestion(
             "purchase_amount": h.purchase_amount,
             "return_amount": h.return_amount,
             "return_rate": rr,
-            "current_price": h.reference_price or h.current_price,
-            "reference_price": h.reference_price or h.current_price,
+            "current_price": h.reference_price or h.current_price or saved_prices.get(h.id),
+            "reference_price": h.reference_price or h.current_price or saved_prices.get(h.id),
             "quantity": h.quantity,
         })
         matched_ids.add(h.id)
@@ -261,7 +263,20 @@ async def get_suggestion(
             "purchase_amount": 0,
             "return_amount": 0,
             "return_rate": 0,
-            "current_price": saved_prices.get(key) or saved_prices.get(f"new:{product_name}") or (pm.current_price if pm and hasattr(pm, 'current_price') else None),
+            "current_price": (
+                saved_prices.get(key)
+                or saved_prices.get(f"new:{product_name}")
+                or saved_prices.get(f"virtual_{product_name}")
+                or saved_prices.get(product_name)
+                or (pm.current_price if pm and hasattr(pm, 'current_price') else None)
+            ),
+            "reference_price": (
+                saved_prices.get(key)
+                or saved_prices.get(f"new:{product_name}")
+                or saved_prices.get(f"virtual_{product_name}")
+                or saved_prices.get(product_name)
+                or (pm.current_price if pm and hasattr(pm, 'current_price') else None)
+            ),
             "quantity": 0,
             "is_new": True,
         })
