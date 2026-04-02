@@ -4416,6 +4416,7 @@ export default function IRPPage() {
     if (!client?.phone) return;
 
     const { variables } = getAlimtalkPreview();
+    alert(`[DEBUG] client=${client.name}, unique_code=${client.unique_code}, variables=${JSON.stringify(variables)}`);
 
     setAlimtalkSending(true);
     try {
