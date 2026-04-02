@@ -269,6 +269,7 @@ export default function ClientPortalPage({
                   portalJwt={portalJwt}
                   snapshots={snapshots}
                   onAccountChange={setSelectedAccountId}
+                  isSuggestionView={isSuggestionView}
                 />
               )}
 

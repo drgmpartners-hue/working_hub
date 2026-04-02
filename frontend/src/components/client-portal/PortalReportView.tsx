@@ -57,6 +57,7 @@ interface PortalReportViewProps {
   portalJwt: string;
   snapshots: AccountSnapshot[];
   onAccountChange?: (accountId: string) => void;
+  isSuggestionView?: boolean;
 }
 
 /* ------------------------------------------------------------------ */
@@ -90,7 +91,7 @@ function computeDistribution(holdings: HoldingItem[], key: 'region' | 'risk_leve
 /*  Main component                                                      */
 /* ------------------------------------------------------------------ */
 
-export function PortalReportView({ token, portalJwt, snapshots, onAccountChange }: PortalReportViewProps) {
+export function PortalReportView({ token, portalJwt, snapshots, onAccountChange, isSuggestionView }: PortalReportViewProps) {
   const [selectedAccountId, setSelectedAccountId] = useState<string>(snapshots[0]?.account_id ?? '');
   const [selectedDate, setSelectedDate] = useState<string>('');
   const [report, setReport] = useState<ReportData | null>(null);
@@ -101,7 +102,9 @@ export function PortalReportView({ token, portalJwt, snapshots, onAccountChange 
   const [historyLoading, setHistoryLoading] = useState(false);
 
   const currentAccount = snapshots.find((s) => s.account_id === selectedAccountId);
-  const availableDates = currentAccount?.dates ?? [];
+  const allDates = currentAccount?.dates ?? [];
+  // 변경안내: 가장 최근 날짜 1개만, 상시조회: 전체
+  const availableDates = isSuggestionView && allDates.length > 0 ? [allDates[0]] : allDates;
 
   useEffect(() => {
     if (availableDates.length > 0) setSelectedDate(availableDates[0]);
