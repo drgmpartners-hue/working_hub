@@ -4370,7 +4370,7 @@ export default function IRPPage() {
     const baseUrl = typeof window !== 'undefined' ? window.location.origin : '';
     const portalToken = client?.portal_token ?? '';
     const link = alimtalkModalType === 'suggestion'
-      ? (reportSaved && savedSuggestionId ? `${baseUrl}/client/${portalToken}?suggest=${savedSuggestionId}` : `${baseUrl}/client/${portalToken}?suggest=LATEST`)
+      ? `${baseUrl}/client/${portalToken}?view=suggestion`
       : `${baseUrl}/client/${portalToken}`;
 
     // 템플릿 본문 + 버튼 URL에서 변수 추출하고 자동 매핑
@@ -4398,10 +4398,7 @@ export default function IRPPage() {
         variables[varName] = label;
       } else if (key.includes('변경제안') || key.includes('제안링크')) {
         // 변경제안링크는 https:// 제외한 도메인+경로
-        const sugLink = (reportSaved && savedSuggestionId)
-          ? `${baseUrl.replace('https://', '')}/client/${portalToken}?suggest=${savedSuggestionId}`
-          : `${baseUrl.replace('https://', '')}/client/${portalToken}?suggest=LATEST`;
-        variables[varName] = sugLink;
+        variables[varName] = `${baseUrl.replace('https://', '')}/client/${portalToken}?view=suggestion`;
       } else if (key.includes('상시조회')) {
         // 상시조회링크는 https:// 제외한 경로
         variables[varName] = `${baseUrl.replace('https://', '')}/client/${portalToken}`;
@@ -4496,7 +4493,7 @@ export default function IRPPage() {
 
     let defaultMsg = '';
     if (linkType === 'suggestion') {
-      const link = `${baseUrl}/client/${client.portal_token}?suggest=LATEST`;
+      const link = `${baseUrl}/client/${client.portal_token}?view=suggestion`;
       defaultMsg = `[Working Hub] ${cLabel}님,\n포트폴리오 변경 제안이 도착했습니다.\n아래 링크에서 확인해주세요.\n${link}`;
     } else {
       const link = `${baseUrl}/client/${client.portal_token}`;
@@ -5700,7 +5697,7 @@ export default function IRPPage() {
             const portalToken = client?.portal_token;
             const baseUrl = typeof window !== 'undefined' ? window.location.origin : '';
             const permanentLink = portalToken ? `${baseUrl}/client/${portalToken}` : null;
-            const suggestLink = (portalToken && reportSaved && savedSuggestionId) ? `${baseUrl}/client/${portalToken}?suggest=${savedSuggestionId}` : null;
+            const suggestLink = (portalToken && reportSaved) ? `${baseUrl}/client/${portalToken}?view=suggestion` : null;
             const btnBase: React.CSSProperties = {
               display: 'inline-flex', alignItems: 'center', gap: 5,
               padding: '6px 12px', fontSize: '0.75rem', fontWeight: 600,

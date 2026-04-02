@@ -293,6 +293,64 @@ async def get_suggestion(
     }
 
 
+@router.get("/{token}/suggestions")
+async def list_suggestions_for_portal(
+    token: str,
+    client_id: str = Depends(get_portal_client_id),
+    db: AsyncSession = Depends(get_db),
+):
+    """Return all valid (non-expired) suggestions grouped by account for this client."""
+    from app.models.portfolio_suggestion import PortfolioSuggestion
+    from app.models.client import ClientAccount, Client
+    from sqlalchemy import and_, desc
+
+    # Get all accounts for this client
+    accounts_result = await db.execute(
+        select(ClientAccount).where(ClientAccount.client_id == client_id)
+    )
+    accounts = accounts_result.scalars().all()
+
+    result = []
+    now = datetime.utcnow()
+    for acct in accounts:
+        # Get all non-expired suggestions for this account, latest first
+        sug_result = await db.execute(
+            select(PortfolioSuggestion)
+            .where(
+                and_(
+                    PortfolioSuggestion.account_id == acct.id,
+                    PortfolioSuggestion.expires_at > now,
+                )
+            )
+            .order_by(desc(PortfolioSuggestion.created_at))
+        )
+        suggestions = sug_result.scalars().all()
+
+        if suggestions:
+            # Return dates with suggestion IDs
+            dates = []
+            seen_snapshots = set()
+            for s in suggestions:
+                if s.snapshot_id not in seen_snapshots:
+                    seen_snapshots.add(s.snapshot_id)
+                    dates.append({
+                        "suggestion_id": s.id,
+                        "snapshot_id": s.snapshot_id,
+                        "created_at": s.created_at.isoformat() if s.created_at else None,
+                        "has_ai_comment": bool(s.ai_comment),
+                    })
+
+            result.append({
+                "account_id": acct.id,
+                "account_type": acct.account_type,
+                "account_number": acct.account_number,
+                "securities_company": acct.securities_company,
+                "dates": dates,
+            })
+
+    return result
+
+
 @router.get("/{token}/recommended-portfolio")
 async def get_recommended_portfolio_for_portal(
     token: str,

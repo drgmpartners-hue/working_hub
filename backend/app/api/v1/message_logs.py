@@ -284,3 +284,33 @@ async def delete_message_log(
 
     await db.delete(log)
     await db.commit()
+
+
+@router.post("/cleanup", status_code=200)
+async def cleanup_old_images(
+    current_user=Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Delete images older than 1 year from message logs."""
+    one_year_ago = datetime.utcnow() - timedelta(days=365)
+    result = await db.execute(
+        select(MessageLog).where(
+            and_(
+                MessageLog.user_id == current_user.id,
+                MessageLog.image_path.isnot(None),
+                MessageLog.sent_at < one_year_ago,
+            )
+        )
+    )
+    old_logs = result.scalars().all()
+    cleaned = 0
+    for log in old_logs:
+        if log.image_path and os.path.exists(log.image_path):
+            try:
+                os.remove(log.image_path)
+                cleaned += 1
+            except OSError:
+                pass
+        log.image_path = None
+    await db.commit()
+    return {"cleaned_images": cleaned, "total_checked": len(old_logs)}

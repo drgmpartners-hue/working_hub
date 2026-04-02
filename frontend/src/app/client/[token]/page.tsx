@@ -28,10 +28,11 @@ export default function ClientPortalPage({
   searchParams,
 }: {
   params: Promise<{ token: string }>;
-  searchParams: Promise<{ suggest?: string }>;
+  searchParams: Promise<{ suggest?: string; view?: string }>;
 }) {
   const { token } = use(params);
-  const { suggest: suggestId } = use(searchParams);
+  const { suggest: suggestId, view } = use(searchParams);
+  const isSuggestionView = view === 'suggestion' || !!suggestId;
 
   const [pageState, setPageState] = useState<PageState>('loading');
   const [maskedName, setMaskedName] = useState('');
@@ -158,7 +159,7 @@ export default function ClientPortalPage({
             </div>
             <div>
               <p style={{ fontSize: 15, fontWeight: 700, color: '#111827', lineHeight: 1.2 }}>
-                {suggestId ? '포트폴리오 변경 제안' : '포트폴리오 상시 조회'}
+                {isSuggestionView ? '포트폴리오 변경 제안' : '포트폴리오 상시 조회'}
               </p>
               <p style={{ fontSize: 11, color: '#9CA3AF' }}>Working Hub Manager</p>
             </div>
@@ -168,15 +169,15 @@ export default function ClientPortalPage({
             marginTop: 8,
             padding: '6px 14px',
             borderRadius: 6,
-            backgroundColor: suggestId ? '#FEF3C7' : '#DBEAFE',
-            border: `1px solid ${suggestId ? '#F59E0B' : '#3B82F6'}`,
+            backgroundColor: isSuggestionView ? '#FEF3C7' : '#DBEAFE',
+            border: `1px solid ${isSuggestionView ? '#F59E0B' : '#3B82F6'}`,
           }}>
             <span style={{
               fontSize: 12,
               fontWeight: 700,
-              color: suggestId ? '#92400E' : '#1E40AF',
+              color: isSuggestionView ? '#92400E' : '#1E40AF',
             }}>
-              {suggestId ? '변경 제안 보고서 - 수정 포트폴리오 및 AI 분석을 확인하세요' : '상시 조회 - 현재 포트폴리오 현황을 확인하세요'}
+              {isSuggestionView ? '변경 제안 보고서 - 수정 포트폴리오 및 AI 분석을 확인하세요' : '상시 조회 - 현재 포트폴리오 현황을 확인하세요'}
             </span>
           </div>
           {/* 고객 정보 */}
@@ -271,13 +272,14 @@ export default function ClientPortalPage({
                 />
               )}
 
-              {/* 제안 패널 (suggest 파라미터 있을 때만) */}
-              {suggestId && (
+              {/* 제안 패널 (suggestion view일 때) */}
+              {isSuggestionView && (
                 <SuggestionPanel
                   token={token}
-                  suggestId={suggestId}
+                  suggestId={suggestId || ''}
                   portalJwt={portalJwt}
                   selectedAccountId={selectedAccountId}
+                  autoLoad={!suggestId}
                 />
               )}
             </div>

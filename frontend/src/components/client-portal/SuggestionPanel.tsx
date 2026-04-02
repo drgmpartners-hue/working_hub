@@ -38,6 +38,15 @@ interface SuggestionPanelProps {
   suggestId: string;
   portalJwt: string;
   selectedAccountId?: string;
+  autoLoad?: boolean;  // true = 계좌별 최신 suggestion 자동 로드
+}
+
+interface AccountSuggestionInfo {
+  account_id: string;
+  account_type: string;
+  account_number: string;
+  securities_company: string;
+  dates: { suggestion_id: string; snapshot_id: string; created_at: string | null; has_ai_comment: boolean }[];
 }
 
 const fmt = (n: number) => n.toLocaleString('ko-KR');
@@ -79,28 +88,73 @@ function AiCommentBlock({ text, title, bgColor, borderColor, titleColor }: {
   );
 }
 
-export function SuggestionPanel({ token, suggestId, portalJwt, selectedAccountId }: SuggestionPanelProps) {
+export function SuggestionPanel({ token, suggestId, portalJwt, selectedAccountId, autoLoad }: SuggestionPanelProps) {
   const [suggestion, setSuggestion] = useState<SuggestionData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [reserved, setReserved] = useState(false);
+  const [accountSuggestions, setAccountSuggestions] = useState<AccountSuggestionInfo[]>([]);
+  const [activeSuggestId, setActiveSuggestId] = useState(suggestId);
 
+  // autoLoad 모드: 계좌별 suggestions 목록 로드
   useEffect(() => {
+    if (!autoLoad || !portalJwt) return;
+    const loadSuggestionList = async () => {
+      try {
+        const res = await fetch(
+          `${API_URL}/api/v1/client-portal/${token}/suggestions`,
+          { headers: { Authorization: `Bearer ${portalJwt}` } }
+        );
+        if (res.ok) {
+          const data: AccountSuggestionInfo[] = await res.json();
+          setAccountSuggestions(data);
+          // 선택된 계좌의 최신 suggestion 자동 선택
+          const acctInfo = data.find((a) => a.account_id === selectedAccountId);
+          if (acctInfo && acctInfo.dates.length > 0) {
+            setActiveSuggestId(acctInfo.dates[0].suggestion_id);
+          } else if (data.length > 0 && data[0].dates.length > 0) {
+            setActiveSuggestId(data[0].dates[0].suggestion_id);
+          }
+        }
+      } catch { /* ignore */ }
+    };
+    loadSuggestionList();
+  }, [autoLoad, portalJwt, token]);
+
+  // 계좌 변경 시 해당 계좌의 최신 suggestion 로드
+  useEffect(() => {
+    if (!autoLoad || !selectedAccountId) return;
+    const acctInfo = accountSuggestions.find((a) => a.account_id === selectedAccountId);
+    if (acctInfo && acctInfo.dates.length > 0) {
+      setActiveSuggestId(acctInfo.dates[0].suggestion_id);
+    } else {
+      setActiveSuggestId('');
+      setSuggestion(null);
+    }
+  }, [selectedAccountId, accountSuggestions, autoLoad]);
+
+  // suggestion 데이터 로드
+  useEffect(() => {
+    const idToLoad = activeSuggestId || suggestId;
+    if (!idToLoad || !portalJwt) {
+      setLoading(false);
+      return;
+    }
     const fetchSuggestion = async () => {
       setLoading(true);
       setError('');
       try {
         const res = await fetch(
-          `${API_URL}/api/v1/client-portal/${token}/suggestion/${suggestId}`,
+          `${API_URL}/api/v1/client-portal/${token}/suggestion/${idToLoad}`,
           { headers: { Authorization: `Bearer ${portalJwt}` } }
         );
         if (res.ok) setSuggestion(await res.json());
-        else setError('제안 내용을 불러오지 못했습니다.');
+        else setError('');
       } catch { setError('네트워크 오류가 발생했습니다.'); }
       finally { setLoading(false); }
     };
     fetchSuggestion();
-  }, [token, suggestId, portalJwt]);
+  }, [token, activeSuggestId, suggestId, portalJwt]);
 
   if (loading) {
     return (
@@ -118,10 +172,19 @@ export function SuggestionPanel({ token, suggestId, portalJwt, selectedAccountId
     );
   }
 
-  if (!suggestion) return null;
+  if (!suggestion) {
+    if (autoLoad) {
+      return (
+        <div style={{ backgroundColor: '#F9FAFB', borderRadius: 16, padding: 24, textAlign: 'center', color: '#9CA3AF', fontSize: 14, border: '1px solid #E5E7EB' }}>
+          이 계좌에 저장된 변경 제안 보고서가 없습니다.
+        </div>
+      );
+    }
+    return null;
+  }
 
-  // Hide suggestion panel when the user is viewing a different account tab
-  if (selectedAccountId && suggestion.account_id && selectedAccountId !== suggestion.account_id) {
+  // Hide suggestion panel when the user is viewing a different account tab (legacy mode)
+  if (!autoLoad && selectedAccountId && suggestion.account_id && selectedAccountId !== suggestion.account_id) {
     return null;
   }
 
