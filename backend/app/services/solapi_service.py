@@ -203,7 +203,7 @@ async def send_alimtalk(
             "pfId": pf_id,
             "templateId": template_id,
             "variables": variables,
-            "disableSms": False,
+            "disableSms": True,
         },
     }
     # SMS 대체 발송용 텍스트 (알림톡 실패 시)
