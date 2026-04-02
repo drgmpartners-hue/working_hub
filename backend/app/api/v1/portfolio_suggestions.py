@@ -80,6 +80,30 @@ async def get_suggestion(
     return suggestion
 
 
+@router.put("/suggestions/{suggestion_id}")
+async def update_suggestion(
+    suggestion_id: str,
+    body: SuggestionCreate,
+    current_user = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Update an existing suggestion (weights, AI comment, manager note)."""
+    result = await db.execute(
+        select(PortfolioSuggestion).where(PortfolioSuggestion.id == suggestion_id)
+    )
+    suggestion = result.scalar_one_or_none()
+    if not suggestion:
+        raise HTTPException(status_code=404, detail="Suggestion not found")
+
+    suggestion.suggested_weights = body.suggested_weights
+    if body.ai_comment is not None:
+        suggestion.ai_comment = body.ai_comment
+    if body.manager_note is not None:
+        suggestion.manager_note = body.manager_note
+    await db.commit()
+    return {"id": suggestion.id, "updated": True}
+
+
 @router.get("/suggestions/by-snapshot/{snapshot_id}", response_model=SuggestionDetail)
 async def get_suggestion_by_snapshot(
     snapshot_id: str,

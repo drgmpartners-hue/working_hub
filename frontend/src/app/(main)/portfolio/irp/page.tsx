@@ -3906,6 +3906,11 @@ export default function IRPPage() {
           });
           if (sugRes.ok) {
             const sug = await sugRes.json();
+            // 저장된 suggestion이 있으면 링크 & 저장 상태 복원
+            if (sug.id) {
+              setSavedSuggestionId(sug.id);
+              setReportSaved(true);
+            }
             const rawWeights: Record<string, unknown> = sug.suggested_weights ?? {};
             // _prices 분리
             const prices: Record<string, number> = (rawWeights._prices as Record<string, number>) ?? {};
@@ -3966,15 +3971,15 @@ export default function IRPPage() {
               setModifiedWeights(converted);
             }
 
-            // AI 코멘트 복원 (suggestion에 저장된 경우)
+            // AI 코멘트 복원 (suggestion에 저장된 것 우선)
             if (sug.ai_comment) {
               const changeIdx = sug.ai_comment.indexOf('[변경 분석]');
               if (changeIdx !== -1) {
                 const analysis = sug.ai_comment.substring(0, changeIdx).replace('[포트폴리오 분석]', '').trim();
                 const change = sug.ai_comment.substring(changeIdx).replace('[변경 분석]', '').trim();
-                if (analysis && !aiComment) setAiComment(analysis);
-                if (change && !aiChangeComment) setAiChangeComment(change);
-              } else if (!aiComment) {
+                if (analysis) setAiComment(analysis);
+                if (change) setAiChangeComment(change);
+              } else {
                 setAiComment(sug.ai_comment);
               }
             }
@@ -4652,23 +4657,48 @@ export default function IRPPage() {
         if (price > 0) sugPrices[id] = price;
       }
 
-      const suggestRes = await fetch(`${API_URL}/api/v1/portfolios/suggestions`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', ...authLib.getAuthHeader() },
-        body: JSON.stringify({
-          account_id: accountId,
-          snapshot_id: snapshotId,
-          suggested_weights: { ...sugWeights, _prices: sugPrices },
-          ai_comment: `[포트폴리오 분석]\n${aiComment}\n\n[변경 분석]\n${aiChangeComment}`,
-          manager_note: managerNote || null,
-        }),
-      });
-      let suggestionId = '';
-      if (suggestRes.ok) {
-        const suggestData = await suggestRes.json();
-        suggestionId = suggestData.suggestion_id || suggestData.id || '';
-        setSavedSuggestionId(suggestionId);
+      const sugPayload = {
+        account_id: accountId,
+        snapshot_id: snapshotId,
+        suggested_weights: { ...sugWeights, _prices: sugPrices },
+        ai_comment: `[포트폴리오 분석]\n${aiComment}\n\n[변경 분석]\n${aiChangeComment}`,
+        manager_note: managerNote || null,
+      };
+
+      let suggestionId = savedSuggestionId;
+
+      if (savedSuggestionId) {
+        // 기존 suggestion 업데이트
+        const updateRes = await fetch(`${API_URL}/api/v1/portfolios/suggestions/${savedSuggestionId}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json', ...authLib.getAuthHeader() },
+          body: JSON.stringify(sugPayload),
+        });
+        if (!updateRes.ok) {
+          // PUT 실패 시 새로 생성
+          const createRes = await fetch(`${API_URL}/api/v1/portfolios/suggestions`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', ...authLib.getAuthHeader() },
+            body: JSON.stringify(sugPayload),
+          });
+          if (createRes.ok) {
+            const d = await createRes.json();
+            suggestionId = d.suggestion_id || d.id || '';
+          }
+        }
+      } else {
+        // 새로 생성
+        const createRes = await fetch(`${API_URL}/api/v1/portfolios/suggestions`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', ...authLib.getAuthHeader() },
+          body: JSON.stringify(sugPayload),
+        });
+        if (createRes.ok) {
+          const d = await createRes.json();
+          suggestionId = d.suggestion_id || d.id || '';
+        }
       }
+      setSavedSuggestionId(suggestionId);
 
       // 3) 4번 탭 내역관리에 기록 추가
       const logForm = new FormData();
