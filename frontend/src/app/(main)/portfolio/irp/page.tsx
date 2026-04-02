@@ -2150,7 +2150,23 @@ function Tab2Section({
             <button onClick={async () => {
               if (!drGmRef.current) return;
               const html2canvas = (await import('html2canvas')).default;
+              // 캡처 전: 모든 td에 flexbox 강제 적용 (html2canvas vertical-align 미지원 대응)
+              const tds = drGmRef.current.querySelectorAll('td, th');
+              const origStyles: string[] = [];
+              tds.forEach((td) => {
+                const el = td as HTMLElement;
+                origStyles.push(el.style.cssText);
+                el.style.display = 'flex';
+                el.style.alignItems = 'center';
+                el.style.justifyContent = el.style.textAlign === 'left' ? 'flex-start' : el.style.textAlign === 'center' ? 'center' : 'flex-end';
+                el.style.height = '48px';
+                el.style.boxSizing = 'border-box';
+              });
               const canvas = await html2canvas(drGmRef.current, { scale: 2, width: drGmRef.current.scrollWidth });
+              // 캡처 후: 원래 스타일 복원
+              tds.forEach((td, i) => {
+                (td as HTMLElement).style.cssText = origStyles[i];
+              });
               const link = document.createElement('a');
               link.download = `DrGM_추천포트폴리오_${drGmAccountType === 'pension' ? '연금저축' : 'IRP'}.png`;
               link.href = canvas.toDataURL('image/png');
