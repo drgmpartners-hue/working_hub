@@ -4015,11 +4015,12 @@ export default function IRPPage() {
               setReportSaved(true);
             }
             const rawWeights: Record<string, unknown> = sug.suggested_weights ?? {};
-            // _prices 분리
+            // _prices, _full_table 분리
             const prices: Record<string, number> = (rawWeights._prices as Record<string, number>) ?? {};
             const weights: Record<string, number> = {};
             for (const [k, v] of Object.entries(rawWeights)) {
-              if (k !== '_prices') weights[k] = v as number;
+              if (k.startsWith('_') || typeof v !== 'number') continue;
+              weights[k] = v;
             }
 
             if (Object.keys(weights).length > 0) {
