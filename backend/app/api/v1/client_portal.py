@@ -266,12 +266,26 @@ async def get_suggestion(
             "is_new": True,
         })
 
+    # ai_comment fallback: suggestion에 없으면 snapshot의 parsed_data에서 가져오기
+    ai_comment = suggestion.ai_comment
+    if not ai_comment:
+        snapshot_result = await db.execute(
+            select(PortfolioSnapshot).where(PortfolioSnapshot.id == suggestion.snapshot_id)
+        )
+        snapshot = snapshot_result.scalar_one_or_none()
+        if snapshot and snapshot.parsed_data:
+            parsed = snapshot.parsed_data if isinstance(snapshot.parsed_data, dict) else {}
+            ai_analysis = parsed.get("ai_comment", "")
+            ai_change = parsed.get("ai_change_comment", "")
+            if ai_analysis or ai_change:
+                ai_comment = f"[포트폴리오 분석]\n{ai_analysis}\n\n[변경 분석]\n{ai_change}"
+
     return {
         "id": suggestion.id,
         "account_id": suggestion.account_id,
         "snapshot_id": suggestion.snapshot_id,
         "suggested_weights": suggested_weights,
-        "ai_comment": suggestion.ai_comment,
+        "ai_comment": ai_comment,
         "expires_at": suggestion.expires_at.isoformat(),
         "created_at": suggestion.created_at.isoformat() if suggestion.created_at else None,
         "is_expired": expired,
