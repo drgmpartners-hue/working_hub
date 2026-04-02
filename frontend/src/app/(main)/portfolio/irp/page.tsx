@@ -1075,18 +1075,25 @@ function Tab2Section({
           const sug = await sugRes.json();
           const rawWeights: Record<string, unknown> = sug.suggested_weights ?? {};
           const prices: Record<string, number> = (rawWeights._prices as Record<string, number>) ?? {};
-          // Remove _prices from weights map
+          const fullTable: Array<{ product_name: string; full_sell?: boolean; reference_price?: number }> =
+            Array.isArray(rawWeights._full_table) ? rawWeights._full_table as Array<{ product_name: string; full_sell?: boolean; reference_price?: number }> : [];
+          // Remove meta keys from weights map
           const cleanWeights: Record<string, number> = {};
           for (const [k, v] of Object.entries(rawWeights)) {
-            if (k !== '_prices' && typeof v === 'number') cleanWeights[k] = v;
+            if (k.startsWith('_') || typeof v !== 'number') continue;
+            cleanWeights[k] = v;
           }
 
           if (Object.keys(cleanWeights).length > 0) {
             setT2RebalRows((prev) => {
-              // Apply weights to existing rows
+              // Apply weights + fullSell to existing rows
               const updated = prev.map((r) => {
                 if (r.id in cleanWeights) {
-                  return { ...r, rebalRatio: parseFloat((cleanWeights[r.id] * 100).toFixed(2)) };
+                  // fullSell 복원: _full_table에서 상품명으로 매칭
+                  const ftRow = fullTable.find((ft) => ft.product_name === r.productName);
+                  const isFullSell = ftRow?.full_sell ?? false;
+                  const refPrice = ftRow?.reference_price ?? prices[r.id] ?? r.currentPrice;
+                  return { ...r, rebalRatio: parseFloat((cleanWeights[r.id] * 100).toFixed(2)), fullSell: isFullSell, currentPrice: refPrice > 0 ? refPrice : r.currentPrice };
                 }
                 return r;
               });

@@ -291,9 +291,9 @@ export function SuggestionPanel({ token, suggestId, portalJwt, selectedAccountId
                     </thead>
                     <tbody>
                       {ft.map((r, idx) => {
-                        const bg = r.is_new ? '#F0F7FF' : r.sell_buy !== 0 ? '#FFFBEB' : 'transparent';
-                        const sbColor = r.sell_buy > 0 ? '#059669' : r.sell_buy < 0 ? '#DC2626' : '#9CA3AF';
-                        const sbLabel = r.sell_buy > 0 ? `Buy ${fmt(r.sell_buy)}` : r.sell_buy < 0 ? `Sell ${fmt(Math.abs(r.sell_buy))}` : '-';
+                        const bg = r.is_new ? '#F0F7FF' : r.full_sell ? '#FEF2F2' : r.sell_buy !== 0 ? '#FFFBEB' : 'transparent';
+                        const sbColor = r.full_sell ? '#DC2626' : r.sell_buy > 0 ? '#059669' : r.sell_buy < 0 ? '#DC2626' : '#9CA3AF';
+                        const sbLabel = r.full_sell ? '전액매도' : r.sell_buy > 0 ? `Buy ${fmt(r.sell_buy)}` : r.sell_buy < 0 ? `Sell ${fmt(Math.abs(r.sell_buy))}` : '-';
                         return (
                           <tr key={idx} style={{ borderBottom: '1px solid #F3F4F6', backgroundColor: bg }}>
                             <td style={{ ...tdBase, color: '#111827', lineHeight: 1.4, position: 'sticky', left: 0, backgroundColor: bg === 'transparent' ? '#fff' : bg, zIndex: 1, minWidth: 110 }}>
@@ -307,7 +307,7 @@ export function SuggestionPanel({ token, suggestId, portalJwt, selectedAccountId
                               {r.return_rate >= 0 ? '+' : ''}{r.return_rate.toFixed(2)}%
                             </td>
                             <td style={{ ...tdBase, textAlign: 'center', color: '#6B7280' }}>{r.is_new ? '-' : `${r.eval_ratio.toFixed(1)}%`}</td>
-                            <td style={{ ...tdBase, textAlign: 'center', fontWeight: 700, color: '#1E3A5F' }}>{r.rebal_ratio.toFixed(1)}%</td>
+                            <td style={{ ...tdBase, textAlign: 'center', fontWeight: 700, color: r.full_sell ? '#DC2626' : '#1E3A5F' }}>{r.full_sell ? '전액매도' : `${r.rebal_ratio.toFixed(1)}%`}</td>
                             <td style={{ ...tdBase, textAlign: 'center', fontWeight: 600, color: sbColor, whiteSpace: 'nowrap' }}>{sbLabel}</td>
                             <td style={{ ...tdBase, textAlign: 'right', color: '#374151' }}>{r.reference_price > 0 ? fmt(r.reference_price) : '-'}</td>
                             <td style={{ ...tdBase, textAlign: 'right', color: '#374151' }}>{r.shares !== 0 ? fmt(r.shares) : '-'}</td>
