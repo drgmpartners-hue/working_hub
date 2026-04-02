@@ -4088,11 +4088,11 @@ export default function IRPPage() {
               }
             }
 
-            // 담당자 의견: 24시간 이내면 복원
+            // 담당자 의견: 48시간 이내면 복원
             if (sug.manager_note && sug.created_at) {
               const createdAt = new Date(sug.created_at);
               const hoursSince = (Date.now() - createdAt.getTime()) / (1000 * 60 * 60);
-              if (hoursSince <= 24) {
+              if (hoursSince <= 48) {
                 setManagerNote(sug.manager_note);
               }
             }

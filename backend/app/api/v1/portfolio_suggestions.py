@@ -95,11 +95,16 @@ async def update_suggestion(
     if not suggestion:
         raise HTTPException(status_code=404, detail="Suggestion not found")
 
+    from datetime import datetime, timedelta
     suggestion.suggested_weights = body.suggested_weights
     if body.ai_comment is not None:
         suggestion.ai_comment = body.ai_comment
     if body.manager_note is not None:
         suggestion.manager_note = body.manager_note
+    # 재저장 시 created_at 갱신 (담당자 의견 48시간 기준점)
+    suggestion.created_at = datetime.utcnow()
+    # 만료일도 갱신 (저장 시점으로부터 7일)
+    suggestion.expires_at = datetime.utcnow() + timedelta(days=7)
     await db.commit()
     return {"id": suggestion.id, "updated": True}
 
