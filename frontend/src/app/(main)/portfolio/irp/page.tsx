@@ -4369,7 +4369,6 @@ export default function IRPPage() {
       : `${baseUrl}/client/${portalToken}`;
 
     // 템플릿에서 변수 추출하고 자동 매핑
-    console.log('[ALIMTALK] client:', client?.name, 'unique_code:', client?.unique_code, 'id:', client?.id);
     const varPattern = /#\{([^}]+)\}/g;
     const variables: Record<string, string> = {};
     let match;
@@ -4416,7 +4415,6 @@ export default function IRPPage() {
     if (!client?.phone) return;
 
     const { variables } = getAlimtalkPreview();
-    alert(`[DEBUG] client=${client.name}, unique_code=${client.unique_code}, variables=${JSON.stringify(variables)}`);
 
     setAlimtalkSending(true);
     try {
