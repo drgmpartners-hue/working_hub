@@ -472,6 +472,10 @@ function Tab2Section({
   const [drGmProductOpen, setDrGmProductOpen] = useState(false);
   const [drGmEditRowId, setDrGmEditRowId] = useState<string | null>(null); /* 상품 선택 대상 행 */
   const [drGmChecked, setDrGmChecked] = useState<Set<string>>(new Set());
+  const [drGmAccountType, setDrGmAccountType] = useState<'pension' | 'irp'>('pension'); /* 연금저축/IRP 토글 */
+  const [drGmMonthlyAmount, setDrGmMonthlyAmount] = useState<number>(0); /* 월적립금액 */
+  const [drGmLumpSumAmount, setDrGmLumpSumAmount] = useState<number>(0); /* 거치금액 */
+  const drGmRef = useRef<HTMLDivElement>(null);
   const [t2RebalChecked, setT2RebalChecked] = useState<Set<string>>(new Set());
   const [t2PriceRefreshing, setT2PriceRefreshing] = useState(false);
 
@@ -702,8 +706,12 @@ function Tab2Section({
     const existingCodes = new Set(t2RebalRows.map((r) => r.productCode).filter(Boolean));
     let addedCount = 0;
 
+    // 체크박스: 아무것도 안 체크 또는 모두 체크 → 전체 적용, 일부만 체크 → 체크된 것만
+    const allChecked = drGmChecked.size === 0 || drGmChecked.size === drGmRows.length;
+    const rowsToApply = allChecked ? drGmRows : drGmRows.filter((r) => drGmChecked.has(r.id));
+
     const newRows: RebalRow[] = [];
-    for (const gm of drGmRows) {
+    for (const gm of rowsToApply) {
       if (!gm.product_name) continue;
       if (gm.product_code && existingCodes.has(gm.product_code)) continue;
       /* IRP → weight_irp, 연금저축(pension1/pension2) → weight_pension */
@@ -2056,55 +2064,94 @@ function Tab2Section({
       {/* Area 4.5: Dr.GM 추천 포트폴리오 (전 고객 공통)                */}
       {/* ============================================================ */}
       {t2ShowDetail && (
-        <div style={cardStyle}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 16, paddingBottom: 12, borderBottom: '1px solid #E1E5EB' }}>
+        <div style={cardStyle} ref={drGmRef}>
+          {/* 헤더 1열: 제목 + 토글 */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8, paddingBottom: 8, borderBottom: '1px solid #E1E5EB' }}>
             <div style={{ width: 3, height: 18, borderRadius: 2, backgroundColor: '#F59E0B', flexShrink: 0 }} />
             <span style={sectionTitleStyle}>Dr.GM 추천 포트폴리오</span>
-            <div style={{ marginLeft: 'auto', display: 'flex', gap: 8 }}>
-              <button onClick={refreshDrGmPrices} disabled={drGmRefreshing}
-                data-tooltip="ETF/주식 종목의 현재가를 Naver Finance에서 갱신합니다."
-                style={{ padding: '6px 14px', fontSize: '0.8125rem', fontWeight: 600, color: '#374151', backgroundColor: '#FEF3C7', border: '1px solid #FCD34D', borderRadius: 7, cursor: drGmRefreshing ? 'not-allowed' : 'pointer', opacity: drGmRefreshing ? 0.6 : 1 }}>
-                {drGmRefreshing ? '갱신 중...' : '현재가 갱신'}
+            {/* 연금저축/IRP 토글 */}
+            <div style={{ marginLeft: 12, display: 'flex', borderRadius: 6, overflow: 'hidden', border: '1px solid #E1E5EB' }}>
+              <button onClick={() => setDrGmAccountType('pension')}
+                style={{ padding: '5px 14px', fontSize: '0.75rem', fontWeight: 600, border: 'none', cursor: 'pointer',
+                  backgroundColor: drGmAccountType === 'pension' ? '#F59E0B' : '#fff',
+                  color: drGmAccountType === 'pension' ? '#fff' : '#6B7280' }}>
+                연금저축
               </button>
-              <button onClick={addDrGmRow}
-                data-tooltip="새 상품 행을 추가합니다."
-                style={{ padding: '6px 14px', fontSize: '0.8125rem', fontWeight: 600, color: '#1E3A5F', backgroundColor: '#EEF2F7', border: '1px solid #C7D2E2', borderRadius: 7, cursor: 'pointer' }}>
-                + 행추가
-              </button>
-              <button onClick={deleteCheckedDrGmRows} disabled={drGmChecked.size === 0}
-                data-tooltip="체크된 행을 삭제합니다."
-                style={{ padding: '6px 14px', fontSize: '0.8125rem', fontWeight: 600, color: drGmChecked.size > 0 ? '#EF4444' : '#9CA3AF', backgroundColor: '#fff', border: `1px solid ${drGmChecked.size > 0 ? '#FECACA' : '#E1E5EB'}`, borderRadius: 7, cursor: drGmChecked.size > 0 ? 'pointer' : 'not-allowed' }}>
-                삭제 ({drGmChecked.size})
-              </button>
-              <button onClick={saveDrGmPortfolio} disabled={drGmSaving}
-                data-tooltip="저장합니다. 모든 고객에게 동일하게 반영됩니다."
-                style={{ padding: '6px 14px', fontSize: '0.8125rem', fontWeight: 700, color: '#fff', backgroundColor: drGmSaving ? '#9CA3AF' : '#F59E0B', border: 'none', borderRadius: 7, cursor: drGmSaving ? 'not-allowed' : 'pointer' }}>
-                {drGmSaving ? '저장 중...' : '저장'}
-              </button>
-              <button onClick={applyDrGmToRebal}
-                data-tooltip="아래 수정 포트폴리오에 적용합니다. 동일 종목코드는 건너뜁니다."
-                style={{ padding: '6px 14px', fontSize: '0.8125rem', fontWeight: 700, color: '#fff', backgroundColor: '#1E3A5F', border: 'none', borderRadius: 7, cursor: 'pointer' }}>
-                수정 포트폴리오 적용 ↓
+              <button onClick={() => setDrGmAccountType('irp')}
+                style={{ padding: '5px 14px', fontSize: '0.75rem', fontWeight: 600, border: 'none', cursor: 'pointer',
+                  backgroundColor: drGmAccountType === 'irp' ? '#1E3A5F' : '#fff',
+                  color: drGmAccountType === 'irp' ? '#fff' : '#6B7280' }}>
+                IRP
               </button>
             </div>
+            {/* 월적립금액 */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 4, marginLeft: 16 }}>
+              <span style={{ fontSize: '0.75rem', fontWeight: 600, color: '#374151', whiteSpace: 'nowrap' }}>월적립</span>
+              <input type="number" value={drGmMonthlyAmount || ''} onChange={(e) => setDrGmMonthlyAmount(parseInt(e.target.value) || 0)}
+                placeholder="0" style={{ width: 90, padding: '4px 6px', fontSize: '0.8125rem', textAlign: 'right', border: '1px solid #E1E5EB', borderRadius: 5, outline: 'none' }} />
+              <span style={{ fontSize: '0.7rem', color: '#9CA3AF' }}>원</span>
+            </div>
+            {/* 거치금액 */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+              <span style={{ fontSize: '0.75rem', fontWeight: 600, color: '#374151', whiteSpace: 'nowrap' }}>거치</span>
+              <input type="number" value={drGmLumpSumAmount || ''} onChange={(e) => setDrGmLumpSumAmount(parseInt(e.target.value) || 0)}
+                placeholder="0" style={{ width: 100, padding: '4px 6px', fontSize: '0.8125rem', textAlign: 'right', border: '1px solid #E1E5EB', borderRadius: 5, outline: 'none' }} />
+              <span style={{ fontSize: '0.7rem', color: '#9CA3AF' }}>원</span>
+            </div>
+          </div>
+          {/* 헤더 2열: 버튼들 */}
+          <div style={{ display: 'flex', gap: 8, marginBottom: 12, flexWrap: 'wrap' }}>
+            <button onClick={refreshDrGmPrices} disabled={drGmRefreshing}
+              style={{ padding: '6px 14px', fontSize: '0.8125rem', fontWeight: 600, color: '#374151', backgroundColor: '#FEF3C7', border: '1px solid #FCD34D', borderRadius: 7, cursor: drGmRefreshing ? 'not-allowed' : 'pointer', opacity: drGmRefreshing ? 0.6 : 1 }}>
+              {drGmRefreshing ? '갱신 중...' : '현재가 갱신'}
+            </button>
+            <button onClick={addDrGmRow}
+              style={{ padding: '6px 14px', fontSize: '0.8125rem', fontWeight: 600, color: '#1E3A5F', backgroundColor: '#EEF2F7', border: '1px solid #C7D2E2', borderRadius: 7, cursor: 'pointer' }}>
+              + 행추가
+            </button>
+            <button onClick={deleteCheckedDrGmRows} disabled={drGmChecked.size === 0}
+              style={{ padding: '6px 14px', fontSize: '0.8125rem', fontWeight: 600, color: drGmChecked.size > 0 ? '#EF4444' : '#9CA3AF', backgroundColor: '#fff', border: `1px solid ${drGmChecked.size > 0 ? '#FECACA' : '#E1E5EB'}`, borderRadius: 7, cursor: drGmChecked.size > 0 ? 'pointer' : 'not-allowed' }}>
+              삭제 ({drGmChecked.size})
+            </button>
+            <button onClick={saveDrGmPortfolio} disabled={drGmSaving}
+              style={{ padding: '6px 14px', fontSize: '0.8125rem', fontWeight: 700, color: '#fff', backgroundColor: drGmSaving ? '#9CA3AF' : '#F59E0B', border: 'none', borderRadius: 7, cursor: drGmSaving ? 'not-allowed' : 'pointer' }}>
+              {drGmSaving ? '저장 중...' : '저장'}
+            </button>
+            <button onClick={applyDrGmToRebal}
+              style={{ padding: '6px 14px', fontSize: '0.8125rem', fontWeight: 700, color: '#fff', backgroundColor: '#1E3A5F', border: 'none', borderRadius: 7, cursor: 'pointer' }}>
+              수정 포트폴리오 적용 ↓
+            </button>
+            <button onClick={async () => {
+              if (!drGmRef.current) return;
+              const html2canvas = (await import('html2canvas')).default;
+              const canvas = await html2canvas(drGmRef.current, { scale: 2, width: drGmRef.current.scrollWidth });
+              const link = document.createElement('a');
+              link.download = `DrGM_추천포트폴리오_${drGmAccountType === 'pension' ? '연금저축' : 'IRP'}.png`;
+              link.href = canvas.toDataURL('image/png');
+              link.click();
+            }}
+              style={{ padding: '6px 14px', fontSize: '0.8125rem', fontWeight: 600, color: '#059669', backgroundColor: '#ECFDF5', border: '1px solid #A7F3D0', borderRadius: 7, cursor: 'pointer' }}>
+              이미지 다운로드
+            </button>
           </div>
 
           {drGmLoading ? (
             <div style={{ padding: 20, textAlign: 'center', color: '#9CA3AF' }}>불러오는 중...</div>
           ) : (
-            <div style={{ overflowX: 'scroll', border: '1px solid #E1E5EB', borderRadius: 8 }}>
-              <table style={{ borderCollapse: 'collapse', fontSize: '0.8125rem', minWidth: 900, width: '100%' }}>
+            <div style={{ overflowX: 'auto', border: '1px solid #E1E5EB', borderRadius: 8 }}>
+              <table style={{ borderCollapse: 'collapse', fontSize: '0.8125rem', minWidth: 1100, width: '100%' }}>
                 <thead>
                   <tr style={{ backgroundColor: '#FFFBEB' }}>
                     <th style={{ ...thStyle, backgroundColor: '#FFFBEB', textAlign: 'center', minWidth: 36 }}>No.</th>
-                    <th style={{ ...thStyle, backgroundColor: '#FFFBEB', textAlign: 'left', minWidth: 80 }}>상품유형</th>
-                    <th style={{ ...thStyle, backgroundColor: '#FFFBEB', textAlign: 'left', minWidth: 60 }}>지역</th>
                     <th style={{ ...thStyle, backgroundColor: '#FFFBEB', textAlign: 'left', minWidth: 220 }}>상품명</th>
                     <th style={{ ...thStyle, backgroundColor: '#FFFBEB', minWidth: 80 }}>종목코드</th>
-                    <th style={{ ...thStyle, backgroundColor: '#FFFBEB', minWidth: 90 }}>현재가</th>
-                    <th style={{ ...thStyle, backgroundColor: '#F59E0B', color: '#fff', minWidth: 100 }}>비중(연금저축)</th>
-                    <th style={{ ...thStyle, backgroundColor: '#F59E0B', color: '#fff', minWidth: 110 }}>비중(IRP/퇴직연금)</th>
-                    <th style={{ ...thStyle, backgroundColor: '#FFFBEB', textAlign: 'left', minWidth: 100 }}>비고</th>
+                    <th style={{ ...thStyle, backgroundColor: '#FFFBEB', minWidth: 80 }}>현재가</th>
+                    <th style={{ ...thStyle, backgroundColor: '#F59E0B', color: '#fff', minWidth: 90 }}>비중(연금저축)</th>
+                    <th style={{ ...thStyle, backgroundColor: '#1E3A5F', color: '#fff', minWidth: 100 }}>비중(IRP/퇴직연금)</th>
+                    <th style={{ ...thStyle, backgroundColor: '#ECFDF5', minWidth: 90 }}>월적립투자</th>
+                    <th style={{ ...thStyle, backgroundColor: '#DBEAFE', minWidth: 80 }}>거치투자</th>
+                    <th style={{ ...thStyle, backgroundColor: '#DBEAFE', minWidth: 80 }}>구매좌수(거치)</th>
+                    <th style={{ ...thStyle, backgroundColor: '#FFFBEB', textAlign: 'left', minWidth: 90 }}>비고</th>
                     <th style={{ ...thStyle, backgroundColor: '#FFFBEB', textAlign: 'center', minWidth: 36 }}>
                       <input type="checkbox" checked={drGmRows.length > 0 && drGmChecked.size === drGmRows.length}
                         onChange={(e) => { if (e.target.checked) setDrGmChecked(new Set(drGmRows.map((r) => r.id))); else setDrGmChecked(new Set()); }}
@@ -2114,18 +2161,20 @@ function Tab2Section({
                 </thead>
                 <tbody>
                   {drGmRows.length === 0 && (
-                    <tr><td colSpan={10} style={{ padding: 20, textAlign: 'center', color: '#9CA3AF' }}>등록된 추천 상품이 없습니다. [+ 행추가] 버튼으로 추가하세요.</td></tr>
+                    <tr><td colSpan={12} style={{ padding: 20, textAlign: 'center', color: '#9CA3AF' }}>등록된 추천 상품이 없습니다. [+ 행추가] 버튼으로 추가하세요.</td></tr>
                   )}
-                  {drGmRows.map((r, idx) => (
+                  {drGmRows.map((r, idx) => {
+                    const weight = drGmAccountType === 'pension' ? r.weight_pension : r.weight_irp;
+                    const monthlyInv = drGmMonthlyAmount > 0 ? Math.floor(drGmMonthlyAmount * weight / 100 / 1000) * 1000 : 0;
+                    const lumpInv = drGmLumpSumAmount > 0 ? Math.floor(drGmLumpSumAmount * weight / 100 / 1000) * 1000 : 0;
+                    const lumpShares = lumpInv > 0 && r.current_price > 0 ? Math.floor(lumpInv / r.current_price) : 0;
+                    return (
                     <tr key={r.id} style={{ transition: 'background-color 0.1s' }}
                       onMouseEnter={(e) => { (e.currentTarget as HTMLTableRowElement).style.backgroundColor = '#FFFBEB'; }}
                       onMouseLeave={(e) => { (e.currentTarget as HTMLTableRowElement).style.backgroundColor = 'transparent'; }}>
                       <td style={{ ...tdStyle, textAlign: 'center', color: '#9CA3AF' }}>{idx + 1}</td>
-                      <td style={{ ...tdStyle, textAlign: 'left', color: '#6B7280', fontSize: '0.75rem' }}>{r.product_type || '-'}</td>
-                      <td style={{ ...tdStyle, textAlign: 'left', color: '#6B7280', fontSize: '0.75rem' }}>{r.region || '-'}</td>
                       <td style={{ ...tdStyle, textAlign: 'left', padding: '5px 8px', whiteSpace: 'normal', wordBreak: 'keep-all' }}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-                          {/* 순서 이동 화살표 */}
                           <div style={{ display: 'flex', flexDirection: 'column', gap: 0, flexShrink: 0 }}>
                             <button type="button" onClick={() => moveDrGmRow(r.id, -1)} disabled={idx === 0}
                               style={{ background: 'none', border: 'none', cursor: idx === 0 ? 'default' : 'pointer', padding: 0, lineHeight: 1, color: idx === 0 ? '#D1D5DB' : '#6B7280', fontSize: '0.625rem' }}>▲</button>
@@ -2154,7 +2203,7 @@ function Tab2Section({
                       </td>
                       <td style={{ ...tdStyle, fontFamily: 'monospace', fontSize: '0.75rem', color: '#6B7280' }}>{r.product_code || '-'}</td>
                       <td style={tdStyle}>{r.current_price > 0 ? r.current_price.toLocaleString('ko-KR') : '-'}</td>
-                      <td style={{ ...tdStyle, padding: '5px 8px', backgroundColor: '#FEF9C3' }}>
+                      <td style={{ ...tdStyle, padding: '5px 8px', backgroundColor: drGmAccountType === 'pension' ? '#FEF9C3' : undefined }}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: 2 }}>
                           <input type="number" step="0.01" min="0" max="100" value={r.weight_pension || ''}
                             onChange={(e) => { const v = parseFloat(e.target.value); setDrGmRows((prev) => prev.map((rr) => rr.id !== r.id ? rr : { ...rr, weight_pension: isNaN(v) ? 0 : v })); }}
@@ -2162,17 +2211,26 @@ function Tab2Section({
                           <span style={{ fontSize: '0.75rem', color: '#6B7280' }}>%</span>
                         </div>
                       </td>
-                      <td style={{ ...tdStyle, padding: '5px 8px', backgroundColor: '#FEF9C3' }}>
+                      <td style={{ ...tdStyle, padding: '5px 8px', backgroundColor: drGmAccountType === 'irp' ? '#DBEAFE' : undefined }}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: 2 }}>
                           <input type="number" step="0.01" min="0" max="100" value={r.weight_irp || ''}
                             onChange={(e) => { const v = parseFloat(e.target.value); setDrGmRows((prev) => prev.map((rr) => rr.id !== r.id ? rr : { ...rr, weight_irp: isNaN(v) ? 0 : v })); }}
-                            style={{ width: 55, padding: '4px 6px', fontSize: '0.8125rem', textAlign: 'right', border: '1px solid #FCD34D', borderRadius: 5, outline: 'none' }} />
+                            style={{ width: 55, padding: '4px 6px', fontSize: '0.8125rem', textAlign: 'right', border: '1px solid #93C5FD', borderRadius: 5, outline: 'none' }} />
                           <span style={{ fontSize: '0.75rem', color: '#6B7280' }}>%</span>
                         </div>
                       </td>
+                      <td style={{ ...tdStyle, textAlign: 'right', color: monthlyInv > 0 ? '#059669' : '#9CA3AF', backgroundColor: '#F0FDF4' }}>
+                        {monthlyInv > 0 ? monthlyInv.toLocaleString('ko-KR') : '-'}
+                      </td>
+                      <td style={{ ...tdStyle, textAlign: 'right', color: lumpInv > 0 ? '#2563EB' : '#9CA3AF', backgroundColor: '#EFF6FF' }}>
+                        {lumpInv > 0 ? lumpInv.toLocaleString('ko-KR') : '-'}
+                      </td>
+                      <td style={{ ...tdStyle, textAlign: 'right', color: lumpShares > 0 ? '#2563EB' : '#9CA3AF', backgroundColor: '#EFF6FF' }}>
+                        {lumpShares > 0 ? lumpShares.toLocaleString('ko-KR') : '-'}
+                      </td>
                       <td style={{ ...tdStyle, padding: '5px 8px', textAlign: 'left' }}>
                         <input type="text" value={r.memo} onChange={(e) => setDrGmRows((prev) => prev.map((rr) => rr.id !== r.id ? rr : { ...rr, memo: e.target.value }))}
-                          style={{ width: '100%', minWidth: 80, padding: '4px 6px', fontSize: '0.8125rem', border: '1px solid #E1E5EB', borderRadius: 5, outline: 'none' }} />
+                          style={{ width: '100%', minWidth: 70, padding: '4px 6px', fontSize: '0.8125rem', border: '1px solid #E1E5EB', borderRadius: 5, outline: 'none' }} />
                       </td>
                       <td style={{ ...tdStyle, textAlign: 'center' }}>
                         <input type="checkbox" checked={drGmChecked.has(r.id)}
@@ -2180,28 +2238,47 @@ function Tab2Section({
                           style={{ width: 14, height: 14, cursor: 'pointer' }} />
                       </td>
                     </tr>
-                  ))}
+                    );
+                  })}
                 </tbody>
-                {drGmRows.length > 0 && (
+                {drGmRows.length > 0 && (() => {
+                  const totalPension = drGmRows.reduce((s, r) => s + (r.weight_pension || 0), 0);
+                  const totalIrp = drGmRows.reduce((s, r) => s + (r.weight_irp || 0), 0);
+                  const activeWeight = drGmAccountType === 'pension' ? totalPension : totalIrp;
+                  const totalMonthly = drGmRows.reduce((s, r) => {
+                    const w = drGmAccountType === 'pension' ? r.weight_pension : r.weight_irp;
+                    return s + (drGmMonthlyAmount > 0 ? Math.floor(drGmMonthlyAmount * w / 100 / 1000) * 1000 : 0);
+                  }, 0);
+                  const totalLump = drGmRows.reduce((s, r) => {
+                    const w = drGmAccountType === 'pension' ? r.weight_pension : r.weight_irp;
+                    return s + (drGmLumpSumAmount > 0 ? Math.floor(drGmLumpSumAmount * w / 100 / 1000) * 1000 : 0);
+                  }, 0);
+                  return (
                   <tfoot>
                     <tr style={{ backgroundColor: '#FFFBEB' }}>
-                      <td style={totalRowStyle} />
-                      <td style={totalRowStyle} />
                       <td style={totalRowStyle} />
                       <td style={{ ...totalRowStyle, textAlign: 'left' }}>합계</td>
                       <td style={totalRowStyle} />
                       <td style={totalRowStyle} />
                       <td style={{ ...totalRowStyle, backgroundColor: '#FDE68A' }}>
-                        {drGmRows.reduce((s, r) => s + (r.weight_pension || 0), 0).toFixed(2)}%
+                        {totalPension.toFixed(2)}%
                       </td>
-                      <td style={{ ...totalRowStyle, backgroundColor: '#FDE68A' }}>
-                        {drGmRows.reduce((s, r) => s + (r.weight_irp || 0), 0).toFixed(2)}%
+                      <td style={{ ...totalRowStyle, backgroundColor: '#93C5FD' }}>
+                        {totalIrp.toFixed(2)}%
                       </td>
+                      <td style={{ ...totalRowStyle, color: '#059669', backgroundColor: '#D1FAE5' }}>
+                        {totalMonthly > 0 ? totalMonthly.toLocaleString('ko-KR') : '-'}
+                      </td>
+                      <td style={{ ...totalRowStyle, color: '#2563EB', backgroundColor: '#BFDBFE' }}>
+                        {totalLump > 0 ? totalLump.toLocaleString('ko-KR') : '-'}
+                      </td>
+                      <td style={totalRowStyle} />
                       <td style={totalRowStyle} />
                       <td style={totalRowStyle} />
                     </tr>
                   </tfoot>
-                )}
+                  );
+                })()}
               </table>
             </div>
           )}
