@@ -2157,23 +2157,42 @@ function Tab2Section({
             <button onClick={async () => {
               if (!drGmRef.current) return;
               const html2canvas = (await import('html2canvas')).default;
-              // 캡처 전: 모든 td에 flexbox 강제 적용 (html2canvas vertical-align 미지원 대응)
-              const tds = drGmRef.current.querySelectorAll('td, th');
-              const origStyles: string[] = [];
-              tds.forEach((td) => {
+              // 클론 생성 → 가로 레이아웃 강제 → 캡처 → 클론 삭제
+              const clone = drGmRef.current.cloneNode(true) as HTMLElement;
+              clone.style.position = 'fixed';
+              clone.style.top = '-9999px';
+              clone.style.left = '-9999px';
+              clone.style.width = `${Math.max(drGmRef.current.scrollWidth, 1200)}px`;
+              clone.style.backgroundColor = '#fff';
+              clone.style.padding = '20px';
+              clone.style.zIndex = '-1';
+              // 클론 내 모든 input을 텍스트로 변환 (캡처용)
+              clone.querySelectorAll('input[type="number"], input[type="text"]').forEach((inp) => {
+                const el = inp as HTMLInputElement;
+                const span = document.createElement('span');
+                span.textContent = el.value || '-';
+                span.style.cssText = el.style.cssText;
+                span.style.display = 'inline-block';
+                span.style.textAlign = 'right';
+                span.style.minWidth = '40px';
+                el.replaceWith(span);
+              });
+              // 클론 내 모든 td/th에 세로 가운데 + 높이 고정
+              clone.querySelectorAll('td, th').forEach((td) => {
                 const el = td as HTMLElement;
-                origStyles.push(el.style.cssText);
-                el.style.display = 'flex';
-                el.style.alignItems = 'center';
-                el.style.justifyContent = el.style.textAlign === 'left' ? 'flex-start' : el.style.textAlign === 'center' ? 'center' : 'flex-end';
-                el.style.height = '48px';
-                el.style.boxSizing = 'border-box';
+                el.style.verticalAlign = 'middle';
+                el.style.height = '44px';
+                el.style.lineHeight = '44px';
+                el.style.padding = '0 8px';
+                el.style.whiteSpace = 'nowrap';
               });
-              const canvas = await html2canvas(drGmRef.current, { scale: 2, width: drGmRef.current.scrollWidth });
-              // 캡처 후: 원래 스타일 복원
-              tds.forEach((td, i) => {
-                (td as HTMLElement).style.cssText = origStyles[i];
+              // 버튼, 체크박스 숨기기
+              clone.querySelectorAll('button, input[type="checkbox"]').forEach((el) => {
+                (el as HTMLElement).style.display = 'none';
               });
+              document.body.appendChild(clone);
+              const canvas = await html2canvas(clone, { scale: 2 });
+              document.body.removeChild(clone);
               const link = document.createElement('a');
               link.download = `DrGM_추천포트폴리오_${drGmAccountType === 'pension' ? '연금저축' : 'IRP'}.png`;
               link.href = canvas.toDataURL('image/png');
