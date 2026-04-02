@@ -2166,7 +2166,7 @@ function Tab2Section({
           ) : (
             <div style={{ overflowX: 'auto', border: '1px solid #E1E5EB', borderRadius: 8 }}>
               <table style={{ borderCollapse: 'collapse', fontSize: '0.8125rem', minWidth: 1100, width: '100%' }} className="drgm-table">
-                <style>{`.drgm-table td, .drgm-table th { vertical-align: middle !important; }`}</style>
+                <style>{`.drgm-table td, .drgm-table th { vertical-align: middle !important; } .drgm-table tbody tr { height: 52px; }`}</style>
                 <thead>
                   <tr style={{ backgroundColor: '#FFFBEB' }}>
                     <th style={{ ...thStyle, backgroundColor: '#FFFBEB', textAlign: 'center', minWidth: 36, position: 'sticky', left: 0, zIndex: 2 }}>No.</th>
