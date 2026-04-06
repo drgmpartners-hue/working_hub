@@ -1503,11 +1503,11 @@ function Tab2Section({
       try {
         const clientObj = clients.find((c) => c.id === histClientId);
         const acctObj = t2ClientAccounts.find((a) => a.id === histAccountId);
-        const summaryParts = t2RebalRows
-          .filter((r) => !r.isRow1 && r.rebalRatio > 0)
-          .slice(0, 5)
-          .map((r) => `${r.productName} ${r.rebalRatio.toFixed(1)}%`);
-        const summary = `[포트폴리오 수정] ${clientObj?.name ?? ''} ${accountTypeLabel(acctObj?.account_type ?? 'irp')} - ${summaryParts.join(', ')}${t2RebalRows.length > 6 ? ' 외' : ''}`;
+        const eligibleRows = t2RebalRows.filter((r) => !r.isRow1 && r.rebalRatio > 0);
+        const newRows = eligibleRows.filter((r) => r.id.startsWith('__'));
+        const totalCount = eligibleRows.length;
+        const newCount = newRows.length;
+        const summary = `[포트폴리오 수정] - ${clientObj?.name ?? ''} | ${accountTypeLabel(acctObj?.account_type ?? 'irp')} | 총 ${totalCount}개의 포트폴리오 추천${newCount > 0 ? `(신규 ${newCount}개)` : ''}`;
 
         const logForm = new FormData();
         logForm.append('client_id', histClientId);
@@ -3110,6 +3110,18 @@ export default function IRPPage() {
   const [tab4FilterPeriod, setTab4FilterPeriod] = useState<'6m' | '1y' | 'all'>('1y');
   const tab4HistoryRef = useRef<HTMLDivElement>(null);
   const [tab4PdfSaving, setTab4PdfSaving] = useState(false);
+  // PDF 날짜 범위 (기본: 최근 1년)
+  const [tab4PdfDateFrom, setTab4PdfDateFrom] = useState<string>(() => {
+    const d = new Date(); d.setFullYear(d.getFullYear() - 1);
+    return d.toISOString().slice(0, 10);
+  });
+  const [tab4PdfDateTo, setTab4PdfDateTo] = useState<string>(() => new Date().toISOString().slice(0, 10));
+  // 발송기록 CRUD
+  const [tab4LogEditTarget, setTab4LogEditTarget] = useState<string | null>(null); // log id
+  const [tab4LogEditData, setTab4LogEditData] = useState<{ message_type: string; message_summary: string; message_text: string; sent_at: string } | null>(null);
+  const [tab4LogEditOpen, setTab4LogEditOpen] = useState(false);
+  const [tab4LogAddOpen, setTab4LogAddOpen] = useState(false);
+  const [tab4LogAddData, setTab4LogAddData] = useState({ client_id: '', client_account_id: '', message_type: 'portfolio_save', message_summary: '', message_text: '', sent_at: new Date().toISOString().slice(0, 16) });
 
   /* ---------- load clients and product masters on mount ---------- */
   useEffect(() => {
@@ -4357,42 +4369,150 @@ export default function IRPPage() {
     if (!tab4HistoryRef.current) return;
     setTab4PdfSaving(true);
     try {
-      const html2canvas = (await import('html2canvas')).default;
+      // 날짜 범위 필터링
+      const fromDate = new Date(tab4PdfDateFrom + 'T00:00:00');
+      const toDate = new Date(tab4PdfDateTo + 'T23:59:59');
+      const filteredLogs = tab4Logs.filter((log) => {
+        const sentAt = new Date(log.sent_at);
+        return sentAt >= fromDate && sentAt <= toDate;
+      });
+      if (filteredLogs.length === 0) {
+        showToast('선택한 기간에 발송 기록이 없습니다.');
+        return;
+      }
+      const clientName = clients.find((c) => c.id === tab4ClientId)?.name ?? '전체';
       const { default: jsPDF } = await import('jspdf');
-      const canvas = await html2canvas(tab4HistoryRef.current, { scale: 2 });
       const pdf = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
       const pageW = pdf.internal.pageSize.getWidth();
-      const pageH = pdf.internal.pageSize.getHeight();
-      const margin = 8;
-      const contentW = pageW - margin * 2;
-      const maxContentH = pageH - margin * 2;
-      const mmPerPx = contentW / canvas.width;
-      const pageSliceH = Math.floor(maxContentH / mmPerPx);
-      let offset = 0;
-      let isFirst = true;
-      while (offset < canvas.height) {
-        const sliceH = Math.min(pageSliceH, canvas.height - offset);
-        if (sliceH <= 0) break;
-        const sliceCanvas = document.createElement('canvas');
-        sliceCanvas.width = canvas.width;
-        sliceCanvas.height = sliceH;
-        const ctx = sliceCanvas.getContext('2d');
-        if (!ctx) break;
-        ctx.drawImage(canvas, 0, offset, canvas.width, sliceH, 0, 0, canvas.width, sliceH);
-        if (!isFirst) pdf.addPage();
-        isFirst = false;
-        const imgData = sliceCanvas.toDataURL('image/png');
-        pdf.addImage(imgData, 'PNG', margin, margin, contentW, sliceH * mmPerPx);
-        offset += sliceH;
+      const margin = 12;
+      const colW = [(pageW - margin * 2) * 0.07, (pageW - margin * 2) * 0.15, (pageW - margin * 2) * 0.16, (pageW - margin * 2) * 0.14, (pageW - margin * 2) * 0.48];
+      const headers = ['No', '발송일', '유형', '계좌', '발송 내용 요약'];
+      // Title
+      pdf.setFontSize(14); pdf.setFont('helvetica', 'bold');
+      pdf.text(`발송 기록 - ${clientName}`, margin, 14);
+      pdf.setFontSize(9); pdf.setFont('helvetica', 'normal');
+      pdf.text(`기간: ${tab4PdfDateFrom} ~ ${tab4PdfDateTo}  |  총 ${filteredLogs.length}건`, margin, 20);
+      // Header row
+      let y = 28;
+      pdf.setFillColor(245, 247, 250); pdf.rect(margin, y, pageW - margin * 2, 7, 'F');
+      pdf.setFontSize(8.5); pdf.setFont('helvetica', 'bold');
+      let x = margin;
+      headers.forEach((h, i) => { pdf.text(h, x + 2, y + 5); x += colW[i]; });
+      y += 7;
+      // Data rows
+      pdf.setFont('helvetica', 'normal'); pdf.setFontSize(8);
+      const msgTypeLabel = (t: string) =>
+        t === 'portfolio_save' ? '수정저장' : t === 'suggestion_link' ? '변경제안(SMS)' : t === 'alimtalk_suggestion' ? '변경제안(톡)' : t === 'alimtalk_portal' ? '상시조회(톡)' : '상시조회(SMS)';
+      for (let i = 0; i < filteredLogs.length; i++) {
+        const log = filteredLogs[i];
+        if (i % 2 === 0) { pdf.setFillColor(252, 252, 253); pdf.rect(margin, y, pageW - margin * 2, 7, 'F'); }
+        x = margin;
+        const cells = [
+          String(i + 1),
+          new Date(log.sent_at).toLocaleDateString('ko-KR'),
+          msgTypeLabel(log.message_type),
+          log.account_type ? accountTypeLabel(log.account_type) : '-',
+          log.message_summary,
+        ];
+        cells.forEach((cell, ci) => {
+          const maxW = colW[ci] - 4;
+          const txt = pdf.splitTextToSize(cell, maxW)[0] ?? '';
+          pdf.text(txt, x + 2, y + 5);
+          x += colW[ci];
+        });
+        y += 7;
+        if (y > pdf.internal.pageSize.getHeight() - 16) {
+          pdf.addPage();
+          y = 14;
+        }
       }
       const { saveAs } = await import('file-saver');
-      const clientName = clients.find((c) => c.id === tab4ClientId)?.name ?? '전체';
-      saveAs(pdf.output('blob'), `발송내역_${clientName}_${new Date().toISOString().slice(0, 10)}.pdf`);
+      saveAs(pdf.output('blob'), `발송내역_${clientName}_${tab4PdfDateFrom}~${tab4PdfDateTo}.pdf`);
     } catch (e) {
       showToast(e instanceof Error ? e.message : 'PDF 다운로드 실패');
     } finally {
       setTab4PdfSaving(false);
     }
+  }
+
+  async function handleTab4DeleteLog(logId: string) {
+    if (!confirm('이 발송 기록을 삭제하시겠습니까?')) return;
+    try {
+      const res = await fetch(`${API_URL}/api/v1/message-logs/${logId}`, {
+        method: 'DELETE',
+        headers: { ...authLib.getAuthHeader() },
+      });
+      if (res.ok || res.status === 204) {
+        setTab4Logs((prev) => prev.filter((l) => l.id !== logId));
+        setTab4LogsTotal((prev) => Math.max(0, prev - 1));
+        showToast('삭제되었습니다.');
+      } else {
+        showToast('삭제 실패');
+      }
+    } catch { showToast('삭제 중 오류'); }
+  }
+
+  function handleTab4EditOpen(log: typeof tab4Logs[0]) {
+    setTab4LogEditTarget(log.id);
+    setTab4LogEditData({
+      message_type: log.message_type,
+      message_summary: log.message_summary,
+      message_text: log.message_text ?? '',
+      sent_at: log.sent_at.slice(0, 16),
+    });
+    setTab4LogEditOpen(true);
+  }
+
+  async function handleTab4EditSave() {
+    if (!tab4LogEditTarget || !tab4LogEditData) return;
+    try {
+      const res = await fetch(`${API_URL}/api/v1/message-logs/${tab4LogEditTarget}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json', ...authLib.getAuthHeader() },
+        body: JSON.stringify({
+          message_type: tab4LogEditData.message_type,
+          message_summary: tab4LogEditData.message_summary,
+          message_text: tab4LogEditData.message_text,
+          sent_at: tab4LogEditData.sent_at,
+        }),
+      });
+      if (res.ok) {
+        const updated = await res.json();
+        setTab4Logs((prev) => prev.map((l) => l.id === tab4LogEditTarget ? { ...l, ...updated } : l));
+        setTab4LogEditOpen(false);
+        showToast('수정되었습니다.');
+      } else {
+        showToast('수정 실패');
+      }
+    } catch { showToast('수정 중 오류'); }
+  }
+
+  async function handleTab4AddLog() {
+    if (!tab4LogAddData.client_id || !tab4LogAddData.message_summary) {
+      showToast('고객과 발송 내용 요약을 입력하세요.');
+      return;
+    }
+    try {
+      const logForm = new FormData();
+      logForm.append('client_id', tab4LogAddData.client_id);
+      if (tab4LogAddData.client_account_id) logForm.append('client_account_id', tab4LogAddData.client_account_id);
+      logForm.append('message_type', tab4LogAddData.message_type);
+      logForm.append('message_summary', tab4LogAddData.message_summary);
+      if (tab4LogAddData.message_text) logForm.append('message_text', tab4LogAddData.message_text);
+      logForm.append('sent_at', tab4LogAddData.sent_at ? new Date(tab4LogAddData.sent_at).toISOString() : new Date().toISOString());
+      const res = await fetch(`${API_URL}/api/v1/message-logs`, {
+        method: 'POST',
+        headers: { ...authLib.getAuthHeader() },
+        body: logForm,
+      });
+      if (res.ok) {
+        setTab4LogAddOpen(false);
+        showToast('추가되었습니다.');
+        loadTab4Logs(tab4ClientId, tab4FilterAccount, tab4FilterCompany, tab4FilterPeriod);
+      } else {
+        showToast('추가 실패');
+      }
+    } catch { showToast('추가 중 오류'); }
   }
 
   function showToast(msg: string) {
@@ -4593,33 +4713,88 @@ export default function IRPPage() {
 
         // 내역관리 기록 저장
         try {
-          const template = kakaoTemplates.find((t) => t.templateId === selectedTemplateId);
-          const logForm = new FormData();
-          logForm.append('client_id', clientId);
-          if (selectedAccountId) logForm.append('client_account_id', selectedAccountId);
-          logForm.append('message_type', alimtalkModalType === 'suggestion' ? 'alimtalk_suggestion' : 'alimtalk_portal');
-          logForm.append('message_summary', `[알림톡] ${template?.name ?? selectedTemplateId}`.slice(0, 200));
-          logForm.append('message_text', getAlimtalkPreview().content);
-          logForm.append('sent_at', new Date().toISOString());
+          const nowIso = new Date().toISOString();
+          const messageText = getAlimtalkPreview().content;
 
-          // 변경제안일 때만 보고서 이미지 첨부
-          if (alimtalkModalType === 'suggestion' && reportRef.current) {
-            try {
-              const html2canvas = (await import('html2canvas')).default;
-              const noPrintEls = reportRef.current.querySelectorAll('[data-no-print]');
-              noPrintEls.forEach((el) => ((el as HTMLElement).style.display = 'none'));
-              const canvas = await html2canvas(reportRef.current, { scale: 1.5 });
-              noPrintEls.forEach((el) => ((el as HTMLElement).style.display = ''));
-              const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, 'image/png'));
-              if (blob) logForm.append('image', blob, `report_${clientId}.png`);
-            } catch { /* ignore */ }
+          if (alimtalkModalType === 'suggestion') {
+            // 변경제안: 클라이언트의 모든 계좌에 대해 각각 로그 저장
+            const clientName = client.name;
+            const allClientAccounts = clients
+              .filter((c) => c.name === clientName)
+              .flatMap((c) => c.accounts);
+
+            // 현재 선택된 계좌 이미지 캡처
+            let currentImage: Blob | null = null;
+            if (reportRef.current) {
+              try {
+                const html2canvas = (await import('html2canvas')).default;
+                const noPrintEls = reportRef.current.querySelectorAll('[data-no-print]');
+                noPrintEls.forEach((el) => ((el as HTMLElement).style.display = 'none'));
+                const canvas = await html2canvas(reportRef.current, { scale: 1.5 });
+                noPrintEls.forEach((el) => ((el as HTMLElement).style.display = ''));
+                currentImage = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, 'image/png'));
+              } catch { /* ignore */ }
+            }
+
+            for (const acct of allClientAccounts) {
+              const summary = `[알림톡] 수정 포트폴리오 안내 | ${reportDate || new Date().toISOString().slice(0, 10)}`;
+              const logForm = new FormData();
+              // client_id: 해당 계좌를 가진 client row의 id
+              const acctClientId = clients.find((c) => c.accounts.some((a) => a.id === acct.id))?.id ?? clientId;
+              logForm.append('client_id', acctClientId);
+              logForm.append('client_account_id', acct.id);
+              logForm.append('message_type', 'alimtalk_suggestion');
+              logForm.append('message_summary', summary.slice(0, 200));
+              logForm.append('message_text', messageText);
+              logForm.append('sent_at', nowIso);
+
+              if (acct.id === selectedAccountId && currentImage) {
+                logForm.append('image', currentImage, `report_${acctClientId}.png`);
+              } else {
+                // 다른 계좌: 이전에 저장된 최신 이미지 재활용
+                try {
+                  const logsRes = await fetch(
+                    `${API_URL}/api/v1/message-logs?account_id=${acct.id}&limit=10`,
+                    { headers: { ...authLib.getAuthHeader() } }
+                  );
+                  if (logsRes.ok) {
+                    const logsData = await logsRes.json();
+                    const lastWithImage = (logsData.items ?? []).find((l: { has_image: boolean }) => l.has_image);
+                    if (lastWithImage) {
+                      const imgRes = await fetch(
+                        `${API_URL}/api/v1/message-logs/${lastWithImage.id}/image`,
+                        { headers: { ...authLib.getAuthHeader() } }
+                      );
+                      if (imgRes.ok) {
+                        const imgBlob = await imgRes.blob();
+                        logForm.append('image', imgBlob, `report_${acct.id}.png`);
+                      }
+                    }
+                  }
+                } catch { /* 이미지 재활용 실패 시 무시 */ }
+              }
+
+              await fetch(`${API_URL}/api/v1/message-logs`, {
+                method: 'POST',
+                headers: { ...authLib.getAuthHeader() },
+                body: logForm,
+              });
+            }
+          } else {
+            // 상시조회: 단일 로그
+            const logForm = new FormData();
+            logForm.append('client_id', clientId);
+            if (selectedAccountId) logForm.append('client_account_id', selectedAccountId);
+            logForm.append('message_type', 'alimtalk_portal');
+            logForm.append('message_summary', '[알림톡] 상시조회 페이지 개설 안내');
+            logForm.append('message_text', messageText);
+            logForm.append('sent_at', nowIso);
+            await fetch(`${API_URL}/api/v1/message-logs`, {
+              method: 'POST',
+              headers: { ...authLib.getAuthHeader() },
+              body: logForm,
+            });
           }
-
-          await fetch(`${API_URL}/api/v1/message-logs`, {
-            method: 'POST',
-            headers: { ...authLib.getAuthHeader() },
-            body: logForm,
-          });
         } catch { /* 기록 저장 실패 무시 */ }
       } else {
         const err = await res.json().catch(() => ({}));
@@ -6255,6 +6430,7 @@ export default function IRPPage() {
           {/* 발송기록 테이블 + PDF 다운로드 */}
           {tab4ClientId && (
             <Card padding={0}>
+              {/* 헤더: 제목 + 추가 버튼 */}
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '14px 16px', borderBottom: '1px solid #E1E5EB' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                   <div style={{ width: 3, height: 18, borderRadius: 2, backgroundColor: '#1E3A5F', flexShrink: 0 }} />
@@ -6266,17 +6442,50 @@ export default function IRPPage() {
                   )}
                 </div>
                 <button
+                  onClick={() => {
+                    setTab4LogAddData({ client_id: tab4ClientId, client_account_id: tab4FilterAccount, message_type: 'portfolio_save', message_summary: '', message_text: '', sent_at: new Date().toISOString().slice(0, 16) });
+                    setTab4LogAddOpen(true);
+                  }}
+                  style={{
+                    display: 'inline-flex', alignItems: 'center', gap: 5,
+                    padding: '6px 14px', fontSize: '0.8125rem', fontWeight: 600,
+                    color: '#1E3A5F', backgroundColor: '#EEF2F7',
+                    border: '1px solid #D1D9E6', borderRadius: 8, cursor: 'pointer',
+                  }}
+                >
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                  추가
+                </button>
+              </div>
+
+              {/* PDF 날짜 범위 */}
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '10px 16px', backgroundColor: '#F9FAFB', borderBottom: '1px solid #F3F4F6', flexWrap: 'wrap' }}>
+                <span style={{ fontSize: '0.8125rem', color: '#6B7280', fontWeight: 500 }}>PDF 기간:</span>
+                <input
+                  type="date"
+                  value={tab4PdfDateFrom}
+                  onChange={(e) => setTab4PdfDateFrom(e.target.value)}
+                  style={{ padding: '5px 8px', fontSize: '0.8125rem', border: '1px solid #E1E5EB', borderRadius: 6, outline: 'none', color: '#1A1A2E' }}
+                />
+                <span style={{ fontSize: '0.8125rem', color: '#9CA3AF' }}>~</span>
+                <input
+                  type="date"
+                  value={tab4PdfDateTo}
+                  onChange={(e) => setTab4PdfDateTo(e.target.value)}
+                  style={{ padding: '5px 8px', fontSize: '0.8125rem', border: '1px solid #E1E5EB', borderRadius: 6, outline: 'none', color: '#1A1A2E' }}
+                />
+                <button
                   onClick={handleTab4DownloadPDF}
                   disabled={tab4Logs.length === 0 || tab4PdfSaving}
                   style={{
-                    display: 'inline-flex', alignItems: 'center', gap: 6,
-                    padding: '7px 14px', fontSize: '0.8125rem', fontWeight: 600,
+                    display: 'inline-flex', alignItems: 'center', gap: 5,
+                    padding: '5px 12px', fontSize: '0.8125rem', fontWeight: 600,
                     color: tab4Logs.length > 0 ? '#1E3A5F' : '#9CA3AF',
                     backgroundColor: tab4Logs.length > 0 ? '#EEF2F7' : '#F9FAFB',
-                    border: '1px solid #E1E5EB', borderRadius: 8, cursor: tab4Logs.length > 0 ? 'pointer' : 'not-allowed',
+                    border: '1px solid #E1E5EB', borderRadius: 7, cursor: tab4Logs.length > 0 ? 'pointer' : 'not-allowed',
                   }}
                 >
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
                     <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
                     <polyline points="14 2 14 8 20 8" />
                     <line x1="12" y1="18" x2="12" y2="12" />
@@ -6302,6 +6511,7 @@ export default function IRPPage() {
                           <th style={{ padding: '10px 12px', textAlign: 'center', fontWeight: 700, color: '#374151', whiteSpace: 'nowrap', width: 100 }}>계좌</th>
                           <th style={{ padding: '10px 12px', textAlign: 'left', fontWeight: 700, color: '#374151' }}>발송 내용 요약</th>
                           <th style={{ padding: '10px 12px', textAlign: 'center', fontWeight: 700, color: '#374151', whiteSpace: 'nowrap', width: 80 }}>보고서</th>
+                          <th style={{ padding: '10px 12px', textAlign: 'center', fontWeight: 700, color: '#374151', whiteSpace: 'nowrap', width: 90 }}>관리</th>
                         </tr>
                       </thead>
                       <tbody>
@@ -6361,6 +6571,24 @@ export default function IRPPage() {
                               ) : (
                                 <span style={{ color: '#D1D5DB', fontSize: '0.75rem' }}>-</span>
                               )}
+                            </td>
+                            <td style={{ padding: '10px 12px', textAlign: 'center' }}>
+                              <div style={{ display: 'inline-flex', gap: 4 }}>
+                                <button
+                                  onClick={() => handleTab4EditOpen(log)}
+                                  title="수정"
+                                  style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 28, height: 28, borderRadius: 6, border: '1px solid #E1E5EB', backgroundColor: '#F5F7FA', cursor: 'pointer', color: '#374151' }}
+                                >
+                                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+                                </button>
+                                <button
+                                  onClick={() => handleTab4DeleteLog(log.id)}
+                                  title="삭제"
+                                  style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 28, height: 28, borderRadius: 6, border: '1px solid #FCA5A5', backgroundColor: '#FEF2F2', cursor: 'pointer', color: '#DC2626' }}
+                                >
+                                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4h6v2"/></svg>
+                                </button>
+                              </div>
                             </td>
                           </tr>
                         ))}
@@ -6492,6 +6720,136 @@ export default function IRPPage() {
               )}
               {alimtalkSending ? '발송 중...' : '알림톡 발송'}
             </button>
+          </div>
+        </div>
+      )}
+
+      {/* 발송기록 수정 모달 */}
+      {tab4LogEditOpen && tab4LogEditData && (
+        <div style={{ position: 'fixed', inset: 0, zIndex: 1100, display: 'flex', alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(0,0,0,0.45)' }}
+          onClick={(e) => { if (e.target === e.currentTarget) setTab4LogEditOpen(false); }}>
+          <div style={{ backgroundColor: '#fff', borderRadius: 14, padding: 24, width: '100%', maxWidth: 480, boxShadow: '0 20px 60px rgba(0,0,0,0.2)' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 18 }}>
+              <h3 style={{ margin: 0, fontSize: '1rem', fontWeight: 700, color: '#1A1A2E' }}>발송 기록 수정</h3>
+              <button onClick={() => setTab4LogEditOpen(false)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#9CA3AF', padding: 4 }}>
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+              </button>
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+              <div>
+                <label style={{ display: 'block', fontSize: '0.8125rem', fontWeight: 600, color: '#374151', marginBottom: 5 }}>유형</label>
+                <select
+                  value={tab4LogEditData.message_type}
+                  onChange={(e) => setTab4LogEditData({ ...tab4LogEditData, message_type: e.target.value })}
+                  style={{ width: '100%', padding: '8px 10px', fontSize: '0.8125rem', border: '1px solid #E1E5EB', borderRadius: 8, outline: 'none', color: '#1A1A2E' }}
+                >
+                  <option value="portfolio_save">수정저장</option>
+                  <option value="alimtalk_suggestion">변경제안(톡)</option>
+                  <option value="alimtalk_portal">상시조회(톡)</option>
+                  <option value="suggestion_link">변경제안(SMS)</option>
+                  <option value="portal_link">상시조회(SMS)</option>
+                </select>
+              </div>
+              <div>
+                <label style={{ display: 'block', fontSize: '0.8125rem', fontWeight: 600, color: '#374151', marginBottom: 5 }}>발송일</label>
+                <input
+                  type="datetime-local"
+                  value={tab4LogEditData.sent_at}
+                  onChange={(e) => setTab4LogEditData({ ...tab4LogEditData, sent_at: e.target.value })}
+                  style={{ width: '100%', padding: '8px 10px', fontSize: '0.8125rem', border: '1px solid #E1E5EB', borderRadius: 8, outline: 'none', color: '#1A1A2E' }}
+                />
+              </div>
+              <div>
+                <label style={{ display: 'block', fontSize: '0.8125rem', fontWeight: 600, color: '#374151', marginBottom: 5 }}>발송 내용 요약</label>
+                <input
+                  type="text"
+                  value={tab4LogEditData.message_summary}
+                  onChange={(e) => setTab4LogEditData({ ...tab4LogEditData, message_summary: e.target.value })}
+                  maxLength={200}
+                  style={{ width: '100%', padding: '8px 10px', fontSize: '0.8125rem', border: '1px solid #E1E5EB', borderRadius: 8, outline: 'none', color: '#1A1A2E' }}
+                />
+              </div>
+              <div style={{ display: 'flex', gap: 8, marginTop: 4 }}>
+                <button onClick={() => setTab4LogEditOpen(false)} style={{ flex: 1, padding: '10px 0', fontSize: '0.875rem', fontWeight: 600, color: '#6B7280', backgroundColor: '#F3F4F6', border: 'none', borderRadius: 8, cursor: 'pointer' }}>
+                  취소
+                </button>
+                <button onClick={handleTab4EditSave} style={{ flex: 1, padding: '10px 0', fontSize: '0.875rem', fontWeight: 600, color: '#fff', backgroundColor: '#1E3A5F', border: 'none', borderRadius: 8, cursor: 'pointer' }}>
+                  저장
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 발송기록 추가 모달 */}
+      {tab4LogAddOpen && (
+        <div style={{ position: 'fixed', inset: 0, zIndex: 1100, display: 'flex', alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(0,0,0,0.45)' }}
+          onClick={(e) => { if (e.target === e.currentTarget) setTab4LogAddOpen(false); }}>
+          <div style={{ backgroundColor: '#fff', borderRadius: 14, padding: 24, width: '100%', maxWidth: 480, boxShadow: '0 20px 60px rgba(0,0,0,0.2)' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 18 }}>
+              <h3 style={{ margin: 0, fontSize: '1rem', fontWeight: 700, color: '#1A1A2E' }}>발송 기록 추가</h3>
+              <button onClick={() => setTab4LogAddOpen(false)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#9CA3AF', padding: 4 }}>
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+              </button>
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+              <div>
+                <label style={{ display: 'block', fontSize: '0.8125rem', fontWeight: 600, color: '#374151', marginBottom: 5 }}>계좌</label>
+                <select
+                  value={tab4LogAddData.client_account_id}
+                  onChange={(e) => setTab4LogAddData({ ...tab4LogAddData, client_account_id: e.target.value })}
+                  style={{ width: '100%', padding: '8px 10px', fontSize: '0.8125rem', border: '1px solid #E1E5EB', borderRadius: 8, outline: 'none', color: '#1A1A2E' }}
+                >
+                  <option value="">계좌 선택 (선택사항)</option>
+                  {tab4ClientAccounts.map((a) => (
+                    <option key={a.id} value={a.id}>{accountTypeLabel(a.account_type)}{a.account_number ? ` (${a.account_number})` : ''}</option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label style={{ display: 'block', fontSize: '0.8125rem', fontWeight: 600, color: '#374151', marginBottom: 5 }}>유형</label>
+                <select
+                  value={tab4LogAddData.message_type}
+                  onChange={(e) => setTab4LogAddData({ ...tab4LogAddData, message_type: e.target.value })}
+                  style={{ width: '100%', padding: '8px 10px', fontSize: '0.8125rem', border: '1px solid #E1E5EB', borderRadius: 8, outline: 'none', color: '#1A1A2E' }}
+                >
+                  <option value="portfolio_save">수정저장</option>
+                  <option value="alimtalk_suggestion">변경제안(톡)</option>
+                  <option value="alimtalk_portal">상시조회(톡)</option>
+                  <option value="suggestion_link">변경제안(SMS)</option>
+                  <option value="portal_link">상시조회(SMS)</option>
+                </select>
+              </div>
+              <div>
+                <label style={{ display: 'block', fontSize: '0.8125rem', fontWeight: 600, color: '#374151', marginBottom: 5 }}>발송일</label>
+                <input
+                  type="datetime-local"
+                  value={tab4LogAddData.sent_at}
+                  onChange={(e) => setTab4LogAddData({ ...tab4LogAddData, sent_at: e.target.value })}
+                  style={{ width: '100%', padding: '8px 10px', fontSize: '0.8125rem', border: '1px solid #E1E5EB', borderRadius: 8, outline: 'none', color: '#1A1A2E' }}
+                />
+              </div>
+              <div>
+                <label style={{ display: 'block', fontSize: '0.8125rem', fontWeight: 600, color: '#374151', marginBottom: 5 }}>발송 내용 요약</label>
+                <input
+                  type="text"
+                  value={tab4LogAddData.message_summary}
+                  onChange={(e) => setTab4LogAddData({ ...tab4LogAddData, message_summary: e.target.value })}
+                  placeholder="발송 내용 요약을 입력하세요"
+                  maxLength={200}
+                  style={{ width: '100%', padding: '8px 10px', fontSize: '0.8125rem', border: '1px solid #E1E5EB', borderRadius: 8, outline: 'none', color: '#1A1A2E' }}
+                />
+              </div>
+              <div style={{ display: 'flex', gap: 8, marginTop: 4 }}>
+                <button onClick={() => setTab4LogAddOpen(false)} style={{ flex: 1, padding: '10px 0', fontSize: '0.875rem', fontWeight: 600, color: '#6B7280', backgroundColor: '#F3F4F6', border: 'none', borderRadius: 8, cursor: 'pointer' }}>
+                  취소
+                </button>
+                <button onClick={handleTab4AddLog} style={{ flex: 1, padding: '10px 0', fontSize: '0.875rem', fontWeight: 600, color: '#fff', backgroundColor: '#1E3A5F', border: 'none', borderRadius: 8, cursor: 'pointer' }}>
+                  추가
+                </button>
+              </div>
+            </div>
           </div>
         </div>
       )}

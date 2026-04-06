@@ -232,6 +232,76 @@ async def create_message_log(
     )
 
 
+class MessageLogUpdate(BaseModel):
+    message_type: Optional[str] = None
+    message_summary: Optional[str] = None
+    message_text: Optional[str] = None
+    sent_at: Optional[str] = None
+
+
+@router.put("/{log_id}", response_model=MessageLogResponse)
+async def update_message_log(
+    log_id: str,
+    body: MessageLogUpdate,
+    current_user=Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Update a message log entry (summary, text, sent_at)."""
+    result = await db.execute(
+        select(MessageLog).where(
+            MessageLog.id == log_id,
+            MessageLog.user_id == current_user.id,
+        )
+    )
+    log = result.scalar_one_or_none()
+    if not log:
+        raise HTTPException(404, "Message log not found")
+
+    if body.message_type is not None:
+        log.message_type = body.message_type
+    if body.message_summary is not None:
+        log.message_summary = body.message_summary[:200]
+    if body.message_text is not None:
+        log.message_text = body.message_text
+    if body.sent_at is not None:
+        try:
+            clean = body.sent_at.replace('Z', '+00:00')
+            parsed = datetime.fromisoformat(clean)
+            log.sent_at = parsed.replace(tzinfo=None)
+        except ValueError:
+            pass
+
+    await db.commit()
+    await db.refresh(log)
+
+    client_res = await db.execute(select(Client.name).where(Client.id == log.client_id))
+    client_name = client_res.scalar() or "알 수 없음"
+    account_type = account_number = sec_company = None
+    if log.client_account_id:
+        acct_res = await db.execute(select(ClientAccount).where(ClientAccount.id == log.client_account_id))
+        acct = acct_res.scalar_one_or_none()
+        if acct:
+            account_type = acct.account_type
+            account_number = acct.account_number
+            sec_company = acct.securities_company
+
+    return MessageLogResponse(
+        id=log.id,
+        client_id=log.client_id,
+        client_name=client_name,
+        client_account_id=log.client_account_id,
+        account_type=account_type,
+        account_number=account_number,
+        securities_company=sec_company,
+        message_type=log.message_type,
+        message_summary=log.message_summary,
+        message_text=log.message_text,
+        has_image=bool(log.image_path),
+        sent_at=log.sent_at.isoformat(),
+        created_at=log.created_at.isoformat(),
+    )
+
+
 @router.get("/{log_id}/image")
 async def get_message_log_image(
     log_id: str,
