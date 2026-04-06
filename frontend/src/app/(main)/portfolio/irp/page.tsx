@@ -4169,6 +4169,10 @@ export default function IRPPage() {
     if (!reportData) return;
     setAiCommentLoading(true);
     try {
+      // 기존 보유 + 신규 가상 상품 통합
+      const allHoldings = [...(reportData.holdings ?? []), ...reportExtraHoldings];
+      const totalEval = (reportData.snapshot?.total_evaluation ?? 0) + (reportData.snapshot?.deposit_amount ?? 0);
+
       const res = await fetch(`${API_URL}/api/v1/reports/ai-comment`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', ...authLib.getAuthHeader() },
@@ -4176,37 +4180,39 @@ export default function IRPPage() {
           client_name: reportClientName,
           account_type: reportData.account?.account_type,
           snapshot_date: reportData.snapshot?.snapshot_date,
-          total_evaluation: reportData.snapshot?.total_evaluation,
+          total_evaluation: totalEval,
           total_return_rate: reportData.snapshot?.total_return_rate,
-          holdings: (() => {
-            const totalEval = reportData.snapshot?.total_evaluation ?? 0;
-            return reportData.holdings?.map((h) => ({
-              product_name: h.product_name,
-              product_type: h.product_type,
-              risk_level: h.risk_level,
-              region: h.region,
-              evaluation_amount: h.evaluation_amount,
-              return_rate: h.return_rate,
-              weight: h.weight ?? (totalEval > 0 && h.evaluation_amount ? parseFloat(((h.evaluation_amount / totalEval) * 100).toFixed(1)) : 0),
-            }));
-          })(),
+          holdings: allHoldings.map((h) => ({
+            product_name: h.product_name,
+            product_type: h.product_type,
+            risk_level: h.risk_level,
+            region: h.region,
+            evaluation_amount: h.evaluation_amount ?? 0,
+            return_rate: h.return_rate ?? 0,
+            weight: h.weight ?? (totalEval > 0 && (h.evaluation_amount ?? 0) > 0
+              ? parseFloat((((h.evaluation_amount ?? 0) / totalEval) * 100).toFixed(1))
+              : 0),
+          })),
           comment_type: 'analysis',
           changes_summary: (() => {
-            if (!reportData.holdings || Object.keys(modifiedWeights).length === 0) return undefined;
-            const totalEval = reportData.snapshot?.total_evaluation ?? 0;
-            return reportData.holdings
+            if (Object.keys(modifiedWeights).length === 0) return undefined;
+            const lines = allHoldings
               .filter((h) => modifiedWeights[h.id] != null)
               .map((h) => {
-                const before = h.weight ?? (totalEval > 0 && h.evaluation_amount ? parseFloat(((h.evaluation_amount / totalEval) * 100).toFixed(1)) : 0);
+                const isNew = h.id.startsWith('virtual_');
+                const before = h.weight ?? (totalEval > 0 && (h.evaluation_amount ?? 0) > 0
+                  ? parseFloat((((h.evaluation_amount ?? 0) / totalEval) * 100).toFixed(1))
+                  : 0);
                 const after = modifiedWeights[h.id];
                 const diff = after - before;
-                if (after === 0) return `- [전액 매도] ${h.product_name}: ${before.toFixed(1)}% → 0%`;
+                if (isNew && after > 0) return `- [신규 편입] ${h.product_name}: → ${after.toFixed(1)}%`;
+                if (after === 0 && !isNew && before > 0) return `- [전액 매도] ${h.product_name}: ${before.toFixed(1)}% → 0%`;
                 if (diff > 0.5) return `- [비중 확대] ${h.product_name}: ${before.toFixed(1)}% → ${after.toFixed(1)}% (+${diff.toFixed(1)}%p)`;
                 if (diff < -0.5) return `- [비중 축소] ${h.product_name}: ${before.toFixed(1)}% → ${after.toFixed(1)}% (${diff.toFixed(1)}%p)`;
                 return null;
               })
-              .filter(Boolean)
-              .join('\n') || undefined;
+              .filter(Boolean);
+            return lines.length > 0 ? lines.join('\n') : undefined;
           })(),
         }),
       });
@@ -4228,6 +4234,10 @@ export default function IRPPage() {
     if (!reportData) return;
     setAiChangeCommentLoading(true);
     try {
+      // 기존 보유 + 신규 가상 상품 통합
+      const allHoldings = [...(reportData.holdings ?? []), ...reportExtraHoldings];
+      const totalEval = (reportData.snapshot?.total_evaluation ?? 0) + (reportData.snapshot?.deposit_amount ?? 0);
+
       const res = await fetch(`${API_URL}/api/v1/reports/ai-comment`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', ...authLib.getAuthHeader() },
@@ -4235,28 +4245,28 @@ export default function IRPPage() {
           client_name: reportClientName,
           account_type: reportData.account?.account_type,
           snapshot_date: reportData.snapshot?.snapshot_date,
-          total_evaluation: reportData.snapshot?.total_evaluation,
+          total_evaluation: totalEval,
           total_return_rate: reportData.snapshot?.total_return_rate,
-          holdings: (() => {
-            const totalEval = reportData.snapshot?.total_evaluation ?? 0;
-            return reportData.holdings?.map((h) => ({
+          holdings: allHoldings.map((h) => ({
+            product_name: h.product_name,
+            product_type: h.product_type,
+            risk_level: h.risk_level,
+            region: h.region,
+            evaluation_amount: h.evaluation_amount ?? 0,
+            return_rate: h.return_rate ?? 0,
+            weight: h.weight ?? (totalEval > 0 && (h.evaluation_amount ?? 0) > 0
+              ? parseFloat((((h.evaluation_amount ?? 0) / totalEval) * 100).toFixed(1))
+              : 0),
+          })),
+          holdings_after: allHoldings
+            .filter((h) => modifiedWeights[h.id] != null && modifiedWeights[h.id] > 0)
+            .map((h) => ({
               product_name: h.product_name,
               product_type: h.product_type,
               risk_level: h.risk_level,
               region: h.region,
-              evaluation_amount: h.evaluation_amount,
-              return_rate: h.return_rate,
-              weight: h.weight ?? (totalEval > 0 && h.evaluation_amount ? parseFloat(((h.evaluation_amount / totalEval) * 100).toFixed(1)) : 0),
-            }));
-          })(),
-          holdings_after: (() => {
-            return reportData.holdings?.filter((h) => modifiedWeights[h.id] != null).map((h) => ({
-              product_name: h.product_name,
-              product_type: h.product_type,
-              region: h.region,
               weight: modifiedWeights[h.id],
-            }));
-          })(),
+            })),
           comment_type: 'change',
           manager_note: managerNote || undefined,
         }),
