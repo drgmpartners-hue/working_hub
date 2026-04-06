@@ -718,7 +718,8 @@ const ReportView = forwardRef<HTMLDivElement, ReportViewProps>(
     const holdings = reportData?.holdings ?? [];
     const snap = reportData?.snapshot ?? null;
     const account = reportData?.account ?? null;
-    const totalEval = snap?.total_evaluation ?? 0;
+    // deposit_amount(예수금)도 포함 — Tab2와 동일한 기준으로 계산
+    const totalEval = (snap?.total_evaluation ?? 0) + (snap?.deposit_amount ?? 0);
 
     // 지역분산 pie data
     const regionData = useMemo(() => {

@@ -3109,6 +3109,7 @@ export default function IRPPage() {
   const [tab4FilterAccount, setTab4FilterAccount] = useState('');
   const [tab4FilterPeriod, setTab4FilterPeriod] = useState<'6m' | '1y' | 'all'>('1y');
   const tab4HistoryRef = useRef<HTMLDivElement>(null);
+  const tab4PdfRef = useRef<HTMLDivElement>(null);
   const [tab4PdfSaving, setTab4PdfSaving] = useState(false);
   // PDF 날짜 범위 (기본: 최근 1년)
   const [tab4PdfDateFrom, setTab4PdfDateFrom] = useState<string>(() => {
@@ -4366,10 +4367,9 @@ export default function IRPPage() {
   }
 
   async function handleTab4DownloadPDF() {
-    if (!tab4HistoryRef.current) return;
+    if (!tab4PdfRef.current) return;
     setTab4PdfSaving(true);
     try {
-      // 날짜 범위 필터링
       const fromDate = new Date(tab4PdfDateFrom + 'T00:00:00');
       const toDate = new Date(tab4PdfDateTo + 'T23:59:59');
       const filteredLogs = tab4Logs.filter((log) => {
@@ -4380,53 +4380,35 @@ export default function IRPPage() {
         showToast('선택한 기간에 발송 기록이 없습니다.');
         return;
       }
-      const clientName = clients.find((c) => c.id === tab4ClientId)?.name ?? '전체';
+      // html2canvas로 캡처 (한국어 깨짐 없음)
+      const html2canvas = (await import('html2canvas')).default;
       const { default: jsPDF } = await import('jspdf');
+      const canvas = await html2canvas(tab4PdfRef.current, { scale: 2, backgroundColor: '#fff', useCORS: true });
       const pdf = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
       const pageW = pdf.internal.pageSize.getWidth();
-      const margin = 12;
-      const colW = [(pageW - margin * 2) * 0.07, (pageW - margin * 2) * 0.15, (pageW - margin * 2) * 0.16, (pageW - margin * 2) * 0.14, (pageW - margin * 2) * 0.48];
-      const headers = ['No', '발송일', '유형', '계좌', '발송 내용 요약'];
-      // Title
-      pdf.setFontSize(14); pdf.setFont('helvetica', 'bold');
-      pdf.text(`발송 기록 - ${clientName}`, margin, 14);
-      pdf.setFontSize(9); pdf.setFont('helvetica', 'normal');
-      pdf.text(`기간: ${tab4PdfDateFrom} ~ ${tab4PdfDateTo}  |  총 ${filteredLogs.length}건`, margin, 20);
-      // Header row
-      let y = 28;
-      pdf.setFillColor(245, 247, 250); pdf.rect(margin, y, pageW - margin * 2, 7, 'F');
-      pdf.setFontSize(8.5); pdf.setFont('helvetica', 'bold');
-      let x = margin;
-      headers.forEach((h, i) => { pdf.text(h, x + 2, y + 5); x += colW[i]; });
-      y += 7;
-      // Data rows
-      pdf.setFont('helvetica', 'normal'); pdf.setFontSize(8);
-      const msgTypeLabel = (t: string) =>
-        t === 'portfolio_save' ? '수정저장' : t === 'suggestion_link' ? '변경제안(SMS)' : t === 'alimtalk_suggestion' ? '변경제안(톡)' : t === 'alimtalk_portal' ? '상시조회(톡)' : '상시조회(SMS)';
-      for (let i = 0; i < filteredLogs.length; i++) {
-        const log = filteredLogs[i];
-        if (i % 2 === 0) { pdf.setFillColor(252, 252, 253); pdf.rect(margin, y, pageW - margin * 2, 7, 'F'); }
-        x = margin;
-        const cells = [
-          String(i + 1),
-          new Date(log.sent_at).toLocaleDateString('ko-KR'),
-          msgTypeLabel(log.message_type),
-          log.account_type ? accountTypeLabel(log.account_type) : '-',
-          log.message_summary,
-        ];
-        cells.forEach((cell, ci) => {
-          const maxW = colW[ci] - 4;
-          const txt = pdf.splitTextToSize(cell, maxW)[0] ?? '';
-          pdf.text(txt, x + 2, y + 5);
-          x += colW[ci];
-        });
-        y += 7;
-        if (y > pdf.internal.pageSize.getHeight() - 16) {
-          pdf.addPage();
-          y = 14;
-        }
+      const pageH = pdf.internal.pageSize.getHeight();
+      const margin = 8;
+      const contentW = pageW - margin * 2;
+      const mmPerPx = contentW / canvas.width;
+      const pageSliceH = Math.floor((pageH - margin * 2) / mmPerPx);
+      let offset = 0;
+      let isFirst = true;
+      while (offset < canvas.height) {
+        const sliceH = Math.min(pageSliceH, canvas.height - offset);
+        if (sliceH <= 0) break;
+        const sliceCanvas = document.createElement('canvas');
+        sliceCanvas.width = canvas.width;
+        sliceCanvas.height = sliceH;
+        const ctx = sliceCanvas.getContext('2d');
+        if (!ctx) break;
+        ctx.drawImage(canvas, 0, offset, canvas.width, sliceH, 0, 0, canvas.width, sliceH);
+        if (!isFirst) pdf.addPage();
+        isFirst = false;
+        pdf.addImage(sliceCanvas.toDataURL('image/png'), 'PNG', margin, margin, contentW, sliceH * mmPerPx);
+        offset += sliceH;
       }
       const { saveAs } = await import('file-saver');
+      const clientName = clients.find((c) => c.id === tab4ClientId)?.name ?? '전체';
       saveAs(pdf.output('blob'), `발송내역_${clientName}_${tab4PdfDateFrom}~${tab4PdfDateTo}.pdf`);
     } catch (e) {
       showToast(e instanceof Error ? e.message : 'PDF 다운로드 실패');
@@ -6611,6 +6593,47 @@ export default function IRPPage() {
           )}
         </div>
       )}
+
+      {/* PDF 캡처용 hidden 테이블 (한국어 렌더링) */}
+      {tab4ClientId && (() => {
+        const fromDate = new Date(tab4PdfDateFrom + 'T00:00:00');
+        const toDate = new Date(tab4PdfDateTo + 'T23:59:59');
+        const pdfLogs = tab4Logs.filter((log) => { const s = new Date(log.sent_at); return s >= fromDate && s <= toDate; });
+        const msgTypeLabelPdf = (t: string) => t === 'portfolio_save' ? '수정저장' : t === 'suggestion_link' ? '변경제안(SMS)' : t === 'alimtalk_suggestion' ? '변경제안(톡)' : t === 'alimtalk_portal' ? '상시조회(톡)' : '상시조회(SMS)';
+        const clientNamePdf = clients.find((c) => c.id === tab4ClientId)?.name ?? '';
+        return (
+          <div ref={tab4PdfRef} style={{ position: 'fixed', left: '-9999px', top: 0, width: 794, backgroundColor: '#fff', padding: '24px 28px', fontFamily: 'Pretendard, -apple-system, sans-serif' }}>
+            <div style={{ marginBottom: 14 }}>
+              <div style={{ fontSize: 18, fontWeight: 700, color: '#1A1A2E', marginBottom: 4 }}>발송 기록 - {clientNamePdf}</div>
+              <div style={{ fontSize: 12, color: '#6B7280' }}>기간: {tab4PdfDateFrom} ~ {tab4PdfDateTo} &nbsp;|&nbsp; 총 {pdfLogs.length}건</div>
+            </div>
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
+              <thead>
+                <tr style={{ backgroundColor: '#1E3A5F' }}>
+                  {['No', '발송일', '유형', '계좌', '발송 내용 요약'].map((h) => (
+                    <th key={h} style={{ padding: '8px 10px', textAlign: h === '발송 내용 요약' ? 'left' : 'center', color: '#fff', fontWeight: 700, whiteSpace: 'nowrap' }}>{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {pdfLogs.map((log, idx) => (
+                  <tr key={log.id} style={{ backgroundColor: idx % 2 === 0 ? '#fff' : '#F9FAFB', borderBottom: '1px solid #E5E7EB' }}>
+                    <td style={{ padding: '7px 10px', textAlign: 'center', color: '#6B7280', width: 36 }}>{idx + 1}</td>
+                    <td style={{ padding: '7px 10px', textAlign: 'center', color: '#1A1A2E', whiteSpace: 'nowrap', width: 100 }}>{new Date(log.sent_at).toLocaleDateString('ko-KR')}</td>
+                    <td style={{ padding: '7px 10px', textAlign: 'center', width: 90 }}>
+                      <span style={{ display: 'inline-block', padding: '2px 7px', borderRadius: 4, fontSize: 11, fontWeight: 600, backgroundColor: log.message_type === 'portfolio_save' ? '#EDE9FE' : log.message_type.includes('suggestion') ? '#FFFBEB' : log.message_type.includes('alimtalk') ? '#FEF3C7' : '#ECFDF5', color: log.message_type === 'portfolio_save' ? '#6D28D9' : log.message_type.includes('suggestion') ? '#92400E' : log.message_type.includes('alimtalk') ? '#92400E' : '#059669' }}>
+                        {msgTypeLabelPdf(log.message_type)}
+                      </span>
+                    </td>
+                    <td style={{ padding: '7px 10px', textAlign: 'center', fontSize: 11, color: '#6B7280', width: 80 }}>{log.account_type ? accountTypeLabel(log.account_type) : '-'}</td>
+                    <td style={{ padding: '7px 10px', textAlign: 'left', color: '#374151' }}>{log.message_summary}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        );
+      })()}
 
       {/* 알림톡 발송 모달 */}
       {alimtalkModalOpen && (
