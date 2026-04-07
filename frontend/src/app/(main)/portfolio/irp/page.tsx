@@ -1155,13 +1155,19 @@ function Tab2Section({
     /* Identify row1 product — fixed name regardless of account type */
     const row1Name = '예수금/자동운용상품(고유계정대)';
 
-    const row1Holding = snap.holdings.find(
-      (h) => h.product_name === '자동운용상품(고유계정대)' || h.product_name === '예수금' || h.product_name === '예수금/자동운용상품(고유계정대)'
-    );
+    /*
+     * Row1 판별:
+     *  - 연금저축: '예수금' 이름이 포함된 모든 상품(원회예수금, 예수금 등) → row1 흡수
+     *  - IRP: '자동운용상품(고유계정대)' → 항상 row1 고정
+     * 두 패턴 모두 row1에 고정되므로, 아래 상품 목록에 절대 중복 노출 금지.
+     */
+    const isRow1Type = (h: Holding): boolean => {
+      const name = (h.product_name ?? '').trim();
+      return name.includes('예수금') || name.includes('자동운용상품(고유계정대)');
+    };
 
-    const otherHoldings = snap.holdings.filter(
-      (h) => h.product_name !== '자동운용상품(고유계정대)' && h.product_name !== '예수금' && h.product_name !== '예수금/자동운용상품(고유계정대)'
-    );
+    const row1Holding = snap.holdings.find(isRow1Type);
+    const otherHoldings = snap.holdings.filter((h) => !isRow1Type(h));
 
     const rows: RebalRow[] = [];
 
