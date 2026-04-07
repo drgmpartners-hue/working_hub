@@ -11,10 +11,11 @@ from fastapi.responses import StreamingResponse
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from sqlalchemy import update as sa_update
 from app.db.session import get_db
 from app.core.deps import CurrentUser, get_current_user
 from app.core.config import settings
-from app.models.client import Client
+from app.models.client import Client, ClientAccount
 from app.schemas.client import (
     ClientCreate,
     ClientUpdate,
@@ -427,3 +428,25 @@ async def patch_client_portal_info(
     else:
         client.ssn_masked = None
     return client
+
+
+@router.post("/migrate-account-types")
+async def migrate_account_types(
+    current_user=Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """pension1/pension2/pension_saving → pension 으로 일괄 변환."""
+    mapping = {"pension1": "pension", "pension2": "pension", "pension_saving": "pension"}
+    total = 0
+    for old_val, new_val in mapping.items():
+        result = await db.execute(
+            sa_update(ClientAccount)
+            .where(ClientAccount.client_id.in_(
+                select(Client.id).where(Client.user_id == current_user.id)
+            ))
+            .where(ClientAccount.account_type == old_val)
+            .values(account_type=new_val)
+        )
+        total += result.rowcount
+    await db.commit()
+    return {"migrated": total}

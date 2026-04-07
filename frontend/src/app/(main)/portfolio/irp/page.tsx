@@ -181,10 +181,6 @@ const accountTypeLabel = (t: string) =>
     retirement: '퇴직연금',
     stock: '주식계좌',
     other: '기타계좌',
-    // 하위호환
-    pension1: '연금저축',
-    pension2: '연금저축',
-    pension_saving: '연금저축',
   } as Record<string, string>)[t] || t;
 
 function todayString(): string {

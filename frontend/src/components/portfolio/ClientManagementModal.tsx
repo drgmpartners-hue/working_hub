@@ -358,23 +358,41 @@ export function ClientManagementModal({ isOpen, onClose, onClientAdded }: Client
       })
     );
 
-    // account_type 기본값 자동 생성 (DB에 없는 항목만)
+    // account_type: 정확히 6종만 유지 (불필요한 항목 삭제 + 누락 항목 생성)
+    const allowedValues = new Set(DEFAULT_ACCOUNT_TYPES.map((d) => d.value));
     const existingValues = new Set(results.account_type.map((o) => o.value));
-    const missing = DEFAULT_ACCOUNT_TYPES.filter((d) => !existingValues.has(d.value));
-    if (missing.length > 0) {
-      const created: FieldOption[] = [];
-      for (const d of missing) {
+
+    // 불필요한 항목 삭제 (pension1, pension2, pension_saving 등)
+    for (const opt of results.account_type) {
+      if (!allowedValues.has(opt.value)) {
         try {
-          const res = await fetch(`${API_URL}/api/v1/field-options/account_type`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json', ...authLib.getAuthHeader() },
-            body: JSON.stringify({ field_name: 'account_type', ...d }),
+          await fetch(`${API_URL}/api/v1/field-options/account_type/${opt.id}`, {
+            method: 'DELETE',
+            headers: { ...authLib.getAuthHeader() },
           });
-          if (res.ok) created.push(await res.json());
         } catch { /* silent */ }
       }
-      results.account_type = [...results.account_type, ...created].sort((a, b) => a.sort_order - b.sort_order);
     }
+
+    // 누락 항목 생성
+    const missing = DEFAULT_ACCOUNT_TYPES.filter((d) => !existingValues.has(d.value));
+    const created: FieldOption[] = [];
+    for (const d of missing) {
+      try {
+        const res = await fetch(`${API_URL}/api/v1/field-options/account_type`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', ...authLib.getAuthHeader() },
+          body: JSON.stringify({ field_name: 'account_type', ...d }),
+        });
+        if (res.ok) created.push(await res.json());
+      } catch { /* silent */ }
+    }
+
+    // 허용된 항목만 유지
+    results.account_type = [
+      ...results.account_type.filter((o) => allowedValues.has(o.value)),
+      ...created,
+    ].sort((a, b) => a.sort_order - b.sort_order);
 
     setFieldOptions(results);
   }, []);
@@ -412,8 +430,14 @@ export function ClientManagementModal({ isOpen, onClose, onClientAdded }: Client
 
   useEffect(() => {
     if (isOpen) {
-      loadClients();
-      loadFieldOptions();
+      // 구 계좌유형 마이그레이션 (pension1/pension2 → pension) 후 로드
+      fetch(`${API_URL}/api/v1/clients/migrate-account-types`, {
+        method: 'POST',
+        headers: { ...authLib.getAuthHeader() },
+      }).catch(() => {}).finally(() => {
+        loadClients();
+        loadFieldOptions();
+      });
     }
   }, [isOpen, loadClients, loadFieldOptions]);
 

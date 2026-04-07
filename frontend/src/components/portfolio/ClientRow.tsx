@@ -79,10 +79,6 @@ const ACCOUNT_TYPE_LABELS: Record<string, string> = {
   retirement: '퇴직연금',
   stock: '주식계좌',
   other: '기타계좌',
-  // 하위호환
-  pension1: '연금저축',
-  pension2: '연금저축',
-  pension_saving: '연금저축',
 };
 
 const inputStyle: React.CSSProperties = {
