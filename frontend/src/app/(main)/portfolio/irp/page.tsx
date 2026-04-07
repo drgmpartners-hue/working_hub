@@ -3065,6 +3065,13 @@ export default function IRPPage() {
   const [reportSaved, setReportSaved] = useState(false);
   const [savedSuggestionId, setSavedSuggestionId] = useState('');
   const [reportSaving, setReportSaving] = useState(false);
+  const [reportFullTable, setReportFullTable] = useState<Array<{
+    seq: number; product_name: string; product_code?: string; product_type?: string;
+    risk_level?: string; region?: string; reference_price?: number;
+    evaluation_amount?: number; return_rate?: number; eval_ratio?: number;
+    rebal_ratio?: number; rebal_amount?: number; sell_buy?: number; shares?: number;
+    is_new?: boolean; is_deposit?: boolean;
+  }> | null>(null);
 
   /* ---------- product master state ---------- */
   const [productMasters, setProductMasters] = useState<ProductMaster[]>([]);
@@ -4051,6 +4058,7 @@ export default function IRPPage() {
     setReportLoading(true);
     setReportData(null);
     setModifiedWeights({});
+    setReportFullTable(null);
     setAiComment('');
     setReportSaved(false);
     setSavedSuggestionId('');
@@ -4144,6 +4152,10 @@ export default function IRPPage() {
               setReportExtraHoldings(newHoldings);
               setModifiedWeights(converted);
             }
+
+            // _full_table: 2번탭에서 저장된 데이터 그대로 사용 (3번탭 재계산 방지)
+            const ft = Array.isArray(rawWeights._full_table) ? rawWeights._full_table as typeof reportFullTable : null;
+            if (ft && ft.length > 0) setReportFullTable(ft);
 
             // AI 코멘트 복원 (suggestion에 저장된 것 우선)
             if (sug.ai_comment) {
@@ -4314,6 +4326,7 @@ export default function IRPPage() {
     setReportDateList([]);
     setReportDate('');
     setReportData(null);
+    setReportFullTable(null);
     setReportClientName('');
     setModifiedWeights({});
     setAiComment('');
@@ -4324,6 +4337,7 @@ export default function IRPPage() {
     setSelectedAccountId(accountId);
     setReportDate('');
     setReportData(null);
+    setReportFullTable(null);
     setModifiedWeights({});
     setAiComment('');
     setAiChangeComment('');
@@ -6280,6 +6294,7 @@ export default function IRPPage() {
             clientName={reportClientName}
             modifiedWeights={modifiedWeights}
             extraHoldings={reportExtraHoldings}
+            fullTable={reportFullTable}
             onWeightChange={(id, val) => setModifiedWeights((prev) => ({ ...prev, [id]: val }))}
             aiComment={aiComment}
             onAiCommentChange={setAiComment}

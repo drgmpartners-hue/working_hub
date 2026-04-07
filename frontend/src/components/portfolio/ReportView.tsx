@@ -67,11 +67,31 @@ interface ReportData {
 /*  Props                                                               */
 /* ------------------------------------------------------------------ */
 
+interface FullTableRow {
+  seq: number;
+  product_name: string;
+  product_code?: string;
+  product_type?: string;
+  risk_level?: string;
+  region?: string;
+  reference_price?: number;
+  evaluation_amount?: number;
+  return_rate?: number;
+  eval_ratio?: number;
+  rebal_ratio?: number;
+  rebal_amount?: number;
+  sell_buy?: number;
+  shares?: number;
+  is_new?: boolean;
+  is_deposit?: boolean;
+}
+
 interface ReportViewProps {
   reportData: ReportData | null;
   clientName: string;
   modifiedWeights: Record<string, number>;
   extraHoldings?: Holding[];
+  fullTable?: FullTableRow[] | null;
   onWeightChange: (holdingId: string, value: number) => void;
   aiComment?: string;
   onAiCommentChange?: (val: string) => void;
@@ -699,6 +719,7 @@ const ReportView = forwardRef<HTMLDivElement, ReportViewProps>(
     clientName,
     modifiedWeights,
     extraHoldings = [],
+    fullTable = null,
     onWeightChange,
     aiComment = '',
     onAiCommentChange,
@@ -1278,7 +1299,7 @@ const ReportView = forwardRef<HTMLDivElement, ReportViewProps>(
           </div>
           <div style={{ padding: '20px 16px' }}>
 
-        {Object.keys(modifiedWeights).length === 0 ? (
+        {(!fullTable || fullTable.length === 0) && Object.keys(modifiedWeights).length === 0 ? (
           <div style={{ padding: '40px 20px', textAlign: 'center', color: '#9CA3AF' }}>
             <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="#D1D5DB" strokeWidth="1.5" style={{ margin: '0 auto 12px', display: 'block' }}>
               <circle cx="12" cy="12" r="10" />
@@ -1293,7 +1314,95 @@ const ReportView = forwardRef<HTMLDivElement, ReportViewProps>(
               이 보고서를 다시 생성해주세요.
             </p>
           </div>
-        ) : (
+        ) : fullTable && fullTable.length > 0 ? (() => {
+          /* 2번탭 저장 데이터(_full_table)를 그대로 표시 — 재계산 없음 */
+          const ft = [...fullTable].sort((a, b) => a.seq - b.seq);
+          const totalFtEval = ft.reduce((s, r) => s + (r.evaluation_amount ?? 0), 0);
+          const totalFtRebal = ft.reduce((s, r) => s + (r.rebal_amount ?? 0), 0);
+          const totalFtSellBuy = ft.reduce((s, r) => s + (r.sell_buy ?? 0), 0);
+          const thS = { ...thStyle, padding: '5px 8px', fontSize: '0.6875rem' };
+          const thLS = { ...thLeftStyle, padding: '5px 8px', fontSize: '0.6875rem' };
+          const tdS = { ...tdStyle, padding: '4px 8px', fontSize: '0.75rem' };
+          const tdLS = { ...tdLeftStyle, padding: '4px 8px', fontSize: '0.6875rem' };
+          return (
+            <div style={{ overflowX: 'auto' }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.6875rem' }}>
+                <thead>
+                  <tr>
+                    <th style={{ ...thLS, minWidth: 140 }}>상품명</th>
+                    <th style={thS}>기준가</th>
+                    <th style={thS}>평가금액</th>
+                    <th style={thS}>수익률</th>
+                    <th style={thS}>현재비중</th>
+                    <th style={{ ...thS, backgroundColor: '#1E3A5F', color: '#fff' }}>수정비중</th>
+                    <th style={{ ...thS, backgroundColor: '#1E3A5F', color: '#fff' }}>변경후금액</th>
+                    <th style={{ ...thS, backgroundColor: '#1E3A5F', color: '#fff' }}>Sell/Buy</th>
+                    <th style={{ ...thS, backgroundColor: '#1E3A5F', color: '#fff' }}>좌수</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {ft.map((r, idx) => {
+                    const isDeposit = r.is_deposit;
+                    const isNew = r.is_new && !isDeposit;
+                    const sellBuyColor = (r.sell_buy ?? 0) > 0 ? '#10B981' : (r.sell_buy ?? 0) < 0 ? '#EF4444' : '#374151';
+                    const rebalRatioDisplay = isDeposit ? `${(r.rebal_ratio ?? 0).toFixed(1)}%` : `${(r.rebal_ratio ?? 0).toFixed(1)}%`;
+                    return (
+                      <tr key={idx} style={{ backgroundColor: isDeposit ? '#D1FAE5' : isNew ? '#F0FDF4' : 'transparent', borderBottom: '1px solid #F3F4F6' }}>
+                        <td style={{ ...tdLS }}>
+                          <div style={{ fontWeight: 600, color: isDeposit ? '#065F46' : '#1A1A2E' }}>
+                            {r.product_name}
+                            {isNew && <span style={{ marginLeft: 4, fontSize: '0.625rem', backgroundColor: '#DCFCE7', color: '#166534', padding: '1px 5px', borderRadius: 4, fontWeight: 700 }}>신규</span>}
+                          </div>
+                          {(r.product_type || r.region) && (
+                            <div style={{ fontSize: '0.625rem', color: '#6B7280', marginTop: 1 }}>
+                              {[r.product_type, r.region].filter(Boolean).join(' · ')}
+                            </div>
+                          )}
+                        </td>
+                        <td style={tdS}>{isDeposit ? '-' : fmt(r.reference_price)}</td>
+                        <td style={tdS}>{fmt(r.evaluation_amount)}</td>
+                        <td style={{ ...tdS, color: (r.return_rate ?? 0) >= 0 ? '#10B981' : '#EF4444' }}>
+                          {isDeposit ? '-' : `${(r.return_rate ?? 0).toFixed(2)}%`}
+                        </td>
+                        <td style={tdS}>{`${(r.eval_ratio ?? 0).toFixed(1)}%`}</td>
+                        <td style={{ ...tdS, borderLeft: '2px solid #1E3A5F', fontWeight: 600 }}>
+                          {rebalRatioDisplay}
+                        </td>
+                        <td style={{ ...tdS, color: '#1E3A5F', fontWeight: 600 }}>{fmt(r.rebal_amount)}</td>
+                        <td style={{ ...tdS, color: sellBuyColor, fontWeight: 600 }}>
+                          {(r.sell_buy ?? 0) === 0 ? '-' : `${(r.sell_buy ?? 0) > 0 ? '+' : ''}${fmt(r.sell_buy)}`}
+                        </td>
+                        <td style={{ ...tdS, color: '#374151' }}>
+                          {isDeposit ? '-' : ((r.shares ?? 0) === 0 ? '-' : fmt(r.shares))}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+                <tfoot>
+                  <tr style={{ ...totalRowStyle, padding: '4px 8px', fontSize: '0.75rem' }}>
+                    <td style={{ ...tdLS, fontWeight: 700 }}>합계</td>
+                    <td style={tdS}>-</td>
+                    <td style={{ ...tdS, fontWeight: 700 }}>{fmt(totalFtEval)}</td>
+                    <td style={tdS}>-</td>
+                    <td style={tdS}>-</td>
+                    <td style={{ ...tdS, borderLeft: '2px solid #1E3A5F', fontWeight: 700 }}>100.0%</td>
+                    <td style={{ ...tdS, fontWeight: 700 }}>{fmt(totalFtRebal)}</td>
+                    <td style={{ ...tdS, color: Math.abs(totalFtSellBuy) < 100 ? '#374151' : totalFtSellBuy > 0 ? '#10B981' : '#EF4444', fontWeight: 700 }}>
+                      {Math.abs(totalFtSellBuy) < 100 ? '0' : `${totalFtSellBuy > 0 ? '+' : ''}${fmt(totalFtSellBuy)}`}
+                    </td>
+                    <td style={tdS}>-</td>
+                  </tr>
+                </tfoot>
+              </table>
+              {Math.abs(totalFtSellBuy) < 100 && (
+                <p style={{ fontSize: '0.75rem', color: '#10B981', marginTop: 8, display: 'flex', alignItems: 'center', gap: 4 }}>
+                  ✓ 수정비중 합계가 100%입니다.
+                </p>
+              )}
+            </div>
+          );
+        })() : (
           <WeightEditor
             holdings={[...holdings, ...extraHoldings].filter(h => modifiedWeights[h.id] !== undefined)}
             totalEval={totalEval}
