@@ -10,10 +10,11 @@ router = APIRouter(prefix="/stock-search", tags=["stock-search"])
 async def search(
     q: str = Query("", description="Search query (product name or code)"),
     limit: int = Query(20, ge=1, le=100),
+    stock_type: str = Query("", description="Filter: etf, kr_stock, us_stock"),
     current_user=Depends(get_current_user),
 ):
     """Search ETF/stocks by name (fuzzy match). Returns code, name, NAV, price."""
-    results = await search_stocks(q, limit)
+    results = await search_stocks(q, limit, stock_type=stock_type)
     return {"results": results, "total": len(results)}
 
 

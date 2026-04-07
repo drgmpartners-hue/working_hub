@@ -165,7 +165,7 @@ interface ExtractionResult {
 }
 
 const RISK_LEVELS = ['절대안정형', '안정형', '안정성장형', '성장형', '절대성장형'];
-const PRODUCT_TYPES = ['ETF', '펀드', '연금저축펀드', 'IRP펀드', 'MMF', '국내주식', '미국주식', '해외주식', '랩어카운트'];
+const PRODUCT_TYPES = ['ETF', '해외ETF', '펀드', '연금저축펀드', 'IRP펀드', 'MMF', '국내주식', '미국주식', '해외주식', '랩어카운트'];
 
 const REGIONS = ['국내', '미국', '글로벌', '베트남', '인도', '중국', '기타'];
 
@@ -185,6 +185,16 @@ const accountTypeLabel = (t: string) =>
 
 function todayString(): string {
   return new Date().toISOString().slice(0, 10);
+}
+
+/** 상품유형 → stock_type API 파라미터 매핑 */
+function productTypeToStockType(pt: string): string {
+  const p = (pt || '').toLowerCase();
+  if (p === 'etf') return 'etf';
+  if (p === '국내주식') return 'kr_stock';
+  if (p === '미국주식' || p === '해외주식') return 'foreign';
+  if (p === '해외etf') return 'foreign';
+  return '';
 }
 
 /** 고객명 표시: 이름(고유번호) | 최근저장일 */
@@ -442,7 +452,7 @@ function Tab2Section({
   const [t2NewMasterSaving, setT2NewMasterSaving] = useState(false);
   const [t2NewMasterAutoAdd, setT2NewMasterAutoAdd] = useState(false); /* 상품추가 & 반영 모드 */
   const [t2MasterStockQuery, setT2MasterStockQuery] = useState('');
-  const [t2MasterStockResults, setT2MasterStockResults] = useState<Array<{ code: string; name: string; nav: number; price: number; type: string }>>([]);
+  const [t2MasterStockResults, setT2MasterStockResults] = useState<Array<{ code: string; name: string; nav?: number; price?: number; type?: string; exchange?: string; currency?: string }>>([]);
   const [t2MasterStockSearching, setT2MasterStockSearching] = useState(false);
   const t2MasterStockTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -790,15 +800,31 @@ function Tab2Section({
     t2MasterStockTimer.current = setTimeout(async () => {
       setT2MasterStockSearching(true);
       try {
-        const res = await fetch(`${API_URL}/api/v1/stock-search?q=${encodeURIComponent(query)}&limit=10`, { headers: authLib.getAuthHeader() });
+        const stockType = productTypeToStockType(t2NewMasterForm.product_type);
+        const params = new URLSearchParams({ q: query, limit: '10' });
+        if (stockType) params.set('stock_type', stockType);
+        const res = await fetch(`${API_URL}/api/v1/stock-search?${params}`, { headers: authLib.getAuthHeader() });
         if (res.ok) { const data = await res.json(); setT2MasterStockResults(data.results ?? []); }
       } catch { /* silent */ }
       finally { setT2MasterStockSearching(false); }
     }, 400);
   }
 
-  function handleT2MasterStockSelect(item: { code: string; name: string }) {
-    setT2NewMasterForm((prev) => ({ ...prev, product_name: item.name, product_code: item.code }));
+  function handleT2MasterStockSelect(item: { code: string; name: string; type?: string; region?: string }) {
+    // 검색 결과의 type을 상품유형에 자동 반영
+    const autoType = item.type || '';
+    const autoRegion = (() => {
+      if (autoType === '미국주식' || autoType === '해외ETF') return '미국';
+      if (autoType === '국내주식' || autoType === 'ETF') return '국내';
+      return item.region || '';
+    })();
+    setT2NewMasterForm((prev) => ({
+      ...prev,
+      product_name: item.name,
+      product_code: item.code,
+      product_type: autoType || prev.product_type,
+      region: autoRegion || prev.region,
+    }));
     setT2MasterStockQuery(item.name);
     setT2MasterStockResults([]);
   }
@@ -2786,9 +2812,9 @@ function Tab2Section({
                       </span>
                     )}
                   </label>
-                  {(t2NewMasterForm.product_type === 'ETF' || t2NewMasterForm.product_type === 'MMF') ? (
+                  {['ETF', '해외ETF', 'MMF', '국내주식', '미국주식', '해외주식'].includes(t2NewMasterForm.product_type) ? (
                     <>
-                      <input type="text" placeholder="상품명을 입력하세요 (예: KODEX, TIGER...)"
+                      <input type="text" placeholder={t2NewMasterForm.product_type.includes('주식') || t2NewMasterForm.product_type === '해외ETF' ? '종목명 또는 티커를 입력하세요 (예: AAPL, 삼성전자...)' : '상품명을 입력하세요 (예: KODEX, TIGER...)'}
                         value={t2MasterStockQuery || t2NewMasterForm.product_name}
                         onChange={(e) => handleT2MasterStockSearch(e.target.value)}
                         style={{ width: '100%', padding: '7px 10px', fontSize: '0.8125rem', border: '1px solid #E1E5EB', borderRadius: 7, outline: 'none', boxSizing: 'border-box' }} autoFocus />
@@ -2800,13 +2826,17 @@ function Tab2Section({
                               style={{ width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '7px 10px', border: 'none', background: 'none', cursor: 'pointer', textAlign: 'left', borderBottom: '1px solid #F3F4F6', fontSize: '0.8125rem' }}
                               onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = '#F5F7FA'; }}
                               onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = 'transparent'; }}>
-                              <div>
+                              <div style={{ flex: 1, minWidth: 0 }}>
                                 <div style={{ fontWeight: 600, color: '#1A1A2E' }}>{item.name}</div>
-                                <div style={{ fontSize: '0.6875rem', color: '#6B7280' }}>{item.code}</div>
+                                <div style={{ fontSize: '0.6875rem', color: '#6B7280' }}>
+                                  {item.code}
+                                  {item.type && <span style={{ marginLeft: 6, padding: '1px 4px', borderRadius: 3, backgroundColor: item.type === 'ETF' ? '#EFF6FF' : item.type === '해외ETF' ? '#FDF2F8' : item.type === '국내주식' ? '#ECFDF5' : '#FEF3C7', color: item.type === 'ETF' ? '#2563EB' : item.type === '해외ETF' ? '#DB2777' : item.type === '국내주식' ? '#059669' : '#D97706', fontSize: '0.625rem', fontWeight: 600 }}>{item.type}</span>}
+                                  {item.exchange && <span style={{ marginLeft: 4, fontSize: '0.625rem', color: '#9CA3AF' }}>{item.exchange}</span>}
+                                </div>
                               </div>
                               <div style={{ textAlign: 'right', flexShrink: 0 }}>
-                                <div style={{ fontWeight: 600, color: '#1E3A5F', fontSize: '0.8125rem' }}>{item.price?.toLocaleString('ko-KR')}</div>
-                                <div style={{ fontSize: '0.6875rem', color: '#9CA3AF' }}>NAV {item.nav?.toLocaleString('ko-KR')}</div>
+                                {item.price != null && <div style={{ fontWeight: 600, color: '#1E3A5F', fontSize: '0.8125rem' }}>{item.currency === 'USD' ? `$${item.price}` : item.price?.toLocaleString('ko-KR')}</div>}
+                                {item.nav != null && <div style={{ fontSize: '0.6875rem', color: '#9CA3AF' }}>NAV {item.nav?.toLocaleString('ko-KR')}</div>}
                               </div>
                             </button>
                           ))}
@@ -3095,7 +3125,7 @@ export default function IRPPage() {
     product_code: '',
   });
   const [regStockQuery, setRegStockQuery] = useState('');
-  const [regStockResults, setRegStockResults] = useState<Array<{ code: string; name: string; nav: number; price: number; type: string }>>([]);
+  const [regStockResults, setRegStockResults] = useState<Array<{ code: string; name: string; nav?: number; price?: number; type?: string; exchange?: string; currency?: string }>>([]);
   const [regStockSearching, setRegStockSearching] = useState(false);
   const regStockTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -3747,7 +3777,10 @@ export default function IRPPage() {
     regStockTimer.current = setTimeout(async () => {
       setRegStockSearching(true);
       try {
-        const res = await fetch(`${API_URL}/api/v1/stock-search?q=${encodeURIComponent(query)}&limit=10`, {
+        const stockType = productTypeToStockType(registerForm.product_type);
+        const params = new URLSearchParams({ q: query, limit: '10' });
+        if (stockType) params.set('stock_type', stockType);
+        const res = await fetch(`${API_URL}/api/v1/stock-search?${params}`, {
           headers: authLib.getAuthHeader(),
         });
         if (res.ok) {
@@ -3759,8 +3792,20 @@ export default function IRPPage() {
     }, 400);
   }
 
-  function handleRegStockSelect(item: { code: string; name: string; type: string }) {
-    setRegisterForm((f) => ({ ...f, product_name: item.name, product_code: item.code }));
+  function handleRegStockSelect(item: { code: string; name: string; type?: string }) {
+    const autoType = item.type || '';
+    const autoRegion = (() => {
+      if (autoType === '미국주식' || autoType === '해외ETF') return '미국';
+      if (autoType === '국내주식' || autoType === 'ETF') return '국내';
+      return '';
+    })();
+    setRegisterForm((f) => ({
+      ...f,
+      product_name: item.name,
+      product_code: item.code,
+      product_type: autoType || f.product_type,
+      region: autoRegion || f.region,
+    }));
     setRegStockQuery(item.name);
     setRegStockResults([]);
   }
@@ -7125,11 +7170,11 @@ export default function IRPPage() {
                       </span>
                     )}
                   </label>
-                  {(registerForm.product_type === 'ETF' || registerForm.product_type === 'MMF') ? (
+                  {['ETF', '해외ETF', 'MMF', '국내주식', '미국주식', '해외주식'].includes(registerForm.product_type) ? (
                     <>
                       <input
                         type="text"
-                        placeholder="상품명을 입력하세요 (예: KODEX, TIGER...)"
+                        placeholder={registerForm.product_type.includes('주식') || registerForm.product_type === '해외ETF' ? '종목명 또는 티커를 입력하세요 (예: AAPL, 삼성전자...)' : '상품명을 입력하세요 (예: KODEX, TIGER...)'}
                         value={regStockQuery || registerForm.product_name}
                         onChange={(e) => handleRegStockSearch(e.target.value)}
                         style={{
@@ -7158,17 +7203,17 @@ export default function IRPPage() {
                               onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = '#F5F7FA'; }}
                               onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = 'transparent'; }}
                             >
-                              <div>
+                              <div style={{ flex: 1, minWidth: 0 }}>
                                 <div style={{ fontWeight: 600, color: '#1A1A2E' }}>{item.name}</div>
                                 <div style={{ fontSize: '0.75rem', color: '#6B7280' }}>
                                   <span style={{ fontFamily: 'monospace' }}>{item.code}</span>
+                                  {item.type && <span style={{ marginLeft: 6, padding: '1px 4px', borderRadius: 3, backgroundColor: item.type === 'ETF' ? '#EFF6FF' : item.type === '해외ETF' ? '#FDF2F8' : item.type === '국내주식' ? '#ECFDF5' : '#FEF3C7', color: item.type === 'ETF' ? '#2563EB' : item.type === '해외ETF' ? '#DB2777' : item.type === '국내주식' ? '#059669' : '#D97706', fontSize: '0.625rem', fontWeight: 600 }}>{item.type}</span>}
+                                  {item.exchange && <span style={{ marginLeft: 4, fontSize: '0.625rem', color: '#9CA3AF' }}>{item.exchange}</span>}
                                 </div>
                               </div>
                               <div style={{ textAlign: 'right', flexShrink: 0 }}>
-                                <div style={{ fontWeight: 600, color: '#1E3A5F', fontSize: '0.8125rem' }}>
-                                  {item.price?.toLocaleString('ko-KR')}
-                                </div>
-                                <div style={{ fontSize: '0.6875rem', color: '#9CA3AF' }}>NAV {item.nav?.toLocaleString('ko-KR')}</div>
+                                {item.price != null && <div style={{ fontWeight: 600, color: '#1E3A5F', fontSize: '0.8125rem' }}>{item.currency === 'USD' ? `$${item.price}` : item.price?.toLocaleString('ko-KR')}</div>}
+                                {item.nav != null && <div style={{ fontSize: '0.6875rem', color: '#9CA3AF' }}>NAV {item.nav?.toLocaleString('ko-KR')}</div>}
                               </div>
                             </button>
                           ))}
