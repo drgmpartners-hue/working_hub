@@ -1087,48 +1087,53 @@ function Tab2Section({
           if (Object.keys(cleanWeights).length > 0) {
             setT2RebalRows((prev) => {
               // Apply weights + fullSell to existing rows
+              // row1이 __row1__ id인 경우 저장 키가 'new:예수금/자동운용상품(고유계정대)'이므로 함께 탐색
               const updated = prev.map((r) => {
-                if (r.id in cleanWeights) {
-                  // fullSell 복원: _full_table에서 상품명으로 매칭
+                const lookupKey = (r.isRow1 && r.id.startsWith('__'))
+                  ? `new:${r.productName}`
+                  : r.id;
+                if (lookupKey in cleanWeights) {
                   const ftRow = fullTable.find((ft) => ft.product_name === r.productName);
                   const isFullSell = ftRow?.full_sell ?? false;
-                  const refPrice = ftRow?.reference_price ?? prices[r.id] ?? r.currentPrice;
-                  return { ...r, rebalRatio: parseFloat((cleanWeights[r.id] * 100).toFixed(2)), fullSell: isFullSell, currentPrice: refPrice > 0 ? refPrice : r.currentPrice };
+                  const refPrice = ftRow?.reference_price ?? prices[lookupKey] ?? r.currentPrice;
+                  return { ...r, rebalRatio: parseFloat((cleanWeights[lookupKey] * 100).toFixed(2)), fullSell: isFullSell, currentPrice: refPrice > 0 ? refPrice : r.currentPrice };
                 }
                 return r;
               });
 
-              // Add new products (new:xxx keys) that aren't in existing rows
-              const existingIds = new Set(prev.map((r) => r.id));
+              // Add new products (new:xxx keys) not already present in rows
+              // (상품명 기준으로 중복 체크 — row1 상품명 포함)
+              const existingProductNames = new Set(prev.map((r) => r.productName));
               const newRows: typeof prev = [];
               for (const [key, weight] of Object.entries(cleanWeights)) {
-                if (key.startsWith('new:') && !existingIds.has(key)) {
-                  const prodName = key.replace('new:', '');
-                  const master = productMasters.find((m) => m.product_name === prodName);
-                  const cPrice = prices[key] ?? 0;
-                  newRows.push({
-                    id: `__new_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
-                    productName: prodName,
-                    productCode: master?.product_code ?? '',
-                    riskLevel: master?.risk_level ?? '',
-                    region: master?.region ?? '',
-                    quantity: 0,
-                    purchasePrice: 0,
-                    currentPrice: cPrice,
-                    purchaseAmount: 0,
-                    evaluationAmount: 0,
-                    returnAmount: 0,
-                    returnRate: 0,
-                    evalRatio: 0,
-                    rebalRatio: parseFloat((weight * 100).toFixed(2)),
-                    rebalAmount: 0,
-                    sellBuy: 0,
-                    shares: 0,
-                    productType: master?.product_type ?? '',
-                    isRow1: false,
-                    fullSell: false,
-                  });
-                }
+                if (!key.startsWith('new:')) continue;
+                const prodName = key.replace('new:', '');
+                // 이미 존재하는 상품(row1 포함)은 건너뜀
+                if (existingProductNames.has(prodName)) continue;
+                const master = productMasters.find((m) => m.product_name === prodName);
+                const cPrice = prices[key] ?? 0;
+                newRows.push({
+                  id: `__new_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+                  productName: prodName,
+                  productCode: master?.product_code ?? '',
+                  riskLevel: master?.risk_level ?? '',
+                  region: master?.region ?? '',
+                  quantity: 0,
+                  purchasePrice: 0,
+                  currentPrice: cPrice,
+                  purchaseAmount: 0,
+                  evaluationAmount: 0,
+                  returnAmount: 0,
+                  returnRate: 0,
+                  evalRatio: 0,
+                  rebalRatio: parseFloat((weight * 100).toFixed(2)),
+                  rebalAmount: 0,
+                  sellBuy: 0,
+                  shares: 0,
+                  productType: master?.product_type ?? '',
+                  isRow1: false,
+                  fullSell: false,
+                });
               }
 
               return recalcRebalRows([...updated, ...newRows]);
