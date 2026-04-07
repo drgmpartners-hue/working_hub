@@ -1398,6 +1398,42 @@ function Tab2Section({
     );
   }
 
+  function handleT2PurchaseAmountChange(id: string, val: string) {
+    const raw = val.replace(/[^0-9\-]/g, '');
+    const num = parseInt(raw, 10);
+    setT2RebalRows((prev) => {
+      const updated = prev.map((r) => {
+        if (r.id !== id) return r;
+        const purchAmt = isNaN(num) ? 0 : num;
+        const retAmt = r.evaluationAmount - purchAmt;
+        const retRate = purchAmt > 0 ? parseFloat((retAmt / purchAmt * 100).toFixed(2)) : 0;
+        return { ...r, purchaseAmount: purchAmt, returnAmount: retAmt, returnRate: retRate };
+      });
+      // evalRatio 재계산 (totalEval 변경 없음 — purchaseAmount는 totalEval에 영향 없음)
+      return recalcRebalRows(updated);
+    });
+  }
+
+  function handleT2EvaluationAmountChange(id: string, val: string) {
+    const raw = val.replace(/[^0-9\-]/g, '');
+    const num = parseInt(raw, 10);
+    setT2RebalRows((prev) => {
+      const updated = prev.map((r) => {
+        if (r.id !== id) return r;
+        const evalAmt = isNaN(num) ? 0 : num;
+        const retAmt = evalAmt - r.purchaseAmount;
+        const retRate = r.purchaseAmount > 0 ? parseFloat((retAmt / r.purchaseAmount * 100).toFixed(2)) : 0;
+        return { ...r, evaluationAmount: evalAmt, returnAmount: retAmt, returnRate: retRate };
+      });
+      // totalEval 변경됨 → evalRatio + rebalAmount 전체 재계산
+      const totalEval = updated.reduce((s, r) => s + r.evaluationAmount, 0);
+      return recalcRebalRows(updated.map((r) => ({
+        ...r,
+        evalRatio: totalEval > 0 ? parseFloat((r.evaluationAmount / totalEval * 100).toFixed(2)) : 0,
+      })));
+    });
+  }
+
   function handleT2Recalc() {
     setT2RebalRows((prev) => recalcRebalRows(prev));
   }
@@ -2608,8 +2644,32 @@ function Tab2Section({
                           />
                         )}
                       </td>
-                      <td style={{ ...tdStyle, backgroundColor: rowBg }}>{fmtNum(r.purchaseAmount)}</td>
-                      <td style={{ ...tdStyle, fontWeight: 500, backgroundColor: rowBg }}>{fmtNum(r.evaluationAmount)}</td>
+                      <td style={{ ...tdStyle, padding: '5px 8px', backgroundColor: rowBg }}>
+                        {isRow1 ? (
+                          <span>{fmtNum(r.purchaseAmount)}</span>
+                        ) : (
+                          <input
+                            type="text"
+                            value={r.purchaseAmount > 0 ? r.purchaseAmount.toLocaleString('ko-KR') : ''}
+                            onChange={(e) => handleT2PurchaseAmountChange(r.id, e.target.value)}
+                            placeholder="0"
+                            style={{ width: 90, padding: '4px 6px', fontSize: '0.8125rem', textAlign: 'right', border: '1px solid #E1E5EB', borderRadius: 5, outline: 'none', color: '#1A1A2E' }}
+                          />
+                        )}
+                      </td>
+                      <td style={{ ...tdStyle, padding: '5px 8px', backgroundColor: rowBg }}>
+                        {isRow1 ? (
+                          <span style={{ fontWeight: 500 }}>{fmtNum(r.evaluationAmount)}</span>
+                        ) : (
+                          <input
+                            type="text"
+                            value={r.evaluationAmount > 0 ? r.evaluationAmount.toLocaleString('ko-KR') : ''}
+                            onChange={(e) => handleT2EvaluationAmountChange(r.id, e.target.value)}
+                            placeholder="0"
+                            style={{ width: 90, padding: '4px 6px', fontSize: '0.8125rem', textAlign: 'right', border: '1px solid #E1E5EB', borderRadius: 5, outline: 'none', color: '#1A1A2E', fontWeight: 500 }}
+                          />
+                        )}
+                      </td>
                       <td style={{ ...tdStyle, color: rateColor(r.returnAmount), backgroundColor: rowBg }}>
                         {r.returnAmount !== 0 ? `${r.returnAmount > 0 ? '+' : ''}${r.returnAmount.toLocaleString('ko-KR')}` : '0'}
                       </td>
