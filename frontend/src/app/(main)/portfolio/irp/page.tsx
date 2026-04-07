@@ -33,7 +33,7 @@ const ReportView = dynamic(() => import('@/components/portfolio/ReportView'), { 
 interface ClientAccount {
   id: string;
   client_id: string;
-  account_type: 'irp' | 'pension1' | 'pension2';
+  account_type: 'irp' | 'pension1' | 'pension2' | 'stock';
   account_number?: string;
   securities_company?: string;
   monthly_payment?: number;
@@ -110,7 +110,7 @@ interface ClientRowData {
   clientId: string;
   clientName: string;
   accountId: string;
-  accountType: 'irp' | 'pension1' | 'pension2';
+  accountType: 'irp' | 'pension1' | 'pension2' | 'stock';
   accountNumber: string;
   securitiesCompany: string;
   imageFile: File | null;
@@ -165,7 +165,7 @@ interface ExtractionResult {
 }
 
 const RISK_LEVELS = ['절대안정형', '안정형', '안정성장형', '성장형', '절대성장형'];
-const PRODUCT_TYPES = ['ETF', '펀드', '연금저축펀드', 'IRP펀드', 'MMF', '주식', '해외주식', '랩어카운트'];
+const PRODUCT_TYPES = ['ETF', '펀드', '연금저축펀드', 'IRP펀드', 'MMF', '국내주식', '미국주식', '해외주식', '랩어카운트'];
 
 const REGIONS = ['국내', '미국', '글로벌', '베트남', '인도', '중국', '기타'];
 
@@ -182,6 +182,7 @@ const accountTypeLabel = (t: string) =>
     retirement: '퇴직연금',
     pension1: '연금저축',
     pension2: '연금저축',
+    stock: '주식계좌',
   } as Record<string, string>)[t] || t;
 
 function todayString(): string {
@@ -194,7 +195,7 @@ function clientLabel(c: { name: string; unique_code?: string }, latestDate?: str
   return latestDate ? `${base} | ${latestDate}` : base;
 }
 
-function makeDefaultRow(accountType: 'irp' | 'pension1' | 'pension2' = 'irp'): ClientRowData {
+function makeDefaultRow(accountType: 'irp' | 'pension1' | 'pension2' | 'stock' = 'irp'): ClientRowData {
   return {
     clientId: '',
     clientName: '',
@@ -1217,11 +1218,15 @@ function Tab2Section({
       const isCashLike = pType.includes('mmf') || pType.includes('rp') || pType.includes('cma')
         || pName.includes('정기예금') || pName.includes('예수금') || pName.includes('자동운용상품')
         || pName.includes('mmf') || pName.includes('cma');
+      // 주식(해외주식 포함)은 DB 저장값(KRW) 우선 사용 → USD×수량 재계산 시 환율 불일치 방지
+      const isStock = pType.includes('주식') || pType === 'stock';
       const calcPurchAmt = isCashLike ? h.purchase_amount
+        : (isStock && h.purchase_amount != null) ? h.purchase_amount
         : (h.quantity != null && h.purchase_price != null)
           ? (isFund ? Math.ceil(h.quantity * h.purchase_price / 1000) : h.quantity * h.purchase_price)
           : h.purchase_amount;
       const calcEvalAmt = isCashLike ? h.evaluation_amount
+        : (isStock && h.evaluation_amount != null) ? h.evaluation_amount
         : (h.quantity != null && h.current_price != null)
           ? (isFund ? Math.ceil(h.quantity * h.current_price / 1000) : h.quantity * h.current_price)
           : h.evaluation_amount;
@@ -1462,7 +1467,7 @@ function Tab2Section({
       const suggested_prices: Record<string, number> = {};
       for (const r of rows) {
         const key = r.id.startsWith('__') ? `new:${r.productName}` : r.id;
-        suggested_weights[key] = totalEval > 0 ? r.rebalRatio / 100 : 0;
+        suggested_weights[key] = r.rebalRatio / 100; // 예수금전용 고객(totalEval=0)도 비중 저장
         if (r.currentPrice > 0) suggested_prices[key] = r.currentPrice;
       }
 
@@ -4257,8 +4262,10 @@ export default function IRPPage() {
     if (!reportData) return;
     setAiChangeCommentLoading(true);
     try {
-      // 기존 보유 + 신규 가상 상품 통합
-      const allHoldings = [...(reportData.holdings ?? []), ...reportExtraHoldings];
+      // holdings(before): 실제 보유 종목만 (신규 가상 상품 제외 → 정확한 before/after 비교)
+      const realHoldings = reportData.holdings ?? [];
+      // holdings_after: 기존 + 신규 모두 포함
+      const allHoldings = [...realHoldings, ...reportExtraHoldings];
       const totalEval = (reportData.snapshot?.total_evaluation ?? 0) + (reportData.snapshot?.deposit_amount ?? 0);
 
       const res = await fetch(`${API_URL}/api/v1/reports/ai-comment`, {
@@ -4270,7 +4277,7 @@ export default function IRPPage() {
           snapshot_date: reportData.snapshot?.snapshot_date,
           total_evaluation: totalEval,
           total_return_rate: reportData.snapshot?.total_return_rate,
-          holdings: allHoldings.map((h) => ({
+          holdings: realHoldings.map((h) => ({
             product_name: h.product_name,
             product_type: h.product_type,
             risk_level: h.risk_level,
@@ -4765,30 +4772,9 @@ export default function IRPPage() {
               logForm.append('message_text', messageText);
               logForm.append('sent_at', nowIso);
 
-              if (acct.id === selectedAccountId && currentImage) {
-                logForm.append('image', currentImage, `report_${acctClientId}.png`);
-              } else {
-                // 다른 계좌: 이전에 저장된 최신 이미지 재활용
-                try {
-                  const logsRes = await fetch(
-                    `${API_URL}/api/v1/message-logs?account_id=${acct.id}&limit=10`,
-                    { headers: { ...authLib.getAuthHeader() } }
-                  );
-                  if (logsRes.ok) {
-                    const logsData = await logsRes.json();
-                    const lastWithImage = (logsData.items ?? []).find((l: { has_image: boolean }) => l.has_image);
-                    if (lastWithImage) {
-                      const imgRes = await fetch(
-                        `${API_URL}/api/v1/message-logs/${lastWithImage.id}/image`,
-                        { headers: { ...authLib.getAuthHeader() } }
-                      );
-                      if (imgRes.ok) {
-                        const imgBlob = await imgRes.blob();
-                        logForm.append('image', imgBlob, `report_${acct.id}.png`);
-                      }
-                    }
-                  }
-                } catch { /* 이미지 재활용 실패 시 무시 */ }
+              // 현재 보고서 이미지를 모든 계좌 로그에 첨부 (복수 상품 고객 대응)
+              if (currentImage) {
+                logForm.append('image', currentImage, `report_${acctClientId}_${acct.id}.png`);
               }
 
               await fetch(`${API_URL}/api/v1/message-logs`, {

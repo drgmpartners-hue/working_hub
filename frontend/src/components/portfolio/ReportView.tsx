@@ -135,7 +135,7 @@ const FALLBACK_COLORS = ['#1E3A5F', '#3B82F6', '#10B981', '#F59E0B', '#EF4444', 
 const fmt = (n?: number) => (n != null ? n.toLocaleString('ko-KR') : '-');
 
 const accountTypeLabel = (t: string) =>
-  ({ irp: 'IRP', pension: '연금저축', pension1: '연금저축', pension2: '연금저축', pension_saving: '연금저축(적립)', pension_hold: '연금저축(거치)', retirement: '퇴직연금' } as Record<string, string>)[t] || t;
+  ({ irp: 'IRP', pension: '연금저축', pension1: '연금저축', pension2: '연금저축', pension_saving: '연금저축(적립)', pension_hold: '연금저축(거치)', retirement: '퇴직연금', stock: '주식계좌' } as Record<string, string>)[t] || t;
 
 const returnRateColor = (rate?: number) => {
   if (rate == null) return '#374151';

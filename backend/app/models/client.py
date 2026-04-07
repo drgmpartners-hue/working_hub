@@ -57,7 +57,7 @@ class ClientAccount(Base):
     client_id: Mapped[str] = mapped_column(
         String(36), ForeignKey("clients.id", ondelete="CASCADE"), nullable=False, index=True
     )
-    account_type: Mapped[str] = mapped_column(String(20), nullable=False)  # 'irp', 'pension1', 'pension2'
+    account_type: Mapped[str] = mapped_column(String(20), nullable=False)  # 'irp', 'pension1', 'pension2', 'stock'
     account_number: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
     securities_company: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
     representative: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)  # 투권인
