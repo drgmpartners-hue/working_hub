@@ -89,6 +89,11 @@ const CATEGORIES: Array<{
         href: '/portfolio/irp',
       },
       {
+        title: 'Wrap 은퇴설계',
+        description: '고객별 희망은퇴플랜, 투자흐름, 은퇴플랜, 연금수령 계획을 통합 관리합니다',
+        href: '/retirement',
+      },
+      {
         title: '주식/ETF 추천 프로그램',
         description: '테마별 주식/ETF를 AI로 분석하고 추천합니다',
         href: '/investment/stock-recommend',

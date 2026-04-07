@@ -22,6 +22,14 @@ from app.api.v1 import sms_templates as sms_templates_router
 from app.api.v1 import message_logs as message_logs_router
 from app.api.v1 import field_options as field_options_router
 from app.api.v1 import product_name_changes as product_name_changes_router
+from app.api.v1 import retirement_profiles as retirement_profiles_router
+from app.api.v1 import wrap_accounts as wrap_accounts_router
+from app.api.v1 import desired_plans as desired_plans_router
+from app.api.v1 import investment_records as investment_records_router
+from app.api.v1 import retirement_plans as retirement_plans_router
+from app.api.v1 import interactive_calculations as interactive_calculations_router
+from app.api.v1 import pension_plans as pension_plans_router
+from app.api.v1 import ai_retirement_guide as ai_retirement_guide_router
 
 app = FastAPI(title="API", version="0.1.0")
 
@@ -59,6 +67,14 @@ app.include_router(sms_templates_router.router, prefix="/api/v1")
 app.include_router(message_logs_router.router, prefix="/api/v1")
 app.include_router(field_options_router.router, prefix="/api/v1")
 app.include_router(product_name_changes_router.router, prefix="/api/v1")
+app.include_router(retirement_profiles_router.router, prefix="/api/v1")
+app.include_router(wrap_accounts_router.router, prefix="/api/v1")
+app.include_router(desired_plans_router.router, prefix="/api/v1")
+app.include_router(investment_records_router.router, prefix="/api/v1")
+app.include_router(retirement_plans_router.router, prefix="/api/v1")
+app.include_router(interactive_calculations_router.router, prefix="/api/v1")
+app.include_router(pension_plans_router.router, prefix="/api/v1")
+app.include_router(ai_retirement_guide_router.router, prefix="/api/v1")
 
 
 @app.exception_handler(Exception)

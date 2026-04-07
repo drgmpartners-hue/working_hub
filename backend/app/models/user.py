@@ -1,11 +1,14 @@
 """User model for authentication."""
 from datetime import datetime
-from typing import Optional
+from typing import Optional, TYPE_CHECKING
 from sqlalchemy import String, Boolean, DateTime
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.sql import func
 from app.db.base import Base
 import uuid
+
+if TYPE_CHECKING:
+    from app.models.customer_retirement_profile import CustomerRetirementProfile
 
 
 class User(Base):
@@ -44,4 +47,7 @@ class User(Base):
     )
     clients: Mapped[list["Client"]] = relationship(
         "Client", back_populates="user", lazy="select"
+    )
+    retirement_profile: Mapped[Optional["CustomerRetirementProfile"]] = relationship(
+        "CustomerRetirementProfile", back_populates="customer", uselist=False, lazy="select"
     )

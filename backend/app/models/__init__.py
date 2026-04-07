@@ -57,6 +57,27 @@ from app.models.product_name_change import ProductNameChange
 # Depends on users + clients + client_accounts (message logs)
 from app.models.message_log import MessageLog
 
+# Depends on users (retirement profiles - 1:1)
+from app.models.customer_retirement_profile import CustomerRetirementProfile
+
+# Depends on customer_retirement_profiles (desired plans)
+from app.models.desired_plan import DesiredPlan
+
+# No FK dependencies (wrap account product catalog)
+from app.models.wrap_account import WrapAccount
+
+# Depends on customer_retirement_profiles + wrap_accounts (investment records)
+from app.models.investment_record import InvestmentRecord
+
+# Depends on customer_retirement_profiles (retirement simulation plans)
+from app.models.retirement_plan import RetirementPlan
+
+# Depends on customer_retirement_profiles (interactive calculations - plan vs actual)
+from app.models.interactive_calculation import InteractiveCalculation
+
+# Depends on customer_retirement_profiles (pension distribution plans)
+from app.models.pension_plan import PensionPlan
+
 __all__ = [
     "BrandSetting",
     "AIAPISetting",
@@ -87,4 +108,11 @@ __all__ = [
     "MessageLog",
     "FieldOption",
     "ProductNameChange",
+    "CustomerRetirementProfile",
+    "DesiredPlan",
+    "WrapAccount",
+    "InvestmentRecord",
+    "RetirementPlan",
+    "InteractiveCalculation",
+    "PensionPlan",
 ]
