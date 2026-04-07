@@ -335,12 +335,11 @@ export function ClientManagementModal({ isOpen, onClose, onClientAdded }: Client
   /* ---- load field options ---- */
   const DEFAULT_ACCOUNT_TYPES: { value: string; label: string; sort_order: number }[] = [
     { value: 'irp', label: 'IRP', sort_order: 1 },
-    { value: 'pension1', label: '연금저축', sort_order: 2 },
-    { value: 'pension2', label: '연금저축', sort_order: 3 },
-    { value: 'pension_saving', label: '연금저축(적립)', sort_order: 4 },
-    { value: 'pension_hold', label: '연금저축(거치)', sort_order: 5 },
-    { value: 'retirement', label: '퇴직연금', sort_order: 6 },
-    { value: 'stock', label: '주식계좌', sort_order: 7 },
+    { value: 'pension', label: '연금저축', sort_order: 2 },
+    { value: 'pension_hold', label: '연금저축(거치)', sort_order: 3 },
+    { value: 'retirement', label: '퇴직연금', sort_order: 4 },
+    { value: 'stock', label: '주식계좌', sort_order: 5 },
+    { value: 'other', label: '기타계좌', sort_order: 6 },
   ];
 
   const loadFieldOptions = useCallback(async () => {

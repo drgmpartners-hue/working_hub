@@ -13,7 +13,7 @@ import { authLib } from '@/lib/auth';
 interface ClientAccount {
   id: string;
   client_id: string;
-  account_type: 'irp' | 'pension1' | 'pension2' | 'stock';
+  account_type: string;
   account_number?: string;
   securities_company?: string;
   monthly_payment?: number;
@@ -31,7 +31,7 @@ interface ClientRowData {
   clientId: string;
   clientName: string;
   accountId: string;
-  accountType: 'irp' | 'pension1' | 'pension2' | 'stock';
+  accountType: string;
   accountNumber: string;
   securitiesCompany: string;
   imageFile: File | null;
@@ -75,13 +75,14 @@ interface EditClientData {
 const ACCOUNT_TYPE_LABELS: Record<string, string> = {
   irp: 'IRP',
   pension: '연금저축',
-  pension_saving: '연금저축(적립)',
   pension_hold: '연금저축(거치)',
   retirement: '퇴직연금',
   stock: '주식계좌',
-  // keep old keys for backward compat
+  other: '기타계좌',
+  // 하위호환
   pension1: '연금저축',
   pension2: '연금저축',
+  pension_saving: '연금저축',
 };
 
 const inputStyle: React.CSSProperties = {
@@ -495,7 +496,7 @@ export function ClientRow({ index, clients, data, onChange, onRemove }: ClientRo
               <div style={{ flex: '0 1 130px', minWidth: 100 }}>
                 <label style={labelStyle}>계좌 유형</label>
                 <select value={data.accountType}
-                  onChange={(e) => handleAccountTypeChange(e.target.value as 'irp' | 'pension1' | 'pension2' | 'stock')}
+                  onChange={(e) => handleAccountTypeChange(e.target.value as string)}
                   style={{ ...inputStyle, cursor: 'pointer', padding: '6px 8px', fontSize: '0.75rem' }}>
                   {isExistingClient && currentClient ? (
                     <>

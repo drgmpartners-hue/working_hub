@@ -65,7 +65,7 @@ interface SnapshotDataTableProps {
 const fmt = (n?: number) => (n != null ? n.toLocaleString('ko-KR') : '-');
 
 const accountTypeLabel = (t: string) =>
-  ({ irp: 'IRP', pension1: '연금저축', pension2: '연금저축', pension_saving: '연금저축(적립)', pension_hold: '연금저축(거치)', retirement: '퇴직연금', stock: '주식계좌' } as Record<string, string>)[t] || t;
+  ({ irp: 'IRP', pension: '연금저축', pension_hold: '연금저축(거치)', retirement: '퇴직연금', stock: '주식계좌', other: '기타계좌', pension1: '연금저축', pension2: '연금저축', pension_saving: '연금저축' } as Record<string, string>)[t] || t;
 
 const returnRateColor = (rate?: number) => {
   if (rate == null) return '#374151';

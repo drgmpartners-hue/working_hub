@@ -41,7 +41,7 @@ async def create_snapshot(
     all_names = [row[0] for row in pm_result.all() if row[0]]
 
     # Filter: 연금저축 계좌 → IRP 펀드 제외, IRP 계좌 → 연금저축 펀드 제외
-    if account_type in ("pension1", "pension2"):
+    if account_type in ("pension", "pension_hold", "pension1", "pension2"):
         known_names = [n for n in all_names if "irp" not in n.lower()]
     elif account_type == "irp":
         known_names = [n for n in all_names if "연금저축" not in n]

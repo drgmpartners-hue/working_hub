@@ -5,7 +5,7 @@ from datetime import datetime, date
 
 
 class AccountBase(BaseModel):
-    account_type: str  # 'irp', 'pension1', 'pension2', 'stock'
+    account_type: str  # 'irp', 'pension', 'pension_hold', 'retirement', 'stock', 'other'
     account_number: Optional[str] = None
     securities_company: Optional[str] = None
     representative: Optional[str] = None  # 투권인

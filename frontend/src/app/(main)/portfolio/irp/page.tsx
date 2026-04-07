@@ -33,7 +33,7 @@ const ReportView = dynamic(() => import('@/components/portfolio/ReportView'), { 
 interface ClientAccount {
   id: string;
   client_id: string;
-  account_type: 'irp' | 'pension1' | 'pension2' | 'stock';
+  account_type: string;
   account_number?: string;
   securities_company?: string;
   monthly_payment?: number;
@@ -110,7 +110,7 @@ interface ClientRowData {
   clientId: string;
   clientName: string;
   accountId: string;
-  accountType: 'irp' | 'pension1' | 'pension2' | 'stock';
+  accountType: string;
   accountNumber: string;
   securitiesCompany: string;
   imageFile: File | null;
@@ -177,12 +177,14 @@ const accountTypeLabel = (t: string) =>
   ({
     irp: 'IRP',
     pension: '연금저축',
-    pension_saving: '연금저축(적립)',
     pension_hold: '연금저축(거치)',
     retirement: '퇴직연금',
+    stock: '주식계좌',
+    other: '기타계좌',
+    // 하위호환
     pension1: '연금저축',
     pension2: '연금저축',
-    stock: '주식계좌',
+    pension_saving: '연금저축',
   } as Record<string, string>)[t] || t;
 
 function todayString(): string {
@@ -195,7 +197,7 @@ function clientLabel(c: { name: string; unique_code?: string }, latestDate?: str
   return latestDate ? `${base} | ${latestDate}` : base;
 }
 
-function makeDefaultRow(accountType: 'irp' | 'pension1' | 'pension2' | 'stock' = 'irp'): ClientRowData {
+function makeDefaultRow(accountType: string = 'irp'): ClientRowData {
   return {
     clientId: '',
     clientName: '',
@@ -1154,7 +1156,7 @@ function Tab2Section({
   function buildRebalRows(snap: Snapshot) {
     const account = t2ClientAccounts.find((a) => a.id === histAccountId);
     const accountType = account?.account_type ?? 'irp';
-    const isPension = accountType === 'pension1' || accountType === 'pension2';
+    const isPension = accountType === 'pension' || accountType === 'pension_hold' || accountType === 'pension1' || accountType === 'pension2';
 
     const totalEval = (snap.total_evaluation ?? 0) + (snap.deposit_amount ?? 0);
 
@@ -7380,7 +7382,7 @@ export default function IRPPage() {
         const typeFiltered = productMasters.filter((m) => {
           const pName = m.product_name.toLowerCase();
           const pType = (m.product_type || '').toLowerCase();
-          if (acctType === 'pension1' || acctType === 'pension2' || acctType === '연금저축') {
+          if (acctType === 'pension' || acctType === 'pension_hold' || acctType === 'pension1' || acctType === 'pension2' || acctType === '연금저축') {
             if (pType.includes('irp') || pName.includes('irp')) return false;
           } else if (acctType === 'irp' || acctType === 'IRP') {
             if (pType.includes('연금저축') || pName.includes('연금저축')) return false;
