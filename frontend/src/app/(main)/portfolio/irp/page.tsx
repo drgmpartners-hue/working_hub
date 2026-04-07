@@ -4975,7 +4975,7 @@ export default function IRPPage() {
       // (ReportView의 WeightEditor 데이터로 재구성)
       const totalEval = allHoldings.reduce((s, h) => s + (h.evaluation_amount ?? 0), 0);
       const fullTable = allHoldings
-        .filter((h) => modifiedWeights[h.id] !== undefined || (h.product_name ?? '').match(/예수금|자동운용상품/))
+        .filter((h) => modifiedWeights[h.id] !== undefined)
         .map((h, idx) => {
           const w = modifiedWeights[h.id] ?? 0;
           const rebalAmt = Math.round(totalEval * w / 100);

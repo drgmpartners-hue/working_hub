@@ -1295,7 +1295,7 @@ const ReportView = forwardRef<HTMLDivElement, ReportViewProps>(
           </div>
         ) : (
           <WeightEditor
-            holdings={[...holdings, ...extraHoldings]}
+            holdings={[...holdings, ...extraHoldings].filter(h => modifiedWeights[h.id] !== undefined)}
             totalEval={totalEval}
             modifiedWeights={modifiedWeights}
             onWeightChange={() => {}}
