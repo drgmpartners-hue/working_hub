@@ -333,6 +333,16 @@ export function ClientManagementModal({ isOpen, onClose, onClientAdded }: Client
   const [optionPopup, setOptionPopup] = useState<{ fieldName: string; title: string } | null>(null);
 
   /* ---- load field options ---- */
+  const DEFAULT_ACCOUNT_TYPES: { value: string; label: string; sort_order: number }[] = [
+    { value: 'irp', label: 'IRP', sort_order: 1 },
+    { value: 'pension1', label: '연금저축', sort_order: 2 },
+    { value: 'pension2', label: '연금저축', sort_order: 3 },
+    { value: 'pension_saving', label: '연금저축(적립)', sort_order: 4 },
+    { value: 'pension_hold', label: '연금저축(거치)', sort_order: 5 },
+    { value: 'retirement', label: '퇴직연금', sort_order: 6 },
+    { value: 'stock', label: '주식계좌', sort_order: 7 },
+  ];
+
   const loadFieldOptions = useCallback(async () => {
     const fields = ['securities', 'account_type', 'representative'];
     const results: Record<string, FieldOption[]> = {};
@@ -348,6 +358,25 @@ export function ClientManagementModal({ isOpen, onClose, onClientAdded }: Client
         }
       })
     );
+
+    // account_type 기본값 자동 생성 (DB에 없는 항목만)
+    const existingValues = new Set(results.account_type.map((o) => o.value));
+    const missing = DEFAULT_ACCOUNT_TYPES.filter((d) => !existingValues.has(d.value));
+    if (missing.length > 0) {
+      const created: FieldOption[] = [];
+      for (const d of missing) {
+        try {
+          const res = await fetch(`${API_URL}/api/v1/field-options/account_type`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', ...authLib.getAuthHeader() },
+            body: JSON.stringify({ field_name: 'account_type', ...d }),
+          });
+          if (res.ok) created.push(await res.json());
+        } catch { /* silent */ }
+      }
+      results.account_type = [...results.account_type, ...created].sort((a, b) => a.sort_order - b.sort_order);
+    }
+
     setFieldOptions(results);
   }, []);
 
