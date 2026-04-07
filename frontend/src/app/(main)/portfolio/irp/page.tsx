@@ -1609,19 +1609,22 @@ function Tab2Section({
 
   /* Detail table sums — use fund-aware calculated values when quantity+price available */
   const detailHoldings = activeSnapshot?.holdings ?? [];
+  // DB 저장값(Tab 1) 우선 사용 → 해외주식 환율 불일치 방지
   const detailTotalPurch = detailHoldings.reduce((s, h) => {
+    if (h.purchase_amount != null) return s + h.purchase_amount;
     const m = productMasters.find((pm) => pm.product_name === h.product_name);
     const isFund = (m?.product_type || h.product_type || '').includes('펀드');
     const hasQP = h.quantity != null && h.purchase_price != null && h.quantity > 0 && h.purchase_price > 0;
     if (hasQP) return s + (isFund ? Math.ceil(h.quantity! * h.purchase_price! / 1000) : h.quantity! * h.purchase_price!);
-    return s + (h.purchase_amount ?? 0);
+    return s;
   }, 0);
   const detailTotalEval = detailHoldings.reduce((s, h) => {
+    if (h.evaluation_amount != null) return s + h.evaluation_amount;
     const m = productMasters.find((pm) => pm.product_name === h.product_name);
     const isFund = (m?.product_type || h.product_type || '').includes('펀드');
     const hasQC = h.quantity != null && h.current_price != null && h.quantity > 0 && h.current_price > 0;
     if (hasQC) return s + (isFund ? Math.ceil(h.quantity! * h.current_price! / 1000) : h.quantity! * h.current_price!);
-    return s + (h.evaluation_amount ?? 0);
+    return s;
   }, 0);
   const detailTotalReturn = detailTotalEval - detailTotalPurch;
   const detailTotalReturnRate = detailTotalPurch > 0
@@ -1974,8 +1977,9 @@ function Tab2Section({
                       const calcEvalAmt = hasQtyAndCurrPrice
                         ? (isFund ? Math.ceil(h.quantity! * h.current_price! / 1000) : h.quantity! * h.current_price!)
                         : null;
-                      const displayPurchAmt = calcPurchAmt ?? h.purchase_amount;
-                      const displayEvalAmt = calcEvalAmt ?? h.evaluation_amount;
+                      // DB 저장값(Tab 1) 우선 사용 → 해외주식 등 환율 불일치 방지
+                      const displayPurchAmt = h.purchase_amount ?? calcPurchAmt;
+                      const displayEvalAmt = h.evaluation_amount ?? calcEvalAmt;
                       const calcReturnAmt = (displayEvalAmt != null && displayPurchAmt != null) ? displayEvalAmt - displayPurchAmt : h.return_amount;
                       const calcReturnRate = (calcReturnAmt != null && displayPurchAmt != null && displayPurchAmt !== 0)
                         ? parseFloat((calcReturnAmt / displayPurchAmt * 100).toFixed(2))
