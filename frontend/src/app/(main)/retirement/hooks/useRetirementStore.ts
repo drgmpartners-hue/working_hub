@@ -10,6 +10,8 @@ export interface RetirementCustomer {
   id: string;
   targetFund: number;
   retirementAge: number;
+  currentAge: number;
+  birthDate: string | null;
 }
 
 interface RetirementStore {

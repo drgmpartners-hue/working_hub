@@ -308,7 +308,7 @@ export default function ProductMasterPage() {
               letterSpacing: '-0.02em',
             }}
           >
-            상품 마스터 관리
+            증권사 상품 관리
           </h1>
           <p style={{ margin: '4px 0 0', fontSize: '0.875rem', color: '#6B7280' }}>
             상품명과 위험도 · 지역을 매핑하는 마스터 데이터를 관리합니다.

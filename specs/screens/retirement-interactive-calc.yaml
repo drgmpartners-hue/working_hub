@@ -1,0 +1,97 @@
+version: "2.0"
+
+screen:
+  name: 인터랙티브 계산기 (4번탭)
+  route: /retirement?tab=interactive-calc
+  layout: full-width
+  auth: true
+
+data_requirements:
+  - resource: retirement_plans
+    needs: [yearly_projections]
+    filters: { customer_id: "?customer_id" }
+
+  - resource: investment_records
+    needs: [investment_amount, evaluation_amount, return_rate, start_date, end_date, status]
+    filters: { customer_id: "?customer_id" }
+
+  - resource: interactive_calculations
+    needs: [plan_year, actual_data, projected_data, deviation_rate, ai_guide_result]
+    filters: { customer_id: "?customer_id" }
+
+  - resource: retirement_ai_guide
+    needs: [guide_result]
+    auth_required: true
+
+components:
+  - id: comparison_chart
+    type: detail
+    position: main
+    function: 계획 vs 실제 겹침 그래프 (Navy 실선=계획, Teal 실선=실제, Teal 점선=수정예측, Amber 음영=괴리영역)
+    data_source:
+      resource: interactive_calculations
+    events:
+      - on: hover:point
+        do: 해당 연도 계획/실제/차이 툴팁 표시
+
+  - id: deviation_display
+    type: detail
+    position: main
+    function: 이격률 표시 (%, 상회↑/부합→/하회↓ 아이콘, 색상 분기)
+    data_source:
+      resource: interactive_calculations
+
+  - id: ai_guide_button
+    type: form
+    position: main
+    function: AI 가이드 요청 버튼 (목표 하회 시 활성화)
+    events:
+      - on: click:request
+        do: AI에게 조정 가이드 요청 (복리계산 기반 수치 + 시장/전망 근거)
+
+  - id: ai_guide_result
+    type: detail
+    position: main
+    function: AI 가이드 결과 표시 (적립액/목표수익률/투자기간 조정 방안 + 근거 설명)
+    data_source:
+      resource: retirement_ai_guide
+
+  - id: yearly_comparison_table
+    type: list
+    position: main
+    function: 연도별 비교 테이블 (연도/나이/계획평가액/실제평가액/차이/이격률)
+    data_source:
+      resource: interactive_calculations
+    events:
+      - on: click:save
+        do: 수정 플랜 저장, 5번탭에 반영
+
+connections:
+  shared_components:
+    - customer_selector
+    - tab_navigation
+  external:
+    - auth
+    - ai_api_settings
+
+tests:
+  - name: 계획 vs 실제 그래프
+    when: 3번탭 저장 + 2번탭 투자기록 있는 상태에서 4번탭 접속
+    then:
+      - 계획 그래프 (Navy 실선) 표시
+      - 실제 데이터 (Teal 실선, 직전 연도까지) 겹쳐 표시
+      - 수정 예측 (Teal 점선, 이후 구간) 표시
+      - 이격률 수치 표시
+
+  - name: AI 가이드 요청
+    when: 목표 하회 상태에서 AI 가이드 요청 클릭
+    then:
+      - 로딩 표시
+      - 조정 방안 3가지 이상 표시 (적립액/수익률/기간)
+      - 시장/전망 기반 근거 설명 표시
+
+  - name: 데이터 없는 경우
+    when: 2번탭 투자기록 없이 4번탭 접속
+    then:
+      - 3번탭 계획 그래프만 표시
+      - 실제 데이터 없음 안내 메시지

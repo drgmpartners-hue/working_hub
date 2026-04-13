@@ -1,0 +1,76 @@
+version: "2.0"
+
+screen:
+  name: 은퇴플랜 (3번탭)
+  route: /retirement?tab=retirement-plan
+  layout: full-width
+  auth: true
+
+data_requirements:
+  - resource: retirement_plans
+    needs: [current_age, lump_sum_amount, annual_savings, saving_period_years, inflation_rate, annual_return_rate, target_retirement_fund, target_pension_amount, desired_retirement_age, possible_retirement_age, inheritance_consideration, yearly_projections]
+    filters: { customer_id: "?customer_id" }
+
+  - resource: desired_plans
+    needs: [target_total_fund, required_lump_sum, required_annual_savings]
+    filters: { customer_id: "?customer_id" }
+
+components:
+  - id: basic_info_form
+    type: form
+    position: main
+    function: 기본정보 입력 (현재나이/일시납/연적립/납입기간/물가상승률&상속재원/연수익률/목표은퇴자금/목표연금액/희망은퇴나이/가능은퇴나이)
+    data_source:
+      resource: retirement_plans
+    events:
+      - on: load
+        do: 1번탭 저장 데이터로 기본정보 사전 세팅
+      - on: click:calculate
+        do: 연도별 예상 평가금액 시뮬레이션 실행
+
+  - id: yearly_projection_table
+    type: list
+    position: main
+    function: 연도별 예상 평가금액 테이블 (연도/연차/나이/일시납/연적립/총납입/예상수익/예상평가액)
+    data_source:
+      resource: retirement_plans
+    events:
+      - on: click:save
+        do: 저장 후 4번탭, 5번탭에 기준 데이터로 반영
+
+  - id: projection_chart
+    type: detail
+    position: main
+    function: 성장 그래프 (X축 연도/나이, Y축 예상 평가금액, Navy Blue 실선)
+    data_source:
+      resource: retirement_plans
+
+connections:
+  navigations:
+    - from: basic_info_form
+      to: /retirement?tab=interactive-calc
+  shared_components:
+    - customer_selector
+    - tab_navigation
+  external:
+    - auth
+
+tests:
+  - name: 1번탭 데이터 사전 세팅
+    when: 1번탭 저장 후 3번탭 접속
+    then:
+      - 기본정보 폼에 1번탭 값 사전 입력됨
+      - 수동 수정 가능
+
+  - name: 시뮬레이션 계산
+    when: 기본정보 입력 후 계산 버튼 클릭
+    then:
+      - 연도별 예상 평가금액 테이블 생성
+      - 성장 그래프 렌더링
+      - 100세까지 연도별 데이터 계산
+
+  - name: 저장 후 데이터 흐름
+    when: 저장 버튼 클릭
+    then:
+      - 4번탭 기준 그래프로 반영
+      - 5번탭 모으는 기간 데이터로 반영

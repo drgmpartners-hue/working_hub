@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
+import Link from 'next/link';
 import { Table, type TableColumn } from '@/components/common/Table';
 import { Button } from '@/components/common/Button';
 import { Modal } from '@/components/common/Modal';
@@ -152,7 +153,7 @@ function AccountForm({ form, onChange, errors }: AccountFormProps) {
         placeholder="예: 삼성 글로벌 성장 랩"
       />
       <Input
-        label="증권사 *"
+        label="거래기관 *"
         value={form.securities_company}
         onChange={(e) => onChange('securities_company', e.target.value)}
         error={errors.securities_company}
@@ -269,7 +270,7 @@ export default function WrapAccountsPage() {
   function validateForm(form: AccountFormState): Partial<Record<keyof AccountFormState, string>> {
     const errs: Partial<Record<keyof AccountFormState, string>> = {};
     if (!form.product_name.trim()) errs.product_name = '상품명은 필수입니다.';
-    if (!form.securities_company.trim()) errs.securities_company = '증권사는 필수입니다.';
+    if (!form.securities_company.trim()) errs.securities_company = '거래기관는 필수입니다.';
     if (form.target_return_rate && isNaN(Number(form.target_return_rate))) {
       errs.target_return_rate = '숫자를 입력해주세요.';
     }
@@ -421,7 +422,7 @@ export default function WrapAccountsPage() {
     },
     {
       key: 'securities_company',
-      header: '증권사',
+      header: '거래기관',
       render: (v) => (
         <span
           style={{
@@ -456,7 +457,7 @@ export default function WrapAccountsPage() {
         if (v == null) return <span style={{ color: '#9CA3AF' }}>-</span>;
         return (
           <span style={{ color: '#059669', fontWeight: 600 }}>
-            {(v as number).toFixed(1)}%
+            {Number(v).toFixed(1)}%
           </span>
         );
       },
@@ -505,6 +506,36 @@ export default function WrapAccountsPage() {
     <>
       {/* Page Header */}
       <div style={{ marginBottom: 24 }}>
+        <Link
+          href="/dashboard"
+          style={{
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: '5px',
+            marginBottom: '12px',
+            background: 'none',
+            border: 'none',
+            cursor: 'pointer',
+            color: '#6B7280',
+            fontSize: '0.8125rem',
+            textDecoration: 'none',
+            padding: 0,
+          }}
+        >
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <polyline points="15 18 9 12 15 6" />
+          </svg>
+          대시보드로 돌아가기
+        </Link>
+        <div
+          style={{
+            width: 32,
+            height: 4,
+            borderRadius: 2,
+            background: 'linear-gradient(90deg,#3B82F6 0%,#1E3A5F 100%)',
+            marginBottom: 10,
+          }}
+        />
         <div
           style={{
             display: 'flex',
@@ -523,10 +554,10 @@ export default function WrapAccountsPage() {
                 letterSpacing: '-0.02em',
               }}
             >
-              랩어카운트 관리
+              Wrap 은퇴 상품 관리
             </h1>
             <p style={{ margin: '4px 0 0', fontSize: '0.875rem', color: '#6B7280' }}>
-              랩어카운트 상품을 등록하고 관리합니다.
+              Wrap 은퇴 상품을 등록하고 관리합니다.
             </p>
           </div>
           <Button variant="primary" onClick={openAdd}>
@@ -606,14 +637,14 @@ export default function WrapAccountsPage() {
         data={filteredAccounts}
         rowKey="id"
         loading={loading}
-        emptyMessage="등록된 랩어카운트 상품이 없습니다."
+        emptyMessage="등록된 Wrap 은퇴 상품 상품이 없습니다."
       />
 
       {/* ---- Add Modal ---- */}
       <Modal
         open={addOpen}
         onClose={() => setAddOpen(false)}
-        title="랩어카운트 상품 등록"
+        title="Wrap 은퇴 상품 상품 등록"
         maxWidth={500}
       >
         <AccountForm form={addForm} onChange={(f, v) => setAddForm((p) => ({ ...p, [f]: v }))} errors={addErrors} />
@@ -631,7 +662,7 @@ export default function WrapAccountsPage() {
       <Modal
         open={editOpen}
         onClose={() => setEditOpen(false)}
-        title="랩어카운트 상품 수정"
+        title="Wrap 은퇴 상품 상품 수정"
         maxWidth={500}
       >
         <AccountForm form={editForm} onChange={(f, v) => setEditForm((p) => ({ ...p, [f]: v }))} errors={editErrors} />

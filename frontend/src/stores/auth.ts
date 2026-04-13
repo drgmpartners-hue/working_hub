@@ -17,6 +17,7 @@ interface AuthStore {
 
   // Actions
   login: (data: LoginRequest) => Promise<void>;
+  googleLogin: (credential: string) => Promise<void>;
   register: (data: RegisterRequest) => Promise<void>;
   logout: () => Promise<void>;
   fetchUser: () => Promise<void>;
@@ -48,6 +49,20 @@ export const useAuthStore = create<AuthStore>()(
           await get().fetchUser();
         } catch (error: any) {
           set({ error: error.message || 'Login failed' });
+          throw error;
+        } finally {
+          set({ isLoading: false });
+        }
+      },
+
+      googleLogin: async (credential: string) => {
+        set({ isLoading: true, error: null });
+        try {
+          const response = await authService.googleLogin(credential);
+          set({ token: response.access_token });
+          await get().fetchUser();
+        } catch (error: any) {
+          set({ error: error.message || 'Google login failed' });
           throw error;
         } finally {
           set({ isLoading: false });

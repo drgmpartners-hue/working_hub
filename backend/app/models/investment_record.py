@@ -45,6 +45,11 @@ class InvestmentRecord(Base):
         nullable=True,
     )
 
+    # FK -> deposit_accounts.id (예수금 계좌 연결)
+    deposit_account_id: Mapped[Optional[int]] = mapped_column(
+        Integer, nullable=True,
+    )
+
     # investment / additional_savings / withdrawal
     record_type: Mapped[str] = mapped_column(String(20), nullable=False)
 
@@ -68,6 +73,12 @@ class InvestmentRecord(Base):
 
     start_date: Mapped[date] = mapped_column(Date, nullable=False)
     end_date: Mapped[Optional[date]] = mapped_column(Date, nullable=True)
+
+    # 날짜 필드
+    join_date: Mapped[Optional[date]] = mapped_column(Date, nullable=True)
+    expected_maturity_date: Mapped[Optional[date]] = mapped_column(Date, nullable=True)
+    actual_maturity_date: Mapped[Optional[date]] = mapped_column(Date, nullable=True)
+    original_maturity_date: Mapped[Optional[date]] = mapped_column(Date, nullable=True)
 
     # 자기참조 FK (이전 상품)
     predecessor_id: Mapped[Optional[int]] = mapped_column(

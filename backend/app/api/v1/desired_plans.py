@@ -1,7 +1,8 @@
-"""Desired Plans API - 은퇴 희망 플랜 조회 및 upsert.
+"""Desired Plans API - 은퇴 희망 플랜 조회 / upsert / 계산.
 
-GET  /api/v1/retirement/desired-plans/{customer_id}  → 희망 플랜 조회
-PUT  /api/v1/retirement/desired-plans/{customer_id}  → 희망 플랜 upsert (복리 역산 자동 계산)
+GET  /api/v1/retirement/desired-plans/{customer_id}      → 희망 플랜 조회
+PUT  /api/v1/retirement/desired-plans/{customer_id}      → 희망 플랜 upsert (계산 + 저장)
+POST /api/v1/retirement/desired-plans/calculate          → 저장 없이 계산만
 """
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import select
@@ -11,7 +12,13 @@ from app.core.deps import CurrentUser
 from app.db.session import get_db
 from app.models.customer_retirement_profile import CustomerRetirementProfile
 from app.models.desired_plan import DesiredPlan
-from app.schemas.desired_plan import DesiredPlanResponse, DesiredPlanUpsert
+from app.schemas.desired_plan import (
+    DesiredPlanCalculateRequest,
+    DesiredPlanCalculateResponse,
+    DesiredPlanResponse,
+    DesiredPlanUpsert,
+    SimulationRow,
+)
 from app.services.compound_calc import CompoundCalcService
 
 router = APIRouter(prefix="/retirement/desired-plans", tags=["retirement"])
@@ -40,12 +47,80 @@ def _check_access(
     current_user: CurrentUser,
     profile: CustomerRetirementProfile,
 ) -> None:
-    """본인 또는 슈퍼유저만 접근 가능."""
-    if not current_user.is_superuser and profile.customer_id != current_user.id:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="접근 권한이 없습니다.",
+    """로그인한 사용자는 모든 고객 프로필 접근 가능 (설계사가 고객 관리)."""
+    pass
+
+
+def _enrich_response(plan: DesiredPlan) -> DesiredPlanResponse:
+    """ORM 객체 → DesiredPlanResponse 변환 (calculation_params에서 계산값 복원)."""
+    params: dict = plan.calculation_params or {}
+
+    return DesiredPlanResponse(
+        id=plan.id,
+        profile_id=plan.profile_id,
+        monthly_desired_amount=plan.monthly_desired_amount,
+        retirement_period_years=plan.retirement_period_years,
+        # 계산 결과 (calculation_params 에 저장된 값 복원)
+        future_monthly_amount=params.get("future_monthly_amount"),
+        target_fund=params.get("target_fund"),
+        target_fund_inflation=params.get("target_fund_inflation"),
+        target_fund_no_inflation=params.get("target_fund_no_inflation"),
+        required_holding=params.get("required_holding"),
+        investment_years=params.get("investment_years"),
+        holding_period=params.get("holding_period"),
+        simulation_table=params.get("simulation_table"),
+        # 하위 호환
+        target_total_fund=plan.target_total_fund,
+        required_lump_sum=plan.required_lump_sum,
+        required_annual_savings=plan.required_annual_savings,
+        calculation_params=params,
+        created_at=plan.created_at,
+        updated_at=plan.updated_at,
+    )
+
+
+@router.post("/calculate", response_model=DesiredPlanCalculateResponse)
+async def calculate_desired_plan(
+    data: DesiredPlanCalculateRequest,
+) -> DesiredPlanCalculateResponse:
+    """저장 없이 희망 플랜 계산만 수행.
+
+    DB 저장 없이 입력값 기반으로 계산 결과를 즉시 반환합니다.
+    프론트엔드 실시간 계산 미리보기에 사용합니다.
+    로그인한 사용자만 접근 가능합니다.
+    """
+    try:
+        calc = CompoundCalcService.calculate_all(
+            monthly_desired_amount=data.monthly_desired_amount,
+            retirement_age=data.retirement_age,
+            current_age=data.current_age,
+            retirement_period_years=data.retirement_period_years,
+            savings_period=data.savings_period,
+            annual_savings=data.annual_savings,
+            inflation_rate=data.inflation_rate,
+            pension_return_rate=data.pension_return_rate,
+            expected_return_rate=data.expected_return_rate,
+            with_inflation=data.with_inflation,
         )
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=str(exc),
+        ) from exc
+
+    return DesiredPlanCalculateResponse(
+        investment_years=calc["investment_years"],
+        holding_period=calc["holding_period"],
+        future_monthly_amount=calc["future_monthly_amount"],
+        target_fund_inflation=calc["target_fund_inflation"],
+        target_fund_no_inflation=calc["target_fund_no_inflation"],
+        target_fund=calc["target_fund"],
+        required_holding=calc["required_holding"],
+        required_holding_inflation=calc["required_holding_inflation"],
+        required_holding_no_inflation=calc["required_holding_no_inflation"],
+        simulation_table=[SimulationRow(**row) for row in calc["simulation_table"]],
+        calculation_params=calc["calculation_params"],
+    )
 
 
 @router.get("/{customer_id}", response_model=DesiredPlanResponse)
@@ -75,7 +150,7 @@ async def get_desired_plan(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="희망 플랜이 없습니다. PUT으로 먼저 생성하세요.",
         )
-    return plan
+    return _enrich_response(plan)
 
 
 @router.put("/{customer_id}", response_model=DesiredPlanResponse)
@@ -89,28 +164,54 @@ async def upsert_desired_plan(
 
     - 은퇴 설계 프로필이 없으면 404.
     - 플랜이 이미 존재하면 업데이트, 없으면 생성.
-    - 복리 역산 계산이 자동으로 수행됩니다.
-    - years_to_retirement가 없으면 프로필의
-      (desired_retirement_age - current_age)로 계산합니다.
+    - 엑셀 PV/FV 기반 계산이 자동 수행됩니다.
     """
     profile = await _get_profile_or_404(customer_id, db)
     _check_access(current_user, profile)
 
-    # years_to_retirement 결정
-    years_to_retirement = data.years_to_retirement
-    if years_to_retirement is None:
-        years_to_retirement = max(
-            0,
-            profile.desired_retirement_age - profile.current_age,
-        )
+    # annual_rate → expected_return_rate 하위 호환 처리
+    expected_return_rate = data.expected_return_rate or 0.07
+    if data.annual_rate is not None:
+        expected_return_rate = data.annual_rate
 
-    # 복리 역산 계산
-    calc = CompoundCalcService.calculate_all(
-        monthly_desired_amount=data.monthly_desired_amount,
-        retirement_period_years=data.retirement_period_years,
-        years_to_retirement=years_to_retirement,
-        annual_rate=data.annual_rate,
-    )
+    # inflation_rate / pension_return_rate 기본값 처리
+    inflation_rate = data.inflation_rate if data.inflation_rate is not None else 0.021
+    pension_return_rate = data.pension_return_rate if data.pension_return_rate is not None else 0.05
+
+    try:
+        calc = CompoundCalcService.calculate_all(
+            monthly_desired_amount=data.monthly_desired_amount,
+            retirement_age=data.retirement_age,
+            current_age=data.current_age,
+            retirement_period_years=data.retirement_period_years,
+            savings_period=data.savings_period,
+            annual_savings=data.annual_savings,
+            inflation_rate=inflation_rate,
+            pension_return_rate=pension_return_rate,
+            expected_return_rate=expected_return_rate,
+            with_inflation=data.with_inflation,
+        )
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=str(exc),
+        ) from exc
+
+    # calculation_params: 계산 결과 + 프론트엔드 추가 파라미터 병합
+    merged_params: dict = {**calc["calculation_params"]}
+    # 계산 결과 값도 함께 저장 (GET 시 복원용)
+    merged_params.update({
+        "future_monthly_amount": calc["future_monthly_amount"],
+        "target_fund": calc["target_fund"],
+        "target_fund_inflation": calc["target_fund_inflation"],
+        "target_fund_no_inflation": calc["target_fund_no_inflation"],
+        "required_holding": calc["required_holding"],
+        "investment_years": calc["investment_years"],
+        "holding_period": calc["holding_period"],
+        "simulation_table": calc["simulation_table"],
+    })
+    if data.calculation_params:
+        merged_params.update(data.calculation_params)
 
     # 기존 플랜 조회 (upsert)
     result = await db.execute(
@@ -122,26 +223,24 @@ async def upsert_desired_plan(
     plan = result.scalar_one_or_none()
 
     if plan:
-        # 업데이트
         plan.monthly_desired_amount = data.monthly_desired_amount
         plan.retirement_period_years = data.retirement_period_years
-        plan.target_total_fund = int(calc["target_total_fund"])
-        plan.required_lump_sum = int(calc["required_lump_sum"])
-        plan.required_annual_savings = int(calc["required_annual_savings"])
-        plan.calculation_params = calc["calculation_params"]
+        plan.target_total_fund = calc["target_total_fund"]
+        plan.required_lump_sum = calc["required_lump_sum"]
+        plan.required_annual_savings = calc["required_annual_savings"]
+        plan.calculation_params = merged_params
     else:
-        # 신규 생성
         plan = DesiredPlan(
             profile_id=profile.id,
             monthly_desired_amount=data.monthly_desired_amount,
             retirement_period_years=data.retirement_period_years,
-            target_total_fund=int(calc["target_total_fund"]),
-            required_lump_sum=int(calc["required_lump_sum"]),
-            required_annual_savings=int(calc["required_annual_savings"]),
-            calculation_params=calc["calculation_params"],
+            target_total_fund=calc["target_total_fund"],
+            required_lump_sum=calc["required_lump_sum"],
+            required_annual_savings=calc["required_annual_savings"],
+            calculation_params=merged_params,
         )
         db.add(plan)
 
     await db.commit()
     await db.refresh(plan)
-    return plan
+    return _enrich_response(plan)

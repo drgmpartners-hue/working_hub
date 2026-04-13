@@ -5400,7 +5400,7 @@ export default function IRPPage() {
                 letterSpacing: '-0.4px',
               }}
             >
-              IRP / 연금저축 포트폴리오 관리
+              증권사 투자 상품 관리기
             </h1>
             <p style={{ margin: '5px 0 0', fontSize: '0.875rem', color: '#6B7280' }}>
               증권사 화면을 캡처해 붙여넣으면 AI가 데이터를 인식해 보고서를 생성합니다.

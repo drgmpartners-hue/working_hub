@@ -4,14 +4,65 @@
  */
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useAuthStore } from '@/stores/auth';
 
+declare global {
+  interface Window {
+    google?: {
+      accounts: {
+        id: {
+          initialize: (config: Record<string, unknown>) => void;
+          renderButton: (element: HTMLElement, config: Record<string, unknown>) => void;
+        };
+      };
+    };
+  }
+}
+
 export default function LoginPage() {
   const router = useRouter();
-  const { login, isLoading, error, clearError } = useAuthStore();
+  const { login, googleLogin, isLoading, error, clearError } = useAuthStore();
+
+  const handleGoogleCallback = useCallback(async (response: { credential: string }) => {
+    clearError();
+    try {
+      await googleLogin(response.credential);
+      router.push('/dashboard');
+    } catch {
+      // Error handled by store
+    }
+  }, [googleLogin, clearError, router]);
+
+  useEffect(() => {
+    const script = document.createElement('script');
+    script.src = 'https://accounts.google.com/gsi/client';
+    script.async = true;
+    script.defer = true;
+    script.onload = () => {
+      const clientId = process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID;
+      if (window.google && clientId) {
+        window.google.accounts.id.initialize({
+          client_id: clientId,
+          callback: handleGoogleCallback,
+        });
+        const btnEl = document.getElementById('google-signin-btn');
+        if (btnEl) {
+          window.google.accounts.id.renderButton(btnEl, {
+            theme: 'outline',
+            size: 'large',
+            width: '100%',
+            text: 'signin_with',
+            locale: 'ko',
+          });
+        }
+      }
+    };
+    document.head.appendChild(script);
+    return () => { script.remove(); };
+  }, [handleGoogleCallback]);
 
   const [formData, setFormData] = useState({
     email: '',
@@ -107,6 +158,16 @@ export default function LoginPage() {
             <p className="mt-1 text-sm" style={{ color: '#6B7280' }}>
               계정에 로그인하세요
             </p>
+          </div>
+
+          {/* Google Login Button */}
+          <div id="google-signin-btn" className="flex justify-center mb-5" />
+
+          {/* Divider */}
+          <div className="flex items-center mb-5">
+            <div className="flex-1 h-px" style={{ backgroundColor: '#E1E5EB' }} />
+            <span className="px-3 text-xs" style={{ color: '#9CA3AF' }}>또는 이메일로 로그인</span>
+            <div className="flex-1 h-px" style={{ backgroundColor: '#E1E5EB' }} />
           </div>
 
           {/* API Error */}

@@ -78,6 +78,12 @@ from app.models.interactive_calculation import InteractiveCalculation
 # Depends on customer_retirement_profiles (pension distribution plans)
 from app.models.pension_plan import PensionPlan
 
+# No FK dependencies on retirement profiles (deposit cash accounts)
+from app.models.deposit_account import DepositAccount
+
+# Depends on deposit_accounts (transaction history + auto balance)
+from app.models.deposit_transaction import DepositTransaction
+
 __all__ = [
     "BrandSetting",
     "AIAPISetting",
@@ -115,4 +121,6 @@ __all__ = [
     "RetirementPlan",
     "InteractiveCalculation",
     "PensionPlan",
+    "DepositAccount",
+    "DepositTransaction",
 ]

@@ -12,8 +12,14 @@ class CustomerRetirementProfileBase(BaseModel):
     desired_retirement_age: int = Field(..., ge=1, le=120, description="희망 은퇴 나이")
 
 
-class CustomerRetirementProfileCreate(CustomerRetirementProfileBase):
-    pass
+class CustomerRetirementProfileCreate(BaseModel):
+    """생성 스키마 - 기본값 허용 (자동 프로필 생성용)."""
+    customer_id: Optional[str] = None
+    target_retirement_fund: int = Field(default=0, description="목표 은퇴 자산 (원)")
+    desired_pension_amount: int = Field(default=0, description="원하는 월 연금액 (원)")
+    age_at_design: int = Field(default=35, ge=1, le=120, description="설계 당시 나이")
+    current_age: int = Field(default=35, ge=1, le=120, description="현재 나이")
+    desired_retirement_age: int = Field(default=65, ge=1, le=120, description="희망 은퇴 나이")
 
 
 class CustomerRetirementProfileUpdate(BaseModel):

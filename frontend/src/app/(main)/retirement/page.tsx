@@ -9,6 +9,7 @@ import { InvestmentFlowTab } from './components/tab2/InvestmentFlowTab';
 import { RetirementPlanTab } from './components/tab3/RetirementPlanTab';
 import { InteractiveCalcTab } from './components/tab4/InteractiveCalcTab';
 import { PensionPlanTab } from './components/tab5/PensionPlanTab';
+import Link from 'next/link';
 import { useRetirementStore, type RetirementTab } from './hooks/useRetirementStore';
 
 const VALID_TABS: RetirementTab[] = [
@@ -63,11 +64,11 @@ function RetirementContent() {
         overflow: 'hidden',
       }}
     >
+      {/* 고객 선택 바 (탭 위에 배치 - 전체 탭에 공통 적용) */}
+      <CustomerSelector />
+
       {/* 탭 네비게이션 */}
       <TabNavigation />
-
-      {/* 고객 선택 바 */}
-      <CustomerSelector />
 
       {/* 탭 콘텐츠 */}
       <div style={{ padding: '24px' }}>{renderTab()}</div>
@@ -80,17 +81,49 @@ export default function RetirementPage() {
     <div>
       {/* 페이지 헤더 */}
       <div style={{ marginBottom: '20px' }}>
+        <Link
+          href="/dashboard"
+          style={{
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: '5px',
+            marginBottom: '12px',
+            background: 'none',
+            border: 'none',
+            cursor: 'pointer',
+            color: '#6B7280',
+            fontSize: '0.8125rem',
+            textDecoration: 'none',
+            padding: 0,
+          }}
+        >
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <polyline points="15 18 9 12 15 6" />
+          </svg>
+          대시보드로 돌아가기
+        </Link>
+
+        <div
+          style={{
+            width: 32,
+            height: 4,
+            borderRadius: 2,
+            background: 'linear-gradient(90deg,#3B82F6 0%,#1E3A5F 100%)',
+            marginBottom: 10,
+          }}
+        />
         <h1
           style={{
-            fontSize: '20px',
-            fontWeight: '700',
-            color: '#1E3A5F',
             margin: 0,
+            fontSize: '1.375rem',
+            fontWeight: 800,
+            color: '#1A1A2E',
+            letterSpacing: '-0.4px',
           }}
         >
           Wrap 은퇴설계
         </h1>
-        <p style={{ fontSize: '13px', color: '#9CA3AF', margin: '4px 0 0' }}>
+        <p style={{ margin: '5px 0 0', fontSize: '0.875rem', color: '#6B7280' }}>
           고객별 은퇴설계 플랜을 관리합니다.
         </p>
       </div>

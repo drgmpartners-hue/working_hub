@@ -1,67 +1,231 @@
-"""복리 역산 계산 서비스.
+"""복리 역산 계산 서비스 - 엑셀 PV/FV 함수 기반.
 
-공식:
-  목표 은퇴자금 = 월 희망 수령액 × 12 × 은퇴기간(년)   ← 단순 합산, 물가상승 미반영
-  필요 일시납 PV = FV / (1+r)^n
-  필요 연간 적립 PMT = FV × r / ((1+r)^n - 1)
-
-기본 수익률: 7% per year
+엑셀 재무 함수를 Python으로 구현하여 은퇴플랜 계산에 사용.
+모든 계산은 월복리(rate/12, nper*12) 기준이며 기초납 방식(type=1).
 """
 from __future__ import annotations
 
+from typing import Optional
+
 
 class CompoundCalcService:
-    """복리 역산 계산 서비스 (정적 메서드 모음)."""
+    """엑셀 PV/FV 기반 은퇴플랜 계산 서비스 (정적 메서드 모음)."""
 
     DEFAULT_ANNUAL_RATE: float = 0.07
+    DEFAULT_INFLATION_RATE: float = 0.021
+    DEFAULT_PENSION_RETURN_RATE: float = 0.05
 
     # ------------------------------------------------------------------
-    # 개별 계산 메서드
+    # 엑셀 재무 함수 Python 구현
     # ------------------------------------------------------------------
 
     @staticmethod
-    def calculate_target_total_fund(
-        monthly_desired_amount: int,
+    def excel_pv(rate: float, nper: int, pmt: float, fv: float = 0.0, type: int = 0) -> float:
+        """엑셀 PV 함수와 동일한 현재가치 계산.
+
+        Args:
+            rate: 기간 이자율 (월율: annual_rate / 12)
+            nper: 납입 횟수 (월수)
+            pmt: 정기 납입액 (납입이면 음수, 수령이면 양수)
+            fv: 미래가치 (기본 0)
+            type: 0=기말납, 1=기초납
+
+        Returns:
+            현재가치 (양수 = 투자 필요 금액)
+        """
+        if rate == 0:
+            return -(fv + pmt * nper)
+        pvif = (1 + rate) ** nper
+        pv_val = (-fv - pmt * (pvif - 1) / rate * (1 + rate * type)) / pvif
+        return pv_val
+
+    @staticmethod
+    def excel_fv(rate: float, nper: int, pmt: float, pv: float = 0.0, type: int = 0) -> float:
+        """엑셀 FV 함수와 동일한 미래가치 계산.
+
+        Args:
+            rate: 기간 이자율 (월율: annual_rate / 12)
+            nper: 납입 횟수 (월수)
+            pmt: 정기 납입액 (납입이면 음수)
+            pv: 현재가치 (초기 투자금이면 음수)
+            type: 0=기말납, 1=기초납
+
+        Returns:
+            미래가치 (양수 = 수령 금액)
+        """
+        if rate == 0:
+            return -(pv + pmt * nper)
+        pvif = (1 + rate) ** nper
+        fv_val = -pv * pvif - pmt * (pvif - 1) / rate * (1 + rate * type)
+        return fv_val
+
+    # ------------------------------------------------------------------
+    # 은퇴플랜 개별 계산 메서드
+    # ------------------------------------------------------------------
+
+    @classmethod
+    def calculate_future_monthly(
+        cls,
+        monthly_desired: int,
+        inflation_rate: float,
+        years: int,
+    ) -> float:
+        """은퇴 시점 희망 월수령액 (물가상승 반영 미래가치).
+
+        Excel FV(inflation_rate, years, 0, -monthly_desired)
+
+        Args:
+            monthly_desired: 현재가치 기준 희망 월수령액 (원)
+            inflation_rate: 연 물가상승률 (예: 0.021)
+            years: 은퇴까지 남은 연수 (investment_years)
+
+        Returns:
+            은퇴 시점의 실질 월수령액 (원)
+        """
+        return monthly_desired * (1 + inflation_rate) ** years
+
+    @classmethod
+    def calculate_target_fund(
+        cls,
+        future_monthly: float,
+        pension_return_rate: float,
+        inflation_rate: float,
         retirement_period_years: int,
-    ) -> int:
-        """목표 은퇴자금 = 월 희망 수령액 × 12 × 은퇴기간(년).
-
-        물가 상승률 미반영 단순 계산.
-        """
-        return monthly_desired_amount * 12 * retirement_period_years
-
-    @staticmethod
-    def calculate_required_lump_sum(
-        target_total_fund: int | float,
-        years_to_retirement: int,
-        annual_rate: float = 0.07,
+        with_inflation: bool = False,
     ) -> float:
-        """필요 일시납(PV) 역산.
+        """목표 은퇴자금 계산 (PV 함수, 월복리, 기초납).
 
-        PV = FV / (1+r)^n
-        years_to_retirement=0 이면 현재 시점이므로 PV = FV.
+        Args:
+            future_monthly: 은퇴 시점 희망 월수령액 (원)
+            pension_return_rate: 연금 운용 수익률 (예: 0.05)
+            inflation_rate: 연 물가상승률 (예: 0.021)
+            retirement_period_years: 연금 수령 기간 (년)
+            with_inflation: True=물가상승 반영, False=미반영
+
+        Returns:
+            목표 은퇴자금 (원, 양수)
         """
-        if years_to_retirement == 0:
-            return float(target_total_fund)
-        return target_total_fund / ((1 + annual_rate) ** years_to_retirement)
+        nper = retirement_period_years * 12
 
-    @staticmethod
-    def calculate_required_annual_savings(
-        target_total_fund: int | float,
-        years_to_retirement: int,
-        annual_rate: float = 0.07,
+        if with_inflation:
+            # 물가반영: 실질수익률 = (1+r_pension)/(1+r_inflation) - 1
+            real_rate = (1 + pension_return_rate) / (1 + inflation_rate) - 1
+            monthly_rate = real_rate / 12
+        else:
+            monthly_rate = pension_return_rate / 12
+
+        return -cls.excel_pv(
+            rate=monthly_rate,
+            nper=nper,
+            pmt=future_monthly,  # 수령(양수)
+            fv=0,
+            type=1,  # 기초납 (매월 초 수령)
+        )
+
+    @classmethod
+    def calculate_required_holding(
+        cls,
+        target_fund: float,
+        expected_return_rate: float,
+        savings_period: int,
+        holding_period: int,
+        annual_savings: int,
     ) -> float:
-        """필요 연간 적립액(PMT) 역산.
+        """필요 거치금액 역산 (2단계).
 
-        PMT = FV × r / ((1+r)^n - 1)
-        years_to_retirement=0 이면 0 반환 (적립 기간 없음).
+        Step 1: 거치기간 시작 시점 필요 금액
+            inner_pv = PV(r/12, holding_period*12, 0, -target_fund)
+
+        Step 2: 적립 시작 시점 필요 원금 (거치 초기에 한번만 납입)
+            required = -PV(r/12, savings_period*12, -annual_savings/12, inner_pv)
+
+        Args:
+            target_fund: 목표 은퇴자금 (양수, 원)
+            expected_return_rate: 연 예상수익률 (예: 0.07)
+            savings_period: 적립 기간 (년)
+            holding_period: 거치 기간 (investment_years - savings_period, 년)
+            annual_savings: 연 적립 금액 (원)
+
+        Returns:
+            적립 시작 시점에 필요한 거치 원금 (원, 양수)
         """
-        if years_to_retirement == 0:
-            return 0.0
-        fv_factor = (1 + annual_rate) ** years_to_retirement - 1
-        if fv_factor == 0:
-            return 0.0
-        return target_total_fund * annual_rate / fv_factor
+        monthly_rate = expected_return_rate / 12
+
+        # Step 1: 거치기간 시작점 필요 금액 (target_fund를 fv로 역산)
+        inner_pv = cls.excel_pv(
+            rate=monthly_rate,
+            nper=holding_period * 12,
+            pmt=0,
+            fv=-target_fund,  # 목표금액(양수)을 수령 방향으로
+        )
+
+        # Step 2: 월 적립 + 초기 거치금 역산
+        required = -cls.excel_pv(
+            rate=monthly_rate,
+            nper=savings_period * 12,
+            pmt=-annual_savings / 12,  # 월납 (납입=음수)
+            fv=inner_pv,
+        )
+        return required
+
+    @classmethod
+    def build_simulation_table(
+        cls,
+        current_age: int,
+        investment_years: int,
+        savings_period: int,
+        annual_savings: int,
+        required_holding: float,
+        expected_return_rate: float,
+    ) -> list[dict]:
+        """연차별 시뮬레이션 테이블 생성.
+
+        Args:
+            current_age: 현재 나이
+            investment_years: 적립 총 기간 (은퇴 - 현재나이, 년)
+            savings_period: 월 납입 기간 (년)
+            annual_savings: 연 적립 금액 (원)
+            required_holding: 1년차 초기 거치금 (원)
+            expected_return_rate: 연 예상수익률
+
+        Returns:
+            연차별 dict 리스트:
+            [{"year": 1, "age": 46, "evaluation": int, "cumulative_principal": int, "investment_return": int}, ...]
+        """
+        monthly_rate = expected_return_rate / 12
+        rows = []
+        cumulative_principal = 0.0
+        prev_evaluation = 0.0
+
+        for year in range(1, investment_years + 1):
+            if year <= savings_period:
+                monthly_payment = annual_savings / 12
+                additional = required_holding if year == 1 else 0.0
+            else:
+                monthly_payment = 0.0
+                additional = 0.0
+
+            evaluation = cls.excel_fv(
+                rate=monthly_rate,
+                nper=12,
+                pmt=-monthly_payment,
+                pv=-(prev_evaluation + additional),
+            )
+            cumulative_principal += monthly_payment * 12 + additional
+            investment_return = evaluation - cumulative_principal
+
+            rows.append({
+                "year": year,
+                "age": current_age + year,
+                "monthly_payment": round(monthly_payment),
+                "additional": round(additional),
+                "evaluation": round(evaluation),
+                "cumulative_principal": round(cumulative_principal),
+                "investment_return": round(investment_return),
+            })
+            prev_evaluation = evaluation
+
+        return rows
 
     # ------------------------------------------------------------------
     # 통합 계산 메서드
@@ -71,50 +235,129 @@ class CompoundCalcService:
     def calculate_all(
         cls,
         monthly_desired_amount: int,
+        retirement_age: int,
+        current_age: int,
         retirement_period_years: int,
-        years_to_retirement: int,
-        annual_rate: float | None = None,
+        savings_period: int,
+        annual_savings: int,
+        inflation_rate: float = DEFAULT_INFLATION_RATE,
+        pension_return_rate: float = DEFAULT_PENSION_RETURN_RATE,
+        expected_return_rate: float = DEFAULT_ANNUAL_RATE,
+        with_inflation: bool = False,
+        # 하위 호환용 (무시됨 - **kwargs로 수신)
+        annual_rate: Optional[float] = None,
+        **kwargs,
     ) -> dict:
-        """모든 값을 한 번에 계산하여 dict로 반환.
+        """희망 은퇴플랜 전체 계산.
 
         Returns:
             {
+                "investment_years": int,
+                "holding_period": int,
+                "future_monthly_amount": int,
+                "target_fund_inflation": int,
+                "target_fund_no_inflation": int,
+                "target_fund": int,           # with_inflation에 따라 선택
+                "required_holding": int,
+                "simulation_table": list[dict],
+                # 하위 호환 필드
                 "target_total_fund": int,
-                "required_lump_sum": float,
-                "required_annual_savings": float,
-                "calculation_params": {
-                    "monthly_desired_amount": int,
-                    "retirement_period_years": int,
-                    "years_to_retirement": int,
-                    "annual_rate": float,
-                },
+                "required_lump_sum": int,
+                "required_annual_savings": int,
+                "calculation_params": dict,
             }
         """
-        rate = annual_rate if annual_rate is not None else cls.DEFAULT_ANNUAL_RATE
+        # annual_rate 하위 호환: annual_rate가 있으면 expected_return_rate로 사용
+        if annual_rate is not None:
+            expected_return_rate = annual_rate
 
-        target_total_fund = cls.calculate_target_total_fund(
-            monthly_desired_amount=monthly_desired_amount,
+        investment_years = retirement_age - current_age
+        holding_period = investment_years - savings_period
+
+        if investment_years <= 0:
+            raise ValueError(f"retirement_age({retirement_age}) must be greater than current_age({current_age})")
+        if holding_period < 0:
+            raise ValueError(f"savings_period({savings_period}) must be less than investment_years({investment_years})")
+
+        # 1. 은퇴 시점 희망 월수령액
+        future_monthly = cls.calculate_future_monthly(
+            monthly_desired=monthly_desired_amount,
+            inflation_rate=inflation_rate,
+            years=investment_years,
+        )
+
+        # 2. 목표 은퇴자금 (물가O/물가X 각각)
+        target_fund_inflation = cls.calculate_target_fund(
+            future_monthly=future_monthly,
+            pension_return_rate=pension_return_rate,
+            inflation_rate=inflation_rate,
             retirement_period_years=retirement_period_years,
+            with_inflation=True,
         )
-        required_lump_sum = cls.calculate_required_lump_sum(
-            target_total_fund=target_total_fund,
-            years_to_retirement=years_to_retirement,
-            annual_rate=rate,
+        target_fund_no_inflation = cls.calculate_target_fund(
+            future_monthly=future_monthly,
+            pension_return_rate=pension_return_rate,
+            inflation_rate=inflation_rate,
+            retirement_period_years=retirement_period_years,
+            with_inflation=False,
         )
-        required_annual_savings = cls.calculate_required_annual_savings(
-            target_total_fund=target_total_fund,
-            years_to_retirement=years_to_retirement,
-            annual_rate=rate,
+        target_fund = target_fund_inflation if with_inflation else target_fund_no_inflation
+
+        # 3. 필요 거치금액 (물가O/물가X 각각)
+        required_holding_inflation = cls.calculate_required_holding(
+            target_fund=target_fund_inflation,
+            expected_return_rate=expected_return_rate,
+            savings_period=savings_period,
+            holding_period=holding_period,
+            annual_savings=annual_savings,
+        )
+        required_holding_no_inflation = cls.calculate_required_holding(
+            target_fund=target_fund_no_inflation,
+            expected_return_rate=expected_return_rate,
+            savings_period=savings_period,
+            holding_period=holding_period,
+            annual_savings=annual_savings,
+        )
+        required_holding = required_holding_inflation if with_inflation else required_holding_no_inflation
+
+        # 4. 시뮬레이션 테이블 (선택된 물가 기준)
+        simulation_table = cls.build_simulation_table(
+            current_age=current_age,
+            investment_years=investment_years,
+            savings_period=savings_period,
+            annual_savings=annual_savings,
+            required_holding=required_holding,
+            expected_return_rate=expected_return_rate,
         )
 
-        return {
-            "target_total_fund": target_total_fund,
-            "required_lump_sum": required_lump_sum,
-            "required_annual_savings": required_annual_savings,
+        result = {
+            "investment_years": investment_years,
+            "holding_period": holding_period,
+            "future_monthly_amount": round(future_monthly),
+            "target_fund_inflation": round(target_fund_inflation),
+            "target_fund_no_inflation": round(target_fund_no_inflation),
+            "target_fund": round(target_fund),
+            "required_holding": round(required_holding),
+            "required_holding_inflation": round(required_holding_inflation),
+            "required_holding_no_inflation": round(required_holding_no_inflation),
+            "simulation_table": simulation_table,
+            # 하위 호환 필드 (구 API 연동)
+            "target_total_fund": round(target_fund),
+            "required_lump_sum": round(required_holding),
+            "required_annual_savings": annual_savings,
             "calculation_params": {
                 "monthly_desired_amount": monthly_desired_amount,
+                "retirement_age": retirement_age,
+                "current_age": current_age,
                 "retirement_period_years": retirement_period_years,
-                "years_to_retirement": years_to_retirement,
-                "annual_rate": rate,
+                "savings_period": savings_period,
+                "annual_savings": annual_savings,
+                "inflation_rate": inflation_rate,
+                "pension_return_rate": pension_return_rate,
+                "expected_return_rate": expected_return_rate,
+                "with_inflation": with_inflation,
+                "investment_years": investment_years,
+                "holding_period": holding_period,
             },
         }
+        return result

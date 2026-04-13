@@ -8,13 +8,15 @@ export interface DesiredPlanData {
 }
 
 export interface DesiredPlanResponse {
-  customer_id: number;
+  id: number;
+  profile_id: string;
   monthly_desired_amount: number;
   retirement_period_years: number;
   target_total_fund: number;
   required_lump_sum: number;
   required_annual_savings: number;
-  assumed_return_rate: number;
+  assumed_return_rate?: number;
+  calculation_params?: Record<string, unknown> | null;
   created_at?: string;
   updated_at?: string;
 }

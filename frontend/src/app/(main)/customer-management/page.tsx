@@ -22,7 +22,6 @@ interface Customer {
 interface FormData {
   name: string;
   birth_date: string;
-  ssn: string;
   phone: string;
   email: string;
 }
@@ -30,7 +29,6 @@ interface FormData {
 const EMPTY_FORM: FormData = {
   name: '',
   birth_date: '',
-  ssn: '',
   phone: '',
   email: '',
 };
@@ -111,7 +109,6 @@ export default function CustomerManagementPage() {
     setForm({
       name: c.name,
       birth_date: c.birth_date ?? '',
-      ssn: '',
       phone: c.phone ?? '',
       email: c.email ?? '',
     });
@@ -135,6 +132,10 @@ export default function CustomerManagementPage() {
       setFormError('고객명은 필수입니다.');
       return;
     }
+    if (!form.birth_date) {
+      setFormError('생년월일은 필수입니다.');
+      return;
+    }
 
     setSubmitting(true);
     setFormError(null);
@@ -147,10 +148,6 @@ export default function CustomerManagementPage() {
         phone: form.phone.trim() || null,
         email: form.email.trim() || null,
       };
-
-      if (!editTarget && form.ssn.trim()) {
-        body.ssn = form.ssn.trim();
-      }
 
       let res: Response;
       if (editTarget) {
@@ -648,7 +645,9 @@ export default function CustomerManagementPage() {
 
             {/* 생년월일 */}
             <div style={{ marginBottom: '16px' }}>
-              <label style={labelStyle}>생년월일</label>
+              <label style={labelStyle}>
+                생년월일 <span style={{ color: '#DC2626' }}>*</span>
+              </label>
               <input
                 type="date"
                 value={form.birth_date}
@@ -680,7 +679,7 @@ export default function CustomerManagementPage() {
             </div>
 
             {/* 이메일 */}
-            <div style={{ marginBottom: '24px' }}>
+            <div style={{ marginBottom: '8px' }}>
               <label style={labelStyle}>이메일</label>
               <input
                 type="email"
@@ -690,6 +689,11 @@ export default function CustomerManagementPage() {
                 style={inputStyle}
               />
             </div>
+
+            {/* 안내 메모 */}
+            <p style={{ fontSize: '12px', color: '#9CA3AF', marginTop: '8px', marginBottom: '16px' }}>
+              ※ &apos;증권사 투자 상품 관리기&apos; 이용 시 전화번호와 이메일이 반드시 필요합니다.
+            </p>
 
             {/* Form error */}
             {formError && (

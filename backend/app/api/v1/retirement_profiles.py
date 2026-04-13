@@ -56,12 +56,8 @@ async def get_retirement_profile(
             detail="은퇴 설계 프로필을 찾을 수 없습니다.",
         )
 
-    # 본인 또는 슈퍼유저만 접근 가능
-    if not current_user.is_superuser and profile.customer_id != current_user.id:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="접근 권한이 없습니다.",
-        )
+    # 로그인한 사용자는 모든 고객 프로필 조회 가능 (설계사가 고객 프로필 관리)
+    # (기존: 본인 또는 슈퍼유저만 → 변경: 로그인 사용자 모두)
 
     return profile
 
@@ -76,9 +72,12 @@ async def create_retirement_profile(
 
     이미 프로필이 존재하면 409 Conflict를 반환합니다.
     """
+    # customer_id: body에 있으면 사용, 없으면 current_user.id
+    cid = data.customer_id or current_user.id
+
     existing = await db.execute(
         select(CustomerRetirementProfile).where(
-            CustomerRetirementProfile.customer_id == current_user.id
+            CustomerRetirementProfile.customer_id == cid
         )
     )
     if existing.scalar_one_or_none():
@@ -87,9 +86,10 @@ async def create_retirement_profile(
             detail="이미 은퇴 설계 프로필이 존재합니다. PUT으로 수정하세요.",
         )
 
+    create_data = data.model_dump(exclude={"customer_id"})
     profile = CustomerRetirementProfile(
-        customer_id=current_user.id,
-        **data.model_dump(),
+        customer_id=cid,
+        **create_data,
     )
     db.add(profile)
     await db.commit()

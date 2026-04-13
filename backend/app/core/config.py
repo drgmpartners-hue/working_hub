@@ -24,6 +24,9 @@ class Settings(BaseSettings):
     SOLAPI_SENDER: str = ""  # 발신번호 (등록 후 입력)
     SOLAPI_PF_ID: str = ""   # 카카오 비즈니스 채널 ID (예: @channelname)
 
+    # Google OAuth
+    GOOGLE_CLIENT_ID: str = ""
+
     @computed_field
     @property
     def ASYNC_DATABASE_URL(self) -> str:

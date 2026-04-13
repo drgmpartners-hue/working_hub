@@ -1,6 +1,6 @@
 """add desired_plans table
 
-Revision ID: r4s5t6u7v8w9
+Revision ID: a1b2c3d4e5f6
 Revises: q3r4s5t6u7v8
 Create Date: 2026-04-07
 """
@@ -8,7 +8,7 @@ from alembic import op
 import sqlalchemy as sa
 from sqlalchemy.dialects import postgresql
 
-revision = "r4s5t6u7v8w9"
+revision = "a1b2c3d4e5f6"
 down_revision = "q3r4s5t6u7v8"
 branch_labels = None
 depends_on = None

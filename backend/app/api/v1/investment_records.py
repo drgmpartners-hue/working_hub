@@ -23,13 +23,22 @@ async def _get_profile_or_404(
     profile_id: str,
     db: AsyncSession,
 ) -> CustomerRetirementProfile:
-    """프로필 존재 여부 확인 헬퍼."""
+    """프로필 존재 여부 확인 헬퍼. profile.id 또는 customer_id로 조회."""
+    # 먼저 id로 조회
     result = await db.execute(
         select(CustomerRetirementProfile).where(
             CustomerRetirementProfile.id == profile_id
         )
     )
     profile = result.scalar_one_or_none()
+    if not profile:
+        # customer_id로 재시도
+        result2 = await db.execute(
+            select(CustomerRetirementProfile).where(
+                CustomerRetirementProfile.customer_id == profile_id
+            )
+        )
+        profile = result2.scalar_one_or_none()
     if not profile:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -89,12 +98,7 @@ async def get_annual_flow(
             detail="은퇴 설계 프로필을 찾을 수 없습니다.",
         )
 
-    # 권한 확인: 본인 또는 슈퍼유저
-    if not current_user.is_superuser and profile.customer_id != current_user.id:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="접근 권한이 없습니다.",
-        )
+    # 설계사가 고객 관리하므로 권한 체크 완화
 
     # 해당 프로필의 투자기록 전체 조회 (서비스에서 연도 필터링)
     records_result = await db.execute(
@@ -151,13 +155,6 @@ async def list_investment_records(
         if not profile:
             return []
 
-        # 권한 확인
-        if not current_user.is_superuser and profile.customer_id != current_user.id:
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="접근 권한이 없습니다.",
-            )
-
         query = query.where(InvestmentRecord.profile_id == profile.id)
     elif not current_user.is_superuser:
         # customer_id 없이 조회하는 경우 본인 기록만
@@ -203,13 +200,8 @@ async def create_investment_record(
 
     exit 상태인 경우 수익률을 자동 계산합니다.
     """
-    # 프로필 소유자 확인
+    # 프로필 확인 (customer_id → profile.id 변환)
     profile = await _get_profile_or_404(data.profile_id, db)
-    if not current_user.is_superuser and profile.customer_id != current_user.id:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="접근 권한이 없습니다.",
-        )
 
     # 수익률 자동 계산
     return_rate = None
@@ -219,11 +211,62 @@ async def create_investment_record(
             evaluation_amount=data.evaluation_amount,
         )
 
+    record_data = data.model_dump()
+    record_data["profile_id"] = profile.id  # 실제 profile PK로 교체
     record = InvestmentRecord(
-        **data.model_dump(),
+        **record_data,
         return_rate=return_rate,
     )
     db.add(record)
+    await db.flush()  # record.id 확보
+    await db.refresh(record)
+
+    # 예수금 계좌 연동: deposit_account_id가 있으면 거래내역 자동 생성
+    if data.deposit_account_id:
+        from app.models.deposit_transaction import DepositTransaction
+        from app.api.v1.deposit_accounts import recalculate_balances
+
+        # 상품명 조회
+        product_label = data.product_name or ""
+        if data.wrap_account_id:
+            from app.models.wrap_account import WrapAccount
+            wa_result = await db.execute(
+                select(WrapAccount).where(WrapAccount.id == data.wrap_account_id)
+            )
+            wa = wa_result.scalar_one_or_none()
+            if wa:
+                product_label = wa.product_name
+
+        # 투자 시: 출금 (예수금에서 돈 나감)
+        txn = DepositTransaction(
+            deposit_account_id=data.deposit_account_id,
+            transaction_date=data.start_date,
+            transaction_type="investment",
+            related_product=product_label,
+            investment_record_id=record.id,
+            credit_amount=0,
+            debit_amount=data.investment_amount,
+            memo=f"투자기록 #{record.id} 자동생성",
+        )
+        db.add(txn)
+
+        # 종결 시: 입금 (예수금으로 돈 들어옴)
+        if data.status == "exit" and data.evaluation_amount:
+            txn_exit = DepositTransaction(
+                deposit_account_id=data.deposit_account_id,
+                transaction_date=data.actual_maturity_date or data.end_date or data.start_date,
+                transaction_type="termination",
+                related_product=product_label,
+                investment_record_id=record.id,
+                credit_amount=data.evaluation_amount,
+                debit_amount=0,
+                memo=f"투자기록 #{record.id} 종결 자동생성",
+            )
+            db.add(txn_exit)
+
+        await db.flush()
+        await recalculate_balances(data.deposit_account_id, db)
+
     await db.commit()
     await db.refresh(record)
     return record
@@ -250,22 +293,47 @@ async def update_investment_record(
     """
     record = await _get_record_or_404(record_id, db)
 
-    # 프로필 소유자 확인
-    profile = await _get_profile_or_404(record.profile_id, db)
-    if not current_user.is_superuser and profile.customer_id != current_user.id:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="접근 권한이 없습니다.",
-        )
-
     update_fields = data.model_dump(exclude_unset=True)
     for field, value in update_fields.items():
         setattr(record, field, value)
 
-    # 수익률 재계산 (exit 상태인 경우)
-    final_status = update_fields.get("status", record.status)
-    final_investment = update_fields.get("investment_amount", record.investment_amount)
-    final_evaluation = update_fields.get("evaluation_amount", record.evaluation_amount)
+    from app.models.deposit_transaction import DepositTransaction
+    from app.api.v1.deposit_accounts import recalculate_balances
+
+    # 실제만기일 유무에 따라 종결/운용중 자동 전환
+    if record.actual_maturity_date:
+        # 실제만기일 있음 → 종결
+        if record.status != "exit":
+            record.status = "exit"
+        if not record.end_date:
+            record.end_date = record.actual_maturity_date
+    else:
+        # 실제만기일 삭제됨 → 운용중으로 복귀
+        if record.status == "exit":
+            record.status = "ing"
+            record.end_date = None
+
+        # 기존 종결 거래 삭제
+        existing_term = await db.execute(
+            select(DepositTransaction).where(
+                DepositTransaction.investment_record_id == record.id,
+                DepositTransaction.transaction_type == "termination",
+            )
+        )
+        term_txns = existing_term.scalars().all()
+        affected_accounts = set()
+        for txn in term_txns:
+            affected_accounts.add(txn.deposit_account_id)
+            await db.delete(txn)
+        if affected_accounts:
+            await db.flush()
+            for acct_id in affected_accounts:
+                await recalculate_balances(acct_id, db)
+
+    # 수익률 재계산
+    final_status = record.status
+    final_investment = record.investment_amount
+    final_evaluation = record.evaluation_amount
 
     if final_status == "exit":
         record.return_rate = calculate_return_rate(
@@ -274,6 +342,39 @@ async def update_investment_record(
         )
     else:
         record.return_rate = None
+
+    # 예수금 계좌 연동: 종결 시 입금 거래 자동 생성
+    deposit_acct_id = record.deposit_account_id
+    if deposit_acct_id and final_status == "exit" and final_evaluation:
+        # 기존 종결 거래가 있는지 확인 (중복 방지)
+        existing = await db.execute(
+            select(DepositTransaction).where(
+                DepositTransaction.investment_record_id == record.id,
+                DepositTransaction.transaction_type == "termination",
+            )
+        )
+        if not existing.scalar_one_or_none():
+            product_label = record.product_name or ""
+            if record.wrap_account_id:
+                from app.models.wrap_account import WrapAccount
+                wa_r = await db.execute(select(WrapAccount).where(WrapAccount.id == record.wrap_account_id))
+                wa = wa_r.scalar_one_or_none()
+                if wa:
+                    product_label = wa.product_name
+
+            txn = DepositTransaction(
+                deposit_account_id=deposit_acct_id,
+                transaction_date=record.actual_maturity_date or record.end_date or record.start_date,
+                transaction_type="termination",
+                related_product=product_label,
+                investment_record_id=record.id,
+                credit_amount=final_evaluation,
+                debit_amount=0,
+                memo=f"투자기록 #{record.id} 종결 자동생성",
+            )
+            db.add(txn)
+            await db.flush()
+            await recalculate_balances(deposit_acct_id, db)
 
     await db.commit()
     await db.refresh(record)
@@ -294,16 +395,29 @@ async def delete_investment_record(
     current_user: CurrentUser,
     db: AsyncSession = Depends(get_db),
 ):
-    """투자기록 삭제."""
+    """투자기록 삭제. 연결된 예수금 거래내역도 함께 삭제."""
     record = await _get_record_or_404(record_id, db)
 
-    # 프로필 소유자 확인
-    profile = await _get_profile_or_404(record.profile_id, db)
-    if not current_user.is_superuser and profile.customer_id != current_user.id:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="접근 권한이 없습니다.",
+    # 예수금 거래내역 삭제
+    from app.models.deposit_transaction import DepositTransaction
+    from app.api.v1.deposit_accounts import recalculate_balances
+
+    txn_result = await db.execute(
+        select(DepositTransaction).where(
+            DepositTransaction.investment_record_id == record_id
         )
+    )
+    txns = txn_result.scalars().all()
+    affected_account_ids = set()
+    for txn in txns:
+        affected_account_ids.add(txn.deposit_account_id)
+        await db.delete(txn)
 
     await db.delete(record)
+    await db.flush()
+
+    # 영향받은 계좌 잔액 재계산
+    for acct_id in affected_account_ids:
+        await recalculate_balances(acct_id, db)
+
     await db.commit()

@@ -46,12 +46,47 @@ screens:
     file: content-cover-promo.yaml
     auth: true
 
+  # === Wrap Retirement (랩 은퇴설계) ===
+
+  - name: 희망 은퇴플랜 (1번탭)
+    route: /retirement?tab=desired-plan
+    file: retirement-desired-plan.yaml
+    auth: true
+
+  - name: 투자흐름 (2번탭)
+    route: /retirement?tab=investment-flow
+    file: retirement-investment-flow.yaml
+    auth: true
+
+  - name: 은퇴플랜 (3번탭)
+    route: /retirement?tab=retirement-plan
+    file: retirement-plan.yaml
+    auth: true
+
+  - name: 인터랙티브 계산기 (4번탭)
+    route: /retirement?tab=interactive-calc
+    file: retirement-interactive-calc.yaml
+    auth: true
+
+  - name: 연금수령 계획 (5번탭)
+    route: /retirement?tab=pension-plan
+    file: retirement-pension-plan.yaml
+    auth: true
+
+  - name: 랩어카운트 관리
+    route: /data-management/wrap-accounts
+    file: wrap-account-mgmt.yaml
+    auth: true
+
 categories:
   - name: 업무 자동화
     screens: [commission-dr-gm, commission-securities]
 
   - name: 투자 분석
-    screens: [portfolio-irp, stock-recommend]
+    screens: [portfolio-irp, stock-recommend, retirement-desired-plan, retirement-investment-flow, retirement-plan, retirement-interactive-calc, retirement-pension-plan]
 
   - name: 콘텐츠 제작
     screens: [content-card-news, content-report, content-cover-promo]
+
+  - name: Data 관리
+    screens: [wrap-account-mgmt]

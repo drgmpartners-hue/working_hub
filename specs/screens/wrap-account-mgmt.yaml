@@ -1,0 +1,71 @@
+version: "2.0"
+
+screen:
+  name: 랩어카운트 관리
+  route: /data-management/wrap-accounts
+  layout: dashboard
+  auth: true
+
+data_requirements:
+  - resource: wrap_accounts
+    needs: [id, product_name, securities_company, investment_target, target_return_rate, description, is_active]
+
+components:
+  - id: wrap_account_table
+    type: list
+    position: main
+    function: 랩어카운트 상품 목록 테이블 (상품명/증권사/투자대상/목표수익률/상태)
+    data_source:
+      resource: wrap_accounts
+    events:
+      - on: click:edit
+        do: 상품 수정 모달 열기
+      - on: click:toggle_active
+        do: 활성/비활성 상태 토글
+
+  - id: add_account_modal
+    type: form
+    position: overlay
+    function: 상품 등록 모달 (상품명/증권사/투자대상/목표수익률/설명)
+    events:
+      - on: submit
+        do: 새 상품 등록 후 테이블 갱신
+
+  - id: edit_account_modal
+    type: form
+    position: overlay
+    function: 상품 수정 모달
+    data_source:
+      resource: wrap_accounts
+    events:
+      - on: submit
+        do: 상품 정보 수정 후 테이블 갱신
+
+connections:
+  navigations:
+    - from: wrap_account_table
+      to: /retirement?tab=investment-flow
+  shared_components:
+    - header
+    - sidebar
+  external:
+    - auth
+
+tests:
+  - name: 상품 목록 표시
+    when: 페이지 접속
+    then:
+      - 등록된 랩어카운트 상품 목록 표시
+      - 활성/비활성 상태 구분 표시
+
+  - name: 상품 등록
+    when: 상품 등록 버튼 클릭 후 정보 입력
+    then:
+      - 새 상품이 테이블에 추가
+      - 2번탭 투자기록 추가 시 드롭다운에 반영
+
+  - name: 상품 비활성화
+    when: 상품 비활성화 토글 클릭
+    then:
+      - 해당 상품 비활성 표시
+      - 2번탭 드롭다운에서 제외

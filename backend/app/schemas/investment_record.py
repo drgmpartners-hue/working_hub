@@ -11,13 +11,18 @@ RecordStatus = Literal["ing", "exit", "deposit"]
 class InvestmentRecordBase(BaseModel):
     profile_id: str = Field(..., description="은퇴 설계 프로필 ID (UUID)")
     wrap_account_id: Optional[int] = Field(None, description="랩 계좌 ID")
+    deposit_account_id: Optional[int] = Field(None, description="예수금 계좌 ID")
     record_type: RecordType = Field(..., description="기록 유형: investment/additional_savings/withdrawal")
     product_name: Optional[str] = Field(None, max_length=100, description="상품명")
     investment_amount: int = Field(..., description="투자금액 (만원)")
     evaluation_amount: Optional[int] = Field(None, description="평가금액 (만원, exit 시)")
     status: RecordStatus = Field(..., description="상태: ing/exit/deposit")
-    start_date: date = Field(..., description="시작일")
+    start_date: date = Field(..., description="가입일")
     end_date: Optional[date] = Field(None, description="종료일")
+    join_date: Optional[date] = Field(None, description="가입일")
+    expected_maturity_date: Optional[date] = Field(None, description="예상만기일")
+    actual_maturity_date: Optional[date] = Field(None, description="실제만기일")
+    original_maturity_date: Optional[date] = Field(None, description="원만기일")
     predecessor_id: Optional[int] = Field(None, description="이전 상품 ID (자기참조)")
     successor_id: Optional[int] = Field(None, description="다음 상품 ID (자기참조)")
     memo: Optional[str] = Field(None, description="메모")
@@ -36,6 +41,7 @@ class InvestmentRecordCreate(InvestmentRecordBase):
 
 class InvestmentRecordUpdate(BaseModel):
     wrap_account_id: Optional[int] = None
+    deposit_account_id: Optional[int] = None
     record_type: Optional[RecordType] = None
     product_name: Optional[str] = Field(None, max_length=100)
     investment_amount: Optional[int] = None
@@ -43,6 +49,10 @@ class InvestmentRecordUpdate(BaseModel):
     status: Optional[RecordStatus] = None
     start_date: Optional[date] = None
     end_date: Optional[date] = None
+    join_date: Optional[date] = None
+    expected_maturity_date: Optional[date] = None
+    actual_maturity_date: Optional[date] = None
+    original_maturity_date: Optional[date] = None
     predecessor_id: Optional[int] = None
     successor_id: Optional[int] = None
     memo: Optional[str] = None

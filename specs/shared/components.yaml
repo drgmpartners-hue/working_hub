@@ -78,3 +78,35 @@ shared_components:
         do: 텍스트 수정 모드
       - on: click:regenerate
         do: AI 재생성 요청
+
+  # === Wrap Retirement 공통 컴포넌트 ===
+
+  retirement_customer_selector:
+    type: navigation
+    position: header
+    function: 고객 검색/선택 드롭다운, 선택 시 고객명(고유번호) + 목표은퇴자금 + 희망은퇴나이 상단 고정 표시
+    used_in:
+      - retirement-desired-plan
+      - retirement-investment-flow
+      - retirement-plan
+      - retirement-interactive-calc
+      - retirement-pension-plan
+    data_source:
+      resource: customer_retirement_profiles
+    events:
+      - on: change:customer
+        do: 선택한 고객의 모든 탭 데이터 갱신, 전체 탭 상태 동기화
+
+  retirement_tab_navigation:
+    type: navigation
+    position: header
+    function: 5개 탭 전환 (희망은퇴플랜/투자흐름/은퇴플랜/인터랙티브계산기/연금수령계획)
+    used_in:
+      - retirement-desired-plan
+      - retirement-investment-flow
+      - retirement-plan
+      - retirement-interactive-calc
+      - retirement-pension-plan
+    events:
+      - on: click:tab
+        do: 해당 탭으로 전환, 고객 선택 상태 유지

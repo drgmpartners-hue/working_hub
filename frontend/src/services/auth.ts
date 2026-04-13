@@ -125,6 +125,28 @@ export const authService = {
   },
 
   /**
+   * Login with Google OAuth token.
+   */
+  async googleLogin(credential: string): Promise<AuthResponse> {
+    const response = await fetch(`${API_URL}/api/v1/auth/google`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ credential }),
+    });
+
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.detail || 'Google login failed');
+    }
+
+    const result = await response.json();
+    if (result.access_token) {
+      authLib.setToken(result.access_token);
+    }
+    return result;
+  },
+
+  /**
    * Delete current user account.
    */
   async deleteAccount(): Promise<void> {

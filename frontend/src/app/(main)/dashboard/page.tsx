@@ -40,9 +40,14 @@ const CATEGORIES: Array<{
         href: '/customer-management',
       },
       {
-        title: '상품 마스터 관리',
+        title: '증권사 상품 관리',
         description: '상품명 · 위험도 · 지역 매핑 마스터 데이터를 관리합니다',
         href: '/portfolio/product-master',
+      },
+      {
+        title: 'Wrap 은퇴 상품 관리',
+        description: 'Wrap 계좌 및 은퇴 상품 마스터 데이터를 등록하고 관리합니다',
+        href: '/data-management/wrap-accounts',
       },
     ],
   },
@@ -84,8 +89,8 @@ const CATEGORIES: Array<{
     ),
     programs: [
       {
-        title: 'IRP 포트폴리오 수익률 관리기',
-        description: 'IRP 포트폴리오 수익률을 분석하고 리밸런싱을 제안합니다',
+        title: '증권사 투자 상품 관리기',
+        description: 'IRP/연금저축 포트폴리오 수익률을 분석하고 리밸런싱을 제안합니다',
         href: '/portfolio/irp',
       },
       {

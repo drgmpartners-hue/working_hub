@@ -25,6 +25,20 @@ enums:
     values: [pension, irp]
     used_in: [portfolio_items]
 
+  # === Wrap Retirement enums ===
+
+  investment_record_type:
+    values: [investment, additional_savings, withdrawal]
+    used_in: [investment_records]
+
+  investment_status:
+    values: [ing, exit, deposit]
+    used_in: [investment_records]
+
+  pension_type:
+    values: [lifetime, fixed, inheritance]
+    used_in: [pension_plans]
+
 common_patterns:
   file_download:
     description: 파일 생성 후 다운로드
@@ -53,3 +67,25 @@ common_patterns:
       - content-card-news
       - content-report
       - content-cover-promo
+
+  # === Wrap Retirement patterns ===
+
+  compound_calculation:
+    description: 복리 계산 기반 시뮬레이션 (백엔드에서만 실행)
+    used_in:
+      - retirement-desired-plan (목표 역산)
+      - retirement-plan (연도별 예상)
+      - retirement-interactive-calc (수정 예측)
+      - retirement-pension-plan (연금 수령 계산)
+
+  tab_data_flow:
+    description: 탭 간 데이터 흐름 (저장 시 다른 탭에 반영)
+    flows:
+      - from: tab1_desired_plan
+        to: [tab3_retirement_plan, tab4_interactive_calc]
+      - from: tab2_investment_flow
+        to: [tab4_interactive_calc]
+      - from: tab3_retirement_plan
+        to: [tab4_interactive_calc, tab5_pension_plan]
+      - from: tab4_interactive_calc
+        to: [tab5_pension_plan]

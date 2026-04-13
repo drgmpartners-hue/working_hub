@@ -30,12 +30,15 @@ from app.api.v1 import retirement_plans as retirement_plans_router
 from app.api.v1 import interactive_calculations as interactive_calculations_router
 from app.api.v1 import pension_plans as pension_plans_router
 from app.api.v1 import ai_retirement_guide as ai_retirement_guide_router
+from app.api.v1 import inflation_rate as inflation_rate_router
+from app.api.v1.deposit_accounts import router as deposit_accounts_router
+from app.api.v1.deposit_accounts import transactions_router as deposit_transactions_router
 
 app = FastAPI(title="API", version="0.1.0")
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=["http://localhost:3000", "http://127.0.0.1:3000"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -75,6 +78,9 @@ app.include_router(retirement_plans_router.router, prefix="/api/v1")
 app.include_router(interactive_calculations_router.router, prefix="/api/v1")
 app.include_router(pension_plans_router.router, prefix="/api/v1")
 app.include_router(ai_retirement_guide_router.router, prefix="/api/v1")
+app.include_router(inflation_rate_router.router, prefix="/api/v1")
+app.include_router(deposit_accounts_router, prefix="/api/v1")
+app.include_router(deposit_transactions_router, prefix="/api/v1")
 
 
 @app.exception_handler(Exception)

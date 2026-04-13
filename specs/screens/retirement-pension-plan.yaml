@@ -1,0 +1,83 @@
+version: "2.0"
+
+screen:
+  name: 연금수령 계획 (5번탭)
+  route: /retirement?tab=pension-plan
+  layout: full-width
+  auth: true
+
+data_requirements:
+  - resource: pension_plans
+    needs: [pension_type, accumulation_summary, distribution_plan, combined_graph_data]
+    filters: { customer_id: "?customer_id" }
+
+  - resource: retirement_plans
+    needs: [yearly_projections, target_retirement_fund, desired_retirement_age]
+    filters: { customer_id: "?customer_id" }
+
+  - resource: interactive_calculations
+    needs: [projected_data, deviation_rate]
+    filters: { customer_id: "?customer_id" }
+
+components:
+  - id: accumulation_summary
+    type: detail
+    position: main
+    function: 모으는 기간 요약 (납입기간/총납입/예상은퇴자금/달성률)
+    data_source:
+      resource: retirement_plans
+
+  - id: pension_type_selector
+    type: navigation
+    position: main
+    function: 연금지급방법 선택 (종신형/확정형/상속형)
+    events:
+      - on: click:type
+        do: 선택한 지급방법에 따라 비교 테이블 및 그래프 동적 업데이트
+
+  - id: pension_comparison_table
+    type: list
+    position: main
+    function: 지급방법별 비교 테이블 (월수령액/수령기간/총수령액/잔여원금)
+    data_source:
+      resource: pension_plans
+
+  - id: lifecycle_chart
+    type: detail
+    position: main
+    function: 모으기+쓰기 통합 연속 그래프 (모으기=Navy, 쓰기=Gold, 지급방법 선택에 따라 동적 변경)
+    data_source:
+      resource: pension_plans
+    events:
+      - on: change:pension_type
+        do: 쓰기 구간 그래프 재렌더링
+      - on: click:save
+        do: 연금수령 계획 저장
+
+connections:
+  shared_components:
+    - customer_selector
+    - tab_navigation
+  external:
+    - auth
+
+tests:
+  - name: 초기 로드
+    when: 3번탭 또는 4번탭 저장 후 5번탭 접속
+    then:
+      - 모으는 기간 요약 표시
+      - 종신형 기본 선택
+      - 통합 그래프 표시
+
+  - name: 지급방법 전환
+    when: 확정형 선택
+    then:
+      - 비교 테이블 업데이트 (확정형 하이라이트)
+      - 쓰기 구간 그래프가 확정형으로 변경
+      - 모으기 구간은 동일 유지
+
+  - name: 데이터 없는 경우
+    when: 3번탭 미저장 상태에서 5번탭 접속
+    then:
+      - 모으는 기간 데이터 없음 안내
+      - 3번탭으로 이동 가이드

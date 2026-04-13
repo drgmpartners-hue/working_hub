@@ -1,0 +1,96 @@
+version: "2.0"
+
+screen:
+  name: 희망 은퇴플랜 (1번탭)
+  route: /retirement?tab=desired-plan
+  layout: full-width
+  auth: true
+
+data_requirements:
+  - resource: customer_retirement_profiles
+    needs: [id, customer_id, target_retirement_fund, desired_pension_amount, current_age, desired_retirement_age]
+    filters: { customer_id: "?customer_id" }
+
+  - resource: desired_plans
+    needs: [monthly_desired_amount, retirement_period_years, target_total_fund, required_lump_sum, required_annual_savings, calculation_params]
+    filters: { customer_id: "?customer_id" }
+
+components:
+  - id: customer_selector
+    type: navigation
+    position: header
+    function: 고객 검색/선택 드롭다운, 선택 시 고객명(고유번호) + 목표은퇴자금 + 희망은퇴나이 표시
+    data_source:
+      resource: customer_retirement_profiles
+    events:
+      - on: change:customer
+        do: 선택한 고객의 모든 탭 데이터 갱신
+
+  - id: tab_navigation
+    type: navigation
+    position: header
+    function: 5개 탭 전환 (희망은퇴플랜/투자흐름/은퇴플랜/인터랙티브계산기/연금수령)
+    events:
+      - on: click:tab
+        do: 해당 탭으로 전환, 고객 선택 상태 유지
+
+  - id: desired_input_form
+    type: form
+    position: main
+    function: 매월 희망 수령 은퇴금액, 은퇴 기간 입력
+    events:
+      - on: change:input
+        do: 목표 은퇴자금, 필요 일시납/적립금액 실시간 계산
+
+  - id: calculation_table
+    type: detail
+    position: main
+    function: 목표 은퇴자금, 필요 일시납/적립금액 계산 결과표
+    data_source:
+      resource: desired_plans
+    events:
+      - on: click:save
+        do: 저장 후 3번탭, 4번탭에 반영
+
+  - id: compound_growth_chart
+    type: detail
+    position: main
+    function: 복리 성장 그래프 (X축 나이, Y축 금액)
+    data_source:
+      resource: desired_plans
+
+connections:
+  navigations:
+    - from: tab_navigation
+      to: /retirement?tab=investment-flow
+    - from: tab_navigation
+      to: /retirement?tab=retirement-plan
+    - from: tab_navigation
+      to: /retirement?tab=interactive-calc
+    - from: tab_navigation
+      to: /retirement?tab=pension-plan
+  shared_components:
+    - customer_selector
+    - tab_navigation
+  external:
+    - auth
+
+tests:
+  - name: 초기 로드
+    when: 고객 선택 후 1번탭 접속
+    then:
+      - 저장된 희망플랜 데이터 표시 (없으면 빈 폼)
+      - 복리 성장 그래프 영역 표시
+
+  - name: 계산 결과 표시
+    when: 희망 수령액 500만원, 은퇴 기간 20년 입력
+    then:
+      - 목표 은퇴자금 자동 계산
+      - 필요 일시납/적립금액 계산표 업데이트
+      - 복리 성장 그래프 업데이트
+
+  - name: 저장 후 데이터 흐름
+    when: 저장 버튼 클릭
+    then:
+      - 성공 메시지 표시
+      - 3번탭 기본정보에 값 반영

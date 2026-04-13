@@ -231,3 +231,167 @@ resources:
       file_size: { type: integer }
       parsed_data: { type: jsonb }
       uploaded_at: { type: timestamp }
+
+  # === Wrap Retirement (랩 은퇴설계) ===
+
+  customer_retirement_profiles:
+    endpoints:
+      - method: GET
+        path: /api/v1/retirement/profiles
+      - method: GET
+        path: /api/v1/retirement/profiles/:customer_id
+      - method: POST
+        path: /api/v1/retirement/profiles
+      - method: PUT
+        path: /api/v1/retirement/profiles/:customer_id
+    fields:
+      id: { type: integer, pk: true }
+      customer_id: { type: integer, fk: users, unique: true }
+      target_retirement_fund: { type: bigint }
+      desired_pension_amount: { type: bigint }
+      age_at_design: { type: integer }
+      current_age: { type: integer }
+      desired_retirement_age: { type: integer }
+      created_at: { type: timestamp }
+      updated_at: { type: timestamp }
+
+  desired_plans:
+    endpoints:
+      - method: GET
+        path: /api/v1/retirement/desired-plans/:customer_id
+      - method: PUT
+        path: /api/v1/retirement/desired-plans/:customer_id
+    fields:
+      id: { type: integer, pk: true }
+      profile_id: { type: integer, fk: customer_retirement_profiles }
+      monthly_desired_amount: { type: bigint }
+      retirement_period_years: { type: integer }
+      target_total_fund: { type: bigint }
+      required_lump_sum: { type: bigint }
+      required_annual_savings: { type: bigint }
+      calculation_params: { type: jsonb }
+      created_at: { type: timestamp }
+      updated_at: { type: timestamp }
+
+  retirement_plans:
+    endpoints:
+      - method: GET
+        path: /api/v1/retirement/plans/:customer_id
+      - method: POST
+        path: /api/v1/retirement/plans
+      - method: PUT
+        path: /api/v1/retirement/plans/:id
+    fields:
+      id: { type: integer, pk: true }
+      profile_id: { type: integer, fk: customer_retirement_profiles }
+      current_age: { type: integer }
+      lump_sum_amount: { type: bigint }
+      annual_savings: { type: bigint }
+      saving_period_years: { type: integer }
+      inflation_rate: { type: decimal }
+      annual_return_rate: { type: decimal }
+      target_retirement_fund: { type: bigint }
+      target_pension_amount: { type: bigint }
+      desired_retirement_age: { type: integer }
+      possible_retirement_age: { type: integer }
+      inheritance_consideration: { type: boolean }
+      yearly_projections: { type: jsonb }
+      created_at: { type: timestamp }
+      updated_at: { type: timestamp }
+
+  investment_records:
+    endpoints:
+      - method: GET
+        path: /api/v1/retirement/investment-records
+      - method: POST
+        path: /api/v1/retirement/investment-records
+      - method: PUT
+        path: /api/v1/retirement/investment-records/:id
+      - method: DELETE
+        path: /api/v1/retirement/investment-records/:id
+      - method: GET
+        path: /api/v1/retirement/investment-records/annual-flow/:customer_id/:year
+    fields:
+      id: { type: integer, pk: true }
+      profile_id: { type: integer, fk: customer_retirement_profiles }
+      wrap_account_id: { type: integer, fk: wrap_accounts }
+      record_type: { type: string, enum: [investment, additional_savings, withdrawal] }
+      product_name: { type: string }
+      investment_amount: { type: bigint }
+      evaluation_amount: { type: bigint }
+      return_rate: { type: decimal }
+      status: { type: string, enum: [ing, exit, deposit] }
+      start_date: { type: date }
+      end_date: { type: date }
+      predecessor_id: { type: integer, fk: investment_records }
+      successor_id: { type: integer, fk: investment_records }
+      memo: { type: text }
+      created_at: { type: timestamp }
+      updated_at: { type: timestamp }
+
+  wrap_accounts:
+    endpoints:
+      - method: GET
+        path: /api/v1/retirement/wrap-accounts
+      - method: POST
+        path: /api/v1/retirement/wrap-accounts
+      - method: PUT
+        path: /api/v1/retirement/wrap-accounts/:id
+      - method: DELETE
+        path: /api/v1/retirement/wrap-accounts/:id
+    fields:
+      id: { type: integer, pk: true }
+      product_name: { type: string }
+      securities_company: { type: string }
+      investment_target: { type: string }
+      target_return_rate: { type: decimal }
+      description: { type: text }
+      is_active: { type: boolean }
+      created_at: { type: timestamp }
+      updated_at: { type: timestamp }
+
+  interactive_calculations:
+    endpoints:
+      - method: POST
+        path: /api/v1/retirement/simulation/interactive
+      - method: GET
+        path: /api/v1/retirement/interactive/:customer_id
+    fields:
+      id: { type: integer, pk: true }
+      profile_id: { type: integer, fk: customer_retirement_profiles }
+      plan_year: { type: integer }
+      actual_data: { type: jsonb }
+      projected_data: { type: jsonb }
+      deviation_rate: { type: decimal }
+      ai_guide_result: { type: text }
+      created_at: { type: timestamp }
+      updated_at: { type: timestamp }
+
+  pension_plans:
+    endpoints:
+      - method: POST
+        path: /api/v1/retirement/pension/calculate
+      - method: GET
+        path: /api/v1/retirement/pension/:customer_id
+      - method: PUT
+        path: /api/v1/retirement/pension/:id
+    fields:
+      id: { type: integer, pk: true }
+      profile_id: { type: integer, fk: customer_retirement_profiles }
+      pension_type: { type: string, enum: [lifetime, fixed, inheritance] }
+      accumulation_summary: { type: jsonb }
+      distribution_plan: { type: jsonb }
+      combined_graph_data: { type: jsonb }
+      created_at: { type: timestamp }
+      updated_at: { type: timestamp }
+
+  retirement_ai_guide:
+    endpoints:
+      - method: POST
+        path: /api/v1/retirement/ai-guide
+    fields:
+      profile_id: { type: integer, fk: customer_retirement_profiles }
+      deviation_rate: { type: decimal }
+      current_data: { type: jsonb }
+      plan_data: { type: jsonb }
+      guide_result: { type: text }
