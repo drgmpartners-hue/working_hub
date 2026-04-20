@@ -11,7 +11,7 @@ from pydantic import BaseModel, Field
 # ---------------------------------------------------------------------------
 
 TransactionType = Literal[
-    "investment", "termination", "deposit", "withdrawal", "interest", "other"
+    "investment", "termination", "deposit", "withdrawal", "interest", "savings", "other"
 ]
 
 # ---------------------------------------------------------------------------
@@ -42,6 +42,7 @@ class DepositAccountResponse(BaseModel):
     account_number: Optional[str] = None
     nickname: Optional[str] = None
     is_active: bool
+    current_balance: int = 0
     created_at: datetime
     updated_at: datetime
 

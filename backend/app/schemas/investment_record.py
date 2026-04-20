@@ -78,12 +78,16 @@ class AnnualFlowResponse(BaseModel):
     """연간 투자흐름표 집계 결과."""
 
     year: int = Field(..., description="대상 연도")
-    lump_sum_amount: int = Field(..., description="일시납금액 합계 (만원)")
-    annual_savings_amount: int = Field(..., description="연적립금액 합계 (만원)")
-    total_payment: int = Field(..., description="총납입금액 (만원)")
-    annual_total_profit: int = Field(..., description="연간총수익 (만원)")
-    annual_evaluation_amount: int = Field(..., description="연간평가금액 (만원)")
+    order_in_year: Optional[int] = Field(None, description="연차 (최초투자년도=1)")
+    age: Optional[int] = Field(None, description="나이 (생년 기준)")
+    lump_sum_amount: int = Field(0, description="일시납금액 합계")
+    annual_savings_amount: int = Field(0, description="연적립금액 합계")
+    total_payment: int = Field(0, description="총납입금액")
+    annual_total_profit: int = Field(0, description="연간총수익")
+    annual_evaluation_amount: int = Field(0, description="연간평가금액")
     annual_return_rate: Optional[Decimal] = Field(None, description="연수익률 (%)")
-    withdrawal_amount: int = Field(..., description="인출금액 합계 (만원)")
+    deposit_in_amount: int = Field(0, description="입금액 합계")
+    withdrawal_amount: int = Field(0, description="인출금액 합계")
+    net_asset: int = Field(0, description="순자산 (예수금 잔액 + 운용중 평가)")
 
     model_config = ConfigDict(from_attributes=True)

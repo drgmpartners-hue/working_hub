@@ -70,14 +70,30 @@ async def list_deposit_accounts(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """customer_id에 해당하는 예수금 계좌 목록 반환."""
+    """customer_id에 해당하는 예수금 계좌 목록 반환 (current_balance 포함)."""
     stmt = select(DepositAccount).where(DepositAccount.customer_id == customer_id)
     if not include_hidden:
         stmt = stmt.where(DepositAccount.is_active == True)
     stmt = stmt.order_by(DepositAccount.created_at)
     result = await db.execute(stmt)
     accounts = result.scalars().all()
-    return accounts
+
+    # 각 계좌의 마지막 거래 잔액 계산
+    from app.models.deposit_transaction import DepositTransaction
+    response_list = []
+    for acct in accounts:
+        last_tx = await db.execute(
+            select(DepositTransaction)
+            .where(DepositTransaction.deposit_account_id == acct.id)
+            .order_by(DepositTransaction.transaction_date.desc(), DepositTransaction.id.desc())
+            .limit(1)
+        )
+        last = last_tx.scalar_one_or_none()
+        balance = last.balance if last else 0
+        resp = DepositAccountResponse.model_validate(acct)
+        resp.current_balance = balance
+        response_list.append(resp)
+    return response_list
 
 
 # ---------------------------------------------------------------------------

@@ -78,12 +78,15 @@ async def get_annual_flow(
     customer_id: str,
     year: int,
     current_user: CurrentUser,
+    deposit_account_id: Optional[int] = Query(None, description="특정 예수금 계좌 필터"),
     db: AsyncSession = Depends(get_db),
 ):
-    """고객의 연간 투자흐름표를 반환합니다.
+    """고객의 연간 투자흐름표를 반환합니다."""
+    from app.models.deposit_account import DepositAccount
+    from app.models.deposit_transaction import DepositTransaction
+    from app.models.user import User
+    from sqlalchemy import extract
 
-    해당 연도(start_date 기준)의 투자기록을 집계하여 반환합니다.
-    """
     # 고객의 은퇴 프로필 조회
     profile_result = await db.execute(
         select(CustomerRetirementProfile).where(
@@ -91,24 +94,80 @@ async def get_annual_flow(
         )
     )
     profile = profile_result.scalar_one_or_none()
-
     if not profile:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="은퇴 설계 프로필을 찾을 수 없습니다.",
         )
 
-    # 설계사가 고객 관리하므로 권한 체크 완화
-
-    # 해당 프로필의 투자기록 전체 조회 (서비스에서 연도 필터링)
-    records_result = await db.execute(
-        select(InvestmentRecord).where(
-            InvestmentRecord.profile_id == profile.id
+    # 고객 생년월일 조회 (나이 계산용)
+    birth_year = None
+    try:
+        from app.models.client import Client
+        from sqlalchemy import or_
+        client_result = await db.execute(
+            select(Client).where(
+                or_(
+                    Client.id == customer_id,
+                    Client.unique_code == customer_id,
+                )
+            )
         )
-    )
+        client = client_result.scalar_one_or_none()
+        if client and client.birth_date:
+            birth_year = client.birth_date.year if hasattr(client.birth_date, 'year') else int(str(client.birth_date)[:4])
+    except Exception:
+        pass
+
+    # 투자기록 조회 (계좌 필터 적용)
+    rec_query = select(InvestmentRecord).where(InvestmentRecord.profile_id == profile.id)
+    if deposit_account_id:
+        rec_query = rec_query.where(InvestmentRecord.deposit_account_id == deposit_account_id)
+    records_result = await db.execute(rec_query)
     records = records_result.scalars().all()
 
-    # dict로 변환하여 서비스에 전달
+    # 최초 투자 연도 (연차 계산용)
+    first_year = None
+    for r in records:
+        if r.start_date:
+            ry = r.start_date.year if hasattr(r.start_date, 'year') else int(str(r.start_date)[:4])
+            if first_year is None or ry < first_year:
+                first_year = ry
+
+    # 예수금 계좌 거래내역 조회 (해당 연도, 계좌 필터 적용)
+    if deposit_account_id:
+        acct_ids = [deposit_account_id]
+    else:
+        acct_result = await db.execute(
+            select(DepositAccount).where(DepositAccount.customer_id == customer_id)
+        )
+        deposit_accounts = acct_result.scalars().all()
+        acct_ids = [a.id for a in deposit_accounts]
+
+    annual_savings_amount = 0  # 적립금액 (예수금 거래 중 '적립' 유형)
+    interest_amount = 0        # 이자수익
+    deposit_in_amount = 0      # 입금액 합계
+    withdrawal_from_deposit = 0  # 출금액 합계 (예수금 출금)
+
+    if acct_ids:
+        tx_result = await db.execute(
+            select(DepositTransaction).where(
+                DepositTransaction.deposit_account_id.in_(acct_ids),
+                extract("year", DepositTransaction.transaction_date) == year,
+            )
+        )
+        txns = tx_result.scalars().all()
+        for tx in txns:
+            if tx.transaction_type == "savings":  # 적립
+                annual_savings_amount += tx.credit_amount
+            elif tx.transaction_type == "interest":  # 이자
+                interest_amount += tx.credit_amount
+            elif tx.transaction_type == "deposit":  # 입금
+                deposit_in_amount += tx.credit_amount
+            elif tx.transaction_type == "withdrawal":  # 출금
+                withdrawal_from_deposit += tx.debit_amount
+
+    # 투자기록 기반 집계
     records_dict = [
         {
             "record_type": r.record_type,
@@ -120,8 +179,84 @@ async def get_annual_flow(
         }
         for r in records
     ]
-
     flow = calculate_annual_flow(records=records_dict, year=year)
+
+    # 연적립금액: 예수금 적립 거래 합계
+    flow["annual_savings_amount"] = annual_savings_amount
+    # 연간총수익: 순수 투자수익만 (이자 미포함)
+    # flow["annual_total_profit"]은 calculate_annual_flow에서 계산된 그대로 사용
+    # 입금액
+    flow["deposit_in_amount"] = deposit_in_amount
+    # 인출금액: 투자기록 인출 + 예수금 출금
+    flow["withdrawal_amount"] = flow["withdrawal_amount"] + withdrawal_from_deposit
+    # 연수익률 재계산 (총납입 기준)
+    tp = flow["total_payment"]
+    flow["annual_return_rate"] = round(flow["annual_total_profit"] / tp * 100, 2) if tp > 0 else None
+    # 연차
+    flow["order_in_year"] = (year - first_year + 1) if first_year and year >= first_year else None
+    # 나이
+    flow["age"] = (year - birth_year) if birth_year else None
+
+    # 순자산: 해당 연도말 예수금 잔액 + 운용중 투자 평가금액
+    # 계좌 필터 있으면 해당 계좌만, 없으면 전체
+    from datetime import date as date_type
+    year_end = date_type(year, 12, 31)
+
+    # 순자산 대상 계좌 ID
+    if deposit_account_id:
+        net_acct_ids = [deposit_account_id]
+    else:
+        all_acct_result = await db.execute(
+            select(DepositAccount).where(DepositAccount.customer_id == customer_id)
+        )
+        net_acct_ids = [a.id for a in all_acct_result.scalars().all()]
+
+    # 1) 예수금 연말 잔액
+    total_deposit_balance = 0
+    for aid in net_acct_ids:
+        last_tx_r = await db.execute(
+            select(DepositTransaction)
+            .where(
+                DepositTransaction.deposit_account_id == aid,
+                DepositTransaction.transaction_date <= year_end,
+            )
+            .order_by(DepositTransaction.transaction_date.desc(), DepositTransaction.id.desc())
+            .limit(1)
+        )
+        last_tx_obj = last_tx_r.scalar_one_or_none()
+        if last_tx_obj:
+            total_deposit_balance += last_tx_obj.balance
+
+    # 2) 운용중 투자 평가금액 (계좌 필터 적용)
+    if deposit_account_id:
+        net_rec_query = select(InvestmentRecord).where(
+            InvestmentRecord.profile_id == profile.id,
+            InvestmentRecord.deposit_account_id == deposit_account_id,
+        )
+    else:
+        net_rec_query = select(InvestmentRecord).where(
+            InvestmentRecord.profile_id == profile.id
+        )
+    net_records_result = await db.execute(net_rec_query)
+    net_records = net_records_result.scalars().all()
+
+    active_eval = 0
+    for r in net_records:
+        s_year = r.start_date.year if r.start_date else 0
+        e_year = r.end_date.year if r.end_date else 9999
+
+        # 해당 연도에 활성이었는지 판단:
+        # - 시작 연도 ≤ year
+        # - 종료 연도 > year (아직 종결 안 됨) 또는 종료일 없음 (운용중)
+        # - 종료 연도 == year인 경우도 해당 연도에는 활성이었으므로 포함하되,
+        #   이미 종결된 건 예수금에 입금되었으므로 중복 제외
+        if s_year <= year and e_year > year:
+            # 해당 연도 말 기준 아직 운용중이었던 투자
+            # 아직 종결 전이므로 투자금액 사용 (평가금액은 종결 시 확정)
+            active_eval += r.investment_amount
+
+    flow["net_asset"] = total_deposit_balance + active_eval
+
     return flow
 
 
@@ -246,7 +381,7 @@ async def create_investment_record(
             investment_record_id=record.id,
             credit_amount=0,
             debit_amount=data.investment_amount,
-            memo=f"투자기록 #{record.id} 자동생성",
+            memo=f"{product_label} 투자 자동생성",
         )
         db.add(txn)
 
@@ -260,7 +395,7 @@ async def create_investment_record(
                 investment_record_id=record.id,
                 credit_amount=data.evaluation_amount,
                 debit_amount=0,
-                memo=f"투자기록 #{record.id} 종결 자동생성",
+                memo=f"{product_label} 종결 자동생성",
             )
             db.add(txn_exit)
 
@@ -370,7 +505,7 @@ async def update_investment_record(
                 investment_record_id=record.id,
                 credit_amount=final_evaluation,
                 debit_amount=0,
-                memo=f"투자기록 #{record.id} 종결 자동생성",
+                memo=f"{product_label} 종결 자동생성",
             )
             db.add(txn)
             await db.flush()

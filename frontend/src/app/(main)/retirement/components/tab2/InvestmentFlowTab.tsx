@@ -1,11 +1,16 @@
 'use client';
 
 import React, { useState, useEffect, useCallback, useRef } from 'react';
+import dynamic from 'next/dynamic';
 import { Modal } from '@/components/common/Modal';
 import { useRetirementStore } from '../../hooks/useRetirementStore';
 import { formatCurrency, formatInputCurrency, parseCurrency } from '../../utils/formatCurrency';
 import { API_URL } from '@/lib/api-url';
 import { authLib } from '@/lib/auth';
+
+const AnnualFlowChart = dynamic(() => import('./AnnualFlowChart').then(m => m.AnnualFlowChart), { ssr: false });
+const NetAssetChart = dynamic(() => import('./AnnualFlowChart').then(m => m.NetAssetChart), { ssr: false });
+const LifetimeRetirementFlow = dynamic(() => import('./LifetimeRetirementFlow').then(m => m.LifetimeRetirementFlow), { ssr: false });
 
 /* ------------------------------------------------------------------ */
 /*  타입 정의                                                           */
@@ -43,6 +48,8 @@ interface AnnualFlowRow {
   annual_return: number;
   annual_evaluation: number;
   annual_return_rate: number;
+  deposit_in: number;
+  cumulative_deposit_in: number;
   withdrawal: number;
   cumulative_withdrawal: number;
   total_evaluation: number;
@@ -69,7 +76,7 @@ interface DepositAccount {
   created_at: string;
 }
 
-type TransactionType = 'investment' | 'termination' | 'deposit' | 'withdrawal' | 'interest' | 'other';
+type TransactionType = 'investment' | 'termination' | 'deposit' | 'withdrawal' | 'interest' | 'savings' | 'other';
 
 interface DepositTransaction {
   id: number;
@@ -90,6 +97,7 @@ const TRANSACTION_TYPE_LABELS: Record<TransactionType, string> = {
   deposit: '입금',
   withdrawal: '출금',
   interest: '이자',
+  savings: '적립',
   other: '기타',
 };
 
@@ -99,6 +107,7 @@ const TRANSACTION_TYPE_COLORS: Record<TransactionType, string> = {
   deposit: '#1E3A5F',
   withdrawal: '#EF4444',
   interest: '#D4A847',
+  savings: '#8B5CF6',
   other: '#6B7280',
 };
 
@@ -212,8 +221,12 @@ function StatusChangeModal({ record, onClose, onSave }: StatusChangeModalProps) 
   return (
     <Modal open onClose={onClose} title="종결 처리" maxWidth={440}>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-        <div style={{ padding: '10px 14px', backgroundColor: '#F9FAFB', borderRadius: 8, fontSize: 13, color: '#374151' }}>
-          <strong>{record.product_name || '(상품명)'}</strong> 를 종결 처리합니다.
+        <div style={{ padding: '12px 14px', backgroundColor: '#F9FAFB', borderRadius: 8, fontSize: 13, color: '#374151' }}>
+          <div style={{ marginBottom: 8 }}><strong>{record.product_name || '(상품명)'}</strong> 를 종결 처리합니다.</div>
+          <div style={{ display: 'flex', gap: 16, fontSize: 12, color: '#6B7280' }}>
+            <span>투자금액: <strong style={{ color: '#111827' }}>{record.investment_amount?.toLocaleString() ?? '-'}원</strong></span>
+            <span>가입일: <strong style={{ color: '#111827' }}>{record.start_date || record.join_date || '-'}</strong></span>
+          </div>
         </div>
 
         <div>
@@ -355,13 +368,21 @@ function AddDepositAccountModal({ customerId, onClose, onSaved }: AddDepositAcco
 /* ------------------------------------------------------------------ */
 
 export function InvestmentFlowTab() {
-  const { selectedCustomerId } = useRetirementStore();
+  const { selectedCustomerId, selectedCustomer } = useRetirementStore();
 
   // 연간 투자흐름표 상태
   const currentYear = new Date().getFullYear();
   const [selectedYear, setSelectedYear] = useState(currentYear);
   const [annualFlowData, setAnnualFlowData] = useState<AnnualFlowRow[]>([]);
   const [annualFlowLoading, setAnnualFlowLoading] = useState(false);
+  const [showFlowChart, setShowFlowChart] = useState(false);
+  const [chartVisibility, setChartVisibility] = useState({ contribution: true, annualReturn: true, depositIn: true, returnRate: true });
+  const [showNetAssetChart, setShowNetAssetChart] = useState(false);
+  const [netAssetVisibility, setNetAssetVisibility] = useState({ netAsset: true, cumulativeDeposit: true, cumulativeProfit: true, netAssetReturnRate: true });
+  const [showLifetimeFlow, setShowLifetimeFlow] = useState(false);
+  const [desiredPlanData, setDesiredPlanData] = useState<any>(null);
+  const [appliedYears, setAppliedYears] = useState<Record<number, any>>({});
+  const [flowAccountFilter, setFlowAccountFilter] = useState<'all' | number>('all');
 
   // 투자기록 상태
   const [records, setRecords] = useState<InvestmentRecord[]>([]);
@@ -418,24 +439,66 @@ export function InvestmentFlowTab() {
   /* ---- 연도 목록 ---- */
   const years = Array.from({ length: 10 }, (_, i) => currentYear - 5 + i);
 
-  /* ---- API: 연간 투자흐름 ---- */
+  /* ---- API: 연간 투자흐름 (선택 연도 ~ 현재 연도) ---- */
   const fetchAnnualFlow = useCallback(async () => {
     if (!selectedCustomerId) return;
     setAnnualFlowLoading(true);
     try {
-      const res = await fetch(
-        `${API_URL}/api/v1/retirement/investment-records/annual-flow/${selectedCustomerId}/${selectedYear}`,
-        { headers: authLib.getAuthHeader() }
+      const years: number[] = [];
+      for (let y = selectedYear; y <= currentYear; y++) years.push(y);
+
+      const results = await Promise.all(
+        years.map(async (year) => {
+          try {
+            const res = await fetch(
+              `${API_URL}/api/v1/retirement/investment-records/annual-flow/${selectedCustomerId}/${year}${flowAccountFilter !== 'all' ? `?deposit_account_id=${flowAccountFilter}` : ''}`,
+              { headers: authLib.getAuthHeader() }
+            );
+            if (!res.ok) return null;
+            const data = await res.json();
+            return {
+              year,
+              age: data.age ?? null,
+              order_in_year: data.order_in_year ?? null,
+              lump_sum: data.lump_sum_amount ?? 0,
+              annual_savings: data.annual_savings_amount ?? 0,
+              total_contribution: data.total_payment ?? 0,
+              annual_return: data.annual_total_profit ?? 0,
+              annual_evaluation: data.annual_evaluation_amount ?? 0,
+              annual_return_rate: data.annual_return_rate ?? 0,
+              deposit_in: data.deposit_in_amount ?? 0,
+              cumulative_deposit_in: 0, // 아래에서 누적 계산
+              withdrawal: data.withdrawal_amount ?? 0,
+              cumulative_withdrawal: 0, // 아래에서 누적 계산
+              total_evaluation: data.net_asset ?? data.annual_evaluation_amount ?? 0,
+            } as AnnualFlowRow;
+          } catch {
+            return null;
+          }
+        })
       );
-      if (!res.ok) { setAnnualFlowData([]); return; }
-      const data = await res.json();
-      setAnnualFlowData(Array.isArray(data) ? data : [data]);
+
+      const rows = results
+        .filter((r): r is AnnualFlowRow => r !== null)
+        .sort((a, b) => a.year - b.year);
+
+      // 누적값 계산
+      let cumDeposit = 0;
+      let cumWithdrawal = 0;
+      for (const row of rows) {
+        cumDeposit += row.deposit_in;
+        cumWithdrawal += row.withdrawal;
+        row.cumulative_deposit_in = cumDeposit;
+        row.cumulative_withdrawal = cumWithdrawal;
+      }
+
+      setAnnualFlowData(rows);
     } catch {
       setAnnualFlowData([]);
     } finally {
       setAnnualFlowLoading(false);
     }
-  }, [selectedCustomerId, selectedYear]);
+  }, [selectedCustomerId, selectedYear, currentYear, flowAccountFilter]);
 
   /* ---- API: 투자기록 목록 ---- */
   const fetchRecords = useCallback(async () => {
@@ -530,6 +593,48 @@ export function InvestmentFlowTab() {
   useEffect(() => { fetchRecords(); }, [fetchRecords]);
   useEffect(() => { fetchWrapAccounts(); }, [fetchWrapAccounts]);
   useEffect(() => { fetchDepositAccounts(); }, [fetchDepositAccounts]);
+
+  // 1번탭 데이터 로드 (100세 은퇴플로우용) + applied_years 복원
+  useEffect(() => {
+    if (!selectedCustomerId) return;
+    const load = async () => {
+      try {
+        const token = authLib.getToken();
+        const res = await fetch(`${API_URL}/api/v1/retirement/desired-plans/${selectedCustomerId}`, { headers: { Authorization: `Bearer ${token}` } });
+        if (res.ok) {
+          const data = await res.json();
+          setDesiredPlanData(data);
+          // applied_years 복원 (calculation_params에 저장됨)
+          const saved = data?.calculation_params?.applied_years;
+          if (saved && typeof saved === 'object') {
+            // 키를 number로 변환
+            const restored: Record<number, any> = {};
+            for (const [k, v] of Object.entries(saved)) {
+              restored[Number(k)] = v;
+            }
+            setAppliedYears(restored);
+          }
+        }
+      } catch { /* ignore */ }
+    };
+    load();
+  }, [selectedCustomerId]);
+
+  // applied_years 자동 저장 (적용/취소 시)
+  const saveAppliedYears = useCallback(async (newApplied: Record<number, any>) => {
+    if (!selectedCustomerId) return;
+    try {
+      const token = authLib.getToken();
+      // 기존 calculation_params 가져와서 applied_years만 업데이트
+      const params = desiredPlanData?.calculation_params || {};
+      const updated = { ...params, applied_years: newApplied };
+      await fetch(`${API_URL}/api/v1/retirement/desired-plans/${selectedCustomerId}/params`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ calculation_params: updated }),
+      });
+    } catch { /* ignore */ }
+  }, [selectedCustomerId, desiredPlanData]);
 
   /* ---- 연결상품 클릭 → 스크롤 + 하이라이트 ---- */
   const handleLinkClick = (targetId: number) => {
@@ -793,11 +898,120 @@ export function InvestmentFlowTab() {
     );
   }
 
-  return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 28 }}>
+  const handlePrint = async () => {
+    // 프린트 전: 모든 예수금 계좌 펼치기 + 거래내역 로드
+    const allIds = new Set(depositAccounts.map(a => a.id));
+    setExpandedAccountIds(allIds);
+    // 펼쳐지지 않았던 계좌의 거래내역 로드
+    for (const a of depositAccounts) {
+      if (!accountTransactions[a.id]) {
+        await fetchTransactions(a.id);
+      }
+    }
+    // 그래프도 펼치기
+    setShowFlowChart(true);
+    setShowNetAssetChart(true);
+    // DOM 업데이트 대기 후 인쇄
+    setTimeout(() => window.print(), 500);
+  };
 
-      {/* ===== (1) 연간 투자흐름표 ===== */}
-      <section>
+  return (
+    <div className="investment-flow-container" style={{ display: 'flex', flexDirection: 'column', gap: 28 }}>
+      {/* 프린트 스타일 */}
+      <style>{`
+        @media print {
+          /* 세로 출력, 최소 여백 */
+          @page { size: landscape; margin: 5mm; }
+
+          /* 네비게이션, 사이드바, 고객선택바 등 숨김 */
+          nav, header, .no-print, [data-no-print] { display: none !important; }
+
+          /* 전체 배경 흰색 */
+          body, html { background: #fff !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; font-size: 7px !important; }
+
+          /* 컨테이너 여백 */
+          .investment-flow-container { gap: 0 !important; padding: 0 !important; }
+
+          /* 섹터1: 연간 투자흐름표 + 그래프 */
+          .print-section-flow { page-break-after: always; }
+
+          /* 섹터2: 예수금 계좌 - 각 계좌별 페이지 분리 */
+          .print-section-deposit { page-break-before: always; }
+          .print-deposit-account { page-break-after: always; }
+          .print-deposit-account:last-child { page-break-after: auto; }
+
+          /* 섹터3: 투자기록 */
+          .print-section-records { page-break-before: always; }
+
+          /* 아코디언 강제 펼침 */
+          .print-section-deposit [style*="display: none"] { display: block !important; }
+
+          /* 테이블 기본 스타일 */
+          table { width: 100% !important; min-width: 0 !important; }
+          th { padding: 3px 5px !important; white-space: nowrap !important; }
+          td { padding: 3px 5px !important; white-space: nowrap !important; }
+
+          /* 연간 투자흐름표만 작게 */
+          .print-section-flow table { font-size: 7px !important; }
+          .print-section-flow th { font-size: 6.5px !important; padding: 2px 3px !important; }
+          .print-section-flow td { font-size: 7px !important; padding: 2px 3px !important; }
+
+          /* 예수금, 투자기록은 크게 */
+          .print-section-deposit table { font-size: 9px !important; }
+          .print-section-deposit th { font-size: 8.5px !important; }
+          .print-section-deposit td { font-size: 9px !important; }
+          .print-section-records table { font-size: 9px !important; }
+          .print-section-records th { font-size: 8.5px !important; }
+          .print-section-records td { font-size: 9px !important; }
+
+          /* 버튼, 필터 숨김 */
+          button, select, .no-print-btn { display: none !important; }
+
+          /* 섹션 번호 제목 숨김, 인쇄용 헤더 표시 */
+          .print-section-title { display: none !important; }
+          .print-header { display: block !important; margin-bottom: 8px; }
+
+          /* 오버플로우 해제 */
+          div[style*="overflow"] { overflow: visible !important; }
+        }
+
+        @media not print {
+          .print-section-title { display: none; }
+        }
+      `}</style>
+
+      {/* 프린트 버튼 */}
+      <div className="no-print" style={{ display: 'flex', justifyContent: 'flex-end' }}>
+        <button
+          onClick={handlePrint}
+          style={{
+            padding: '6px 16px',
+            fontSize: 13,
+            border: '1px solid #1E3A5F',
+            borderRadius: 6,
+            backgroundColor: '#1E3A5F',
+            color: '#fff',
+            cursor: 'pointer',
+            fontWeight: 500,
+          }}
+        >
+          인쇄
+        </button>
+      </div>
+
+      {/* 인쇄용 헤더 (화면에서는 숨김) */}
+      <div className="print-header" style={{ display: 'none' }}>
+        <div style={{ fontSize: 14, fontWeight: 700, color: '#1E3A5F', marginBottom: 4 }}>
+          Wrap 은퇴설계 - 투자흐름 보고서
+        </div>
+        <div style={{ fontSize: 10, color: '#374151' }}>
+          고객: {selectedCustomer?.name} | 생년월일: {selectedCustomer?.birthDate} | 출력일: {new Date().toLocaleDateString('ko-KR')}
+        </div>
+      </div>
+
+      {/* ===== 섹터1: 연간 투자흐름표 ===== */}
+      <section className="print-section-flow">
+        <div className="print-section-title">1. 연간 투자흐름표</div>
         <div style={{
           display: 'flex',
           alignItems: 'center',
@@ -807,46 +1021,79 @@ export function InvestmentFlowTab() {
           <h3 style={{ margin: 0, fontSize: 15, fontWeight: 600, color: '#1E3A5F' }}>
             연간 투자흐름표
             <span style={{ marginLeft: 8, fontSize: 12, fontWeight: 400, color: '#9CA3AF' }}>
-              (단위: 만원)
+              (단위: 원)
             </span>
           </h3>
-          <select
-            data-testid="year-select"
-            value={selectedYear}
-            onChange={(e) => setSelectedYear(Number(e.target.value))}
-            style={{
-              ...selectStyle,
-              width: 'auto',
-              padding: '6px 10px',
-              fontSize: 13,
-            }}
-          >
-            {years.map((y) => (
-              <option key={y} value={y}>{y}년</option>
-            ))}
-          </select>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            {/* 계좌 필터 */}
+            <select
+              value={flowAccountFilter}
+              onChange={(e) => setFlowAccountFilter(e.target.value === 'all' ? 'all' : Number(e.target.value))}
+              style={{ ...selectStyle, width: 'auto', padding: '6px 10px', fontSize: 12 }}
+            >
+              <option value="all">전체 계좌</option>
+              {depositAccounts.map((a) => (
+                <option key={a.id} value={a.id}>
+                  {a.nickname || a.account_number || a.securities_company}
+                </option>
+              ))}
+            </select>
+            {/* 재계산 버튼 */}
+            <button
+              onClick={fetchAnnualFlow}
+              style={{
+                padding: '5px 12px',
+                fontSize: 12,
+                border: '1px solid #D1D5DB',
+                borderRadius: 6,
+                backgroundColor: '#fff',
+                cursor: 'pointer',
+                color: '#374151',
+              }}
+            >
+              재계산
+            </button>
+            {/* 연도 선택 */}
+            <select
+              data-testid="year-select"
+              value={selectedYear}
+              onChange={(e) => setSelectedYear(Number(e.target.value))}
+              style={{ ...selectStyle, width: 'auto', padding: '6px 10px', fontSize: 13 }}
+            >
+              {years.map((y) => (
+                <option key={y} value={y}>{y}년</option>
+              ))}
+            </select>
+          </div>
         </div>
 
         <div style={{ overflowX: 'auto' }}>
-          <table style={{ minWidth: 900, borderCollapse: 'collapse', fontSize: 13, whiteSpace: 'nowrap' }}>
+          <table style={{ width: '100%', minWidth: 900, borderCollapse: 'collapse', fontSize: 13, whiteSpace: 'nowrap' }}>
             <thead>
               <tr style={{ backgroundColor: '#F9FAFB' }}>
                 {[
-                  { label: '연도', align: 'center' },
-                  { label: '연차', align: 'center' },
-                  { label: '나이', align: 'center' },
-                  { label: '일시납금액', align: 'right' },
-                  { label: '연적립금액', align: 'right' },
-                  { label: '총납입금액', align: 'right' },
-                  { label: '연간총수익', align: 'right' },
-                  { label: '연간평가금액', align: 'right' },
-                  { label: '연수익률', align: 'right' },
-                  { label: '인출금액', align: 'right' },
-                  { label: '누적인출액', align: 'right' },
-                  { label: '총평가금액', align: 'right' },
-                ].map(({ label, align }) => (
+                  { label: '연도', align: 'center', tip: '투자 활동이 발생한 연도' },
+                  { label: '연차', align: 'center', tip: '최초 투자 연도를 1차로 산정' },
+                  { label: '나이', align: 'center', tip: '해당 연도 기준 고객 나이 (만 나이)' },
+                  { label: '일시납금액', align: 'right', tip: '해당 연도에 신규 투자한 금액 합계' },
+                  { label: '연적립금액', align: 'right', tip: '예수금 계좌의 "적립" 구분 입금액 합계' },
+                  { label: '총납입금액', align: 'right', tip: '당해 투자금액 + 모든 미종결 투자금액' },
+                  { label: '연간평가금액', align: 'right', tip: '당해 종결 평가금액 + 모든 미종결 투자금액' },
+                  { label: '연간총수익', align: 'right', tip: '연간평가금액 - 총납입금액' },
+                  { label: '연수익률', align: 'right', tip: '연간총수익 / 총납입금액 × 100' },
+                  { label: '입금액', align: 'right', tip: '예수금 계좌 "입금" 구분 합계' },
+                  { label: '누적입금액', align: 'right', tip: '시작 연도부터 해당 연도까지 입금액 누적 합계' },
+                  { label: '인출금액', align: 'right', tip: '투자기록 인출 + 예수금 "출금" 합계' },
+                  { label: '누적인출액', align: 'right', tip: '시작 연도부터 해당 연도까지 인출금액 누적 합계' },
+                  { label: '순자산', align: 'right', tip: '연도말 예수금 잔액 + 미종결 투자금액 + 이자수익' },
+                  { label: '순자산증가율', align: 'right', tip: '(현재 순자산 - 직전 순자산) / 직전 순자산 × 100' },
+                  { label: '순이익', align: 'right', tip: '순자산 - (누적입금액 - 누적인출액)' },
+                  { label: '순자산수익률', align: 'right', tip: '순이익 / (누적입금액 - 누적인출액) × 100' },
+                  { label: '100세플로우', align: 'center', tip: '100세 은퇴플로우에 해당 연도 순자산을 적용/취소' },
+                ].map(({ label, align, tip }) => (
                   <th
                     key={label}
+                    title={tip}
                     style={{
                       padding: '8px 12px',
                       textAlign: align as 'center' | 'right',
@@ -854,9 +1101,11 @@ export function InvestmentFlowTab() {
                       color: '#6B7280',
                       borderBottom: '1px solid #E5E7EB',
                       fontSize: 12,
+                      cursor: 'help',
+                      position: 'relative',
                     }}
                   >
-                    {label}
+                    <span style={{ borderBottom: '1px dashed #9CA3AF' }}>{label}</span>
                   </th>
                 ))}
               </tr>
@@ -864,29 +1113,39 @@ export function InvestmentFlowTab() {
             <tbody>
               {annualFlowLoading ? (
                 <tr>
-                  <td colSpan={12} style={{ textAlign: 'center', padding: 24, color: '#9CA3AF', fontSize: 13 }}>
+                  <td colSpan={17} style={{ textAlign: 'center', padding: 24, color: '#9CA3AF', fontSize: 13 }}>
                     불러오는 중...
                   </td>
                 </tr>
-              ) : annualFlowData.length === 0 ? (
-                <tr>
-                  <td colSpan={12} style={{ textAlign: 'center', padding: 24, color: '#9CA3AF', fontSize: 13 }}>
-                    데이터가 없습니다.
-                  </td>
-                </tr>
-              ) : (
-                annualFlowData.map((row, idx) => {
-                  const rateColor = row.annual_return_rate > 0
+              ) : (() => {
+                // 선택 연도 ~ 현재 연도 전체를 표시
+                const allYears: number[] = [];
+                for (let y = selectedYear; y <= currentYear; y++) allYears.push(y);
+                const dataMap = new Map(annualFlowData.map(r => [r.year, r]));
+                return allYears.map((year, idx) => {
+                  const row = dataMap.get(year);
+                  if (!row) {
+                    return (
+                      <tr key={year} style={{ borderBottom: '1px solid #F3F4F6', backgroundColor: idx % 2 === 0 ? '#fff' : '#FAFAFA' }}>
+                        <td style={tdCenter}>{year}</td>
+                        {Array.from({ length: 16 }).map((_, i) => (
+                          <td key={i} style={{ padding: '9px 12px', textAlign: 'center', color: '#D1D5DB', fontSize: 13 }}>-</td>
+                        ))}
+                      </tr>
+                    );
+                  }
+                  const rateColor = Number(row.annual_return_rate) > 0
                     ? '#16A34A'
-                    : row.annual_return_rate < 0
+                    : Number(row.annual_return_rate) < 0
                     ? '#DC2626'
                     : '#374151';
                   return (
                     <tr
-                      key={idx}
+                      key={year}
                       style={{
                         borderBottom: '1px solid #F3F4F6',
                         backgroundColor: idx % 2 === 0 ? '#fff' : '#FAFAFA',
+                        ...(year === currentYear ? { backgroundColor: '#FFFFF0' } : {}),
                       }}
                     >
                       <td style={tdCenter}>{row.year}</td>
@@ -894,30 +1153,187 @@ export function InvestmentFlowTab() {
                       <td style={tdCenter}>{row.age ?? '-'}</td>
                       <td style={tdRight}>{formatCurrency(row.lump_sum)}</td>
                       <td style={tdRight}>{formatCurrency(row.annual_savings)}</td>
-                      <td style={{ ...tdRight, fontWeight: 600 }}>{formatCurrency(row.total_contribution)}</td>
+                      <td style={{ ...tdRight, fontWeight: 700 }}>{formatCurrency(row.total_contribution)}</td>
+                      <td style={{ ...tdRight, fontWeight: 700 }}>{formatCurrency(row.annual_evaluation)}</td>
                       <td style={{ ...tdRight, color: row.annual_return >= 0 ? '#16A34A' : '#DC2626' }}>
                         {formatCurrency(row.annual_return)}
                       </td>
-                      <td style={tdRight}>{formatCurrency(row.annual_evaluation)}</td>
-                      <td style={{ ...tdRight, color: rateColor, fontWeight: 600 }}>
-                        {row.annual_return_rate != null ? `${row.annual_return_rate.toFixed(2)}%` : '-'}
+                      <td style={{ ...tdRight, color: rateColor, fontWeight: 700 }}>
+                        {row.annual_return_rate != null ? `${Number(row.annual_return_rate).toFixed(2)}%` : '-'}
                       </td>
+                      <td style={tdRight}>{formatCurrency(row.deposit_in)}</td>
+                      <td style={tdRight}>{formatCurrency(row.cumulative_deposit_in)}</td>
                       <td style={tdRight}>{formatCurrency(row.withdrawal)}</td>
                       <td style={tdRight}>{formatCurrency(row.cumulative_withdrawal)}</td>
                       <td style={{ ...tdRight, fontWeight: 700, color: '#1E3A5F' }}>
                         {formatCurrency(row.total_evaluation)}
                       </td>
+                      {/* 순자산증가율 */}
+                      {(() => {
+                        const prevRow = dataMap.get(year - 1);
+                        const prevAsset = prevRow?.total_evaluation ?? 0;
+                        if (!prevAsset || prevAsset === 0) return <td style={{ ...tdRight, color: '#9CA3AF' }}>-</td>;
+                        const rate = ((row.total_evaluation - prevAsset) / prevAsset * 100);
+                        const color = rate > 0 ? '#16A34A' : rate < 0 ? '#DC2626' : '#374151';
+                        return <td style={{ ...tdRight, fontWeight: 700, color }}>{rate.toFixed(2)}%</td>;
+                      })()}
+                      {/* 순이익: 순자산 - (누적입금액 - 누적인출액) */}
+                      {(() => {
+                        const netInvestment = row.cumulative_deposit_in - row.cumulative_withdrawal;
+                        const netProfit = row.total_evaluation - netInvestment;
+                        const color = netProfit > 0 ? '#16A34A' : netProfit < 0 ? '#DC2626' : '#374151';
+                        return <td style={{ ...tdRight, fontWeight: 700, color }}>{formatCurrency(netProfit)}</td>;
+                      })()}
+                      {/* 순자산수익률: 순이익 / (누적입금액 - 누적인출액) × 100 */}
+                      {(() => {
+                        const netInvestment = row.cumulative_deposit_in - row.cumulative_withdrawal;
+                        if (!netInvestment || netInvestment === 0) return <td style={{ ...tdRight, color: '#9CA3AF' }}>-</td>;
+                        const netProfit = row.total_evaluation - netInvestment;
+                        const rate = (netProfit / netInvestment * 100);
+                        const color = rate > 0 ? '#16A34A' : rate < 0 ? '#DC2626' : '#374151';
+                        return <td style={{ ...tdRight, fontWeight: 700, color }}>{rate.toFixed(2)}%</td>;
+                      })()}
+                      {/* 100세 플로우 적용/취소 - 당해연도는 버튼 없음 */}
+                      <td style={{ padding: '6px 8px', textAlign: 'center', whiteSpace: 'nowrap', borderBottom: '1px solid #F3F4F6' }}>
+                        {row.year === new Date().getFullYear() ? (
+                          <span style={{ fontSize: 10, color: '#9CA3AF' }}>당해</span>
+                        ) : appliedYears[row.year] ? (
+                          <button
+                            className="no-print-btn"
+                            onClick={() => {
+                              const next = { ...appliedYears }; delete next[row.year];
+                              setAppliedYears(next);
+                              saveAppliedYears(next);
+                            }}
+                            style={{ padding: '3px 10px', fontSize: 11, border: '1px solid #DC2626', borderRadius: 4, backgroundColor: '#FEF2F2', color: '#DC2626', cursor: 'pointer', fontWeight: 500 }}
+                          >
+                            취소
+                          </button>
+                        ) : (
+                          <button
+                            className="no-print-btn"
+                            onClick={() => {
+                              const netInvestment = row.cumulative_deposit_in - row.cumulative_withdrawal;
+                              const netProfit = netInvestment > 0 ? (row.total_evaluation - netInvestment) / netInvestment * 100 : 0;
+                              const newEntry = {
+                                lump_sum: row.lump_sum,
+                                annual_savings: row.annual_savings,
+                                total_contribution: row.total_contribution,
+                                annual_evaluation: row.annual_evaluation,
+                                annual_return_rate: row.annual_return_rate,
+                                net_asset: row.total_evaluation,
+                                net_asset_return_rate: netProfit,
+                              };
+                              const next = { ...appliedYears, [row.year]: newEntry };
+                              setAppliedYears(next);
+                              saveAppliedYears(next);
+                            }}
+                            style={{ padding: '3px 10px', fontSize: 11, border: '1px solid #1E3A5F', borderRadius: 4, backgroundColor: '#EFF6FF', color: '#1E3A5F', cursor: 'pointer', fontWeight: 500 }}
+                          >
+                            적용
+                          </button>
+                        )}
+                      </td>
                     </tr>
                   );
-                })
-              )}
+                });
+              })()}
             </tbody>
           </table>
         </div>
+
+        {/* 그래프 버튼 행 - 우측 정렬 */}
+        {annualFlowData.length > 0 && (
+          <div style={{ marginTop: 12, display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
+            <button
+              onClick={() => setShowFlowChart(!showFlowChart)}
+              className="no-print-btn"
+              style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '6px 14px', border: '1px solid #E5E7EB', borderRadius: 8, backgroundColor: showFlowChart ? '#EFF6FF' : '#F9FAFB', cursor: 'pointer', fontSize: 13, color: '#374151', fontWeight: 500 }}
+            >
+              {showFlowChart ? '\u25BC' : '\u25B6'} 투자흐름 그래프
+            </button>
+            <button
+              onClick={() => setShowNetAssetChart(!showNetAssetChart)}
+              className="no-print-btn"
+              style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '6px 14px', border: '1px solid #E5E7EB', borderRadius: 8, backgroundColor: showNetAssetChart ? '#EFF6FF' : '#F9FAFB', cursor: 'pointer', fontSize: 13, color: '#374151', fontWeight: 500 }}
+            >
+              {showNetAssetChart ? '\u25BC' : '\u25B6'} 순자산 그래프
+            </button>
+            <button
+              onClick={() => setShowLifetimeFlow(!showLifetimeFlow)}
+              className="no-print-btn"
+              style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '6px 14px', border: '1px solid #1E3A5F', borderRadius: 8, backgroundColor: showLifetimeFlow ? '#1E3A5F' : '#F9FAFB', color: showLifetimeFlow ? '#fff' : '#1E3A5F', cursor: 'pointer', fontSize: 13, fontWeight: 600 }}
+            >
+              {showLifetimeFlow ? '\u25BC' : '\u25B6'} 100세 은퇴플로우
+            </button>
+          </div>
+        )}
+
+        {/* 투자흐름 그래프 */}
+        {showFlowChart && annualFlowData.length > 0 && (
+          <div style={{ marginTop: 12, padding: 16, border: '1px solid #E5E7EB', borderRadius: 8, backgroundColor: '#fff' }}>
+            <div style={{ display: 'flex', gap: 12, marginBottom: 12, fontSize: 12, flexWrap: 'wrap' }}>
+              {([
+                { key: 'depositIn' as const, label: '입금액', color: '#8B5CF6' },
+                { key: 'contribution' as const, label: '총납입금액', color: '#4A90D9' },
+                { key: 'annualReturn' as const, label: '연간총수익', color: '#10B981' },
+                { key: 'returnRate' as const, label: '연수익률(%)', color: '#F59E0B' },
+              ] as const).map(({ key, label, color }) => (
+                <button key={key} onClick={() => setChartVisibility(prev => ({ ...prev, [key]: !prev[key] }))}
+                  style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '4px 10px', border: '1px solid #E5E7EB', borderRadius: 6, backgroundColor: chartVisibility[key] ? '#fff' : '#F3F4F6', cursor: 'pointer', opacity: chartVisibility[key] ? 1 : 0.4, fontSize: 12, color: '#374151' }}>
+                  <span style={{ width: 10, height: 10, borderRadius: 2, backgroundColor: color, display: 'inline-block' }} />
+                  {label}
+                </button>
+              ))}
+            </div>
+            <AnnualFlowChart data={annualFlowData} visibility={chartVisibility} />
+          </div>
+        )}
+
+        {/* 순자산 그래프 */}
+        {showNetAssetChart && annualFlowData.length > 0 && (
+          <div style={{ marginTop: 12, padding: 16, border: '1px solid #E5E7EB', borderRadius: 8, backgroundColor: '#fff' }}>
+            <div style={{ display: 'flex', gap: 12, marginBottom: 12, fontSize: 12, flexWrap: 'wrap' }}>
+              {([
+                { key: 'cumulativeDeposit' as const, label: '누적입금액', color: '#4A90D9' },
+                { key: 'netAsset' as const, label: '순자산', color: '#1E3A5F' },
+                { key: 'cumulativeProfit' as const, label: '순이익', color: '#10B981' },
+                { key: 'netAssetReturnRate' as const, label: '순자산수익률(%)', color: '#F59E0B' },
+              ] as const).map(({ key, label, color }) => (
+                <button key={key} onClick={() => setNetAssetVisibility(prev => ({ ...prev, [key]: !prev[key] }))}
+                  style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '4px 10px', border: '1px solid #E5E7EB', borderRadius: 6, backgroundColor: netAssetVisibility[key] ? '#fff' : '#F3F4F6', cursor: 'pointer', opacity: netAssetVisibility[key] ? 1 : 0.4, fontSize: 12, color: '#374151' }}>
+                  <span style={{ width: 10, height: 10, borderRadius: 2, backgroundColor: color, display: 'inline-block' }} />
+                  {label}
+                </button>
+              ))}
+            </div>
+            <NetAssetChart data={annualFlowData} visibility={netAssetVisibility} />
+          </div>
+        )}
+
+        {/* 100세 은퇴플로우 */}
+        {showLifetimeFlow && (
+          <div style={{ marginTop: 12 }}>
+            <LifetimeRetirementFlow
+              currentAge={(() => {
+                if (!selectedCustomer?.birthDate) return null;
+                const bd = new Date(selectedCustomer.birthDate);
+                const today = new Date();
+                let age = today.getFullYear() - bd.getFullYear();
+                if (today < new Date(today.getFullYear(), bd.getMonth(), bd.getDate())) age--;
+                return age;
+              })()}
+              desiredPlanData={desiredPlanData}
+              annualFlowData={annualFlowData}
+              appliedYears={appliedYears}
+            />
+          </div>
+        )}
       </section>
 
-      {/* ===== (1.5) 예수금 계좌 기록 ===== */}
-      <section>
+      {/* ===== 섹터2: 예수금 계좌 기록 ===== */}
+      <section className="print-section-deposit">
+        <div className="print-section-title">2. 예수금 계좌 기록</div>
         <div style={{
           display: 'flex',
           alignItems: 'center',
@@ -979,6 +1395,7 @@ export function InvestmentFlowTab() {
               return (
                 <div
                   key={account.id}
+                  className="print-deposit-account"
                   style={{
                     border: '1px solid #E5E7EB',
                     borderRadius: 8,
@@ -1379,8 +1796,9 @@ export function InvestmentFlowTab() {
         )}
       </section>
 
-      {/* ===== (2) 투자기록 테이블 ===== */}
-      <section>
+      {/* ===== 섹터3: 투자기록 테이블 ===== */}
+      <section className="print-section-records">
+        <div className="print-section-title">3. 투자기록</div>
         <div style={{
           display: 'flex',
           alignItems: 'center',
@@ -1598,13 +2016,13 @@ export function InvestmentFlowTab() {
 
               {recordsLoading ? (
                 <tr>
-                  <td colSpan={14} style={{ textAlign: 'center', padding: 24, color: '#9CA3AF', fontSize: 13 }}>
+                  <td colSpan={17} style={{ textAlign: 'center', padding: 24, color: '#9CA3AF', fontSize: 13 }}>
                     불러오는 중...
                   </td>
                 </tr>
               ) : filteredRecords.length === 0 && !addingRecord ? (
                 <tr>
-                  <td colSpan={14} style={{ textAlign: 'center', padding: 24, color: '#9CA3AF', fontSize: 13 }}>
+                  <td colSpan={17} style={{ textAlign: 'center', padding: 24, color: '#9CA3AF', fontSize: 13 }}>
                     투자기록이 없습니다.
                   </td>
                 </tr>

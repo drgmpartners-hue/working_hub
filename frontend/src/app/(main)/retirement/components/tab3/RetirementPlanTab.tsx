@@ -14,6 +14,25 @@ import type {
   RetirementPlanData,
 } from '../../types/retirement';
 
+/* ------------------------------------------------------------------ */
+/*  1번탭 desired-plans 응답 타입 (필요 필드만)                         */
+/* ------------------------------------------------------------------ */
+
+interface DesiredPlanSummary {
+  desired_retirement_age?: number | null;
+  savings_period_years?: number | null;
+  holding_period_years?: number | null;
+  annual_savings_amount?: number | null;
+  simulation_monthly_savings?: number | null;
+  simulation_annual_lump_sum?: number | null;
+  simulation_total_lump_sum?: number | null;
+  expected_return_rate?: number | null;
+  simulation_target_fund?: number | null;
+  target_retirement_fund?: number | null;
+  simulation_data?: Record<string, unknown>[] | null;
+  plan_start_year?: number | null;
+}
+
 // Recharts SSR 방지
 const RetirementGrowthChart = dynamic(() => import('./RetirementGrowthChart'), { ssr: false });
 
@@ -160,9 +179,145 @@ function NumericInput({
 /*  메인 컴포넌트                                                        */
 /* ------------------------------------------------------------------ */
 
+/* ------------------------------------------------------------------ */
+/*  금액 포맷 헬퍼                                                      */
+/* ------------------------------------------------------------------ */
+
+function formatAmountDisplay(value: number | null | undefined): string {
+  if (value == null || value === 0) return '-';
+  // 만원 단위로 변환 (API 값은 원 단위)
+  const ман = value / 10000;
+  if (ман >= 10000) {
+    return `${(ман / 10000).toFixed(1)}억원`;
+  }
+  return `${ман.toLocaleString('ko-KR')}만원`;
+}
+
+function formatManwon(value: number | null | undefined): string {
+  if (value == null || value === 0) return '-';
+  const ман = value / 10000;
+  return `${ман.toLocaleString('ko-KR')}만원`;
+}
+
+/* ------------------------------------------------------------------ */
+/*  기본정보 읽기전용 카드                                               */
+/* ------------------------------------------------------------------ */
+
+function BasicInfoCard({
+  data,
+  currentAge,
+}: {
+  data: DesiredPlanSummary | null;
+  currentAge: number | null;
+}) {
+  if (!data) {
+    return (
+      <div
+        style={{
+          padding: '24px',
+          backgroundColor: '#F9FAFB',
+          borderRadius: '8px',
+          textAlign: 'center',
+          color: '#9CA3AF',
+          fontSize: '13px',
+        }}
+      >
+        1번탭에서 희망은퇴플랜을 먼저 저장해주세요.
+      </div>
+    );
+  }
+
+  const retirementAge = data.desired_retirement_age ?? null;
+  const savingsPeriod = data.savings_period_years ?? null;
+  const holdingPeriod = data.holding_period_years ?? null;
+  const monthlySavings = data.simulation_monthly_savings ?? null;
+  const annualSavings =
+    data.annual_savings_amount ??
+    (monthlySavings != null ? monthlySavings * 12 : null);
+  const annualLumpSum = data.simulation_annual_lump_sum ?? null;
+  const totalLumpSum = data.simulation_total_lump_sum ?? null;
+  const expectedReturnRate =
+    data.expected_return_rate != null
+      ? (data.expected_return_rate * 100).toFixed(1) + '%'
+      : '-';
+  const targetFund =
+    data.simulation_target_fund ?? data.target_retirement_fund ?? null;
+  const useInflationCalc = !!(data as any).use_inflation_calc;
+
+  // 플랜 시작연도/나이 계산
+  const planStartYear = data.plan_start_year ?? new Date().getFullYear();
+  const currentYear = new Date().getFullYear();
+  const planStartAge = currentAge != null ? currentAge - (currentYear - planStartYear) : null;
+
+  // 은퇴연도 계산
+  const retirementYear = planStartAge != null && retirementAge != null
+    ? planStartYear + (retirementAge - planStartAge)
+    : null;
+
+  const totalPeriod =
+    savingsPeriod != null && holdingPeriod != null
+      ? savingsPeriod + holdingPeriod
+      : null;
+  const totalInvestment =
+    annualSavings != null && savingsPeriod != null && totalLumpSum != null
+      ? annualSavings * savingsPeriod + totalLumpSum
+      : null;
+
+  const itemStyle: React.CSSProperties = { display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 0', borderBottom: '1px solid #F3F4F6' };
+  const lbl: React.CSSProperties = { fontSize: 13, color: '#6B7280' };
+  const val: React.CSSProperties = { fontSize: 14, fontWeight: 700, color: '#111827', fontVariantNumeric: 'tabular-nums' };
+  const accent: React.CSSProperties = { ...val, color: '#1E3A5F' };
+  const groupTitle: React.CSSProperties = { fontSize: 12, fontWeight: 600, color: '#1E3A5F', marginBottom: 8, paddingBottom: 6, borderBottom: '2px solid #1E3A5F', letterSpacing: '0.02em' };
+  const badge: React.CSSProperties = { fontSize: 10, padding: '1px 6px', borderRadius: 4, fontWeight: 600, marginLeft: 6 };
+
+  return (
+    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 20 }}>
+      {/* 그룹1: 기간 설정 */}
+      <div style={{ padding: '16px 20px', backgroundColor: '#FAFBFC', borderRadius: 10, border: '1px solid #E5E7EB' }}>
+        <div style={groupTitle}>기간 설정</div>
+        <div style={itemStyle}><span style={lbl}>플랜 시작</span><span style={accent}>{planStartAge != null ? `${planStartYear}년 (${planStartAge}세)` : '-'}</span></div>
+        <div style={itemStyle}><span style={lbl}>희망 은퇴</span><span style={accent}>{retirementAge != null && retirementYear != null ? `${retirementYear}년 (${retirementAge}세)` : retirementAge != null ? `${retirementAge}세` : '-'}</span></div>
+        <div style={itemStyle}><span style={lbl}>총 투자기간</span><span style={val}>{totalPeriod != null ? `${totalPeriod}년` : '-'}</span></div>
+        <div style={{ ...itemStyle, borderBottom: 'none' }}><span style={lbl}>구성</span><span style={{ fontSize: 13, color: '#374151' }}>적립 {savingsPeriod ?? '-'}년 + 거치 {holdingPeriod ?? '-'}년</span></div>
+      </div>
+
+      {/* 그룹2: 투자 계획 */}
+      <div style={{ padding: '16px 20px', backgroundColor: '#FAFBFC', borderRadius: 10, border: '1px solid #E5E7EB' }}>
+        <div style={groupTitle}>투자 계획</div>
+        <div style={itemStyle}><span style={lbl}>연적립금액</span><span style={val}>{formatManwon(annualSavings)}</span></div>
+        <div style={itemStyle}><span style={lbl}>연거치금액 평균</span><span style={val}>{formatManwon(annualLumpSum)}</span></div>
+        <div style={itemStyle}><span style={lbl}>총거치금액</span><span style={val}>{formatAmountDisplay(totalLumpSum)}</span></div>
+        <div style={{ ...itemStyle, borderBottom: 'none' }}><span style={lbl}>총투자금액</span><span style={{ ...val, fontSize: 15 }}>{formatAmountDisplay(totalInvestment)}</span></div>
+      </div>
+
+      {/* 그룹3: 목표 */}
+      <div style={{ padding: '16px 20px', backgroundColor: '#F0F4FA', borderRadius: 10, border: '1px solid #D0DAE8' }}>
+        <div style={groupTitle}>목표</div>
+        <div style={itemStyle}><span style={lbl}>예상 수익률</span><span style={{ ...val, color: '#16A34A' }}>{expectedReturnRate}</span></div>
+        <div style={{ ...itemStyle, borderBottom: 'none', paddingTop: 12 }}>
+          <span style={lbl}>희망 은퇴금액</span>
+          <span style={{ display: 'flex', alignItems: 'center' }}>
+            <span style={{ fontSize: 18, fontWeight: 800, color: '#1E3A5F', fontVariantNumeric: 'tabular-nums' }}>{formatAmountDisplay(targetFund)}</span>
+            <span style={{ ...badge, backgroundColor: useInflationCalc ? '#DBEAFE' : '#F3F4F6', color: useInflationCalc ? '#1D4ED8' : '#6B7280' }}>
+              물가{useInflationCalc ? 'O' : 'X'}
+            </span>
+          </span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/*  메인 컴포넌트                                                        */
+/* ------------------------------------------------------------------ */
+
 export function RetirementPlanTab() {
   const { selectedCustomer } = useRetirementStore();
   const customerId = selectedCustomer?.id ?? null;
+
+  // 1번탭 기본정보 (읽기전용)
+  const [desiredPlanData, setDesiredPlanData] = useState<DesiredPlanSummary | null>(null);
 
   // 폼 상태
   const [currentAge, setCurrentAge] = useState('');
@@ -191,7 +346,7 @@ export function RetirementPlanTab() {
     setTimeout(() => setToast(null), 3000);
   };
 
-  /* 1번탭 데이터 사전 세팅 */
+  /* 1번탭 데이터 로드 - 기본정보 표시용 */
   const loadDesiredPlan = useCallback(
     async (cid: string) => {
       try {
@@ -199,17 +354,34 @@ export function RetirementPlanTab() {
           headers: authLib.getAuthHeader(),
         });
         if (res.ok) {
-          const data = await res.json();
-          // 1번탭에서 연관 필드 사전 세팅
+          const data: DesiredPlanSummary & {
+            monthly_desired_amount?: number;
+            target_total_fund?: number;
+          } = await res.json();
+
+          // 기본정보 표시용 저장
+          setDesiredPlanData(data);
+
+          // 기존 폼 세팅 (하위 호환)
           if (data.monthly_desired_amount) {
             setTargetPension(formatInputCurrency(String(data.monthly_desired_amount)));
           }
           if (data.target_total_fund) {
             setTargetFund(formatInputCurrency(String(data.target_total_fund)));
           }
+          // 1번탭 희망은퇴나이 → 폼에 세팅
+          if (data.desired_retirement_age) {
+            setDesiredRetirementAge(String(data.desired_retirement_age));
+          }
+          // 수익률 세팅
+          if (data.expected_return_rate) {
+            setAnnualReturnRate(String((data.expected_return_rate * 100).toFixed(1)));
+          }
+        } else {
+          setDesiredPlanData(null);
         }
       } catch {
-        // 무시
+        setDesiredPlanData(null);
       }
     },
     []
@@ -219,6 +391,8 @@ export function RetirementPlanTab() {
   const loadPlan = useCallback(
     async (cid: string) => {
       setIsLoading(true);
+      // 1번탭 기본정보는 항상 불러옴 (기본정보 카드에 표시)
+      loadDesiredPlan(cid);
       try {
         const res = await fetch(`${API_URL}/api/v1/retirement/plans/${cid}`, {
           headers: authLib.getAuthHeader(),
@@ -239,10 +413,8 @@ export function RetirementPlanTab() {
 
           // 저장된 데이터가 있으면 자동 시뮬레이션
           await runSimulation(data);
-        } else if (res.status === 404) {
-          // 저장 데이터 없으면 1번탭에서 사전 세팅 시도
-          await loadDesiredPlan(cid);
         }
+        // 404인 경우 loadDesiredPlan에서 폼 기본값 세팅이 이미 완료됨
       } catch {
         // 네트워크 에러 무시
       } finally {
@@ -258,6 +430,7 @@ export function RetirementPlanTab() {
       loadPlan(customerId);
     } else {
       // 고객 초기화
+      setDesiredPlanData(null);
       setCurrentAge('');
       setLumpSum('');
       setAnnualSavings('');
@@ -439,315 +612,100 @@ export function RetirementPlanTab() {
         margin: '0 auto',
       }}
     >
-      {/* 상단: 기본정보 입력 폼 */}
+      {/* 상단: 기본정보 (1번탭 데이터 읽기전용) */}
       <div style={cardStyle}>
-        <h3 style={sectionTitleStyle}>기본정보 입력</h3>
-
-        <div
-          style={{
-            display: 'grid',
-            gridTemplateColumns: 'repeat(5, 1fr)',
-            gap: '16px',
-          }}
-        >
-          <NumericInput
-            id="current-age"
-            label="현재 나이"
-            value={currentAge}
-            onChange={setCurrentAge}
-            unit="세"
-            disabled={isLoading}
-          />
-          <NumericInput
-            id="lump-sum-amount"
-            label="일시납입금액"
-            value={lumpSum}
-            onChange={setLumpSum}
-            unit="만원"
-            disabled={isLoading}
-            isCurrency
-          />
-          <NumericInput
-            id="annual-savings"
-            label="연적립금액"
-            value={annualSavings}
-            onChange={setAnnualSavings}
-            unit="만원"
-            disabled={isLoading}
-            isCurrency
-          />
-          <NumericInput
-            id="saving-period"
-            label="납입기간"
-            value={savingPeriod}
-            onChange={setSavingPeriod}
-            unit="년"
-            disabled={isLoading}
-          />
-          <NumericInput
-            id="annual-return-rate"
-            label="연수익률"
-            value={annualReturnRate}
-            onChange={setAnnualReturnRate}
-            unit="%"
-            disabled={isLoading}
-          />
-          <NumericInput
-            id="target-retirement-fund"
-            label="목표은퇴자금"
-            value={targetFund}
-            onChange={setTargetFund}
-            unit="만원"
-            disabled={isLoading}
-            isCurrency
-          />
-          <NumericInput
-            id="target-pension-amount"
-            label="목표 연금액"
-            value={targetPension}
-            onChange={setTargetPension}
-            unit="만원/월"
-            disabled={isLoading}
-            isCurrency
-          />
-          <NumericInput
-            id="desired-retirement-age"
-            label="희망 은퇴나이"
-            value={desiredRetirementAge}
-            onChange={setDesiredRetirementAge}
-            unit="세"
-            disabled={isLoading}
-          />
-          <NumericInput
-            id="possible-retirement-age"
-            label="가능 은퇴나이"
-            value={possibleRetirementAge}
-            onChange={setPossibleRetirementAge}
-            unit="세"
-            disabled={isLoading}
-          />
-
-          {/* 물가상승률 & 상속재원 고려 토글 */}
-          <div
-            style={{
-              display: 'flex',
-              flexDirection: 'column',
-              justifyContent: 'flex-end',
-              paddingBottom: '4px',
-            }}
-          >
-            <label
-              htmlFor="inheritance-consideration"
-              style={{ ...labelStyle, marginBottom: '10px' }}
-            >
-              물가상승률 & 상속재원 고려
-            </label>
-            <label
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: '8px',
-                cursor: 'pointer',
-              }}
-            >
-              <div
-                onClick={() => setInheritanceConsideration((v) => !v)}
-                role="switch"
-                aria-checked={inheritanceConsideration}
-                aria-label="물가상승률 & 상속재원 고려"
-                style={{
-                  width: '44px',
-                  height: '24px',
-                  borderRadius: '12px',
-                  backgroundColor: inheritanceConsideration ? '#1E3A5F' : '#D1D5DB',
-                  position: 'relative',
-                  cursor: 'pointer',
-                  transition: 'background-color 0.2s',
-                }}
-              >
-                <div
-                  style={{
-                    position: 'absolute',
-                    top: '2px',
-                    left: inheritanceConsideration ? '22px' : '2px',
-                    width: '20px',
-                    height: '20px',
-                    borderRadius: '50%',
-                    backgroundColor: '#ffffff',
-                    boxShadow: '0 1px 4px rgba(0,0,0,0.18)',
-                    transition: 'left 0.2s',
-                  }}
-                />
-              </div>
-              <span style={{ fontSize: '13px', color: '#374151' }}>
-                {inheritanceConsideration ? '적용' : '미적용'}
-              </span>
-            </label>
-          </div>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '16px' }}>
+          <h3 style={{ ...sectionTitleStyle, marginBottom: 0 }}>기본정보</h3>
+          <span style={{ fontSize: '12px', color: '#9CA3AF' }}>
+            수정은 1번탭(희망은퇴플랜)에서 가능합니다.
+          </span>
         </div>
-
-        {/* 계산 버튼 */}
-        <div style={{ marginTop: '20px', display: 'flex', gap: '12px' }}>
-          <Button
-            variant="primary"
-            size="md"
-            loading={isCalculating}
-            onClick={handleCalculate}
-            disabled={!currentAge}
-          >
-            계산
-          </Button>
-          <Button
-            variant="secondary"
-            size="md"
-            loading={isSaving}
-            onClick={handleSave}
-            disabled={!customerId || !currentAge}
-          >
-            저장
-          </Button>
-          {!customerId && (
-            <span style={{ fontSize: '12px', color: '#9CA3AF', alignSelf: 'center' }}>
-              상단에서 고객을 선택하면 저장할 수 있습니다.
-            </span>
-          )}
-        </div>
+        <BasicInfoCard
+          data={desiredPlanData}
+          currentAge={selectedCustomer?.currentAge ?? null}
+        />
       </div>
 
-      {/* 중단: 연도별 예상 평가금액 테이블 */}
+      {/* 연도별 예상 평가금액 (1번탭 시뮬레이션 데이터) */}
       <div style={cardStyle}>
         <h3 style={sectionTitleStyle}>연도별 예상 평가금액</h3>
-
-        {projections && projections.length > 0 ? (
+        {desiredPlanData?.simulation_data && desiredPlanData.simulation_data.length > 0 ? (
           <div style={{ overflowX: 'auto' }}>
-            <table
-              style={{
-                width: '100%',
-                borderCollapse: 'collapse',
-                fontSize: '13px',
-              }}
-            >
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px' }}>
               <thead>
                 <tr style={{ backgroundColor: '#F9FAFB' }}>
-                  {['연도', '연차', '나이', '일시납', '연적립', '총납입', '예상수익', '예상평가액'].map(
-                    (col) => (
-                      <th
-                        key={col}
-                        style={{
-                          padding: '10px 12px',
-                          textAlign: col === '연도' || col === '연차' || col === '나이' ? 'center' : 'right',
-                          fontSize: '12px',
-                          fontWeight: 600,
-                          color: '#6B7280',
-                          borderBottom: '1px solid #E5E7EB',
-                          whiteSpace: 'nowrap',
-                        }}
-                      >
-                        {col}
-                      </th>
-                    )
-                  )}
+                  {['연도', '연차', '나이', '구분', '월적립(만)', '거치금(만)', '누적원금', '운용수익', '연금인출', '누적인출', '총평가'].map(col => (
+                    <th key={col} style={{ padding: '10px 12px', textAlign: ['연도', '연차', '나이', '구분'].includes(col) ? 'center' : 'right', fontSize: '12px', fontWeight: 600, color: col === '연금인출' || col === '누적인출' ? '#DC2626' : '#6B7280', borderBottom: '1px solid #E5E7EB', whiteSpace: 'nowrap' }}>{col}</th>
+                  ))}
                 </tr>
               </thead>
               <tbody>
-                {projections.map((row, idx) => {
-                  const isRetirementAge =
-                    desiredRetirementAgeNum != null && row.age === desiredRetirementAgeNum;
+                {desiredPlanData.simulation_data.map((row: Record<string, unknown>, idx: number) => {
+                  const year = Number(row.year ?? idx + 1);
+                  const age = Number(row.age ?? 0);
+                  const rawPhase = String(row.phase ?? row.type ?? '-');
+                  const phaseLabel = rawPhase === 'saving' ? '적립' : rawPhase === 'holding' ? '거치' : rawPhase === 'retirement' ? '은퇴후' : rawPhase;
+                  const phaseColor = rawPhase === 'saving' ? '#3B82F6' : rawPhase === 'holding' ? '#D4A847' : '#16A34A';
+                  const mp = Number(row.monthly_payment ?? 0);
+                  const ad = Number(row.additional ?? 0);
+                  const principal = Number(row.cumulative_principal ?? row.principal ?? 0);
+                  const profit = Number(row.investment_return ?? row.profit ?? 0);
+                  const evaluation = Number(row.evaluation ?? 0);
+                  const pension = Number(row.pension ?? 0);
+                  const cumPension = Number(row.cumulative_pension ?? 0);
+                  const retAgeNum = desiredPlanData.desired_retirement_age ?? 65;
+                  const isRetAge = age === retAgeNum;
+                  const isRetirement = rawPhase === 'retirement';
+                  const planStartYear = desiredPlanData.plan_start_year ?? new Date().getFullYear();
+                  const calYear = planStartYear + year - 1;
+                  const bgColor = isRetAge ? 'rgba(30,58,95,0.06)' : isRetirement ? '#F0FDF4' : idx % 2 === 0 ? '#fff' : '#FAFAFA';
                   return (
-                    <tr
-                      key={row.year}
-                      style={{
-                        backgroundColor: isRetirementAge
-                          ? 'rgba(30,58,95,0.06)'
-                          : idx % 2 === 0
-                          ? '#ffffff'
-                          : '#FAFAFA',
-                        borderBottom: '1px solid #F3F4F6',
-                      }}
-                    >
-                      <td style={{ padding: '8px 12px', textAlign: 'center', color: '#374151' }}>
-                        {row.year}
+                    <tr key={year} style={{ backgroundColor: bgColor, borderBottom: '1px solid #F3F4F6' }}>
+                      <td style={{ padding: '8px 10px', textAlign: 'center', fontSize: 11, color: '#9CA3AF' }}>{calYear}</td>
+                      <td style={{ padding: '8px 10px', textAlign: 'center' }}>{year}</td>
+                      <td style={{ padding: '8px 10px', textAlign: 'center', fontWeight: isRetAge ? 700 : 400, color: isRetAge ? '#1E3A5F' : '#374151' }}>
+                        {age}세{isRetAge && <span style={{ marginLeft: 4, fontSize: 10, color: '#1E3A5F' }}>★</span>}
                       </td>
-                      <td style={{ padding: '8px 12px', textAlign: 'center', color: '#374151' }}>
-                        {row.year_num}
-                      </td>
-                      <td
-                        style={{
-                          padding: '8px 12px',
-                          textAlign: 'center',
-                          color: isRetirementAge ? '#1E3A5F' : '#374151',
-                          fontWeight: isRetirementAge ? 700 : 400,
-                        }}
-                      >
-                        {row.age}세
-                        {isRetirementAge && (
-                          <span
-                            style={{
-                              marginLeft: '4px',
-                              fontSize: '10px',
-                              color: '#1E3A5F',
-                              fontWeight: 600,
-                            }}
-                          >
-                            ★희망
-                          </span>
-                        )}
-                      </td>
-                      <AmountCell value={row.lump_sum} />
-                      <AmountCell value={row.annual_savings} />
-                      <AmountCell value={row.total_contribution} highlight={isRetirementAge} />
-                      <AmountCell value={row.annual_return} />
-                      <AmountCell value={row.evaluation} highlight={isRetirementAge} bold />
+                      <td style={{ padding: '8px 10px', textAlign: 'center', color: phaseColor, fontWeight: 600, fontSize: 12 }}>{phaseLabel}</td>
+                      <td style={{ padding: '8px 10px', textAlign: 'right' }}>{mp > 0 ? formatCurrency(Math.round(mp / 1e4)) : '-'}</td>
+                      <td style={{ padding: '8px 10px', textAlign: 'right' }}>{ad > 0 ? formatCurrency(Math.round(ad / 1e4)) : '-'}</td>
+                      <td style={{ padding: '8px 10px', textAlign: 'right' }}>{formatCurrency(Math.round(principal / 1e4))}</td>
+                      <td style={{ padding: '8px 10px', textAlign: 'right', color: profit >= 0 ? '#16A34A' : '#DC2626' }}>{formatCurrency(Math.round(profit / 1e4))}</td>
+                      <td style={{ padding: '8px 10px', textAlign: 'right', color: '#DC2626' }}>{pension > 0 ? formatCurrency(Math.round(pension / 1e4)) : '-'}</td>
+                      <td style={{ padding: '8px 10px', textAlign: 'right', color: '#DC2626' }}>{cumPension > 0 ? formatCurrency(Math.round(cumPension / 1e4)) : '-'}</td>
+                      <td style={{ padding: '8px 10px', textAlign: 'right', fontWeight: 700 }}>{formatCurrency(Math.round(evaluation / 1e4))}</td>
                     </tr>
                   );
                 })}
               </tbody>
             </table>
+            <div style={{ textAlign: 'right', fontSize: 11, color: '#9CA3AF', marginTop: 4 }}>(단위: 만원)</div>
           </div>
         ) : (
-          <div
-            style={{
-              height: '120px',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              color: '#9CA3AF',
-              fontSize: '13px',
-              backgroundColor: '#F9FAFB',
-              borderRadius: '8px',
-            }}
-          >
-            기본정보를 입력하고 [계산] 버튼을 클릭하면 연도별 예상 평가금액이 표시됩니다.
+          <div style={{ padding: 40, textAlign: 'center', color: '#9CA3AF', fontSize: 14 }}>
+            1번탭에서 복리 성장 시뮬레이션을 계산하고 저장해주세요.
           </div>
         )}
       </div>
 
-      {/* 하단: 성장 그래프 */}
-      <div style={cardStyle}>
-        <h3 style={sectionTitleStyle}>성장 그래프</h3>
-
-        {chartData.length > 0 ? (
+      {/* 성장 그래프 */}
+      {desiredPlanData?.simulation_data && desiredPlanData.simulation_data.length > 0 && (
+        <div style={cardStyle}>
+          <h3 style={sectionTitleStyle}>성장 그래프</h3>
           <RetirementGrowthChart
-            data={chartData}
-            retirementAge={desiredRetirementAgeNum}
+            data={desiredPlanData.simulation_data.map((row: Record<string, unknown>) => ({
+              age: Number(row.age ?? 0),
+              amount: Math.round(Number(row.evaluation ?? 0)),
+              phase: String(row.phase ?? (Number(row.monthly_payment ?? 0) > 0 ? 'saving' : 'holding')),
+              principal: Math.round(Number(row.cumulative_principal ?? 0)),
+              pension: Math.round(Number(row.pension ?? 0)),
+            }))}
+            retirementAge={desiredPlanData.desired_retirement_age ?? 65}
           />
-        ) : (
-          <div
-            style={{
-              height: '200px',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              color: '#9CA3AF',
-              fontSize: '13px',
-              backgroundColor: '#F9FAFB',
-              borderRadius: '8px',
-            }}
-          >
-            계산 결과가 있으면 그래프가 표시됩니다.
-          </div>
-        )}
-      </div>
+        </div>
+      )}
+
+      {/* -- 기존 시뮬레이션 설정/테이블/그래프 제거 완료 -- */}
 
       {/* 토스트 */}
       {toast && <Toast message={toast.message} type={toast.type} />}

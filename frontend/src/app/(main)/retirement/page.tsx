@@ -7,17 +7,15 @@ import { CustomerSelector } from './components/CustomerSelector';
 import { DesiredPlanTab } from './components/tab1/DesiredPlanTab';
 import { InvestmentFlowTab } from './components/tab2/InvestmentFlowTab';
 import { RetirementPlanTab } from './components/tab3/RetirementPlanTab';
-import { InteractiveCalcTab } from './components/tab4/InteractiveCalcTab';
 import { PensionPlanTab } from './components/tab5/PensionPlanTab';
 import Link from 'next/link';
 import { useRetirementStore, type RetirementTab } from './hooks/useRetirementStore';
 
 const VALID_TABS: RetirementTab[] = [
   'desired-plan',
-  'investment-flow',
   'retirement-plan',
-  'interactive-calc',
   'pension-plan',
+  'investment-flow',
 ];
 
 function isValidTab(value: string | null): value is RetirementTab {
@@ -46,8 +44,6 @@ function RetirementContent() {
         return <InvestmentFlowTab />;
       case 'retirement-plan':
         return <RetirementPlanTab />;
-      case 'interactive-calc':
-        return <InteractiveCalcTab />;
       case 'pension-plan':
         return <PensionPlanTab />;
       default:
@@ -65,10 +61,10 @@ function RetirementContent() {
       }}
     >
       {/* 고객 선택 바 (탭 위에 배치 - 전체 탭에 공통 적용) */}
-      <CustomerSelector />
+      <div className="no-print"><CustomerSelector /></div>
 
       {/* 탭 네비게이션 */}
-      <TabNavigation />
+      <div className="no-print"><TabNavigation /></div>
 
       {/* 탭 콘텐츠 */}
       <div style={{ padding: '24px' }}>{renderTab()}</div>
@@ -80,7 +76,7 @@ export default function RetirementPage() {
   return (
     <div>
       {/* 페이지 헤더 */}
-      <div style={{ marginBottom: '20px' }}>
+      <div className="no-print" style={{ marginBottom: '20px' }}>
         <Link
           href="/dashboard"
           style={{

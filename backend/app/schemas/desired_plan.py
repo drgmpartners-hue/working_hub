@@ -34,8 +34,8 @@ class DesiredPlanUpsert(BaseModel):
         description="월 납입 적립 기간 (년)",
     )
     annual_savings: int = Field(
-        ...,
-        gt=0,
+        default=0,
+        ge=0,
         description="연 적립 금액 (원)",
     )
 
@@ -68,6 +68,68 @@ class DesiredPlanUpsert(BaseModel):
         description="목표자금 계산 시 물가상승 반영 여부",
     )
 
+    # ── 신규: 원래 현재가치 수령액 / 은퇴당시 수령액 ───────────────────
+    current_value_monthly: Optional[int] = Field(
+        default=None,
+        description="현재가치 수령액 (원)",
+    )
+    future_monthly_amount: Optional[int] = Field(
+        default=None,
+        description="은퇴당시 수령액 (원) - 물가반영 결과",
+    )
+    desired_retirement_age: Optional[int] = Field(
+        default=None,
+        description="희망 은퇴나이",
+    )
+    savings_period_years: Optional[int] = Field(
+        default=None,
+        description="적립기간 (년)",
+    )
+    holding_period_years: Optional[int] = Field(
+        default=None,
+        description="거치기간 (년)",
+    )
+    annual_savings_amount: Optional[int] = Field(
+        default=None,
+        description="연적립금액 (원)",
+    )
+
+    # ── 신규: 토글 상태 저장 ─────────────────────────────────────────────
+    use_inflation_input: Optional[bool] = Field(
+        default=None,
+        description="토글1: 은퇴당시 수령액 물가반영 여부",
+    )
+    use_inflation_calc: Optional[bool] = Field(
+        default=None,
+        description="토글2: 목표자금 계산시 물가반영 여부 (with_inflation과 동일)",
+    )
+
+    # ── 신규: 시뮬레이션 편집 결과 저장 ──────────────────────────────────
+    simulation_monthly_savings: Optional[int] = Field(
+        default=None,
+        description="시뮬레이션 월적립금액 (원) - 사용자 수정값",
+    )
+    simulation_annual_lump_sum: Optional[int] = Field(
+        default=None,
+        description="시뮬레이션 연 거치금액 (원) - 사용자 수정값",
+    )
+    simulation_total_lump_sum: Optional[int] = Field(
+        default=None,
+        description="시뮬레이션 총 거치금액 (원) - 사용자 수정값",
+    )
+    simulation_target_fund: Optional[int] = Field(
+        default=None,
+        description="시뮬레이션 목표 은퇴자금 (원) - 실제 시뮬레이션 결과",
+    )
+    plan_start_year: Optional[int] = Field(
+        default=None,
+        description="플랜 시작연도 (예: 2024)",
+    )
+    simulation_data: Optional[list[dict[str, Any]]] = Field(
+        default=None,
+        description="연차별 시뮬레이션 상세 데이터 (수정된 월적립/거치금 포함)",
+    )
+
     # 하위 호환 필드 (구 API - 무시됨)
     years_to_retirement: Optional[int] = Field(
         default=None,
@@ -90,7 +152,7 @@ class DesiredPlanCalculateRequest(BaseModel):
     retirement_age: int = Field(..., ge=40, le=100)
     current_age: int = Field(..., ge=1, le=99)
     savings_period: int = Field(..., ge=1)
-    annual_savings: int = Field(..., gt=0)
+    annual_savings: int = Field(default=0, ge=0)
     retirement_period_years: int = Field(default=40, gt=0)
     inflation_rate: float = Field(default=0.021, gt=0, le=1.0)
     pension_return_rate: float = Field(default=0.05, gt=0, le=1.0)
@@ -134,12 +196,39 @@ class DesiredPlanResponse(BaseModel):
     id: int
     profile_id: str
 
-    # 입력값 (필수)
+    # 입력값 (필수, 하위 호환)
     monthly_desired_amount: int
     retirement_period_years: int
 
-    # 계산 결과 (JSONB calculation_params 에서 복원)
+    # ── 신규 입력값 필드 ─────────────────────────────────────────────────
+    pension_period_years: Optional[int] = None
+    current_value_monthly: Optional[int] = None
     future_monthly_amount: Optional[int] = None
+    inflation_rate: Optional[float] = None
+    retirement_pension_rate: Optional[float] = None
+    desired_retirement_age: Optional[int] = None
+    savings_period_years: Optional[int] = None
+    holding_period_years: Optional[int] = None
+    expected_return_rate: Optional[float] = None
+    annual_savings_amount: Optional[int] = None
+
+    # ── 계산 결과 ────────────────────────────────────────────────────────
+    target_retirement_fund: Optional[int] = None
+    required_lump_sum_new: Optional[int] = None
+
+    # ── 토글 상태 ────────────────────────────────────────────────────────
+    use_inflation_input: Optional[bool] = None
+    use_inflation_calc: Optional[bool] = None
+
+    # ── 시뮬레이션 ───────────────────────────────────────────────────────
+    simulation_monthly_savings: Optional[int] = None
+    simulation_annual_lump_sum: Optional[int] = None
+    simulation_total_lump_sum: Optional[int] = None
+    simulation_target_fund: Optional[int] = None
+    plan_start_year: Optional[int] = None
+    simulation_data: Optional[list[dict[str, Any]]] = None
+
+    # ── calculation_params 복원 필드 (기존 방식 유지) ────────────────────
     target_fund: Optional[int] = None
     target_fund_inflation: Optional[int] = None
     target_fund_no_inflation: Optional[int] = None

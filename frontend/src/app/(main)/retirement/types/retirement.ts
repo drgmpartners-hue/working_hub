@@ -28,10 +28,9 @@ export interface GrowthDataPoint {
 
 export type RetirementTab =
   | 'desired-plan'
-  | 'investment-flow'
   | 'retirement-plan'
-  | 'interactive-calc'
-  | 'pension-plan';
+  | 'pension-plan'
+  | 'investment-flow';
 
 /* ------------------------------------------------------------------ */
 /*  은퇴플랜 (3번탭) 타입                                               */

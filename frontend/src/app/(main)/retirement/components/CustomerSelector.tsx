@@ -155,6 +155,19 @@ export function CustomerSelector() {
       // silent
     }
 
+    // desired-plans에서도 희망은퇴나이 조회 (1번탭 저장값)
+    try {
+      const dpRes = await fetch(`${API_URL}/api/v1/retirement/desired-plans/${clientId}`, {
+        headers: { ...authLib.getAuthHeader() },
+      });
+      if (dpRes.ok) {
+        const dp = await dpRes.json();
+        if (dp.desired_retirement_age) retirementAge = dp.desired_retirement_age;
+        if (dp.simulation_target_fund) targetFund = dp.simulation_target_fund;
+        else if (dp.target_retirement_fund) targetFund = dp.target_retirement_fund;
+      }
+    } catch { /* silent */ }
+
     const currentAge = client.birth_date ? calculateAge(client.birth_date) : 0;
     const customer: RetirementCustomer = {
       id: client.id,
@@ -259,76 +272,46 @@ export function CustomerSelector() {
         </button>
       </div>
 
-      {/* 선택된 고객 정보 표시 - 버튼과 같은 높이에 정렬 */}
+      {/* 선택된 고객 정보 표시 - 2단 가로정렬 */}
       {selectedCustomer && selectedClient && (
-        <div
-          style={{
-            display: 'flex',
-            flexDirection: 'column',
-            justifyContent: 'flex-end',
-            gap: 2,
-          }}
-        >
-        <label style={{ fontSize: '0.75rem', fontWeight: 600, color: 'transparent' }}>&nbsp;</label>
-        <div
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: '12px',
-            fontSize: '13px',
-            color: '#374151',
-          }}
-        >
-          <span style={{ fontWeight: '600', color: '#1E3A5F', fontSize: '14px' }}>
-            {selectedCustomer.name}
-          </span>
-
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+          <label style={{ fontSize: '0.75rem', fontWeight: 600, color: 'transparent' }}>&nbsp;</label>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 32 }}>
+          {/* 고객명 */}
+          <div style={{ textAlign: 'center' }}>
+            <div style={{ fontSize: 11, color: '#9CA3AF', marginBottom: 3 }}>고객명</div>
+            <div style={{ fontSize: 14, fontWeight: 700, color: '#1E3A5F' }}>{selectedCustomer.name}</div>
+          </div>
+          {/* 생년월일 */}
           {selectedClient.birth_date && (
-            <>
-              <span style={{ color: '#D1D5DB' }}>|</span>
-              <span>
-                생년월일{' '}
-                <strong style={{ color: '#1E3A5F' }}>{selectedClient.birth_date}</strong>
-              </span>
-              {age !== null && (
-                <span
-                  style={{
-                    backgroundColor: '#EFF6FF',
-                    color: '#1E3A5F',
-                    fontWeight: 700,
-                    padding: '2px 8px',
-                    borderRadius: '12px',
-                    fontSize: '12px',
-                  }}
-                >
-                  만 {age}세
-                </span>
-              )}
-            </>
+            <div style={{ textAlign: 'center' }}>
+              <div style={{ fontSize: 11, color: '#9CA3AF', marginBottom: 3 }}>생년월일</div>
+              <div style={{ fontSize: 13, fontWeight: 600, color: '#374151' }}>
+                {selectedClient.birth_date}{age !== null && <span style={{ color: '#1E3A5F', marginLeft: 4 }}>(만 {age}세)</span>}
+              </div>
+            </div>
           )}
-
+          {/* 목표은퇴자금 */}
           {selectedCustomer.targetFund > 0 && (
-            <>
-              <span style={{ color: '#D1D5DB' }}>|</span>
-              <span>
-                목표은퇴자금{' '}
-                <strong style={{ color: '#1E3A5F' }}>
-                  {selectedCustomer.targetFund.toLocaleString()}만원
-                </strong>
-              </span>
-            </>
+            <div style={{ textAlign: 'center' }}>
+              <div style={{ fontSize: 11, color: '#9CA3AF', marginBottom: 3 }}>목표은퇴자금</div>
+              <div style={{ fontSize: 13, fontWeight: 700, color: '#1E3A5F' }}>
+                {(() => {
+                  const v = selectedCustomer.targetFund;
+                  if (v >= 1e8) return `${(v / 1e8).toFixed(1)}억원`;
+                  return `${v.toLocaleString()}만원`;
+                })()}
+              </div>
+            </div>
           )}
-
+          {/* 희망은퇴나이 */}
           {selectedCustomer.retirementAge > 0 && (
-            <>
-              <span style={{ color: '#D1D5DB' }}>|</span>
-              <span>
-                희망은퇴나이{' '}
-                <strong style={{ color: '#1E3A5F' }}>{selectedCustomer.retirementAge}세</strong>
-              </span>
-            </>
+            <div style={{ textAlign: 'center' }}>
+              <div style={{ fontSize: 11, color: '#9CA3AF', marginBottom: 3 }}>희망은퇴나이</div>
+              <div style={{ fontSize: 14, fontWeight: 700, color: '#1E3A5F' }}>{selectedCustomer.retirementAge}세</div>
+            </div>
           )}
-        </div>
+          </div>
         </div>
       )}
     </div>

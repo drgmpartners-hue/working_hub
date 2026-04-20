@@ -58,10 +58,34 @@ def _enrich_response(plan: DesiredPlan) -> DesiredPlanResponse:
     return DesiredPlanResponse(
         id=plan.id,
         profile_id=plan.profile_id,
+        # 기존 필수 필드 (하위 호환)
         monthly_desired_amount=plan.monthly_desired_amount,
         retirement_period_years=plan.retirement_period_years,
-        # 계산 결과 (calculation_params 에 저장된 값 복원)
-        future_monthly_amount=params.get("future_monthly_amount"),
+        # 신규 입력값 컬럼 (직접 반환)
+        pension_period_years=plan.pension_period_years,
+        current_value_monthly=plan.current_value_monthly,
+        future_monthly_amount=plan.future_monthly_amount,
+        inflation_rate=plan.inflation_rate,
+        retirement_pension_rate=plan.retirement_pension_rate,
+        desired_retirement_age=plan.desired_retirement_age,
+        savings_period_years=plan.savings_period_years,
+        holding_period_years=plan.holding_period_years,
+        expected_return_rate=plan.expected_return_rate,
+        annual_savings_amount=plan.annual_savings_amount,
+        # 계산 결과 컬럼
+        target_retirement_fund=plan.target_retirement_fund,
+        required_lump_sum_new=plan.required_lump_sum_new,
+        # 토글 상태
+        use_inflation_input=plan.use_inflation_input,
+        use_inflation_calc=plan.use_inflation_calc,
+        # 시뮬레이션 컬럼
+        simulation_monthly_savings=plan.simulation_monthly_savings,
+        simulation_annual_lump_sum=plan.simulation_annual_lump_sum,
+        simulation_total_lump_sum=plan.simulation_total_lump_sum,
+        simulation_target_fund=plan.simulation_target_fund,
+        plan_start_year=plan.plan_start_year,
+        simulation_data=plan.simulation_data,
+        # calculation_params 에서 복원 (기존 방식 호환)
         target_fund=params.get("target_fund"),
         target_fund_inflation=params.get("target_fund_inflation"),
         target_fund_no_inflation=params.get("target_fund_no_inflation"),
@@ -165,6 +189,7 @@ async def upsert_desired_plan(
     - 은퇴 설계 프로필이 없으면 404.
     - 플랜이 이미 존재하면 업데이트, 없으면 생성.
     - 엑셀 PV/FV 기반 계산이 자동 수행됩니다.
+    - 신규 필드(시뮬레이션 편집값, 토글 상태 등) 모두 저장됩니다.
     """
     profile = await _get_profile_or_404(customer_id, db)
     _check_access(current_user, profile)
@@ -197,6 +222,10 @@ async def upsert_desired_plan(
             detail=str(exc),
         ) from exc
 
+    # investment_years = retirement_age - current_age
+    investment_years = data.retirement_age - data.current_age
+    holding_period = max(0, investment_years - data.savings_period)
+
     # calculation_params: 계산 결과 + 프론트엔드 추가 파라미터 병합
     merged_params: dict = {**calc["calculation_params"]}
     # 계산 결과 값도 함께 저장 (GET 시 복원용)
@@ -213,6 +242,9 @@ async def upsert_desired_plan(
     if data.calculation_params:
         merged_params.update(data.calculation_params)
 
+    # 시뮬레이션 데이터: 프론트에서 직접 전달된 경우 우선 사용
+    sim_data = data.simulation_data if data.simulation_data is not None else calc["simulation_table"]
+
     # 기존 플랜 조회 (upsert)
     result = await db.execute(
         select(DesiredPlan)
@@ -222,25 +254,87 @@ async def upsert_desired_plan(
     )
     plan = result.scalar_one_or_none()
 
+    # 공통 필드값 딕셔너리
+    plan_fields = dict(
+        # 기존 필수 필드 (하위 호환)
+        monthly_desired_amount=data.monthly_desired_amount,
+        retirement_period_years=data.retirement_period_years,
+        target_total_fund=calc["target_total_fund"],
+        required_lump_sum=calc["required_lump_sum"],
+        required_annual_savings=calc["required_annual_savings"],
+        calculation_params=merged_params,
+        # 신규 입력값 컬럼
+        pension_period_years=data.retirement_period_years,
+        current_value_monthly=data.current_value_monthly or data.monthly_desired_amount,
+        future_monthly_amount=data.future_monthly_amount or calc["future_monthly_amount"],
+        inflation_rate=inflation_rate,
+        retirement_pension_rate=pension_return_rate,
+        desired_retirement_age=data.desired_retirement_age or data.retirement_age,
+        savings_period_years=data.savings_period_years or data.savings_period,
+        holding_period_years=data.holding_period_years or holding_period,
+        expected_return_rate=data.expected_return_rate if data.expected_return_rate is not None else expected_return_rate,
+        annual_savings_amount=data.annual_savings_amount or data.annual_savings,
+        # 계산 결과 컬럼
+        target_retirement_fund=calc["target_fund"],
+        required_lump_sum_new=calc["required_holding"],
+        # 토글 상태
+        use_inflation_input=data.use_inflation_input,
+        use_inflation_calc=data.use_inflation_calc if data.use_inflation_calc is not None else data.with_inflation,
+        # 시뮬레이션 컬럼
+        simulation_monthly_savings=data.simulation_monthly_savings,
+        simulation_annual_lump_sum=data.simulation_annual_lump_sum,
+        simulation_total_lump_sum=data.simulation_total_lump_sum,
+        simulation_target_fund=data.simulation_target_fund,
+        plan_start_year=data.plan_start_year,
+        simulation_data=sim_data,
+    )
+
     if plan:
-        plan.monthly_desired_amount = data.monthly_desired_amount
-        plan.retirement_period_years = data.retirement_period_years
-        plan.target_total_fund = calc["target_total_fund"]
-        plan.required_lump_sum = calc["required_lump_sum"]
-        plan.required_annual_savings = calc["required_annual_savings"]
-        plan.calculation_params = merged_params
+        for field, value in plan_fields.items():
+            setattr(plan, field, value)
     else:
-        plan = DesiredPlan(
-            profile_id=profile.id,
-            monthly_desired_amount=data.monthly_desired_amount,
-            retirement_period_years=data.retirement_period_years,
-            target_total_fund=calc["target_total_fund"],
-            required_lump_sum=calc["required_lump_sum"],
-            required_annual_savings=calc["required_annual_savings"],
-            calculation_params=merged_params,
-        )
+        plan = DesiredPlan(profile_id=profile.id, **plan_fields)
         db.add(plan)
 
     await db.commit()
     await db.refresh(plan)
     return _enrich_response(plan)
+
+
+@router.patch("/{customer_id}/params")
+async def update_calculation_params(
+    customer_id: str,
+    body: dict,
+    current_user: CurrentUser,
+    db: AsyncSession = Depends(get_db),
+):
+    """calculation_params 부분 업데이트 (applied_years 등 자동 저장용)."""
+    # 프로필 조회
+    profile_result = await db.execute(
+        select(CustomerRetirementProfile).where(
+            CustomerRetirementProfile.customer_id == customer_id
+        )
+    )
+    profile = profile_result.scalar_one_or_none()
+    if not profile:
+        raise HTTPException(status_code=404, detail="프로필을 찾을 수 없습니다.")
+
+    # 플랜 조회
+    result = await db.execute(
+        select(DesiredPlan)
+        .where(DesiredPlan.profile_id == profile.id)
+        .order_by(DesiredPlan.updated_at.desc())
+        .limit(1)
+    )
+    plan = result.scalar_one_or_none()
+    if not plan:
+        raise HTTPException(status_code=404, detail="플랜을 찾을 수 없습니다.")
+
+    # calculation_params 병합
+    params = plan.calculation_params or {}
+    new_params = body.get("calculation_params", {})
+    params.update(new_params)
+    plan.calculation_params = params
+
+    await db.commit()
+    return {"status": "ok"}
