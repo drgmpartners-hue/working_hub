@@ -65,3 +65,9 @@ test-results/
 playwright-report/
 blob-report/
 generated_images/
+
+# Playwright MCP logs
+.playwright-mcp/
+
+# Misc docs
+etc/
