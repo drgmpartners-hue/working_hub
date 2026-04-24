@@ -2359,6 +2359,17 @@ export function InvestmentFlowTab() {
 /*  Wrap 상품 추가 모달                                                  */
 /* ------------------------------------------------------------------ */
 
+const NOTION_PRODUCT_KEY = 'notion_product_config';
+function saveNotionProductConfig(dbId: string, dbTitle: string, mapping: Record<string, string>) {
+  try { localStorage.setItem(NOTION_PRODUCT_KEY, JSON.stringify({ dbId, dbTitle, mapping })); } catch { /* ignore */ }
+}
+function loadNotionProductConfig(): { dbId: string; dbTitle: string; mapping: Record<string, string> } | null {
+  try { const r = localStorage.getItem(NOTION_PRODUCT_KEY); return r ? JSON.parse(r) : null; } catch { return null; }
+}
+function clearNotionProductConfig() {
+  try { localStorage.removeItem(NOTION_PRODUCT_KEY); } catch { /* ignore */ }
+}
+
 function AddWrapProductModal({ onClose, onSaved }: { onClose: () => void; onSaved: () => void }) {
   const [productName, setProductName] = useState('');
   const [company, setCompany] = useState('');
@@ -2378,8 +2389,10 @@ function AddWrapProductModal({ onClose, onSaved }: { onClose: () => void; onSave
   const [nError, setNError] = useState<string | null>(null);
   const [nDbSearch, setNDbSearch] = useState('');
   const [nRowSearch, setNRowSearch] = useState('');
+  const [nSelectedDbId, setNSelectedDbId] = useState('');
+  const [nSelectedDbTitle, setNSelectedDbTitle] = useState('');
 
-  async function loadDbs() {
+  async function fetchDbList() {
     setNLoading(true); setNError(null);
     try {
       const res = await fetch(`${API_URL}/api/v1/notion/databases`, { headers: authLib.getAuthHeader() });
@@ -2389,8 +2402,21 @@ function AddWrapProductModal({ onClose, onSaved }: { onClose: () => void; onSave
     finally { setNLoading(false); }
   }
 
-  async function loadRows(dbId: string) {
+  async function loadDbs() {
+    const saved = loadNotionProductConfig();
+    if (saved) {
+      setNSelectedDbId(saved.dbId);
+      setNSelectedDbTitle(saved.dbTitle);
+      setNMap(saved.mapping);
+      await loadRows(saved.dbId, saved.mapping);
+      return;
+    }
+    await fetchDbList();
+  }
+
+  async function loadRows(dbId: string, savedMapping?: Record<string, string>) {
     setNLoading(true); setNError(null);
+    setNSelectedDbId(dbId);
     try {
       const [pR, rR] = await Promise.all([
         fetch(`${API_URL}/api/v1/notion/databases/${dbId}/properties`, { headers: authLib.getAuthHeader() }),
@@ -2399,17 +2425,24 @@ function AddWrapProductModal({ onClose, onSaved }: { onClose: () => void; onSave
       if (!pR.ok || !rR.ok) throw new Error('데이터 조회 실패');
       const props: { name: string }[] = await pR.json();
       const rows: { id: string; properties: Record<string, string> }[] = await rR.json();
-      setNCols(props.map(p => p.name)); setNRows(rows);
-      const m: Record<string, string> = { product_name: '', company: '', target: '', return_rate: '', desc: '' };
-      for (const c of props.map(p => p.name)) {
-        const l = c.toLowerCase();
-        if (!m.product_name && (l.includes('상품') || l.includes('product') || l.includes('이름') || l.includes('name'))) m.product_name = c;
-        if (!m.company && (l.includes('기관') || l.includes('증권') || l.includes('company') || l.includes('거래'))) m.company = c;
-        if (!m.target && (l.includes('자산구분') || l.includes('target') || l.includes('대상'))) m.target = c;
-        if (!m.return_rate && (l.includes('수익률') || l.includes('return') || l.includes('목표'))) m.return_rate = c;
-        if (!m.desc && (l.includes('설명') || l.includes('desc') || l.includes('메모') || l.includes('비고'))) m.desc = c;
+      const cols = props.map(p => p.name);
+      setNCols(cols); setNRows(rows);
+      let finalMap: Record<string, string>;
+      if (savedMapping) {
+        finalMap = savedMapping;
+      } else {
+        const m: Record<string, string> = { product_name: '', company: '', target: '', return_rate: '', desc: '' };
+        for (const c of cols) {
+          const l = c.toLowerCase();
+          if (!m.product_name && (l.includes('상품') || l.includes('product') || l.includes('이름') || l.includes('name'))) m.product_name = c;
+          if (!m.company && (l.includes('기관') || l.includes('증권') || l.includes('company') || l.includes('거래'))) m.company = c;
+          if (!m.target && (l.includes('자산구분') || l.includes('target') || l.includes('대상'))) m.target = c;
+          if (!m.return_rate && (l.includes('수익률') || l.includes('return') || l.includes('목표'))) m.return_rate = c;
+          if (!m.desc && (l.includes('설명') || l.includes('desc') || l.includes('메모') || l.includes('비고'))) m.desc = c;
+        }
+        finalMap = m;
       }
-      setNMap(m); setNStep('mapping');
+      setNMap(finalMap); setNStep('mapping');
     } catch (e: unknown) { setNError(e instanceof Error ? e.message : '오류'); }
     finally { setNLoading(false); }
   }
@@ -2420,10 +2453,11 @@ function AddWrapProductModal({ onClose, onSaved }: { onClose: () => void; onSave
     if (nMap.target && row.properties[nMap.target]) setInvestmentTarget(row.properties[nMap.target]);
     if (nMap.return_rate && row.properties[nMap.return_rate]) setTargetReturn(row.properties[nMap.return_rate]);
     if (nMap.desc && row.properties[nMap.desc]) setDescription(row.properties[nMap.desc]);
+    saveNotionProductConfig(nSelectedDbId, nSelectedDbTitle, nMap);
     setNStep('idle'); setNRowSearch('');
   }
 
-  function resetN() { setNStep('idle'); setNDbs([]); setNRows([]); setNCols([]); setNError(null); setNDbSearch(''); setNRowSearch(''); }
+  function resetN() { setNStep('idle'); setNDbs([]); setNRows([]); setNCols([]); setNError(null); setNDbSearch(''); setNRowSearch(''); clearNotionProductConfig(); }
 
   const handleSave = async () => {
     if (!productName.trim()) { setError('상품명을 입력해주세요.'); return; }
@@ -2483,7 +2517,7 @@ function AddWrapProductModal({ onClose, onSaved }: { onClose: () => void; onSave
               ) : (
                 <div style={{ maxHeight: 180, overflowY: 'auto' }}>
                   {nDbs.filter(d => !nDbSearch || d.title.toLowerCase().includes(nDbSearch.toLowerCase())).map(d => (
-                    <button key={d.id} onClick={() => { setNDbSearch(''); loadRows(d.id); }}
+                    <button key={d.id} onClick={() => { setNDbSearch(''); setNSelectedDbTitle(d.title); loadRows(d.id); }}
                       style={{ width: '100%', padding: '9px 10px', border: 'none', borderBottom: '1px solid #F3F4F6', background: '#fff', textAlign: 'left', cursor: 'pointer', fontSize: 13, display: 'flex', alignItems: 'center', gap: 8 }}
                       onMouseOver={e => (e.currentTarget.style.background = '#F9FAFB')} onMouseOut={e => (e.currentTarget.style.background = '#fff')}>
                       <span>{d.icon ?? '📄'}</span><span style={{ fontWeight: 500 }}>{d.title}</span>
@@ -2496,9 +2530,9 @@ function AddWrapProductModal({ onClose, onSaved }: { onClose: () => void; onSave
           {nStep === 'mapping' && (
             <div style={{ border: '1px solid #E5E7EB', borderRadius: 8, overflow: 'hidden' }}>
               <div style={{ padding: '7px 10px', background: '#F0F4FA', fontSize: 12, fontWeight: 600, color: '#1E3A5F', display: 'flex', justifyContent: 'space-between' }}>
-                <span>필드 매핑 → 상품 선택</span>
+                <span>필드 매핑 → 상품 선택{nSelectedDbTitle ? ` (${nSelectedDbTitle})` : ''}</span>
                 <div style={{ display: 'flex', gap: 8 }}>
-                  <button onClick={() => setNStep('selectDb')} style={{ background: 'none', border: 'none', color: '#3B82F6', cursor: 'pointer', fontSize: 11 }}>DB 변경</button>
+                  <button onClick={() => { clearNotionProductConfig(); setNRows([]); setNCols([]); setNRowSearch(''); fetchDbList(); }} style={{ background: 'none', border: 'none', color: '#3B82F6', cursor: 'pointer', fontSize: 11 }}>DB 변경</button>
                   <button onClick={resetN} style={{ background: 'none', border: 'none', color: '#9CA3AF', cursor: 'pointer', fontSize: 12 }}>취소</button>
                 </div>
               </div>
@@ -2511,7 +2545,11 @@ function AddWrapProductModal({ onClose, onSaved }: { onClose: () => void; onSave
                     {[{ k: 'product_name', l: '상품명 *' }, { k: 'company', l: '거래기관' }, { k: 'target', l: '자산구분' }, { k: 'return_rate', l: '수익률' }, { k: 'desc', l: '설명' }].map(f => (
                       <div key={f.k} style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 12 }}>
                         <span style={{ width: 58, color: '#374151', fontWeight: 500, flexShrink: 0 }}>{f.l}</span>
-                        <select value={nMap[f.k] ?? ''} onChange={e => setNMap(m => ({ ...m, [f.k]: e.target.value }))}
+                        <select value={nMap[f.k] ?? ''} onChange={e => {
+                            const updated = { ...nMap, [f.k]: e.target.value };
+                            setNMap(updated);
+                            if (nSelectedDbId) saveNotionProductConfig(nSelectedDbId, nSelectedDbTitle, updated);
+                          }}
                           style={{ flex: 1, padding: '3px 5px', borderRadius: 4, border: '1px solid #D1D5DB', fontSize: 11, background: nMap[f.k] ? '#ECFDF5' : '#fff' }}>
                           <option value="">--</option>{nCols.map(c => <option key={c} value={c}>{c}</option>)}
                         </select>

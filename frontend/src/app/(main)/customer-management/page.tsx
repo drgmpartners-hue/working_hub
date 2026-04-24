@@ -55,12 +55,24 @@ export default function CustomerManagementPage() {
   const [formError, setFormError] = useState<string | null>(null);
 
   /* Notion import */
+  const NOTION_CUSTOMER_KEY = 'notion_customer_config';
+  function saveNotionCustomerConfig(dbId: string, dbTitle: string, mapping: Record<string, string>) {
+    try { localStorage.setItem(NOTION_CUSTOMER_KEY, JSON.stringify({ dbId, dbTitle, mapping })); } catch { /* ignore */ }
+  }
+  function loadNotionCustomerConfig(): { dbId: string; dbTitle: string; mapping: Record<string, string> } | null {
+    try { const r = localStorage.getItem(NOTION_CUSTOMER_KEY); return r ? JSON.parse(r) : null; } catch { return null; }
+  }
+  function clearNotionCustomerConfig() {
+    try { localStorage.removeItem(NOTION_CUSTOMER_KEY); } catch { /* ignore */ }
+  }
+
   const [notionStep, setNotionStep] = useState<'idle' | 'selectDb' | 'mapping'>('idle');
   const [notionDbs, setNotionDbs] = useState<{ id: string; title: string; icon: string | null }[]>([]);
   const [notionRows, setNotionRows] = useState<{ id: string; properties: Record<string, string> }[]>([]);
   const [notionColumns, setNotionColumns] = useState<string[]>([]);
   const [notionMapping, setNotionMapping] = useState<Record<string, string>>({ name: '', birth_date: '', phone: '', email: '' });
   const [notionSelectedDb, setNotionSelectedDb] = useState('');
+  const [notionSelectedDbTitle, setNotionSelectedDbTitle] = useState('');
   const [notionLoading, setNotionLoading] = useState(false);
   const [notionError, setNotionError] = useState<string | null>(null);
   const [notionDbSearch, setNotionDbSearch] = useState('');
@@ -110,7 +122,7 @@ export default function CustomerManagementPage() {
   /* ---------------------------------------------------------------- */
 
   /* ── Notion helpers ── */
-  async function loadNotionDbs() {
+  async function fetchNotionDbList() {
     setNotionLoading(true);
     setNotionError(null);
     try {
@@ -132,7 +144,20 @@ export default function CustomerManagementPage() {
     }
   }
 
-  async function loadNotionRows(dbId: string) {
+  async function loadNotionDbs() {
+    // Check localStorage first - if saved config exists, skip DB selection
+    const saved = loadNotionCustomerConfig();
+    if (saved) {
+      setNotionSelectedDb(saved.dbId);
+      setNotionSelectedDbTitle(saved.dbTitle);
+      setNotionMapping(saved.mapping);
+      await loadNotionRows(saved.dbId, saved.mapping);
+      return;
+    }
+    await fetchNotionDbList();
+  }
+
+  async function loadNotionRows(dbId: string, savedMapping?: Record<string, string>) {
     setNotionLoading(true);
     setNotionError(null);
     setNotionSelectedDb(dbId);
@@ -146,19 +171,27 @@ export default function CustomerManagementPage() {
       if (!propsRes.ok || !rowsRes.ok) throw new Error('데이터 조회 실패');
       const props: { name: string; type: string }[] = await propsRes.json();
       const rows: { id: string; properties: Record<string, string> }[] = await rowsRes.json();
-      setNotionColumns(props.map(p => p.name));
+      const cols = props.map(p => p.name);
+      setNotionColumns(cols);
       setNotionRows(rows);
 
-      // 자동 매핑 시도 (컬럼명으로 추측)
-      const autoMap: Record<string, string> = { name: '', birth_date: '', phone: '', email: '' };
-      for (const col of props.map(p => p.name)) {
-        const lower = col.toLowerCase();
-        if (!autoMap.name && (lower.includes('이름') || lower.includes('name') || lower.includes('고객명'))) autoMap.name = col;
-        if (!autoMap.birth_date && (lower.includes('생년') || lower.includes('birth') || lower.includes('생일'))) autoMap.birth_date = col;
-        if (!autoMap.phone && (lower.includes('전화') || lower.includes('phone') || lower.includes('연락처') || lower.includes('핸드폰'))) autoMap.phone = col;
-        if (!autoMap.email && (lower.includes('이메일') || lower.includes('email') || lower.includes('메일'))) autoMap.email = col;
+      let finalMapping: Record<string, string>;
+      if (savedMapping) {
+        // Use saved mapping if provided
+        finalMapping = savedMapping;
+      } else {
+        // 자동 매핑 시도 (컬럼명으로 추측)
+        const autoMap: Record<string, string> = { name: '', birth_date: '', phone: '', email: '' };
+        for (const col of cols) {
+          const lower = col.toLowerCase();
+          if (!autoMap.name && (lower.includes('이름') || lower.includes('name') || lower.includes('고객명'))) autoMap.name = col;
+          if (!autoMap.birth_date && (lower.includes('생년') || lower.includes('birth') || lower.includes('생일'))) autoMap.birth_date = col;
+          if (!autoMap.phone && (lower.includes('전화') || lower.includes('phone') || lower.includes('연락처') || lower.includes('핸드폰'))) autoMap.phone = col;
+          if (!autoMap.email && (lower.includes('이메일') || lower.includes('email') || lower.includes('메일'))) autoMap.email = col;
+        }
+        finalMapping = autoMap;
       }
-      setNotionMapping(autoMap);
+      setNotionMapping(finalMapping);
       setNotionStep('mapping');
     } catch (e: unknown) {
       setNotionError(e instanceof Error ? e.message : '오류 발생');
@@ -174,6 +207,8 @@ export default function CustomerManagementPage() {
       phone: row.properties[notionMapping.phone] ?? '',
       email: row.properties[notionMapping.email] ?? '',
     });
+    // Save config to localStorage when a row is applied
+    saveNotionCustomerConfig(notionSelectedDb, notionSelectedDbTitle, notionMapping);
     setNotionStep('idle');
   }
 
@@ -183,6 +218,7 @@ export default function CustomerManagementPage() {
     setNotionRows([]);
     setNotionColumns([]);
     setNotionError(null);
+    clearNotionCustomerConfig();
   }
 
   function openAddModal() {
@@ -758,7 +794,7 @@ export default function CustomerManagementPage() {
                           .map(db => (
                           <button
                             key={db.id}
-                            onClick={() => { setNotionDbSearch(''); loadNotionRows(db.id); }}
+                            onClick={() => { setNotionDbSearch(''); setNotionSelectedDbTitle(db.title); loadNotionRows(db.id); }}
                             style={{
                               width: '100%', padding: '10px 12px', border: 'none',
                               borderBottom: '1px solid #F3F4F6', background: '#fff',
@@ -781,9 +817,9 @@ export default function CustomerManagementPage() {
                 {notionStep === 'mapping' && (
                   <div style={{ border: '1px solid #E5E7EB', borderRadius: '8px', overflow: 'hidden' }}>
                     <div style={{ padding: '8px 12px', background: '#F0F4FA', fontSize: '12px', fontWeight: 600, color: '#1E3A5F', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                      <span>필드 매핑 → 고객 선택</span>
+                      <span>필드 매핑 → 고객 선택{notionSelectedDbTitle ? ` (${notionSelectedDbTitle})` : ''}</span>
                       <div style={{ display: 'flex', gap: '8px' }}>
-                        <button onClick={() => { setNotionStep('selectDb'); setNotionRowSearch(''); }} style={{ background: 'none', border: 'none', color: '#3B82F6', cursor: 'pointer', fontSize: '11px' }}>DB 변경</button>
+                        <button onClick={() => { clearNotionCustomerConfig(); setNotionRows([]); setNotionColumns([]); setNotionRowSearch(''); fetchNotionDbList(); }} style={{ background: 'none', border: 'none', color: '#3B82F6', cursor: 'pointer', fontSize: '11px' }}>DB 변경</button>
                         <button onClick={resetNotion} style={{ background: 'none', border: 'none', color: '#9CA3AF', cursor: 'pointer', fontSize: '12px' }}>취소</button>
                       </div>
                     </div>
@@ -808,7 +844,11 @@ export default function CustomerManagementPage() {
                               <span style={{ width: '60px', color: '#374151', fontWeight: 500, flexShrink: 0 }}>{f.label}</span>
                               <select
                                 value={notionMapping[f.key] ?? ''}
-                                onChange={e => setNotionMapping(m => ({ ...m, [f.key]: e.target.value }))}
+                                onChange={e => {
+                                  const updated = { ...notionMapping, [f.key]: e.target.value };
+                                  setNotionMapping(updated);
+                                  if (notionSelectedDb) saveNotionCustomerConfig(notionSelectedDb, notionSelectedDbTitle, updated);
+                                }}
                                 style={{ flex: 1, padding: '4px 6px', borderRadius: '4px', border: '1px solid #D1D5DB', fontSize: '11px', background: notionMapping[f.key] ? '#ECFDF5' : '#fff' }}
                               >
                                 <option value="">-- 선택 --</option>
