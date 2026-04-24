@@ -149,16 +149,48 @@ def _extract_value(prop: dict) -> Optional[str]:
         return s.get("name") if s else None
     elif t == "multi_select":
         return ", ".join(s.get("name", "") for s in prop.get("multi_select", []))
+    elif t == "status":
+        s = prop.get("status")
+        return s.get("name") if s else None
     elif t == "checkbox":
         return str(prop.get("checkbox", False))
     elif t == "url":
         return prop.get("url")
+    elif t == "relation":
+        items = prop.get("relation", [])
+        return ", ".join(r.get("id", "")[:8] for r in items) if items else None
+    elif t == "people":
+        items = prop.get("people", [])
+        return ", ".join(p.get("name", "") for p in items) if items else None
+    elif t == "files":
+        items = prop.get("files", [])
+        return ", ".join(f.get("name", "") for f in items) if items else None
+    elif t == "created_time":
+        return prop.get("created_time", "")[:10] if prop.get("created_time") else None
+    elif t == "last_edited_time":
+        return prop.get("last_edited_time", "")[:10] if prop.get("last_edited_time") else None
+    elif t == "created_by":
+        return prop.get("created_by", {}).get("name")
+    elif t == "last_edited_by":
+        return prop.get("last_edited_by", {}).get("name")
     elif t == "formula":
         f = prop.get("formula", {})
-        return str(f.get(f.get("type", ""), ""))
+        ft = f.get("type", "")
+        val = f.get(ft)
+        return str(val) if val is not None else None
     elif t == "rollup":
         r = prop.get("rollup", {})
-        return str(r.get(r.get("type", ""), ""))
+        rt = r.get("type", "")
+        if rt == "array":
+            arr = r.get("array", [])
+            return ", ".join(str(_extract_value(item) or "") for item in arr) if arr else None
+        val = r.get(rt)
+        return str(val) if val is not None else None
+    elif t == "unique_id":
+        u = prop.get("unique_id", {})
+        prefix = u.get("prefix", "")
+        number = u.get("number", "")
+        return f"{prefix}-{number}" if prefix else str(number)
     return None
 
 

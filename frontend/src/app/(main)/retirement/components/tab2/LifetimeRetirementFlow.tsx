@@ -93,7 +93,7 @@ interface LifetimeRow {
   annualSavings: number;         // 연적립금액 (만원)
   lumpSum: number;               // 일시납금액 (만원)
   returnRate: number;            // 예상수익률 (소수, 예: 0.06)
-  totalPayment: number;          // 총납입금액 (만원, 누적)
+  depositIn: number;              // 입금액 (만원, 해당 연도)
   adjustedEvaluation: number;    // 보정평가금액 (만원, 0이면 미보정)
   pension: number;               // 연금액 (만원)
   cumulativePension: number;     // 중도인출누적 (만원)
@@ -307,7 +307,7 @@ function calcLifetimeRows(
   const rows: LifetimeRow[] = [];
   let prevNetAsset = 0;
   let needsRecalc = false; // override나 보정이 발생하면 이후 행 전체 재계산
-  let runningPayment = 0;  // override 반영된 누적 총납입금액
+  let currentDepositIn = 0; // 해당 연도 입금액
   let runningPension = 0;  // override 반영된 누적 중도인출
   const appliedYearKeys = Object.keys(appliedYears).map(Number).sort((a, b) => a - b);
 
@@ -372,20 +372,20 @@ function calcLifetimeRows(
       const d = appliedYears[appliedKey!];
       const netAssetVal = (d.net_asset ?? 0);
       adjustedNetAsset = netAssetVal >= 100000 ? netAssetVal / 10000 : netAssetVal;
-      // 총납입금액: 연간투자흐름표의 total_contribution 표시
-      const appliedTotal = d.total_contribution ?? 0;
-      runningPayment = appliedTotal >= 100000 ? appliedTotal / 10000 : appliedTotal;
+      // 입금액: 연간투자흐름표의 deposit_in_amount
+      const appliedDepIn = (d.deposit_in_amount as number) ?? 0;
+      currentDepositIn = appliedDepIn >= 100000 ? appliedDepIn / 10000 : appliedDepIn;
     } else if (needsRecalc && i > 0) {
       // 보정 이후: FV(예상수익률/12, 12, -월적립, -(일시납 + 직전보정후순자산))
       const monthlyRate = appliedReturnRate / 12;
-      const monthlyPmt = appliedSavings / 12; // 연적립 → 월적립 (만원)
-      const pv = appliedLumpSum + prevNetAsset; // 일시납 + 직전 보정후순자산
+      const monthlyPmt = appliedSavings / 12;
+      const pv = appliedLumpSum + prevNetAsset;
       adjustedNetAsset = Math.max(0, excelFV(monthlyRate, 12, -monthlyPmt, -pv) - ovPension);
-      // 총납입금액: 직전 총납입 + 당해 적립 + 일시납
-      runningPayment += appliedSavings + appliedLumpSum;
+      // 입금액: 적립 + 일시납
+      currentDepositIn = appliedSavings + appliedLumpSum;
     } else {
       adjustedNetAsset = totalEvaluation;
-      runningPayment += appliedSavings + appliedLumpSum;
+      currentDepositIn = appliedSavings + appliedLumpSum;
     }
 
     // 순자산수익률: 직전년도 대비 증감률
@@ -403,7 +403,7 @@ function calcLifetimeRows(
       annualSavings: appliedSavings,
       lumpSum: appliedLumpSum,
       returnRate: appliedReturnRate,
-      totalPayment: runningPayment,
+      depositIn: currentDepositIn,
       adjustedEvaluation,
       pension: ovPension,
       cumulativePension: runningPension,
@@ -604,8 +604,8 @@ function LifetimeTable({
             <th style={{ ...thStyle, color: '#2563EB' }}>연적립금액 ✎</th>
             <th style={{ ...thStyle, color: '#2563EB' }}>일시납금액 ✎</th>
             <th style={{ ...thCenter, color: '#2563EB' }}>예상수익률 ✎</th>
-            <th style={thStyle}>총납입금액</th>
             <th style={thStyle}>보정평가금액</th>
+            <th style={thStyle}>입금액</th>
             <th style={{ ...thStyle, color: '#DC2626' }}>중도인출 ✎</th>
             <th style={{ ...thStyle, color: '#DC2626' }}>중도인출누적</th>
             <th style={{ ...thStyle, color: '#1E3A5F' }}>보정후순자산</th>
@@ -734,10 +734,10 @@ function LifetimeTable({
                   />
                 </td>
 
-                <td style={{ ...tdBase, fontWeight: 600, color: hlText }}>{formatCurrency(Math.round(row.totalPayment))}</td>
                 <td style={{ ...tdBase, color: hlText ?? (row.isAdjusted ? '#2563EB' : '#9CA3AF') }}>
                   {row.isAdjusted ? formatCurrency(Math.round(row.adjustedEvaluation)) : '-'}
                 </td>
+                <td style={{ ...tdBase, fontWeight: 600, color: hlText }}>{row.depositIn > 0 ? formatCurrency(Math.round(row.depositIn)) : '-'}</td>
 
                 {/* 연금액 (편집 가능: 은퇴후) */}
                 <td style={{ ...tdBase, color: hlText ?? (row.pension > 0 ? '#DC2626' : '#9CA3AF') }}>
@@ -946,7 +946,7 @@ export function LifetimeRetirementFlow({
   const chartData = useMemo(() => {
     return rows.map((r) => ({
       age: r.age,
-      총납입금액: Math.round(r.totalPayment),
+      입금액: Math.round(r.depositIn),
       총평가액: Math.round(r.totalEvaluation),
       보정후순자산: Math.round(r.adjustedNetAsset),
       phase: r.phase,

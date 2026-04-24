@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import dynamic from 'next/dynamic';
 import { Modal } from '@/components/common/Modal';
 import { useRetirementStore } from '../../hooks/useRetirementStore';
@@ -437,7 +437,28 @@ export function InvestmentFlowTab() {
   const [recSaving, setRecSaving] = useState(false);
 
   /* ---- 연도 목록 ---- */
-  const years = Array.from({ length: 10 }, (_, i) => currentYear - 5 + i);
+  // 예수금 계좌 거래 기록에 있는 연도만 추출 + 현재 연도 포함
+  const years = useMemo(() => {
+    const yearSet = new Set<number>([currentYear]);
+    for (const txs of Object.values(accountTransactions)) {
+      for (const tx of txs) {
+        if (tx.transaction_date) {
+          const y = parseInt(tx.transaction_date.substring(0, 4), 10);
+          if (!isNaN(y)) yearSet.add(y);
+        }
+      }
+    }
+    return Array.from(yearSet).sort((a, b) => a - b);
+  }, [accountTransactions, currentYear]);
+
+  // 거래 로드 후 가장 빠른 연도로 자동 선택
+  useEffect(() => {
+    if (years.length > 0 && !years.includes(selectedYear)) {
+      setSelectedYear(years[0]);
+    } else if (years.length > 1 && selectedYear === currentYear && years[0] < currentYear) {
+      setSelectedYear(years[0]);
+    }
+  }, [years, selectedYear, currentYear]);
 
   /* ---- API: 연간 투자흐름 (선택 연도 ~ 현재 연도) ---- */
   const fetchAnnualFlow = useCallback(async () => {
@@ -1219,6 +1240,7 @@ export function InvestmentFlowTab() {
                                 lump_sum: row.lump_sum,
                                 annual_savings: row.annual_savings,
                                 total_contribution: row.total_contribution,
+                                deposit_in_amount: row.deposit_in,
                                 annual_evaluation: row.annual_evaluation,
                                 annual_return_rate: row.annual_return_rate,
                                 net_asset: row.total_evaluation,
@@ -2379,8 +2401,9 @@ function AddWrapProductModal({ onClose, onSaved }: { onClose: () => void; onSave
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
 
-  // Notion
+  // Notion — 마운트 시 저장된 설정 자동 로드
   const [nStep, setNStep] = useState<'idle' | 'selectDb' | 'mapping'>('idle');
+  const [nAutoLoaded, setNAutoLoaded] = useState(false);
   const [nDbs, setNDbs] = useState<{ id: string; title: string; icon: string | null }[]>([]);
   const [nRows, setNRows] = useState<{ id: string; properties: Record<string, string> }[]>([]);
   const [nCols, setNCols] = useState<string[]>([]);
@@ -2447,6 +2470,19 @@ function AddWrapProductModal({ onClose, onSaved }: { onClose: () => void; onSave
     finally { setNLoading(false); }
   }
 
+  // 모달 마운트 시 저장된 설정 복원 (데이터 로드는 버튼 클릭 시)
+  useEffect(() => {
+    if (nAutoLoaded) return;
+    setNAutoLoaded(true);
+    const saved = loadNotionProductConfig();
+    if (saved) {
+      setNSelectedDbId(saved.dbId);
+      setNSelectedDbTitle(saved.dbTitle);
+      setNMap(saved.mapping);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   function applyRow(row: { properties: Record<string, string> }) {
     if (nMap.product_name && row.properties[nMap.product_name]) setProductName(row.properties[nMap.product_name]);
     if (nMap.company && row.properties[nMap.company]) setCompany(row.properties[nMap.company]);
@@ -2454,7 +2490,8 @@ function AddWrapProductModal({ onClose, onSaved }: { onClose: () => void; onSave
     if (nMap.return_rate && row.properties[nMap.return_rate]) setTargetReturn(row.properties[nMap.return_rate]);
     if (nMap.desc && row.properties[nMap.desc]) setDescription(row.properties[nMap.desc]);
     saveNotionProductConfig(nSelectedDbId, nSelectedDbTitle, nMap);
-    setNStep('idle'); setNRowSearch('');
+    // mapping 상태 유지 (목록에서 다른 상품도 바로 선택 가능)
+    setNRowSearch('');
   }
 
   function resetN() { setNStep('idle'); setNDbs([]); setNRows([]); setNCols([]); setNError(null); setNDbSearch(''); setNRowSearch(''); clearNotionProductConfig(); }
@@ -2496,7 +2533,7 @@ function AddWrapProductModal({ onClose, onSaved }: { onClose: () => void; onSave
           {nStep === 'idle' && (
             <button onClick={loadDbs} disabled={nLoading}
               style={{ width: '100%', padding: '9px', borderRadius: 8, border: '1px dashed #D1D5DB', background: '#FAFBFC', color: '#374151', fontSize: 13, fontWeight: 500, cursor: nLoading ? 'wait' : 'pointer', opacity: nLoading ? 0.6 : 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
-              {nLoading ? <><span className="notion-spinner" style={{ marginRight: 6 }} />Notion 연결 중...</> : <>📝 Notion에서 가져오기</>}
+              {nLoading ? <><span className="notion-spinner" style={{ marginRight: 6 }} />Notion 연결 중...</> : nSelectedDbId ? <>📝 Notion 불러오기 ({nSelectedDbTitle})</> : <>📝 Notion에서 가져오기</>}
             </button>
           )}
           {nError && (

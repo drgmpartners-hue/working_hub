@@ -19,7 +19,7 @@ import {
 
 interface ChartDataPoint {
   age: number;
-  총납입금액: number;
+  입금액: number;
   총평가액: number;
   보정후순자산: number;
   phase: string;
@@ -148,10 +148,10 @@ export function LifetimeFlowChart({ data, retirementAge }: LifetimeFlowChartProp
           }}
         />
 
-        {/* 총납입금액 Area (Navy) */}
+        {/* 입금액 Area (Navy) */}
         <Area
           type="monotone"
-          dataKey="총납입금액"
+          dataKey="입금액"
           stroke="#1E3A5F"
           strokeWidth={1.5}
           fill="url(#principalGrad)"

@@ -465,6 +465,37 @@ async def update_investment_record(
             for acct_id in affected_accounts:
                 await recalculate_balances(acct_id, db)
 
+    # 연결된 투자(출금) 거래 동기화: 날짜/금액/상품명 업데이트
+    existing_invest = await db.execute(
+        select(DepositTransaction).where(
+            DepositTransaction.investment_record_id == record.id,
+            DepositTransaction.transaction_type == "investment",
+        )
+    )
+    invest_txn = existing_invest.scalar_one_or_none()
+    if invest_txn:
+        changed = False
+        if invest_txn.transaction_date != record.start_date:
+            invest_txn.transaction_date = record.start_date
+            changed = True
+        if invest_txn.debit_amount != record.investment_amount:
+            invest_txn.debit_amount = record.investment_amount
+            changed = True
+        # 상품명 동기화
+        product_label = record.product_name or ""
+        if record.wrap_account_id:
+            from app.models.wrap_account import WrapAccount
+            wa_r2 = await db.execute(select(WrapAccount).where(WrapAccount.id == record.wrap_account_id))
+            wa2 = wa_r2.scalar_one_or_none()
+            if wa2:
+                product_label = wa2.product_name
+        if product_label and invest_txn.related_product != product_label:
+            invest_txn.related_product = product_label
+            changed = True
+        if changed and invest_txn.deposit_account_id:
+            await db.flush()
+            await recalculate_balances(invest_txn.deposit_account_id, db)
+
     # 수익률 재계산
     final_status = record.status
     final_investment = record.investment_amount
@@ -478,28 +509,39 @@ async def update_investment_record(
     else:
         record.return_rate = None
 
-    # 예수금 계좌 연동: 종결 시 입금 거래 자동 생성
+    # 예수금 계좌 연동: 종결 시 입금 거래 자동 생성/업데이트
     deposit_acct_id = record.deposit_account_id
     if deposit_acct_id and final_status == "exit" and final_evaluation:
-        # 기존 종결 거래가 있는지 확인 (중복 방지)
         existing = await db.execute(
             select(DepositTransaction).where(
                 DepositTransaction.investment_record_id == record.id,
                 DepositTransaction.transaction_type == "termination",
             )
         )
-        if not existing.scalar_one_or_none():
-            product_label = record.product_name or ""
-            if record.wrap_account_id:
-                from app.models.wrap_account import WrapAccount
-                wa_r = await db.execute(select(WrapAccount).where(WrapAccount.id == record.wrap_account_id))
-                wa = wa_r.scalar_one_or_none()
-                if wa:
-                    product_label = wa.product_name
+        existing_term = existing.scalar_one_or_none()
 
+        product_label = record.product_name or ""
+        if record.wrap_account_id:
+            from app.models.wrap_account import WrapAccount
+            wa_r = await db.execute(select(WrapAccount).where(WrapAccount.id == record.wrap_account_id))
+            wa = wa_r.scalar_one_or_none()
+            if wa:
+                product_label = wa.product_name
+
+        term_date = record.actual_maturity_date or record.end_date or record.start_date
+
+        if existing_term:
+            # 기존 종결 거래 업데이트
+            existing_term.transaction_date = term_date
+            existing_term.credit_amount = final_evaluation
+            existing_term.related_product = product_label
+            await db.flush()
+            await recalculate_balances(deposit_acct_id, db)
+        else:
+            # 새 종결 거래 생성
             txn = DepositTransaction(
                 deposit_account_id=deposit_acct_id,
-                transaction_date=record.actual_maturity_date or record.end_date or record.start_date,
+                transaction_date=term_date,
                 transaction_type="termination",
                 related_product=product_label,
                 investment_record_id=record.id,
