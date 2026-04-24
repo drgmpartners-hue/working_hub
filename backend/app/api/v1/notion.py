@@ -1,4 +1,5 @@
 """Notion API proxy — user's Notion token으로 데이터베이스 조회."""
+import asyncio
 from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
@@ -14,6 +15,36 @@ router = APIRouter(prefix="/notion", tags=["Notion"])
 
 NOTION_BASE = "https://api.notion.com/v1"
 NOTION_VERSION = "2022-06-28"
+MAX_RETRIES = 3
+
+
+async def _notion_request(method: str, url: str, token: str, json: dict | None = None) -> httpx.Response:
+    """Notion API 호출 with 재시도 (503 등 일시적 오류 대응)."""
+    for attempt in range(MAX_RETRIES):
+        async with httpx.AsyncClient(timeout=20) as client:
+            if method == "GET":
+                res = await client.get(url, headers=_headers(token))
+            else:
+                res = await client.post(url, headers=_headers(token), json=json or {})
+        if res.status_code != 503:
+            return res
+        if attempt < MAX_RETRIES - 1:
+            await asyncio.sleep(1 * (attempt + 1))
+    return res  # 마지막 응답 반환
+
+
+def _handle_error(res: httpx.Response):
+    """Notion API 에러를 사용자 친화적 메시지로 변환."""
+    if res.status_code == 401:
+        raise HTTPException(401, "Notion 인증 실패: Integration Token을 확인해주세요.")
+    elif res.status_code == 403:
+        raise HTTPException(403, "Notion 접근 권한이 없습니다. 페이지에 통합을 연결했는지 확인해주세요.")
+    elif res.status_code == 404:
+        raise HTTPException(404, "Notion 데이터베이스를 찾을 수 없습니다.")
+    elif res.status_code == 503:
+        raise HTTPException(503, "Notion 서버가 일시적으로 응답하지 않습니다. 잠시 후 다시 시도해주세요.")
+    else:
+        raise HTTPException(res.status_code, f"Notion API 오류 ({res.status_code}): 잠시 후 다시 시도해주세요.")
 
 
 async def _get_notion_token(user_id: str, db: AsyncSession) -> str:
@@ -52,14 +83,9 @@ async def list_databases(
 ):
     """Notion 워크스페이스에서 접근 가능한 데이터베이스 목록 조회."""
     token = await _get_notion_token(current_user.id, db)
-    async with httpx.AsyncClient(timeout=15) as client:
-        res = await client.post(
-            f"{NOTION_BASE}/search",
-            headers=_headers(token),
-            json={"filter": {"value": "database", "property": "object"}},
-        )
+    res = await _notion_request("POST", f"{NOTION_BASE}/search", token, {"filter": {"value": "database", "property": "object"}})
     if res.status_code != 200:
-        raise HTTPException(res.status_code, f"Notion API 오류: {res.text[:200]}")
+        _handle_error(res)
 
     items = []
     for r in res.json().get("results", []):
@@ -88,13 +114,9 @@ async def get_database_properties(
 ):
     """데이터베이스의 속성(컬럼) 목록 조회."""
     token = await _get_notion_token(current_user.id, db)
-    async with httpx.AsyncClient(timeout=10) as client:
-        res = await client.get(
-            f"{NOTION_BASE}/databases/{database_id}",
-            headers=_headers(token),
-        )
+    res = await _notion_request("GET", f"{NOTION_BASE}/databases/{database_id}", token)
     if res.status_code != 200:
-        raise HTTPException(res.status_code, f"Notion API 오류: {res.text[:200]}")
+        _handle_error(res)
 
     props = res.json().get("properties", {})
     return [NotionProperty(name=name, type=p["type"]) for name, p in props.items()]
@@ -151,24 +173,19 @@ async def query_database(
     all_results = []
     start_cursor = None
 
-    # 페이지네이션 처리
-    async with httpx.AsyncClient(timeout=15) as client:
-        while True:
-            body: dict = {}
-            if start_cursor:
-                body["start_cursor"] = start_cursor
-            res = await client.post(
-                f"{NOTION_BASE}/databases/{database_id}/query",
-                headers=_headers(token),
-                json=body,
-            )
-            if res.status_code != 200:
-                raise HTTPException(res.status_code, f"Notion API 오류: {res.text[:200]}")
-            data = res.json()
-            all_results.extend(data.get("results", []))
-            if not data.get("has_more"):
-                break
-            start_cursor = data.get("next_cursor")
+    # 페이지네이션 처리 with 재시도
+    while True:
+        body: dict = {}
+        if start_cursor:
+            body["start_cursor"] = start_cursor
+        res = await _notion_request("POST", f"{NOTION_BASE}/databases/{database_id}/query", token, body)
+        if res.status_code != 200:
+            _handle_error(res)
+        data = res.json()
+        all_results.extend(data.get("results", []))
+        if not data.get("has_more"):
+            break
+        start_cursor = data.get("next_cursor")
 
     rows = []
     for page in all_results:

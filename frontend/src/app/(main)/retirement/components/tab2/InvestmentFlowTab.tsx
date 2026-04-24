@@ -377,7 +377,7 @@ function AddDepositAccountModal({ customerId, customerName, onClose, onSaved }: 
         {nStep === 'idle' && (
           <button onClick={nLoadDbs} disabled={nLoading}
             style={{ width: '100%', padding: 9, borderRadius: 8, border: '1px dashed #D1D5DB', background: '#FAFBFC', color: '#374151', fontSize: 13, fontWeight: 500, cursor: nLoading ? 'wait' : 'pointer', opacity: nLoading ? 0.6 : 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
-            📝 {nLoading ? 'Notion 연결 중...' : 'Notion에서 가져오기'}
+            {nLoading ? <><span className="notion-spinner" style={{ marginRight: 6 }} />Notion 연결 중...</> : <>📝 Notion에서 가져오기</>}
           </button>
         )}
         {nError && (
@@ -2627,7 +2627,7 @@ function AddWrapProductModal({ onClose, onSaved }: { onClose: () => void; onSave
           {nStep === 'idle' && (
             <button onClick={loadDbs} disabled={nLoading}
               style={{ width: '100%', padding: '9px', borderRadius: 8, border: '1px dashed #D1D5DB', background: '#FAFBFC', color: '#374151', fontSize: 13, fontWeight: 500, cursor: nLoading ? 'wait' : 'pointer', opacity: nLoading ? 0.6 : 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
-              📝 {nLoading ? 'Notion 연결 중...' : 'Notion에서 가져오기'}
+              {nLoading ? <><span className="notion-spinner" style={{ marginRight: 6 }} />Notion 연결 중...</> : <>📝 Notion에서 가져오기</>}
             </button>
           )}
           {nError && (

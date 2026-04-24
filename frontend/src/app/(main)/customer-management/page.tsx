@@ -712,7 +712,7 @@ export default function CustomerManagementPage() {
                       justifyContent: 'center', gap: '8px', opacity: notionLoading ? 0.6 : 1,
                     }}
                   >
-                    📝 {notionLoading ? 'Notion 연결 중...' : 'Notion에서 가져오기'}
+                    {notionLoading ? <><span className="notion-spinner" style={{ marginRight: 6 }} />Notion 연결 중...</> : <>📝 Notion에서 가져오기</>}
                   </button>
                 )}
 
@@ -743,7 +743,7 @@ export default function CustomerManagementPage() {
                     {notionLoading ? (
                       <div style={{ padding: '24px', textAlign: 'center', color: '#6B7280', fontSize: '13px' }}>
                         <div style={{ marginBottom: '8px', fontSize: '20px', animation: 'spin 1s linear infinite', display: 'inline-block' }}>⏳</div><br />
-                        데이터 불러오는 중...
+                        <span className="notion-spinner" style={{ marginRight: 6 }} />데이터 불러오는 중...
                         <style>{`@keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }`}</style>
                       </div>
                     ) : notionDbs.length === 0 ? (
@@ -790,7 +790,7 @@ export default function CustomerManagementPage() {
 
                     {/* 로딩 */}
                     {notionLoading && (
-                      <div style={{ padding: '20px', textAlign: 'center', color: '#6B7280', fontSize: '13px' }}>데이터 불러오는 중...</div>
+                      <div style={{ padding: '20px', textAlign: 'center', color: '#6B7280', fontSize: '13px' }}><span className="notion-spinner" style={{ marginRight: 6 }} />데이터 불러오는 중...</div>
                     )}
 
                     {!notionLoading && (<>
