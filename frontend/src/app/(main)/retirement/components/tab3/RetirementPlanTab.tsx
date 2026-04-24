@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import dynamic from 'next/dynamic';
 import { Button } from '@/components/common/Button';
+import { ExportButtons } from '../ExportButtons';
 import { useRetirementStore } from '../../hooks/useRetirementStore';
 import { formatCurrency, formatInputCurrency, parseCurrency } from '../../utils/formatCurrency';
 import { API_URL } from '@/lib/api-url';
@@ -613,8 +614,27 @@ export function RetirementPlanTab() {
         margin: '0 auto',
       }}
     >
+      {/* 내보내기 버튼 */}
+      <div className="no-print" style={{ display: 'flex', justifyContent: 'flex-end' }}>
+        <ExportButtons
+          sectionGroups={[['pdf-tab2-info', 'pdf-tab2-table']]}
+          filename={`은퇴플랜_${selectedCustomer?.name ?? ''}.pdf`}
+          activeTab="은퇴플랜"
+          customerInfo={selectedCustomer ? {
+            name: selectedCustomer.name,
+            birthDate: selectedCustomer.birthDate ?? '-',
+            targetFund: selectedCustomer.targetFund > 0
+              ? (selectedCustomer.targetFund >= 1e8
+                  ? `${(selectedCustomer.targetFund / 1e8).toFixed(1)}억원`
+                  : `${selectedCustomer.targetFund.toLocaleString()}만원`)
+              : '-',
+            retireAge: selectedCustomer.retirementAge > 0 ? String(selectedCustomer.retirementAge) : '-',
+          } : undefined}
+        />
+      </div>
+
       {/* 상단: 기본정보 (1번탭 데이터 읽기전용) */}
-      <div style={cardStyle}>
+      <div id="pdf-tab2-info" style={cardStyle}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '16px' }}>
           <h3 style={{ ...sectionTitleStyle, marginBottom: 0 }}>기본정보</h3>
           <span style={{ fontSize: '12px', color: '#9CA3AF' }}>
@@ -628,7 +648,7 @@ export function RetirementPlanTab() {
       </div>
 
       {/* 연도별 예상 평가금액 (1번탭 시뮬레이션 데이터) */}
-      <div style={cardStyle}>
+      <div id="pdf-tab2-table" style={cardStyle}>
         <h3 style={sectionTitleStyle}>연도별 예상 평가금액</h3>
         {desiredPlanData?.simulation_data && desiredPlanData.simulation_data.length > 0 ? (
           <div style={{ overflowX: 'auto' }}>

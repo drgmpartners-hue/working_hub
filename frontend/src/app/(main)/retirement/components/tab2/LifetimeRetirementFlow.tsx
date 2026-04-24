@@ -40,6 +40,10 @@ interface DesiredPlanAPI {
   monthly_desired_amount?: number | null;
   future_monthly_amount?: number | null;
   simulation_data?: Record<string, unknown>[] | null;
+  calculation_params?: Record<string, unknown> | null;
+  plan_start_year?: number | null;
+  use_inflation_input?: boolean | null;
+  use_inflation_calc?: boolean | null;
 }
 
 interface AnnualFlowRowExternal {
@@ -176,161 +180,106 @@ function formatManwon(value: number | null | undefined): string {
 function BasicInfoCard({
   data,
   currentAge,
-  planStartYear,
 }: {
   data: DesiredPlanAPI | null;
   currentAge: number | null;
-  planStartYear: number;
 }) {
   if (!data) {
     return (
-      <div
-        style={{
-          padding: '24px',
-          backgroundColor: '#F9FAFB',
-          borderRadius: '8px',
-          textAlign: 'center',
-          color: '#9CA3AF',
-          fontSize: '13px',
-        }}
-      >
-        1번탭에서 희망은퇴플랜을 먼저 저장해주세요.
+      <div style={{ padding: '24px', backgroundColor: '#F9FAFB', borderRadius: '8px', textAlign: 'center', color: '#9CA3AF', fontSize: '13px' }}>
+        1번탭(은퇴플랜 설계)에서 먼저 저장해주세요.
       </div>
     );
   }
 
+  const p = (data as any).calculation_params || {};
+  const simData = data.simulation_data || [];
   const retirementAge = data.desired_retirement_age ?? null;
   const savingsPeriod = data.savings_period_years ?? null;
   const holdingPeriod = data.holding_period_years ?? null;
-  const monthlySavings = data.simulation_monthly_savings ?? null;
-  const annualSavings =
-    data.annual_savings_amount ?? (monthlySavings != null ? monthlySavings * 12 : null);
-  const annualLumpSum = data.simulation_annual_lump_sum ?? null;
-  const totalLumpSum = data.simulation_total_lump_sum ?? null;
-  const expectedReturnRate =
-    data.expected_return_rate != null
-      ? (data.expected_return_rate * 100).toFixed(1) + '%'
-      : '-';
-  const targetFund =
-    data.simulation_target_fund ?? data.target_retirement_fund ?? null;
-  const monthlyPension =
-    data.monthly_desired_amount ?? data.future_monthly_amount ?? null;
-  const useInflationInput = !!(data as any).use_inflation_input;
-  const useInflationCalc = !!(data as any).use_inflation_calc;
-  const inflationRate =
-    data.inflation_rate != null
-      ? (data.inflation_rate * 100).toFixed(1) + '%'
-      : '-';
 
-  const totalPeriod =
-    savingsPeriod != null && holdingPeriod != null ? savingsPeriod + holdingPeriod : null;
-  const totalInvestment =
-    annualSavings != null && savingsPeriod != null && totalLumpSum != null
-      ? annualSavings * savingsPeriod + totalLumpSum
-      : null;
+  const planStartYear = data.plan_start_year ?? new Date().getFullYear();
+  const currentYear = new Date().getFullYear();
+  const planStartAge = currentAge != null ? currentAge - (currentYear - planStartYear) : null;
+  const retirementYear = planStartAge != null && retirementAge != null
+    ? planStartYear + (retirementAge - planStartAge) : null;
+  const totalPeriod = savingsPeriod != null && holdingPeriod != null ? savingsPeriod + holdingPeriod : null;
+
+  // 투자계획: 테이블에서 실제 적립/거치 집계
+  let totalSavings = 0, totalHolding = 0, savingsCount = 0;
+  for (const row of simData) {
+    const mp = (row.monthly_payment as number) ?? 0;
+    const ad = (row.additional as number) ?? 0;
+    if (mp > 0) { totalSavings += mp * 12; savingsCount++; }
+    if (ad > 0) totalHolding += ad;
+  }
+  const avgAnnualSavings = savingsCount > 0 ? totalSavings / savingsCount : 0;
+  const totalInvestment = totalSavings + totalHolding;
+
+  // 목표: 테이블에서 은퇴나이-1, 100세 평가금액
+  const retireRow = simData.find(r => retirementAge != null && (r.age as number) === retirementAge - 1);
+  const age100Row = simData.find(r => (r.age as number) === 100);
+  const retireFund = (retireRow?.evaluation as number) ?? 0;
+  const inheritFund = (age100Row?.evaluation as number) ?? 0;
+
+  // 수익률, 연금액
+  const recRetRate = p.recommended_return_rate as number | undefined;
+  const exRetRate = p.existing_return_rate as number | undefined;
+  const investRate = recRetRate ?? exRetRate ?? (data.expected_return_rate ?? null);
+  const pensionRate = (p.recommended_pension_rate as number) ?? (p.base_pension_rate as number) ?? (data.retirement_pension_rate ?? null);
+  const futureMonthly = data.future_monthly_amount ?? null;
+  const useInflInput = !!data.use_inflation_input;
+  const useInflCalc = !!data.use_inflation_calc;
+
+  const fmtOk = (v: number) => {
+    if (v >= 1e8) return `${(v / 1e8).toFixed(1)}억원`;
+    if (v >= 1e4) return `${Math.round(v / 1e4).toLocaleString('ko-KR')}만원`;
+    return `${v.toLocaleString('ko-KR')}원`;
+  };
+
+  const bdg: React.CSSProperties = { fontSize: 10, padding: '1px 6px', borderRadius: 4, fontWeight: 600, marginLeft: 6 };
 
   return (
     <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 20 }}>
       {/* 그룹1: 기간 설정 */}
-      <div
-        style={{
-          padding: '16px 20px',
-          backgroundColor: '#FAFBFC',
-          borderRadius: 10,
-          border: '1px solid #E5E7EB',
-        }}
-      >
+      <div style={{ padding: '16px 20px', backgroundColor: '#FAFBFC', borderRadius: 10, border: '1px solid #E5E7EB' }}>
         <div style={groupTitle}>기간 설정</div>
-        <div style={itemStyle}>
-          <span style={lbl}>플랜 시작나이</span>
-          <span style={accent}>{currentAge != null ? `${currentAge - (new Date().getFullYear() - planStartYear)}세` : '-'}</span>
-        </div>
-        <div style={itemStyle}>
-          <span style={lbl}>희망 은퇴나이</span>
-          <span style={accent}>{retirementAge != null ? `${retirementAge}세` : '-'}</span>
-        </div>
-        <div style={itemStyle}>
-          <span style={lbl}>총 투자기간</span>
-          <span style={val}>{totalPeriod != null ? `${totalPeriod}년` : '-'}</span>
-        </div>
-        <div style={{ ...itemStyle, borderBottom: 'none' }}>
-          <span style={lbl}>구성</span>
-          <span style={{ fontSize: 13, color: '#374151' }}>
-            적립 {savingsPeriod ?? '-'}년 + 거치 {holdingPeriod ?? '-'}년
-          </span>
-        </div>
+        <div style={itemStyle}><span style={lbl}>플랜 시작</span><span style={accent}>{planStartAge != null ? `${planStartYear}년 (${planStartAge}세)` : '-'}</span></div>
+        <div style={itemStyle}><span style={lbl}>희망 은퇴</span><span style={accent}>{retirementAge != null && retirementYear != null ? `${retirementYear}년 (${retirementAge}세)` : retirementAge != null ? `${retirementAge}세` : '-'}</span></div>
+        <div style={itemStyle}><span style={lbl}>총 투자기간</span><span style={val}>{totalPeriod != null ? `${totalPeriod}년` : '-'}</span></div>
+        <div style={{ ...itemStyle, borderBottom: 'none' }}><span style={lbl}>구성</span><span style={{ fontSize: 13, color: '#374151' }}>적립 {savingsPeriod ?? '-'}년 + 거치 {holdingPeriod ?? '-'}년</span></div>
       </div>
 
       {/* 그룹2: 투자 계획 */}
-      <div
-        style={{
-          padding: '16px 20px',
-          backgroundColor: '#FAFBFC',
-          borderRadius: 10,
-          border: '1px solid #E5E7EB',
-        }}
-      >
+      <div style={{ padding: '16px 20px', backgroundColor: '#FAFBFC', borderRadius: 10, border: '1px solid #E5E7EB' }}>
         <div style={groupTitle}>투자 계획</div>
-        <div style={itemStyle}>
-          <span style={lbl}>연적립금액</span>
-          <span style={val}>{formatManwon(annualSavings)}</span>
-        </div>
-        <div style={itemStyle}>
-          <span style={lbl}>연거치금액</span>
-          <span style={val}>{formatManwon(annualLumpSum)}</span>
-        </div>
-        <div style={itemStyle}>
-          <span style={lbl}>총거치금액</span>
-          <span style={val}>{formatAmountDisplay(totalLumpSum)}</span>
-        </div>
-        <div style={{ ...itemStyle, borderBottom: 'none' }}>
-          <span style={lbl}>총투자금액</span>
-          <span style={{ ...val, fontSize: 15 }}>{formatAmountDisplay(totalInvestment)}</span>
-        </div>
+        <div style={itemStyle}><span style={lbl}>연적립금액 (평균)</span><span style={val}>{avgAnnualSavings > 0 ? fmtOk(avgAnnualSavings) : '-'}</span></div>
+        <div style={itemStyle}><span style={lbl}>총거치금액</span><span style={val}>{totalHolding > 0 ? fmtOk(totalHolding) : '-'}</span></div>
+        <div style={{ ...itemStyle, borderBottom: 'none' }}><span style={lbl}>총투자금액</span><span style={{ ...val, fontSize: 15 }}>{totalInvestment > 0 ? fmtOk(totalInvestment) : '-'}</span></div>
       </div>
 
       {/* 그룹3: 목표 */}
-      <div
-        style={{
-          padding: '16px 20px',
-          backgroundColor: '#F0F4FA',
-          borderRadius: 10,
-          border: '1px solid #D0DAE8',
-        }}
-      >
+      <div style={{ padding: '16px 20px', backgroundColor: '#F0F4FA', borderRadius: 10, border: '1px solid #D0DAE8' }}>
         <div style={groupTitle}>목표</div>
+        <div style={itemStyle}><span style={lbl}>예상 투자수익률</span><span style={{ ...val, color: '#16A34A' }}>{investRate != null ? `${(investRate * 100).toFixed(1)}%` : '-'}</span></div>
+        <div style={itemStyle}><span style={lbl}>예상 연금수익률</span><span style={{ ...val, color: '#16A34A' }}>{pensionRate != null ? `${(pensionRate * 100).toFixed(1)}%` : '-'}</span></div>
         <div style={itemStyle}>
-          <span style={lbl}>예상 수익률</span>
-          <span style={{ ...val, color: '#16A34A' }}>{expectedReturnRate}</span>
-        </div>
-        <div style={itemStyle}>
-          <span style={lbl}>은퇴연금(월)</span>
-          <span style={{ ...val, color: '#DC2626' }}>
-            {formatManwon(monthlyPension)}
-            <span style={{ marginLeft: 6, fontSize: 10, padding: '1px 5px', borderRadius: 3, backgroundColor: useInflationInput ? '#DCFCE7' : '#FEF2F2', color: useInflationInput ? '#16A34A' : '#9CA3AF' }}>
-              물가{useInflationInput ? 'O' : 'X'}
-            </span>
+          <span style={lbl}>은퇴당시 연금액</span>
+          <span style={{ display: 'flex', alignItems: 'center' }}>
+            <span style={val}>{futureMonthly != null && futureMonthly > 0 ? `${Math.round(futureMonthly / 1e4).toLocaleString('ko-KR')}만원/월` : '-'}</span>
+            <span style={{ ...bdg, backgroundColor: useInflInput ? '#DBEAFE' : '#F3F4F6', color: useInflInput ? '#1D4ED8' : '#6B7280' }}>물가{useInflInput ? 'O' : 'X'}</span>
           </span>
         </div>
         <div style={itemStyle}>
-          <span style={lbl}>물가상승률</span>
-          <span style={val}>{inflationRate}</span>
-        </div>
-        <div style={{ ...itemStyle, borderBottom: 'none', paddingTop: 12 }}>
-          <span style={lbl}>희망 은퇴금액</span>
-          <span
-            style={{
-              fontSize: 18,
-              fontWeight: 800,
-              color: '#1E3A5F',
-              fontVariantNumeric: 'tabular-nums',
-            }}
-          >
-            {formatAmountDisplay(targetFund)}
-            <span style={{ marginLeft: 6, fontSize: 10, padding: '1px 5px', borderRadius: 3, backgroundColor: useInflationCalc ? '#DCFCE7' : '#FEF2F2', color: useInflationCalc ? '#16A34A' : '#9CA3AF' }}>
-              물가{useInflationCalc ? 'O' : 'X'}
-            </span>
+          <span style={lbl}>은퇴자금</span>
+          <span style={{ display: 'flex', alignItems: 'center' }}>
+            <span style={{ fontSize: 16, fontWeight: 800, color: '#1E3A5F' }}>{retireFund > 0 ? fmtOk(retireFund) : '-'}</span>
+            <span style={{ ...bdg, backgroundColor: useInflCalc ? '#DBEAFE' : '#F3F4F6', color: useInflCalc ? '#1D4ED8' : '#6B7280' }}>물가{useInflCalc ? 'O' : 'X'}</span>
           </span>
+        </div>
+        <div style={{ ...itemStyle, borderBottom: 'none' }}>
+          <span style={lbl}>상속자금</span>
+          <span style={{ fontSize: 16, fontWeight: 800, color: inheritFund > 0 ? '#059669' : '#EF4444' }}>{fmtOk(inheritFund)}</span>
         </div>
       </div>
     </div>
@@ -667,11 +616,14 @@ function LifetimeTable({
         <tbody>
           {rows.map((row) => {
             const isRetirementAge = row.age === retirementAge;
+            const isAge100 = row.age === 100;
+            const isHighlight = isRetirementAge || isAge100;
             const bg = row.isAdjusted
-              ? '#FEF3C7'  // 보정 행: 연한 노란색 배경 (강조)
-              : isRetirementAge
-                ? 'rgba(30,58,95,0.08)'
+              ? '#FEF3C7'
+              : isHighlight
+                ? '#1E3A5F'
                 : PHASE_BG[row.phase] ?? '#ffffff';
+            const hlText = isHighlight && !row.isAdjusted ? '#ffffff' : undefined;
 
             const tdBase: React.CSSProperties = {
               padding: '7px 10px',
@@ -717,23 +669,23 @@ function LifetimeTable({
               : row.pension > 0 ? String(Math.round(row.pension)) : '';
 
             return (
-              <tr key={row.age}>
-                <td style={{ ...tdCenter, fontSize: 11, color: '#9CA3AF' }}>{row.calendarYear}</td>
-                <td style={tdFirst}>{row.year}</td>
-                <td style={{ ...tdCenter, fontWeight: isRetirementAge ? 700 : 400, color: isRetirementAge ? '#1E3A5F' : '#374151' }}>
+              <tr key={row.age} style={{ backgroundColor: bg }}>
+                <td style={{ ...tdCenter, fontSize: 11, color: hlText ?? '#9CA3AF' }}>{row.calendarYear}</td>
+                <td style={{ ...tdFirst, color: hlText }}>{row.year}</td>
+                <td style={{ ...tdCenter, fontWeight: isHighlight ? 700 : 400, color: hlText ?? '#374151' }}>
                   {row.age}세
-                  {isRetirementAge && (
-                    <span style={{ marginLeft: 3, fontSize: 10, color: '#1E3A5F' }}>★</span>
+                  {isHighlight && (
+                    <span style={{ marginLeft: 3, fontSize: 10, color: hlText ?? '#1E3A5F' }}>★</span>
                   )}
                 </td>
-                <td style={{ ...tdCenter, color: PHASE_COLOR[row.phase], fontWeight: 600 }}>
+                <td style={{ ...tdCenter, color: hlText ?? PHASE_COLOR[row.phase], fontWeight: 600 }}>
                   {PHASE_LABEL[row.phase]}
                 </td>
-                <td style={tdBase}>{formatCurrency(Math.round(row.cumulativePrincipal))}</td>
-                <td style={tdBase}>{formatCurrency(Math.round(row.totalEvaluation))}</td>
+                <td style={{ ...tdBase, color: hlText }}>{formatCurrency(Math.round(row.cumulativePrincipal))}</td>
+                <td style={{ ...tdBase, color: hlText }}>{formatCurrency(Math.round(row.totalEvaluation))}</td>
 
                 {/* 연적립금액 (편집 가능: 적립기간 + !isAdjusted) */}
-                <td style={tdBase}>
+                <td style={{ ...tdBase, color: hlText }}>
                   <EditableCell
                     value={row.annualSavings}
                     isEditable={savingsEditable}
@@ -745,11 +697,12 @@ function LifetimeTable({
                       const n = parseFloat(raw);
                       onOverrideChange(row.year, 'annualSavings', isNaN(n) ? undefined : n);
                     }}
+                    style={hlText ? { color: hlText } : undefined}
                   />
                 </td>
 
                 {/* 일시납금액 (편집 가능: 적립기간 + !isAdjusted) */}
-                <td style={tdBase}>
+                <td style={{ ...tdBase, color: hlText }}>
                   <EditableCell
                     value={row.lumpSum}
                     isEditable={lumpSumEditable}
@@ -761,11 +714,12 @@ function LifetimeTable({
                       const n = parseFloat(raw);
                       onOverrideChange(row.year, 'lumpSum', isNaN(n) ? undefined : n);
                     }}
+                    style={hlText ? { color: hlText } : undefined}
                   />
                 </td>
 
                 {/* 예상수익률 (편집 가능: !isAdjusted) */}
-                <td style={tdCenter}>
+                <td style={{ ...tdCenter, color: hlText }}>
                   <EditableCell
                     value={row.returnRate}
                     isEditable={rateEditable}
@@ -775,19 +729,19 @@ function LifetimeTable({
                     placeholder="%"
                     onCommit={(raw) => {
                       const n = parseFloat(raw);
-                      // % 단위로 입력받아 소수로 변환
                       onOverrideChange(row.year, 'returnRate', isNaN(n) ? undefined : n / 100);
                     }}
+                    style={hlText ? { color: hlText } : undefined}
                   />
                 </td>
 
-                <td style={{ ...tdBase, fontWeight: 600 }}>{formatCurrency(Math.round(row.totalPayment))}</td>
-                <td style={{ ...tdBase, color: row.isAdjusted ? '#2563EB' : '#9CA3AF' }}>
+                <td style={{ ...tdBase, fontWeight: 600, color: hlText }}>{formatCurrency(Math.round(row.totalPayment))}</td>
+                <td style={{ ...tdBase, color: hlText ?? (row.isAdjusted ? '#2563EB' : '#9CA3AF') }}>
                   {row.isAdjusted ? formatCurrency(Math.round(row.adjustedEvaluation)) : '-'}
                 </td>
 
                 {/* 연금액 (편집 가능: 은퇴후) */}
-                <td style={{ ...tdBase, color: row.pension > 0 ? '#DC2626' : '#9CA3AF' }}>
+                <td style={{ ...tdBase, color: hlText ?? (row.pension > 0 ? '#DC2626' : '#9CA3AF') }}>
                   <EditableCell
                     value={row.pension}
                     isEditable={pensionEditable}
@@ -799,19 +753,19 @@ function LifetimeTable({
                       const n = parseFloat(raw);
                       onOverrideChange(row.year, 'pension', isNaN(n) ? undefined : n);
                     }}
-                    style={{ color: row.pension > 0 ? '#DC2626' : '#9CA3AF' }}
+                    style={{ color: hlText ?? (row.pension > 0 ? '#DC2626' : '#9CA3AF') }}
                   />
                 </td>
 
-                <td style={{ ...tdBase, color: row.cumulativePension > 0 ? '#DC2626' : '#9CA3AF' }}>
+                <td style={{ ...tdBase, color: hlText ?? (row.cumulativePension > 0 ? '#DC2626' : '#9CA3AF') }}>
                   {row.cumulativePension > 0 ? formatCurrency(Math.round(row.cumulativePension)) : '-'}
                 </td>
-                <td style={{ ...tdBase, fontWeight: 700, color: row.adjustedNetAsset >= row.totalEvaluation ? '#2563EB' : '#DC2626' }}>
+                <td style={{ ...tdBase, fontWeight: 700, color: hlText ?? (row.adjustedNetAsset >= row.totalEvaluation ? '#2563EB' : '#DC2626') }}>
                   {formatCurrency(Math.round(row.adjustedNetAsset))}
                 </td>
                 <td style={{
                   ...tdCenter,
-                  color: row.netAssetReturnRate >= 0 ? '#16A34A' : '#DC2626',
+                  color: hlText ?? (row.netAssetReturnRate >= 0 ? '#16A34A' : '#DC2626'),
                   fontWeight: 600,
                 }}>
                   {row.cumulativePrincipal > 0 ? `${row.netAssetReturnRate.toFixed(1)}%` : '-'}
@@ -1031,7 +985,7 @@ export function LifetimeRetirementFlow({
       {/* A. 기본정보 카드 */}
       <div style={cardStyle}>
         <h3 style={sectionTitleStyle}>기본정보</h3>
-        <BasicInfoCard data={planData} currentAge={currentAge} planStartYear={startYear} />
+        <BasicInfoCard data={planData} currentAge={currentAge} />
       </div>
 
       {/* B. 100세 은퇴플로우 테이블 (아코디언) */}

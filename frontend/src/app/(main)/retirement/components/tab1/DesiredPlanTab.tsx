@@ -6,6 +6,7 @@ import { useRetirementStore } from '../../hooks/useRetirementStore';
 import { API_URL } from '@/lib/api-url';
 import { authLib } from '@/lib/auth';
 
+import { ExportButtons } from '../ExportButtons';
 const GrowthChart = dynamic(() => import('./GrowthChart'), { ssr: false });
 
 /* ================================================================
@@ -437,11 +438,34 @@ export function DesiredPlanTab() {
   /* ================================================================
      RENDER
      ================================================================ */
+  const customerInfo = selectedCustomer ? {
+    name: selectedCustomer.name,
+    birthDate: selectedCustomer.birthDate ?? '-',
+    targetFund: selectedCustomer.targetFund > 0
+      ? (selectedCustomer.targetFund >= 1e8
+          ? `${(selectedCustomer.targetFund / 1e8).toFixed(1)}억원`
+          : `${selectedCustomer.targetFund.toLocaleString()}만원`)
+      : '-',
+    retireAge: selectedCustomer.retirementAge > 0 ? String(selectedCustomer.retirementAge) : '-',
+  } : undefined;
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
 
+      {/* ==================== 내보내기 버튼 (상단) ==================== */}
+      <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+        <ExportButtons
+          sectionGroups={[
+            ['pdf-tab1-target', 'pdf-tab1-invest', 'pdf-tab1-graph', 'pdf-tab1-plan'],
+          ]}
+          filename={`은퇴플랜설계_${selectedCustomer?.name ?? ''}.pdf`}
+          activeTab="은퇴플랜 설계"
+          customerInfo={customerInfo}
+        />
+      </div>
+
       {/* ==================== 목표 은퇴자금 ==================== */}
-      <div>
+      <div id="pdf-tab1-target">
         <div style={SH}>
           <span>목표 은퇴자금</span>
           <div style={{ display: 'flex', gap: '16px' }}>
@@ -469,7 +493,7 @@ export function DesiredPlanTab() {
       </div>
 
       {/* ==================== 투자조건 ==================== */}
-      <div>
+      <div id="pdf-tab1-invest">
         <div style={SH}><span>투자조건</span></div>
         <div style={SB}>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '12px', marginBottom: '12px' }}>
@@ -528,7 +552,7 @@ export function DesiredPlanTab() {
 
       {/* ==================== 시뮬레이션 그래프 ==================== */}
       {gData.length > 0 && (
-        <div style={{ backgroundColor: '#fff', border: '1px solid #E5E7EB', borderRadius: '12px', padding: '20px' }}>
+        <div id="pdf-tab1-graph" style={{ backgroundColor: '#fff', border: '1px solid #E5E7EB', borderRadius: '12px', padding: '20px' }}>
           <h3 style={{ fontSize: '15px', fontWeight: 700, color: '#1E3A5F', margin: '0 0 12px' }}>시뮬레이션 그래프</h3>
           <div style={{ display: 'flex', gap: '20px', marginBottom: '12px', fontSize: '12px' }}>
             <LG color="#1E3A5F" label="기존 은퇴플랜" />
@@ -540,7 +564,7 @@ export function DesiredPlanTab() {
       )}
 
       {/* ==================== 목표 은퇴플랜 ==================== */}
-      <div>
+      <div id="pdf-tab1-plan">
         <div style={SH}><span>목표 은퇴플랜</span></div>
         <div style={SB}>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '12px' }}>
@@ -586,7 +610,7 @@ export function DesiredPlanTab() {
 
       {/* ==================== 은퇴플랜 시뮬레이션 ==================== */}
       {showTbl && dispTbl.length > 0 && (
-        <div style={{ backgroundColor: '#fff', border: '1px solid #E5E7EB', borderRadius: '12px', padding: '20px' }}>
+        <div id="pdf-tab1-sim" style={{ backgroundColor: '#fff', border: '1px solid #E5E7EB', borderRadius: '12px', padding: '20px' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px' }}>
             <h3 style={{ fontSize: '15px', fontWeight: 700, color: '#1E3A5F', margin: 0 }}>은퇴플랜 시뮬레이션</h3>
             <button onClick={() => setOv({})}
@@ -656,7 +680,7 @@ export function DesiredPlanTab() {
       )}
 
       {/* ==================== 저장 버튼 ==================== */}
-      <div style={{ display: 'flex', justifyContent: 'center' }}>
+      <div style={{ display: 'flex', justifyContent: 'center', gap: '12px', alignItems: 'center' }}>
         <button onClick={handleSave} disabled={!cid || monthly <= 0 || saving}
           style={{ padding: '12px 0', width: '30%', fontSize: '14px', fontWeight: 700, borderRadius: '8px',
             cursor: cid && !saving ? 'pointer' : 'not-allowed',

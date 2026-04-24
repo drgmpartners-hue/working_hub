@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import dynamic from 'next/dynamic';
 import { useRetirementStore } from '../../hooks/useRetirementStore';
+import { ExportButtons } from '../ExportButtons';
 import { API_URL } from '@/lib/api-url';
 import { authLib } from '@/lib/auth';
 
@@ -364,8 +365,31 @@ export function PensionPlanTab() {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '24px', maxWidth: '1100px', margin: '0 auto' }}>
 
+      {/* 내보내기 버튼 */}
+      <div className="no-print" style={{ display: 'flex', justifyContent: 'flex-end' }}>
+        <ExportButtons
+          sectionGroups={[
+            ['pdf-tab3-compare'],
+            ['pdf-tab3-option'],
+            ['pdf-tab3-goal'],
+          ]}
+          filename={`연금수령계획_${selectedCustomer?.name ?? ''}.pdf`}
+          activeTab="연금수령 계획"
+          customerInfo={selectedCustomer ? {
+            name: selectedCustomer.name,
+            birthDate: selectedCustomer.birthDate ?? '-',
+            targetFund: selectedCustomer.targetFund > 0
+              ? (selectedCustomer.targetFund >= 1e8
+                  ? `${(selectedCustomer.targetFund / 1e8).toFixed(1)}억원`
+                  : `${selectedCustomer.targetFund.toLocaleString()}만원`)
+              : '-',
+            retireAge: selectedCustomer.retirementAge > 0 ? String(selectedCustomer.retirementAge) : '-',
+          } : undefined}
+        />
+      </div>
+
       {/* ===== 섹션1: 연금전환 옵션 비교 ===== */}
-      <div style={cardStyle}>
+      <div id="pdf-tab3-compare" style={cardStyle}>
         <h3 style={sectionTitle}>연금전환 옵션 비교</h3>
         <div style={{ fontSize: '12px', color: '#6B7280', marginBottom: '12px' }}>
           연금재원 — A: <strong style={{ color: '#1E3A5F' }}>{fmtW(pensionFundA)}</strong>
@@ -439,7 +463,7 @@ export function PensionPlanTab() {
       {/* ===== 섹션2: 연금전환 옵션 (탭) ===== */}
       <div style={cardStyle}>
         <h3 style={sectionTitle}>연금전환 옵션</h3>
-        <div style={{ display: 'flex', marginBottom: '24px', borderBottom: '2px solid #E5E7EB' }}>
+        <div className="no-print" style={{ display: 'flex', marginBottom: '24px', borderBottom: '2px solid #E5E7EB' }}>
           {tabs.map((label, i) => (
             <button key={label} onClick={() => setOptionTab(i)} style={{
               flex: 1, padding: '12px 16px', fontSize: '14px',
@@ -452,13 +476,15 @@ export function PensionPlanTab() {
           ))}
         </div>
 
-        {optionTab === 0 && <LifetimeSection pv={pensionFund} rate={lifetimeRate} setRate={setLifetimeRate} retireAge={retireAge} result={lifetimeResult} pensionRateFromTab1={pensionRate} />}
-        {optionTab === 1 && <FixedSection pv={pensionFund} rate={fixedRate} setRate={setFixedRate} period={fixedPeriod} setPeriod={setFixedPeriod} retireAge={retireAge} result={fixedResult} />}
-        {optionTab === 2 && <InfiniteSection pv={pensionFund} rate={infiniteRate} setRate={setInfiniteRate} period={infinitePeriod} setPeriod={setInfinitePeriod} retireAge={retireAge} result={infiniteResult} />}
+        <div id="pdf-tab3-option">
+          {optionTab === 0 && <LifetimeSection pv={pensionFund} rate={lifetimeRate} setRate={setLifetimeRate} retireAge={retireAge} result={lifetimeResult} pensionRateFromTab1={pensionRate} />}
+          {optionTab === 1 && <FixedSection pv={pensionFund} rate={fixedRate} setRate={setFixedRate} period={fixedPeriod} setPeriod={setFixedPeriod} retireAge={retireAge} result={fixedResult} />}
+          {optionTab === 2 && <InfiniteSection pv={pensionFund} rate={infiniteRate} setRate={setInfiniteRate} period={infinitePeriod} setPeriod={setInfinitePeriod} retireAge={retireAge} result={infiniteResult} />}
+        </div>
       </div>
 
       {/* ===== 섹션3: 목표달성 플랜 ===== */}
-      <div style={cardStyle}>
+      <div id="pdf-tab3-goal" style={cardStyle}>
         <h3 style={sectionTitle}>목표달성 플랜</h3>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '16px', marginBottom: '20px', padding: '16px', backgroundColor: '#F9FAFB', borderRadius: '8px' }}>
           <InfoCell label="목표금액" value={fmtW(pensionFund)} color="#1E3A5F" />

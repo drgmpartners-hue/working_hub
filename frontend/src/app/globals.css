@@ -167,3 +167,9 @@ body {
 .animate-overlay-in {
   animation: overlayIn 0.15s ease forwards;
 }
+
+/* ===== Print Styles ===== */
+@media print {
+  .no-print { display: none !important; }
+  body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+}
