@@ -160,7 +160,7 @@ function AccountForm({ form, onChange, errors }: AccountFormProps) {
         placeholder="예: 삼성증권"
       />
       <Input
-        label="투자대상"
+        label="자산구분"
         value={form.investment_target}
         onChange={(e) => onChange('investment_target', e.target.value)}
         placeholder="예: 국내 주식, 글로벌 ETF"
@@ -218,6 +218,17 @@ export default function WrapAccountsPage() {
   const [addForm, setAddForm] = useState<AccountFormState>(EMPTY_FORM);
   const [addErrors, setAddErrors] = useState<Partial<Record<keyof AccountFormState, string>>>({});
   const [addLoading, setAddLoading] = useState(false);
+
+  /* Notion */
+  const [nStep, setNStep] = useState<'idle' | 'selectDb' | 'mapping'>('idle');
+  const [nDbs, setNDbs] = useState<{ id: string; title: string; icon: string | null }[]>([]);
+  const [nRows, setNRows] = useState<{ id: string; properties: Record<string, string> }[]>([]);
+  const [nCols, setNCols] = useState<string[]>([]);
+  const [nMap, setNMap] = useState<Record<string, string>>({ product_name: '', company: '', target: '', return_rate: '', desc: '' });
+  const [nLoading, setNLoading] = useState(false);
+  const [nError, setNError] = useState<string | null>(null);
+  const [nDbSearch, setNDbSearch] = useState('');
+  const [nRowSearch, setNRowSearch] = useState('');
 
   /* Edit Modal */
   const [editOpen, setEditOpen] = useState(false);
@@ -277,10 +288,60 @@ export default function WrapAccountsPage() {
     return errs;
   }
 
+  /* ---- Notion helpers ---- */
+  async function nLoadDbs() {
+    setNLoading(true); setNError(null);
+    try {
+      const t = authLib.getToken();
+      const res = await fetch(`${API_URL}/api/v1/notion/databases`, { headers: { Authorization: `Bearer ${t}` } });
+      if (!res.ok) { const d = await res.json().catch(() => ({})); throw new Error(d?.detail ?? '조회 실패'); }
+      setNDbs(await res.json()); setNStep('selectDb');
+    } catch (e: unknown) { setNError(e instanceof Error ? e.message : '오류'); }
+    finally { setNLoading(false); }
+  }
+  async function nLoadRows(dbId: string) {
+    setNLoading(true); setNError(null);
+    try {
+      const t = authLib.getToken();
+      const [pR, rR] = await Promise.all([
+        fetch(`${API_URL}/api/v1/notion/databases/${dbId}/properties`, { headers: { Authorization: `Bearer ${t}` } }),
+        fetch(`${API_URL}/api/v1/notion/databases/${dbId}/rows`, { headers: { Authorization: `Bearer ${t}` } }),
+      ]);
+      if (!pR.ok || !rR.ok) throw new Error('데이터 조회 실패');
+      const props: { name: string }[] = await pR.json();
+      const rows: { id: string; properties: Record<string, string> }[] = await rR.json();
+      setNCols(props.map(p => p.name)); setNRows(rows);
+      const m: Record<string, string> = { product_name: '', company: '', target: '', return_rate: '', desc: '' };
+      for (const c of props.map(p => p.name)) {
+        const l = c.toLowerCase();
+        if (!m.product_name && (l.includes('상품') || l.includes('product') || l.includes('이름') || l.includes('name'))) m.product_name = c;
+        if (!m.company && (l.includes('기관') || l.includes('증권') || l.includes('company') || l.includes('거래'))) m.company = c;
+        if (!m.target && (l.includes('자산') || l.includes('target') || l.includes('대상'))) m.target = c;
+        if (!m.return_rate && (l.includes('수익률') || l.includes('return') || l.includes('목표'))) m.return_rate = c;
+        if (!m.desc && (l.includes('설명') || l.includes('desc') || l.includes('메모'))) m.desc = c;
+      }
+      setNMap(m); setNStep('mapping');
+    } catch (e: unknown) { setNError(e instanceof Error ? e.message : '오류'); }
+    finally { setNLoading(false); }
+  }
+  function nApply(row: { properties: Record<string, string> }) {
+    setAddForm(f => ({
+      ...f,
+      product_name: (nMap.product_name && row.properties[nMap.product_name]) || f.product_name,
+      securities_company: (nMap.company && row.properties[nMap.company]) || f.securities_company,
+      investment_target: (nMap.target && row.properties[nMap.target]) || f.investment_target,
+      target_return_rate: (nMap.return_rate && row.properties[nMap.return_rate]) || f.target_return_rate,
+      description: (nMap.desc && row.properties[nMap.desc]) || f.description,
+    }));
+    setNStep('idle'); setNRowSearch('');
+  }
+  function nReset() { setNStep('idle'); setNDbs([]); setNRows([]); setNCols([]); setNError(null); setNDbSearch(''); setNRowSearch(''); }
+
   /* ---- Add ---- */
   function openAdd() {
     setAddForm(EMPTY_FORM);
     setAddErrors({});
+    nReset();
     setAddOpen(true);
   }
 
@@ -441,7 +502,7 @@ export default function WrapAccountsPage() {
     },
     {
       key: 'investment_target',
-      header: '투자대상',
+      header: '자산구분',
       render: (v) => (
         <span style={{ color: v ? '#374151' : '#9CA3AF', fontSize: '0.875rem' }}>
           {(v as string | null) ?? '-'}
@@ -644,9 +705,99 @@ export default function WrapAccountsPage() {
       <Modal
         open={addOpen}
         onClose={() => setAddOpen(false)}
-        title="Wrap 은퇴 상품 상품 등록"
+        title="Wrap 은퇴 상품 등록"
         maxWidth={500}
       >
+        {/* Notion 가져오기 */}
+        <div style={{ marginBottom: 14 }}>
+          {nStep === 'idle' && (
+            <button onClick={nLoadDbs} disabled={nLoading}
+              style={{ width: '100%', padding: 9, borderRadius: 8, border: '1px dashed #D1D5DB', background: '#FAFBFC', color: '#374151', fontSize: 13, fontWeight: 500, cursor: nLoading ? 'wait' : 'pointer', opacity: nLoading ? 0.6 : 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
+              📝 {nLoading ? 'Notion 연결 중...' : 'Notion에서 가져오기'}
+            </button>
+          )}
+          {nError && (
+            <div style={{ marginTop: 6, padding: '6px 10px', borderRadius: 6, background: '#FEF2F2', border: '1px solid #FECACA', fontSize: 12, color: '#DC2626' }}>
+              {nError} <button onClick={nReset} style={{ marginLeft: 6, background: 'none', border: 'none', color: '#DC2626', textDecoration: 'underline', cursor: 'pointer', fontSize: 12 }}>닫기</button>
+            </div>
+          )}
+          {nStep === 'selectDb' && (
+            <div style={{ border: '1px solid #E5E7EB', borderRadius: 8, overflow: 'hidden' }}>
+              <div style={{ padding: '7px 10px', background: '#F0F4FA', fontSize: 12, fontWeight: 600, color: '#1E3A5F', display: 'flex', justifyContent: 'space-between' }}>
+                <span>데이터베이스 선택</span><button onClick={nReset} style={{ background: 'none', border: 'none', color: '#9CA3AF', cursor: 'pointer', fontSize: 12 }}>취소</button>
+              </div>
+              <div style={{ padding: '6px 8px', borderBottom: '1px solid #E5E7EB' }}>
+                <input type="text" placeholder="검색..." value={nDbSearch} onChange={e => setNDbSearch(e.target.value)} style={{ width: '100%', padding: '5px 8px', borderRadius: 6, border: '1px solid #D1D5DB', fontSize: 12 }} />
+              </div>
+              {nLoading ? (
+                <div style={{ padding: 20, textAlign: 'center', color: '#6B7280', fontSize: 13 }}>불러오는 중...</div>
+              ) : (
+                <div style={{ maxHeight: 180, overflowY: 'auto' }}>
+                  {nDbs.filter(d => !nDbSearch || d.title.toLowerCase().includes(nDbSearch.toLowerCase())).map(d => (
+                    <button key={d.id} onClick={() => { setNDbSearch(''); nLoadRows(d.id); }}
+                      style={{ width: '100%', padding: '9px 10px', border: 'none', borderBottom: '1px solid #F3F4F6', background: '#fff', textAlign: 'left', cursor: 'pointer', fontSize: 13, display: 'flex', alignItems: 'center', gap: 8 }}
+                      onMouseOver={e => (e.currentTarget.style.background = '#F9FAFB')} onMouseOut={e => (e.currentTarget.style.background = '#fff')}>
+                      <span>{d.icon ?? '📄'}</span><span style={{ fontWeight: 500 }}>{d.title}</span>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+          {nStep === 'mapping' && (
+            <div style={{ border: '1px solid #E5E7EB', borderRadius: 8, overflow: 'hidden' }}>
+              <div style={{ padding: '7px 10px', background: '#F0F4FA', fontSize: 12, fontWeight: 600, color: '#1E3A5F', display: 'flex', justifyContent: 'space-between' }}>
+                <span>필드 매핑 → 상품 선택</span>
+                <div style={{ display: 'flex', gap: 8 }}>
+                  <button onClick={() => setNStep('selectDb')} style={{ background: 'none', border: 'none', color: '#3B82F6', cursor: 'pointer', fontSize: 11 }}>DB 변경</button>
+                  <button onClick={nReset} style={{ background: 'none', border: 'none', color: '#9CA3AF', cursor: 'pointer', fontSize: 12 }}>취소</button>
+                </div>
+              </div>
+              {nLoading ? (
+                <div style={{ padding: 20, textAlign: 'center', color: '#6B7280', fontSize: 13 }}>데이터 불러오는 중...</div>
+              ) : (<>
+                <div style={{ padding: '8px 10px', background: '#FAFBFC', borderBottom: '1px solid #E5E7EB' }}>
+                  <div style={{ fontSize: 11, color: '#6B7280', marginBottom: 4 }}>Notion → 상품 필드 매핑</div>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 5 }}>
+                    {[{ k: 'product_name', l: '상품명 *' }, { k: 'company', l: '거래기관' }, { k: 'target', l: '자산구분' }, { k: 'return_rate', l: '수익률' }, { k: 'desc', l: '설명' }].map(f => (
+                      <div key={f.k} style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 12 }}>
+                        <span style={{ width: 58, color: '#374151', fontWeight: 500, flexShrink: 0 }}>{f.l}</span>
+                        <select value={nMap[f.k] ?? ''} onChange={e => setNMap(m => ({ ...m, [f.k]: e.target.value }))}
+                          style={{ flex: 1, padding: '3px 5px', borderRadius: 4, border: '1px solid #D1D5DB', fontSize: 11, background: nMap[f.k] ? '#ECFDF5' : '#fff' }}>
+                          <option value="">--</option>{nCols.map(c => <option key={c} value={c}>{c}</option>)}
+                        </select>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+                <div style={{ padding: '6px 8px', borderBottom: '1px solid #E5E7EB' }}>
+                  <input type="text" placeholder="상품 검색..." value={nRowSearch} onChange={e => setNRowSearch(e.target.value)} style={{ width: '100%', padding: '5px 8px', borderRadius: 6, border: '1px solid #D1D5DB', fontSize: 12 }} />
+                </div>
+                <div style={{ maxHeight: 200, overflowY: 'auto' }}>
+                  {(() => {
+                    const q = nRowSearch.toLowerCase().trim();
+                    const fil = q ? nRows.filter(r => Object.values(r.properties).some(v => v?.toLowerCase().includes(q))) : nRows;
+                    if (!fil.length) return <div style={{ padding: 14, textAlign: 'center', color: '#9CA3AF', fontSize: 13 }}>{q ? '검색 결과 없음' : '데이터 없음'}</div>;
+                    return fil.map(r => {
+                      const dn = nMap.product_name ? (r.properties[nMap.product_name] ?? '-') : Object.values(r.properties)[0] ?? '-';
+                      const dc = nMap.company ? (r.properties[nMap.company] ?? '') : '';
+                      return (
+                        <button key={r.id} onClick={() => nApply(r)}
+                          style={{ width: '100%', padding: '8px 10px', border: 'none', borderBottom: '1px solid #F3F4F6', background: '#fff', textAlign: 'left', cursor: 'pointer', fontSize: 12, display: 'flex', gap: 10 }}
+                          onMouseOver={e => (e.currentTarget.style.background = '#F0FFF4')} onMouseOut={e => (e.currentTarget.style.background = '#fff')}>
+                          <span style={{ fontWeight: 600, color: '#111827' }}>{dn}</span>
+                          {dc && <span style={{ color: '#6B7280', fontSize: 11 }}>{dc}</span>}
+                        </button>
+                      );
+                    });
+                  })()}
+                </div>
+                <div style={{ padding: '5px 8px', background: '#F9FAFB', borderTop: '1px solid #E5E7EB', fontSize: 10, color: '#9CA3AF' }}>총 {nRows.length}건 · 클릭하면 폼에 자동 입력</div>
+              </>)}
+            </div>
+          )}
+        </div>
+
         <AccountForm form={addForm} onChange={(f, v) => setAddForm((p) => ({ ...p, [f]: v }))} errors={addErrors} />
         <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 8 }}>
           <Button variant="ghost" onClick={() => setAddOpen(false)} disabled={addLoading}>

@@ -39,7 +39,7 @@ def _mask(value: str) -> str:
 
 # --- Schemas ---
 
-VALID_PROVIDERS = ["kiwoom", "claude", "gemini", "solapi"]
+VALID_PROVIDERS = ["kiwoom", "claude", "gemini", "solapi", "notion"]
 
 
 class ApiKeyCreate(BaseModel):
@@ -162,6 +162,8 @@ async def test_api_key(
             return await _test_kiwoom(body.api_key, body.api_secret or "")
         elif provider == "solapi":
             return await _test_solapi(body.api_key, body.api_secret or "")
+        elif provider == "notion":
+            return await _test_notion(body.api_key)
     except Exception as e:
         return TestResult(success=False, message=f"테스트 중 오류: {str(e)}")
 
@@ -200,6 +202,8 @@ async def test_saved_api_key(
             return await _test_kiwoom(api_key, api_secret)
         elif provider == "solapi":
             return await _test_solapi(api_key, api_secret)
+        elif provider == "notion":
+            return await _test_notion(api_key)
     except Exception as e:
         return TestResult(success=False, message=f"테스트 중 오류: {str(e)}")
 
@@ -353,6 +357,35 @@ async def _test_solapi(api_key: str, api_secret: str) -> TestResult:
         detail = ""
         try:
             detail = res.json().get("errorMessage", res.text[:100])
+        except Exception:
+            detail = res.text[:100] if res.text else ""
+        return TestResult(success=False, message=f"API 응답 오류 (status={res.status_code}): {detail}")
+
+
+async def _test_notion(token: str) -> TestResult:
+    """Test Notion API by fetching current user info."""
+    async with httpx.AsyncClient(timeout=10) as client:
+        res = await client.get(
+            "https://api.notion.com/v1/users/me",
+            headers={
+                "Authorization": f"Bearer {token}",
+                "Notion-Version": "2022-06-28",
+            },
+        )
+    if res.status_code == 200:
+        data = res.json()
+        bot_name = data.get("name", "Unknown")
+        workspace = data.get("bot", {}).get("workspace_name", "")
+        msg = f"연결 성공! 통합: {bot_name}"
+        if workspace:
+            msg += f" (워크스페이스: {workspace})"
+        return TestResult(success=True, message=msg)
+    elif res.status_code == 401:
+        return TestResult(success=False, message="인증 실패: Integration Token이 올바르지 않습니다.")
+    else:
+        detail = ""
+        try:
+            detail = res.json().get("message", res.text[:100])
         except Exception:
             detail = res.text[:100] if res.text else ""
         return TestResult(success=False, message=f"API 응답 오류 (status={res.status_code}): {detail}")

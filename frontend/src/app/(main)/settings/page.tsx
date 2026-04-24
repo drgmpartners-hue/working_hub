@@ -117,6 +117,28 @@ const API_PROVIDERS: ProviderDef[] = [
       ],
     },
   },
+  {
+    key: 'notion',
+    label: 'Notion API',
+    description: '고객 데이터, 상담 기록 등을 Notion 워크스페이스와 연동합니다.',
+    icon: '📝',
+    color: '#000000',
+    fields: [
+      { name: 'api_key', label: 'Integration Token', placeholder: 'ntn_... 또는 secret_... 형식의 토큰을 입력하세요' },
+    ],
+    guide: {
+      title: 'Notion Integration 토큰 발급 방법',
+      steps: [
+        'Notion Integrations 페이지(https://www.notion.so/my-integrations)에 접속합니다.',
+        '[새 API 통합 만들기] 버튼을 클릭합니다.',
+        '통합 이름(예: Working Hub)을 입력하고, 연결할 워크스페이스를 선택합니다.',
+        '기능에서 [콘텐츠 읽기], [콘텐츠 삽입], [콘텐츠 업데이트]를 체크합니다.',
+        '[제출] 후 생성된 Internal Integration Token을 복사합니다.',
+        'Notion에서 연동할 페이지/데이터베이스를 열고, 우측 상단 [···] > [연결 추가]에서 만든 통합을 선택합니다.',
+        '연결을 추가해야 해당 페이지에 API로 접근할 수 있습니다.',
+      ],
+    },
+  },
 ];
 
 /* ------------------------------------------------------------------ */

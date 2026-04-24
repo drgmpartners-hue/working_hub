@@ -33,6 +33,7 @@ from app.api.v1 import ai_retirement_guide as ai_retirement_guide_router
 from app.api.v1 import inflation_rate as inflation_rate_router
 from app.api.v1.deposit_accounts import router as deposit_accounts_router
 from app.api.v1.deposit_accounts import transactions_router as deposit_transactions_router
+from app.api.v1 import notion as notion_router
 
 app = FastAPI(title="API", version="0.1.0")
 
@@ -81,6 +82,7 @@ app.include_router(ai_retirement_guide_router.router, prefix="/api/v1")
 app.include_router(inflation_rate_router.router, prefix="/api/v1")
 app.include_router(deposit_accounts_router, prefix="/api/v1")
 app.include_router(deposit_transactions_router, prefix="/api/v1")
+app.include_router(notion_router.router, prefix="/api/v1")
 
 
 @app.exception_handler(Exception)

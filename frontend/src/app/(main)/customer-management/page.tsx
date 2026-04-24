@@ -54,6 +54,18 @@ export default function CustomerManagementPage() {
   const [submitting, setSubmitting] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
 
+  /* Notion import */
+  const [notionStep, setNotionStep] = useState<'idle' | 'selectDb' | 'mapping'>('idle');
+  const [notionDbs, setNotionDbs] = useState<{ id: string; title: string; icon: string | null }[]>([]);
+  const [notionRows, setNotionRows] = useState<{ id: string; properties: Record<string, string> }[]>([]);
+  const [notionColumns, setNotionColumns] = useState<string[]>([]);
+  const [notionMapping, setNotionMapping] = useState<Record<string, string>>({ name: '', birth_date: '', phone: '', email: '' });
+  const [notionSelectedDb, setNotionSelectedDb] = useState('');
+  const [notionLoading, setNotionLoading] = useState(false);
+  const [notionError, setNotionError] = useState<string | null>(null);
+  const [notionDbSearch, setNotionDbSearch] = useState('');
+  const [notionRowSearch, setNotionRowSearch] = useState('');
+
   /* ---------------------------------------------------------------- */
   /*  Fetch                                                            */
   /* ---------------------------------------------------------------- */
@@ -97,10 +109,87 @@ export default function CustomerManagementPage() {
   /*  Modal helpers                                                    */
   /* ---------------------------------------------------------------- */
 
+  /* ── Notion helpers ── */
+  async function loadNotionDbs() {
+    setNotionLoading(true);
+    setNotionError(null);
+    try {
+      const token = authLib.getToken();
+      const res = await fetch(`${API_URL}/api/v1/notion/databases`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!res.ok) {
+        const d = await res.json().catch(() => ({}));
+        throw new Error(d?.detail ?? 'Notion 데이터베이스 목록 조회 실패');
+      }
+      const dbs = await res.json();
+      setNotionDbs(dbs);
+      setNotionStep('selectDb');
+    } catch (e: unknown) {
+      setNotionError(e instanceof Error ? e.message : '오류 발생');
+    } finally {
+      setNotionLoading(false);
+    }
+  }
+
+  async function loadNotionRows(dbId: string) {
+    setNotionLoading(true);
+    setNotionError(null);
+    setNotionSelectedDb(dbId);
+    try {
+      const token = authLib.getToken();
+      // 속성 목록 + 행 데이터 동시 조회
+      const [propsRes, rowsRes] = await Promise.all([
+        fetch(`${API_URL}/api/v1/notion/databases/${dbId}/properties`, { headers: { Authorization: `Bearer ${token}` } }),
+        fetch(`${API_URL}/api/v1/notion/databases/${dbId}/rows`, { headers: { Authorization: `Bearer ${token}` } }),
+      ]);
+      if (!propsRes.ok || !rowsRes.ok) throw new Error('데이터 조회 실패');
+      const props: { name: string; type: string }[] = await propsRes.json();
+      const rows: { id: string; properties: Record<string, string> }[] = await rowsRes.json();
+      setNotionColumns(props.map(p => p.name));
+      setNotionRows(rows);
+
+      // 자동 매핑 시도 (컬럼명으로 추측)
+      const autoMap: Record<string, string> = { name: '', birth_date: '', phone: '', email: '' };
+      for (const col of props.map(p => p.name)) {
+        const lower = col.toLowerCase();
+        if (!autoMap.name && (lower.includes('이름') || lower.includes('name') || lower.includes('고객명'))) autoMap.name = col;
+        if (!autoMap.birth_date && (lower.includes('생년') || lower.includes('birth') || lower.includes('생일'))) autoMap.birth_date = col;
+        if (!autoMap.phone && (lower.includes('전화') || lower.includes('phone') || lower.includes('연락처') || lower.includes('핸드폰'))) autoMap.phone = col;
+        if (!autoMap.email && (lower.includes('이메일') || lower.includes('email') || lower.includes('메일'))) autoMap.email = col;
+      }
+      setNotionMapping(autoMap);
+      setNotionStep('mapping');
+    } catch (e: unknown) {
+      setNotionError(e instanceof Error ? e.message : '오류 발생');
+    } finally {
+      setNotionLoading(false);
+    }
+  }
+
+  function applyNotionRow(row: { properties: Record<string, string> }) {
+    setForm({
+      name: row.properties[notionMapping.name] ?? '',
+      birth_date: row.properties[notionMapping.birth_date] ?? '',
+      phone: row.properties[notionMapping.phone] ?? '',
+      email: row.properties[notionMapping.email] ?? '',
+    });
+    setNotionStep('idle');
+  }
+
+  function resetNotion() {
+    setNotionStep('idle');
+    setNotionDbs([]);
+    setNotionRows([]);
+    setNotionColumns([]);
+    setNotionError(null);
+  }
+
   function openAddModal() {
     setEditTarget(null);
     setForm(EMPTY_FORM);
     setFormError(null);
+    resetNotion();
     setModalOpen(true);
   }
 
@@ -607,6 +696,185 @@ export default function CustomerManagementPage() {
                 </svg>
               </button>
             </div>
+
+            {/* ── Notion에서 가져오기 ── */}
+            {!editTarget && (
+              <div style={{ marginBottom: '16px' }}>
+                {notionStep === 'idle' && (
+                  <button
+                    onClick={loadNotionDbs}
+                    disabled={notionLoading}
+                    style={{
+                      width: '100%', padding: '10px', borderRadius: '8px',
+                      border: '1px dashed #D1D5DB', background: '#FAFBFC',
+                      color: '#374151', fontSize: '13px', fontWeight: 500,
+                      cursor: notionLoading ? 'wait' : 'pointer', display: 'flex', alignItems: 'center',
+                      justifyContent: 'center', gap: '8px', opacity: notionLoading ? 0.6 : 1,
+                    }}
+                  >
+                    📝 {notionLoading ? 'Notion 연결 중...' : 'Notion에서 가져오기'}
+                  </button>
+                )}
+
+                {notionError && (
+                  <div style={{ marginTop: '8px', padding: '8px 12px', borderRadius: '6px', background: '#FEF2F2', border: '1px solid #FECACA', fontSize: '12px', color: '#DC2626' }}>
+                    {notionError}
+                    <button onClick={resetNotion} style={{ marginLeft: '8px', background: 'none', border: 'none', color: '#DC2626', textDecoration: 'underline', cursor: 'pointer', fontSize: '12px' }}>닫기</button>
+                  </div>
+                )}
+
+                {/* Step 1: DB 선택 */}
+                {notionStep === 'selectDb' && (
+                  <div style={{ border: '1px solid #E5E7EB', borderRadius: '8px', overflow: 'hidden' }}>
+                    <div style={{ padding: '8px 12px', background: '#F0F4FA', fontSize: '12px', fontWeight: 600, color: '#1E3A5F', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <span>Notion 데이터베이스 선택</span>
+                      <button onClick={resetNotion} style={{ background: 'none', border: 'none', color: '#9CA3AF', cursor: 'pointer', fontSize: '12px' }}>취소</button>
+                    </div>
+                    {/* DB 검색 */}
+                    <div style={{ padding: '8px 10px', borderBottom: '1px solid #E5E7EB' }}>
+                      <input
+                        type="text"
+                        placeholder="데이터베이스 검색..."
+                        value={notionDbSearch}
+                        onChange={e => setNotionDbSearch(e.target.value)}
+                        style={{ width: '100%', padding: '6px 10px', borderRadius: '6px', border: '1px solid #D1D5DB', fontSize: '12px', outline: 'none' }}
+                      />
+                    </div>
+                    {notionLoading ? (
+                      <div style={{ padding: '24px', textAlign: 'center', color: '#6B7280', fontSize: '13px' }}>
+                        <div style={{ marginBottom: '8px', fontSize: '20px', animation: 'spin 1s linear infinite', display: 'inline-block' }}>⏳</div><br />
+                        데이터 불러오는 중...
+                        <style>{`@keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }`}</style>
+                      </div>
+                    ) : notionDbs.length === 0 ? (
+                      <div style={{ padding: '16px', textAlign: 'center', color: '#9CA3AF', fontSize: '13px' }}>
+                        접근 가능한 데이터베이스가 없습니다.<br />
+                        <span style={{ fontSize: '11px' }}>Notion에서 페이지 [···] → [연결 추가]에서 통합을 연결해주세요.</span>
+                      </div>
+                    ) : (
+                      <div style={{ maxHeight: '200px', overflowY: 'auto' }}>
+                        {notionDbs
+                          .filter(db => !notionDbSearch || db.title.toLowerCase().includes(notionDbSearch.toLowerCase()))
+                          .map(db => (
+                          <button
+                            key={db.id}
+                            onClick={() => { setNotionDbSearch(''); loadNotionRows(db.id); }}
+                            style={{
+                              width: '100%', padding: '10px 12px', border: 'none',
+                              borderBottom: '1px solid #F3F4F6', background: '#fff',
+                              textAlign: 'left', cursor: 'pointer', fontSize: '13px',
+                              display: 'flex', alignItems: 'center', gap: '8px',
+                            }}
+                            onMouseOver={e => (e.currentTarget.style.background = '#F9FAFB')}
+                            onMouseOut={e => (e.currentTarget.style.background = '#fff')}
+                          >
+                            <span>{db.icon ?? '📄'}</span>
+                            <span style={{ fontWeight: 500, color: '#111827' }}>{db.title}</span>
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* Step 2: 필드 매핑 + 행 선택 */}
+                {notionStep === 'mapping' && (
+                  <div style={{ border: '1px solid #E5E7EB', borderRadius: '8px', overflow: 'hidden' }}>
+                    <div style={{ padding: '8px 12px', background: '#F0F4FA', fontSize: '12px', fontWeight: 600, color: '#1E3A5F', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <span>필드 매핑 → 고객 선택</span>
+                      <div style={{ display: 'flex', gap: '8px' }}>
+                        <button onClick={() => { setNotionStep('selectDb'); setNotionRowSearch(''); }} style={{ background: 'none', border: 'none', color: '#3B82F6', cursor: 'pointer', fontSize: '11px' }}>DB 변경</button>
+                        <button onClick={resetNotion} style={{ background: 'none', border: 'none', color: '#9CA3AF', cursor: 'pointer', fontSize: '12px' }}>취소</button>
+                      </div>
+                    </div>
+
+                    {/* 로딩 */}
+                    {notionLoading && (
+                      <div style={{ padding: '20px', textAlign: 'center', color: '#6B7280', fontSize: '13px' }}>데이터 불러오는 중...</div>
+                    )}
+
+                    {!notionLoading && (<>
+                      {/* 매핑 설정 */}
+                      <div style={{ padding: '10px 12px', background: '#FAFBFC', borderBottom: '1px solid #E5E7EB' }}>
+                        <div style={{ fontSize: '11px', color: '#6B7280', marginBottom: '6px' }}>Notion 컬럼 → 고객 필드 매핑 (자동 감지됨, 수정 가능)</div>
+                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px' }}>
+                          {[
+                            { key: 'name', label: '고객명 *' },
+                            { key: 'birth_date', label: '생년월일' },
+                            { key: 'phone', label: '전화번호' },
+                            { key: 'email', label: '이메일' },
+                          ].map(f => (
+                            <div key={f.key} style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '12px' }}>
+                              <span style={{ width: '60px', color: '#374151', fontWeight: 500, flexShrink: 0 }}>{f.label}</span>
+                              <select
+                                value={notionMapping[f.key] ?? ''}
+                                onChange={e => setNotionMapping(m => ({ ...m, [f.key]: e.target.value }))}
+                                style={{ flex: 1, padding: '4px 6px', borderRadius: '4px', border: '1px solid #D1D5DB', fontSize: '11px', background: notionMapping[f.key] ? '#ECFDF5' : '#fff' }}
+                              >
+                                <option value="">-- 선택 --</option>
+                                {notionColumns.map(c => <option key={c} value={c}>{c}</option>)}
+                              </select>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+
+                      {/* 고객 검색 */}
+                      <div style={{ padding: '8px 10px', borderBottom: '1px solid #E5E7EB' }}>
+                        <input
+                          type="text"
+                          placeholder="고객 검색 (이름, 전화번호 등)..."
+                          value={notionRowSearch}
+                          onChange={e => setNotionRowSearch(e.target.value)}
+                          style={{ width: '100%', padding: '6px 10px', borderRadius: '6px', border: '1px solid #D1D5DB', fontSize: '12px', outline: 'none' }}
+                        />
+                      </div>
+
+                      {/* 행 목록 */}
+                      <div style={{ maxHeight: '220px', overflowY: 'auto' }}>
+                        {notionRows.length === 0 ? (
+                          <div style={{ padding: '16px', textAlign: 'center', color: '#9CA3AF', fontSize: '13px' }}>데이터가 없습니다.</div>
+                        ) : (() => {
+                          const q = notionRowSearch.toLowerCase().trim();
+                          const filtered = q
+                            ? notionRows.filter(row => Object.values(row.properties).some(v => v && v.toLowerCase().includes(q)))
+                            : notionRows;
+                          if (filtered.length === 0) return <div style={{ padding: '16px', textAlign: 'center', color: '#9CA3AF', fontSize: '13px' }}>검색 결과가 없습니다.</div>;
+                          return filtered.map(row => {
+                            const dn = notionMapping.name ? (row.properties[notionMapping.name] ?? '-') : Object.values(row.properties)[0] ?? '-';
+                            const db2 = notionMapping.birth_date ? (row.properties[notionMapping.birth_date] ?? '') : '';
+                            const dp = notionMapping.phone ? (row.properties[notionMapping.phone] ?? '') : '';
+                            const de = notionMapping.email ? (row.properties[notionMapping.email] ?? '') : '';
+                            return (
+                              <button
+                                key={row.id}
+                                onClick={() => { applyNotionRow(row); setNotionRowSearch(''); }}
+                                style={{
+                                  width: '100%', padding: '9px 12px', border: 'none',
+                                  borderBottom: '1px solid #F3F4F6', background: '#fff',
+                                  textAlign: 'left', cursor: 'pointer', fontSize: '12px',
+                                  display: 'flex', alignItems: 'center', gap: '10px',
+                                }}
+                                onMouseOver={e => (e.currentTarget.style.background = '#F0FFF4')}
+                                onMouseOut={e => (e.currentTarget.style.background = '#fff')}
+                              >
+                                <span style={{ fontWeight: 600, color: '#111827', minWidth: '70px' }}>{dn}</span>
+                                {db2 && <span style={{ color: '#6B7280', fontSize: '11px' }}>{db2}</span>}
+                                {dp && <span style={{ color: '#6B7280', fontSize: '11px' }}>{dp}</span>}
+                                {de && <span style={{ color: '#9CA3AF', fontSize: '11px' }}>{de}</span>}
+                              </button>
+                            );
+                          });
+                        })()}
+                      </div>
+                      <div style={{ padding: '6px 10px', background: '#F9FAFB', borderTop: '1px solid #E5E7EB', fontSize: '10px', color: '#9CA3AF' }}>
+                        총 {notionRows.length}건 · 클릭하면 폼에 자동 입력됩니다
+                      </div>
+                    </>)}
+                  </div>
+                )}
+              </div>
+            )}
 
             {/* Unique code (edit mode) */}
             {editTarget && (
