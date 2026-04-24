@@ -381,11 +381,12 @@ function calcLifetimeRows(
       const monthlyPmt = appliedSavings / 12;
       const pv = appliedLumpSum + prevNetAsset;
       adjustedNetAsset = Math.max(0, excelFV(monthlyRate, 12, -monthlyPmt, -pv) - ovPension);
-      // 입금액: 적립 + 일시납
-      currentDepositIn = appliedSavings + appliedLumpSum;
+      // 입금액: 기본값 = 누적원금
+      currentDepositIn = origPrincipal;
     } else {
       adjustedNetAsset = totalEvaluation;
-      currentDepositIn = appliedSavings + appliedLumpSum;
+      // 입금액: 기본값 = 누적원금
+      currentDepositIn = origPrincipal;
     }
 
     // 순자산수익률: 직전년도 대비 증감률
