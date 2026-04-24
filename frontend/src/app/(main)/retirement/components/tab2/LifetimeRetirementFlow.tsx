@@ -334,9 +334,8 @@ function calcLifetimeRows(
     const ovLumpSum = ov.lumpSum !== undefined ? ov.lumpSum : origLumpSum;
     const ovPension = ov.pension !== undefined ? ov.pension : origPension;
 
-    // 총납입금액: 항상 연적립+일시납을 누적 계산
+    // 오버라이드 있으면 이후 행 재계산 필요
     if (hasOverride) needsRecalc = true;
-    runningPayment += ovSavings + ovLumpSum;
     // 중도인출 누적: override 반영
     runningPension += ovPension;
 
