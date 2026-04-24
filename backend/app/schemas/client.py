@@ -37,6 +37,9 @@ class ClientBase(BaseModel):
 
 
 class ClientCreate(ClientBase):
+    birth_date: Optional[str] = None
+    phone: Optional[str] = None
+    email: Optional[str] = None
     ssn: Optional[str] = None  # 평문 주민번호 (저장 시 암호화, 응답에는 포함 안 됨)
 
 

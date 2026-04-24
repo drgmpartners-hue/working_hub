@@ -165,7 +165,7 @@ function formatAmountDisplay(value: number | null | undefined): string {
 
 function formatManwon(value: number | null | undefined): string {
   if (value == null || value === 0) return '-';
-  const man = value / 10000;
+  const man = Math.round(value / 10000);
   return `${man.toLocaleString('ko-KR')}만원`;
 }
 

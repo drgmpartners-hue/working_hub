@@ -125,6 +125,7 @@ async def calculate_desired_plan(
             pension_return_rate=data.pension_return_rate,
             expected_return_rate=data.expected_return_rate,
             with_inflation=data.with_inflation,
+            plan_start_age=data.plan_start_age,
         )
     except ValueError as exc:
         raise HTTPException(
@@ -215,6 +216,7 @@ async def upsert_desired_plan(
             pension_return_rate=pension_return_rate,
             expected_return_rate=expected_return_rate,
             with_inflation=data.with_inflation,
+            plan_start_age=getattr(data, 'plan_start_age', None),
         )
     except ValueError as exc:
         raise HTTPException(
@@ -241,6 +243,22 @@ async def upsert_desired_plan(
     })
     if data.calculation_params:
         merged_params.update(data.calculation_params)
+
+    # 기존/수정 플랜 구분 데이터 저장
+    if data.existing_return_rate is not None:
+        merged_params["existing_return_rate"] = data.existing_return_rate
+    if data.recommended_return_rate is not None:
+        merged_params["recommended_return_rate"] = data.recommended_return_rate
+    if data.recommended_pension_rate is not None:
+        merged_params["recommended_pension_rate"] = data.recommended_pension_rate
+    if data.available_holding is not None:
+        merged_params["available_holding"] = data.available_holding
+    if data.base_pension_rate is not None:
+        merged_params["base_pension_rate"] = data.base_pension_rate
+    if data.original_plan is not None:
+        merged_params["original_plan"] = data.original_plan
+    if data.modified_plan is not None:
+        merged_params["modified_plan"] = data.modified_plan
 
     # 시뮬레이션 데이터: 프론트에서 직접 전달된 경우 우선 사용
     sim_data = data.simulation_data if data.simulation_data is not None else calc["simulation_table"]

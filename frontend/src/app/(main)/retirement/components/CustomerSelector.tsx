@@ -163,8 +163,9 @@ export function CustomerSelector() {
       if (dpRes.ok) {
         const dp = await dpRes.json();
         if (dp.desired_retirement_age) retirementAge = dp.desired_retirement_age;
-        if (dp.simulation_target_fund) targetFund = dp.simulation_target_fund;
-        else if (dp.target_retirement_fund) targetFund = dp.target_retirement_fund;
+        // 목표은퇴자금 = 계산결과의 PV 계산값 (target_retirement_fund) 우선
+        if (dp.target_retirement_fund) targetFund = dp.target_retirement_fund;
+        else if (dp.simulation_target_fund) targetFund = dp.simulation_target_fund;
       }
     } catch { /* silent */ }
 

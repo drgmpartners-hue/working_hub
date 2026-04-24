@@ -227,6 +227,29 @@ class CompoundCalcService:
 
         return rows
 
+    @classmethod
+    def calculate_required_annual_savings(
+        cls,
+        target_fund: float,
+        expected_return_rate: float,
+        savings_period: int,
+        holding_period: int,
+    ) -> float:
+        """거치금 0일 때 목표 달성에 필요한 연적립금액 역산."""
+        monthly_rate = expected_return_rate / 12
+
+        if holding_period > 0:
+            pv_at_holding = target_fund / ((1 + monthly_rate) ** (holding_period * 12))
+        else:
+            pv_at_holding = target_fund
+
+        nper = savings_period * 12
+        if monthly_rate == 0:
+            return pv_at_holding / savings_period if savings_period > 0 else 0
+        pvif = (1 + monthly_rate) ** nper
+        monthly_pmt = pv_at_holding * monthly_rate / (pvif - 1)
+        return monthly_pmt * 12
+
     # ------------------------------------------------------------------
     # 통합 계산 메서드
     # ------------------------------------------------------------------
@@ -244,47 +267,35 @@ class CompoundCalcService:
         pension_return_rate: float = DEFAULT_PENSION_RETURN_RATE,
         expected_return_rate: float = DEFAULT_ANNUAL_RATE,
         with_inflation: bool = False,
+        plan_start_age: Optional[int] = None,
         # 하위 호환용 (무시됨 - **kwargs로 수신)
         annual_rate: Optional[float] = None,
         **kwargs,
     ) -> dict:
         """희망 은퇴플랜 전체 계산.
 
-        Returns:
-            {
-                "investment_years": int,
-                "holding_period": int,
-                "future_monthly_amount": int,
-                "target_fund_inflation": int,
-                "target_fund_no_inflation": int,
-                "target_fund": int,           # with_inflation에 따라 선택
-                "required_holding": int,
-                "simulation_table": list[dict],
-                # 하위 호환 필드
-                "target_total_fund": int,
-                "required_lump_sum": int,
-                "required_annual_savings": int,
-                "calculation_params": dict,
-            }
+        plan_start_age가 주어지면:
+          - 투자기간 = retirement_age - plan_start_age (시뮬레이션/거치금 계산)
+          - 물가조정기간 = retirement_age - current_age (은퇴당시 수령액 계산)
+        plan_start_age가 없으면 current_age 기준으로 모두 계산 (하위 호환).
         """
         # annual_rate 하위 호환: annual_rate가 있으면 expected_return_rate로 사용
         if annual_rate is not None:
             expected_return_rate = annual_rate
 
-        investment_years = retirement_age - current_age
+        # 투자기간: plan_start_age 기준 (없으면 current_age)
+        sim_start_age = plan_start_age if plan_start_age is not None else current_age
+        investment_years = retirement_age - sim_start_age
         holding_period = investment_years - savings_period
 
         if investment_years <= 0:
-            raise ValueError(f"retirement_age({retirement_age}) must be greater than current_age({current_age})")
+            raise ValueError(f"retirement_age({retirement_age}) must be greater than start_age({sim_start_age})")
         if holding_period < 0:
             raise ValueError(f"savings_period({savings_period}) must be less than investment_years({investment_years})")
-
         # 1. 은퇴 시점 희망 월수령액
-        future_monthly = cls.calculate_future_monthly(
-            monthly_desired=monthly_desired_amount,
-            inflation_rate=inflation_rate,
-            years=investment_years,
-        )
+        #    tog1(물가반영)은 프론트에서 처리하여 전달됨
+        #    monthly_desired_amount = 이미 은퇴당시 기준 금액
+        future_monthly = monthly_desired_amount
 
         # 2. 목표 은퇴자금 (물가O/물가X 각각)
         target_fund_inflation = cls.calculate_target_fund(
@@ -320,12 +331,29 @@ class CompoundCalcService:
         )
         required_holding = required_holding_inflation if with_inflation else required_holding_no_inflation
 
-        # 4. 시뮬레이션 테이블 (선택된 물가 기준)
+        # 3-1. 거치금이 마이너스면 적립만으로 충분 → 적립금 역산
+        sim_annual_savings = annual_savings
+        savings_adjusted = False
+        if required_holding < 0:
+            required_holding = 0
+            if with_inflation:
+                required_holding_inflation = 0
+            else:
+                required_holding_no_inflation = 0
+            sim_annual_savings = round(cls.calculate_required_annual_savings(
+                target_fund=target_fund,
+                expected_return_rate=expected_return_rate,
+                savings_period=savings_period,
+                holding_period=holding_period,
+            ))
+            savings_adjusted = True
+
+        # 4. 시뮬레이션 테이블 (플랜시작나이 기준, 목표금액에 맞춘 적립금 사용)
         simulation_table = cls.build_simulation_table(
-            current_age=current_age,
+            current_age=sim_start_age,
             investment_years=investment_years,
             savings_period=savings_period,
-            annual_savings=annual_savings,
+            annual_savings=sim_annual_savings,
             required_holding=required_holding,
             expected_return_rate=expected_return_rate,
         )
@@ -341,23 +369,27 @@ class CompoundCalcService:
             "required_holding_inflation": round(required_holding_inflation),
             "required_holding_no_inflation": round(required_holding_no_inflation),
             "simulation_table": simulation_table,
+            "savings_adjusted": savings_adjusted,
+            "adjusted_annual_savings": sim_annual_savings,
             # 하위 호환 필드 (구 API 연동)
             "target_total_fund": round(target_fund),
             "required_lump_sum": round(required_holding),
-            "required_annual_savings": annual_savings,
+            "required_annual_savings": sim_annual_savings,
             "calculation_params": {
                 "monthly_desired_amount": monthly_desired_amount,
                 "retirement_age": retirement_age,
                 "current_age": current_age,
                 "retirement_period_years": retirement_period_years,
                 "savings_period": savings_period,
-                "annual_savings": annual_savings,
+                "annual_savings": sim_annual_savings,
                 "inflation_rate": inflation_rate,
                 "pension_return_rate": pension_return_rate,
                 "expected_return_rate": expected_return_rate,
                 "with_inflation": with_inflation,
                 "investment_years": investment_years,
                 "holding_period": holding_period,
+                "savings_adjusted": savings_adjusted,
+                "original_annual_savings": annual_savings,
             },
         }
         return result

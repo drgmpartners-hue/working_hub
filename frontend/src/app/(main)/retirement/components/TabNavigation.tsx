@@ -9,7 +9,7 @@ interface TabItem {
 }
 
 const TABS: TabItem[] = [
-  { key: 'desired-plan', label: '희망은퇴플랜' },
+  { key: 'desired-plan', label: '은퇴플랜 설계' },
   { key: 'retirement-plan', label: '은퇴플랜' },
   { key: 'pension-plan', label: '연금수령 계획' },
   { key: 'investment-flow', label: '투자흐름' },

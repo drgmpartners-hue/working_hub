@@ -1520,15 +1520,15 @@ export function InvestmentFlowTab() {
                         <thead>
                           <tr style={{ backgroundColor: '#F9FAFB' }}>
                             {[
-                              { label: 'No', align: 'center', width: 44 },
-                              { label: '발생일', align: 'left', width: 110 },
-                              { label: '구분', align: 'center', width: 90 },
-                              { label: '상품명', align: 'left', width: 180 },
-                              { label: '입금액', align: 'right', width: 130 },
-                              { label: '출금액', align: 'right', width: 130 },
-                              { label: '잔액', align: 'right', width: 130 },
-                              { label: '메모', align: 'left' },
-                              { label: '액션', align: 'center', width: 90 },
+                              { label: 'No', align: 'center', width: 36 },
+                              { label: '발생일', align: 'center', width: 90 },
+                              { label: '구분', align: 'center', width: 52 },
+                              { label: '상품명', align: 'left', width: 120 },
+                              { label: '입금액', align: 'right', width: 110 },
+                              { label: '출금액', align: 'right', width: 110 },
+                              { label: '잔액', align: 'right', width: 110 },
+                              { label: '메모', align: 'left', width: 200 },
+                              { label: '액션', align: 'center', width: 70 },
                             ].map(({ label, align, width }) => (
                               <th
                                 key={label}
@@ -1753,7 +1753,7 @@ export function InvestmentFlowTab() {
                                   <td style={{ ...txTdRight, fontWeight: 700, color: '#1E3A5F' }}>
                                     {tx.balance.toLocaleString()}
                                   </td>
-                                  <td style={{ ...txTdBase, color: '#6B7280', maxWidth: 220, whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
+                                  <td style={{ ...txTdBase, color: '#6B7280', maxWidth: 200, fontSize: 11, lineHeight: '1.4', overflow: 'hidden', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' as const, wordBreak: 'break-word' }} title={tx.memo || ''}>
                                     {tx.memo || <span style={{ color: '#D1D5DB' }}>-</span>}
                                   </td>
                                   <td style={{ ...txTdCenter, whiteSpace: 'nowrap' }}>
@@ -2279,7 +2279,7 @@ export function InvestmentFlowTab() {
                       <td style={{ ...tdBase, backgroundColor: idx % 2 === 0 ? '#F8F9FC' : '#F2F4F9', color: '#6B7280' }}>
                         {record.original_maturity_date ?? '-'}
                       </td>
-                      <td style={{ ...tdBase, color: '#6B7280', maxWidth: 180, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      <td style={{ ...tdBase, color: '#6B7280', maxWidth: 180, fontSize: 11, lineHeight: '1.4', overflow: 'hidden', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' as const, wordBreak: 'break-word' }} title={record.memo || ''}>
                         {record.memo || '-'}
                       </td>
 

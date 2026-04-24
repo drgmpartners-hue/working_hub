@@ -65,10 +65,27 @@ async def create_client(
     name: str,
     memo: Optional[str] = None,
     ssn: Optional[str] = None,
+    birth_date=None,
+    phone: Optional[str] = None,
+    email: Optional[str] = None,
 ) -> Client:
     client_id = str(uuid.uuid4())
     unique_code = await _generate_unique_code(db)
     ssn_encrypted = encrypt_ssn(ssn) if ssn else None
+
+    # birth_date 문자열 → date 변환
+    parsed_birth = None
+    if birth_date:
+        if isinstance(birth_date, str):
+            from datetime import datetime as dt
+            for fmt in ("%Y-%m-%d", "%Y/%m/%d", "%Y.%m.%d"):
+                try:
+                    parsed_birth = dt.strptime(birth_date.strip(), fmt).date()
+                    break
+                except ValueError:
+                    continue
+        else:
+            parsed_birth = birth_date
 
     client = Client(
         id=client_id,
@@ -77,6 +94,9 @@ async def create_client(
         memo=memo,
         unique_code=unique_code,
         ssn_encrypted=ssn_encrypted,
+        birth_date=parsed_birth,
+        phone=phone,
+        email=email,
     )
     db.add(client)
     await db.commit()

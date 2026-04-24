@@ -254,7 +254,10 @@ async def create_client(
     db: AsyncSession = Depends(get_db),
 ):
     return await client_service.create_client(
-        db, current_user.id, body.name, body.memo, body.ssn
+        db, current_user.id, body.name, body.memo, body.ssn,
+        birth_date=body.birth_date,
+        phone=body.phone,
+        email=body.email,
     )
 
 

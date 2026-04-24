@@ -130,6 +130,34 @@ class DesiredPlanUpsert(BaseModel):
         description="연차별 시뮬레이션 상세 데이터 (수정된 월적립/거치금 포함)",
     )
 
+    plan_start_age: Optional[int] = Field(
+        default=None, ge=1, le=99,
+        description="플랜 시작 당시 나이 (투자기간 계산용, 없으면 current_age 사용)",
+    )
+
+    # ── 신규: 기존/수정 플랜 구분 데이터 ─────────────────────────────────
+    existing_return_rate: Optional[float] = Field(
+        default=None, description="기존 투자수익률 (예: 0.06 = 6%)",
+    )
+    recommended_return_rate: Optional[float] = Field(
+        default=None, description="추천 투자수익률 (예: 0.08 = 8%)",
+    )
+    recommended_pension_rate: Optional[float] = Field(
+        default=None, description="추천 연금수익률 (예: 0.045 = 4.5%)",
+    )
+    available_holding: Optional[int] = Field(
+        default=None, description="거치 가능금액 (원)",
+    )
+    base_pension_rate: Optional[float] = Field(
+        default=None, description="목표 은퇴자금 계산용 연금수익률 (원래 연금수익률)",
+    )
+    original_plan: Optional[list[dict[str, Any]]] = Field(
+        default=None, description="기존 은퇴플랜 시뮬레이션 데이터",
+    )
+    modified_plan: Optional[list[dict[str, Any]]] = Field(
+        default=None, description="수정 은퇴플랜 시뮬레이션 데이터",
+    )
+
     # 하위 호환 필드 (구 API - 무시됨)
     years_to_retirement: Optional[int] = Field(
         default=None,
@@ -158,6 +186,7 @@ class DesiredPlanCalculateRequest(BaseModel):
     pension_return_rate: float = Field(default=0.05, gt=0, le=1.0)
     expected_return_rate: float = Field(default=0.07, gt=0, le=1.0)
     with_inflation: bool = Field(default=False)
+    plan_start_age: Optional[int] = Field(default=None, ge=1, le=99)
 
 
 class SimulationRow(BaseModel):
