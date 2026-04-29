@@ -6,7 +6,7 @@ import { useRetirementStore } from '../../hooks/useRetirementStore';
 import { API_URL } from '@/lib/api-url';
 import { authLib } from '@/lib/auth';
 
-import { ExportButtons } from '../ExportButtons';
+// PDF export: desiredPlanPdf.ts
 const GrowthChart = dynamic(() => import('./GrowthChart'), { ssr: false });
 
 /* ================================================================
@@ -452,16 +452,88 @@ export function DesiredPlanTab() {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
 
-      {/* ==================== 내보내기 버튼 (상단) ==================== */}
+      {/* ==================== PDF 다운로드 버튼 ==================== */}
       <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
-        <ExportButtons
-          sectionGroups={[
-            ['pdf-tab1-target', 'pdf-tab1-invest', 'pdf-tab1-graph', 'pdf-tab1-plan'],
-          ]}
-          filename={`은퇴플랜설계_${selectedCustomer?.name ?? ''}.pdf`}
-          activeTab="은퇴플랜 설계"
-          customerInfo={customerInfo}
-        />
+        <button
+          onClick={async () => {
+            try {
+              const { generateDesiredPlanPdf } = await import('../../utils/desiredPlanPdf');
+              type PData = import('../../utils/desiredPlanPdf').DesiredPlanPdfData;
+              type CI = import('../../utils/desiredPlanPdf').CardItem;
+
+              const targetFundCards: CI[] = [
+                { label: '플랜 시작연도', value: `${planStartYear}년` },
+                { label: '희망 은퇴나이', value: `${retAge}세 (총 ${invYrs}년)` },
+                { label: '현재가치 연금액(월)', value: `${monthly.toLocaleString()}만원/월` },
+                { label: '은퇴당시 연금액(월)', value: tog1 ? `${futureM.toLocaleString()}만원/월` : `${monthly.toLocaleString()}만원/월`, highlight: true },
+                { label: '물가상승률', value: `${infRate}%` },
+                { label: '연금 수익률', value: `${penRate}%` },
+                { label: '연금 수령기간', value: `${retPeriod}년` },
+                { label: '목표 은퇴자금', value: fmtW(targetFund), highlight: true },
+              ];
+
+              const investCards: CI[] = [
+                { label: '적립기간', value: `${savYrs}년 (거치: ${holdYrs}년)` },
+                { label: '기존 투자수익률', value: `${exRate}%` },
+                { label: '적립 가능금액(연)', value: `${annSav.toLocaleString()}만원/연` },
+                { label: '필요 거치금액', value: fmtW(modReqHold), highlight: true },
+                { label: '추천 연금수익률', value: recPenR > 0 ? `${recPenR}%` : '미입력' },
+                { label: '추천 투자수익률', value: recRetR > 0 ? `${recRetR}%` : '미입력' },
+                { label: '거치 가능금액', value: holdAmt > 0 ? `${holdAmt.toLocaleString()}만원` : '-' },
+                { label: modBaseTarget !== targetFund ? '수정 목표 은퇴자금' : '추가 거치금액', value: modBaseTarget !== targetFund ? fmtW(modBaseTarget) : fmtW(extraHolding), highlight: modBaseTarget !== targetFund },
+              ];
+
+              const goalPlanCards: CI[] = [
+                { label: '목표 은퇴자금', value: fmtW(modTargetFund) },
+                { label: '은퇴당시 연금액(월)', value: tog1 ? `${futureM.toLocaleString()}만원/월` : `${monthly.toLocaleString()}만원/월` },
+                { label: '기대 투자수익률', value: `${modIR}%`, highlight: true },
+                { label: '기대 연금수익률', value: `${modPR}%`, highlight: true },
+                { label: '투자기간', value: `${invYrs}년 (적립 ${savYrs} + 거치 ${holdYrs})` },
+                { label: '적립금액(연)', value: `${annSav.toLocaleString()}만원/연` },
+                { label: '연거치 금액', value: fmtW(modHolding) },
+                { label: '상속금액', value: fmtW(inheritance), highlight: true },
+              ];
+
+              // 시뮬레이션 테이블 데이터 (simMod 사용)
+              type SRow = import('../../utils/desiredPlanPdf').SimRow;
+              let runCumPen = 0;
+              const simRows: SRow[] = simMod.map((r: any) => { // eslint-disable-line @typescript-eslint/no-explicit-any
+                const pen = r.pensionWithdraw ?? r.pension ?? 0;
+                runCumPen += pen;
+                const rawPhase = r.phase ?? '';
+                const phase = rawPhase === 'saving' ? '적립' : rawPhase === 'holding' ? '거치' : rawPhase === 'retirement' ? '은퇴후' : rawPhase;
+                return {
+                  calYear: (parseInt(planStartYear) || 2020) + (r.year ?? 0) - 1,
+                  year: r.year ?? 0, age: r.age ?? 0, phase,
+                  monthlyPayment: (r.monthlyPayment ?? 0) * 12,
+                  additional: r.additional ?? 0,
+                  cumulativePrincipal: r.cumulativePrincipal ?? 0,
+                  investmentReturn: r.investmentReturn ?? 0,
+                  pension: pen, cumPension: runCumPen,
+                  evaluation: r.evaluation ?? 0,
+                };
+              });
+
+              const pdfData: PData = {
+                customer: customerInfo ?? { name: '', birthDate: '', targetFund: '-', retireAge: '-' },
+                targetFundCards,
+                investCards,
+                goalPlanCards,
+                simRows,
+                retirementAge: retAge,
+                graphId: 'pdf-tab1-graph',
+              };
+
+              await generateDesiredPlanPdf(pdfData, `은퇴플랜설계_${selectedCustomer?.name ?? ''}_${new Date().toISOString().slice(0, 10)}.pdf`);
+            } catch (e: unknown) {
+              const msg = e instanceof Error ? e.message : String(e);
+              alert(`PDF 생성 실패: ${msg}`);
+            }
+          }}
+          style={{ padding: '8px 16px', fontSize: '13px', fontWeight: 600, borderRadius: '8px', cursor: 'pointer', border: 'none', backgroundColor: '#1E3A5F', color: '#fff', display: 'flex', alignItems: 'center', gap: '6px' }}
+        >
+          📄 PDF 다운로드
+        </button>
       </div>
 
       {/* ==================== 목표 은퇴자금 ==================== */}

@@ -173,6 +173,7 @@ async def get_annual_flow(
             "record_type": r.record_type,
             "investment_amount": r.investment_amount,
             "evaluation_amount": r.evaluation_amount,
+            "interim_evaluations": r.interim_evaluations or {},
             "status": r.status,
             "start_date": r.start_date,
             "end_date": r.end_date,
@@ -183,10 +184,10 @@ async def get_annual_flow(
 
     # 연적립금액: 예수금 적립 거래 합계
     flow["annual_savings_amount"] = annual_savings_amount
-    # 연간총수익: 순수 투자수익만 (이자 미포함)
-    # flow["annual_total_profit"]은 calculate_annual_flow에서 계산된 그대로 사용
-    # 입금액
-    flow["deposit_in_amount"] = deposit_in_amount
+    # 일시납금액: 예수금 입금(deposit) 거래 합계 (투자 제외, 거치금액 개념)
+    flow["lump_sum_amount"] = deposit_in_amount
+    # 입금액: 일시납 + 연적립
+    flow["deposit_in_amount"] = deposit_in_amount + annual_savings_amount
     # 인출금액: 투자기록 인출 + 예수금 출금
     flow["withdrawal_amount"] = flow["withdrawal_amount"] + withdrawal_from_deposit
     # 연수익률 재계산 (총납입 기준)
@@ -381,7 +382,7 @@ async def create_investment_record(
             investment_record_id=record.id,
             credit_amount=0,
             debit_amount=data.investment_amount,
-            memo=f"{product_label} 투자 자동생성",
+            memo=f"{product_label} 투자",
         )
         db.add(txn)
 
@@ -395,7 +396,7 @@ async def create_investment_record(
                 investment_record_id=record.id,
                 credit_amount=data.evaluation_amount,
                 debit_amount=0,
-                memo=f"{product_label} 종결 자동생성",
+                memo=f"{product_label} 종결 (투자: {record.start_date})",
             )
             db.add(txn_exit)
 
@@ -535,6 +536,7 @@ async def update_investment_record(
             existing_term.transaction_date = term_date
             existing_term.credit_amount = final_evaluation
             existing_term.related_product = product_label
+            existing_term.memo = f"{product_label} 종결 (투자: {record.start_date})"
             await db.flush()
             await recalculate_balances(deposit_acct_id, db)
         else:
@@ -547,7 +549,7 @@ async def update_investment_record(
                 investment_record_id=record.id,
                 credit_amount=final_evaluation,
                 debit_amount=0,
-                memo=f"{product_label} 종결 자동생성",
+                memo=f"{product_label} 종결 (투자: {record.start_date})",
             )
             db.add(txn)
             await db.flush()

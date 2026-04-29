@@ -26,10 +26,13 @@ interface AnnualFlowRow {
 /* ---- 공통 유틸 ---- */
 
 const formatAmount = (value: number) => {
-  if (value >= 100000000) return `${(value / 100000000).toFixed(1)}억`;
-  if (value >= 10000000) return `${(value / 10000000).toFixed(0)}천만`;
-  if (value >= 10000) return `${(value / 10000).toFixed(0)}만`;
-  return `${value.toLocaleString()}`;
+  if (value === 0) return '0';
+  const abs = Math.abs(value);
+  const sign = value < 0 ? '-' : '';
+  if (abs >= 100000000) return `${sign}${(abs / 100000000).toFixed(1)}억`;
+  if (abs >= 10000000) return `${sign}${(abs / 10000000).toFixed(0)}천만`;
+  if (abs >= 10000) return `${sign}${(abs / 10000).toFixed(0)}만`;
+  return `${sign}${abs.toLocaleString()}`;
 };
 
 const tooltipFmt = (value: unknown, name: unknown) => {
@@ -53,9 +56,10 @@ export interface FlowChartVisibility {
 interface FlowChartProps {
   data: AnnualFlowRow[];
   visibility: FlowChartVisibility;
+  noAnimation?: boolean;
 }
 
-export function AnnualFlowChart({ data, visibility }: FlowChartProps) {
+export function AnnualFlowChart({ data, visibility, noAnimation }: FlowChartProps) {
   const chartData = data.map((row) => ({
     year: `${row.year}`,
     총납입금액: row.total_contribution,
@@ -73,16 +77,16 @@ export function AnnualFlowChart({ data, visibility }: FlowChartProps) {
         <YAxis yAxisId="right" orientation="right" fontSize={11} tickLine={false} axisLine={false} tickFormatter={(v: number) => `${v.toFixed(1)}%`} width={50} />
         <Tooltip formatter={tooltipFmt} contentStyle={tooltipStyle} />
         {visibility.depositIn && (
-          <Bar yAxisId="left" dataKey="입금액" fill="#8B5CF6" opacity={0.6} barSize={24} radius={[3, 3, 0, 0]} />
+          <Bar yAxisId="left" dataKey="입금액" fill="#8B5CF6" opacity={0.6} barSize={24} radius={[3, 3, 0, 0]} isAnimationActive={!noAnimation} />
         )}
         {visibility.contribution && (
-          <Bar yAxisId="left" dataKey="총납입금액" fill="#4A90D9" opacity={0.7} barSize={24} radius={[3, 3, 0, 0]} />
+          <Bar yAxisId="left" dataKey="총납입금액" fill="#4A90D9" opacity={0.7} barSize={24} radius={[3, 3, 0, 0]} isAnimationActive={!noAnimation} />
         )}
         {visibility.annualReturn && (
-          <Bar yAxisId="left" dataKey="연간총수익" fill="#10B981" opacity={0.75} barSize={24} radius={[3, 3, 0, 0]} />
+          <Bar yAxisId="left" dataKey="연간총수익" fill="#10B981" opacity={0.75} barSize={24} radius={[3, 3, 0, 0]} isAnimationActive={!noAnimation} />
         )}
         {visibility.returnRate && (
-          <Line yAxisId="right" type="monotone" dataKey="연수익률" stroke="#F59E0B" strokeWidth={2.5} dot={{ r: 4, fill: '#F59E0B' }} activeDot={{ r: 6 }} />
+          <Line yAxisId="right" type="monotone" dataKey="연수익률" stroke="#F59E0B" strokeWidth={2.5} dot={{ r: 4, fill: '#F59E0B' }} activeDot={{ r: 6 }} isAnimationActive={!noAnimation} />
         )}
       </ComposedChart>
     </ResponsiveContainer>
@@ -101,9 +105,10 @@ export interface NetAssetChartVisibility {
 interface NetAssetChartProps {
   data: AnnualFlowRow[];
   visibility: NetAssetChartVisibility;
+  noAnimation?: boolean;
 }
 
-export function NetAssetChart({ data, visibility }: NetAssetChartProps) {
+export function NetAssetChart({ data, visibility, noAnimation }: NetAssetChartProps) {
   const chartData = data.map((row) => {
     const cumDep = row.cumulative_deposit_in;
     const cumWith = row.cumulative_withdrawal;
@@ -128,16 +133,16 @@ export function NetAssetChart({ data, visibility }: NetAssetChartProps) {
         <YAxis yAxisId="right" orientation="right" fontSize={11} tickLine={false} axisLine={false} tickFormatter={(v: number) => `${v.toFixed(1)}%`} width={50} />
         <Tooltip formatter={tooltipFmt} contentStyle={tooltipStyle} />
         {visibility.cumulativeDeposit && (
-          <Bar yAxisId="left" dataKey="누적입금액" fill="#4A90D9" opacity={0.5} barSize={28} radius={[3, 3, 0, 0]} />
+          <Bar yAxisId="left" dataKey="누적입금액" fill="#4A90D9" opacity={0.5} barSize={28} radius={[3, 3, 0, 0]} isAnimationActive={!noAnimation} />
         )}
         {visibility.netAsset && (
-          <Bar yAxisId="left" dataKey="순자산" fill="#1E3A5F" opacity={0.85} barSize={28} radius={[3, 3, 0, 0]} />
+          <Bar yAxisId="left" dataKey="순자산" fill="#1E3A5F" opacity={0.85} barSize={28} radius={[3, 3, 0, 0]} isAnimationActive={!noAnimation} />
         )}
         {visibility.cumulativeProfit && (
-          <Bar yAxisId="left" dataKey="순이익" fill="#10B981" opacity={0.7} barSize={28} radius={[3, 3, 0, 0]} />
+          <Bar yAxisId="left" dataKey="순이익" fill="#10B981" opacity={0.7} barSize={28} radius={[3, 3, 0, 0]} isAnimationActive={!noAnimation} />
         )}
         {visibility.netAssetReturnRate && (
-          <Line yAxisId="right" type="monotone" dataKey="순자산수익률" stroke="#F59E0B" strokeWidth={2.5} dot={{ r: 4, fill: '#F59E0B' }} activeDot={{ r: 6 }} />
+          <Line yAxisId="right" type="monotone" dataKey="순자산수익률" stroke="#F59E0B" strokeWidth={2.5} dot={{ r: 4, fill: '#F59E0B' }} activeDot={{ r: 6 }} isAnimationActive={!noAnimation} />
         )}
       </ComposedChart>
     </ResponsiveContainer>

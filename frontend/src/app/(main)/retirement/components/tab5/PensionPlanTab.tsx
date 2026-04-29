@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import dynamic from 'next/dynamic';
 import { useRetirementStore } from '../../hooks/useRetirementStore';
-import { ExportButtons } from '../ExportButtons';
+// PDF export는 pensionPlanPdf.ts 사용
 import { API_URL } from '@/lib/api-url';
 import { authLib } from '@/lib/auth';
 
@@ -196,8 +196,9 @@ function calcFixed(pv: number, rate: number, periodYears: number, retireAge: num
 
 function calcInfinite(pv: number, rate: number, periodYears: number, retireAge: number): InfiniteResult {
   const annual = pv * rate;
+  const chartYears = 120 - retireAge; // 120세까지 차트 데이터 생성
   const chartData: ChartPoint[] = [];
-  for (let yr = 1; yr <= periodYears; yr++) {
+  for (let yr = 1; yr <= chartYears; yr++) {
     chartData.push({ age: retireAge + yr, balance: Math.round(pv), pension: Math.round(annual) });
   }
   return { annualPension: annual, monthlyPension: annual / 12, totalPension: annual * periodYears, inheritanceAmount: pv, chartData };
@@ -365,27 +366,133 @@ export function PensionPlanTab() {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '24px', maxWidth: '1100px', margin: '0 auto' }}>
 
-      {/* 내보내기 버튼 */}
+      {/* PDF 다운로드 버튼 */}
       <div className="no-print" style={{ display: 'flex', justifyContent: 'flex-end' }}>
-        <ExportButtons
-          sectionGroups={[
-            ['pdf-tab3-compare'],
-            ['pdf-tab3-option'],
-            ['pdf-tab3-goal'],
-          ]}
-          filename={`연금수령계획_${selectedCustomer?.name ?? ''}.pdf`}
-          activeTab="연금수령 계획"
-          customerInfo={selectedCustomer ? {
-            name: selectedCustomer.name,
-            birthDate: selectedCustomer.birthDate ?? '-',
-            targetFund: selectedCustomer.targetFund > 0
-              ? (selectedCustomer.targetFund >= 1e8
-                  ? `${(selectedCustomer.targetFund / 1e8).toFixed(1)}억원`
-                  : `${selectedCustomer.targetFund.toLocaleString()}만원`)
-              : '-',
-            retireAge: selectedCustomer.retirementAge > 0 ? String(selectedCustomer.retirementAge) : '-',
-          } : undefined}
-        />
+        <button
+          onClick={async () => {
+            try {
+              const { generatePensionPlanPdf } = await import('../../utils/pensionPlanPdf');
+              type PData = import('../../utils/pensionPlanPdf').PensionPdfData;
+              type CRow = import('../../utils/pensionPlanPdf').ComparisonRow;
+
+              const customer = {
+                name: selectedCustomer?.name ?? '',
+                birthDate: selectedCustomer?.birthDate ?? '',
+                targetFund: selectedCustomer?.targetFund && selectedCustomer.targetFund >= 1e8 ? `${(selectedCustomer.targetFund / 1e8).toFixed(1)}억원` : `${(selectedCustomer?.targetFund ?? 0).toLocaleString()}만원`,
+                retireAge: String(selectedCustomer?.retirementAge ?? '-'),
+              };
+
+              // 비교 테이블 데이터
+              const compRows: CRow[] = [];
+              // 종신형
+              compRows.push({ type: '종신형', customer: 'A고객', rate: `연금수익률 (${(basePenRate*100).toFixed(1)}%)`, period: `평생 (경험생명표 120세, ${lifetimeYears}년)`, monthly: `${fmt(Math.round(compareLifetimeMonthlyA / 1e4))}만원`, inheritance: '잔존연금' });
+              if (recPenRate) compRows.push({ type: '', customer: 'B고객', rate: `추천수익률 (${(recPenRate*100).toFixed(1)}%)`, period: '', monthly: `${fmt(Math.round(compareLifetimeMonthlyB / 1e4))}만원`, inheritance: '' });
+              // 확정형
+              compRows.push({ type: '확정형', customer: 'A고객', rate: `연금수익률 (${(basePenRate*100).toFixed(1)}%)`, period: '확정 30년', monthly: `${fmt(Math.round(compareFixedMonthlyA / 1e4))}만원`, inheritance: '잔존연금 또는 없음' });
+              if (recPenRate) compRows.push({ type: '', customer: 'B고객', rate: `추천수익률 (${(recPenRate*100).toFixed(1)}%)`, period: '', monthly: `${fmt(Math.round(compareFixedMonthlyB / 1e4))}만원`, inheritance: '' });
+              // 무한지급형
+              compRows.push({ type: '무한지급형', customer: 'A고객', rate: `연금수익률 (${(basePenRate*100).toFixed(1)}%)`, period: '평생', monthly: `${fmt(Math.round(compareInfiniteMonthlyA / 1e4))}만원`, inheritance: '연금재원 상당' });
+              if (recPenRate) compRows.push({ type: '', customer: 'B고객', rate: `추천수익률 (${(recPenRate*100).toFixed(1)}%)`, period: '', monthly: `${fmt(Math.round(compareInfiniteMonthlyB / 1e4))}만원`, inheritance: '' });
+
+              const lr = lifetimeResult;
+              const fr = fixedResult;
+              const ir = infiniteResult;
+
+              // 3개 탭 차트를 순회하며 캡처
+              const html2canvas = (await import('html2canvas')).default;
+              const chartImages: { lifetime?: string; fixed?: string; infinite?: string } = {};
+              const origTab = optionTab;
+              for (const [idx, key] of [[0, 'lifetime'], [1, 'fixed'], [2, 'infinite']] as [number, string][]) {
+                setOptionTab(idx);
+                await new Promise(r => setTimeout(r, 800)); // Recharts 렌더링 대기
+                const chartId = `pension-chart-${key}`;
+                const el = document.getElementById(chartId);
+                if (el && el.offsetHeight > 0) {
+                  try {
+                    const canvas = await html2canvas(el, { scale: 2, useCORS: true, backgroundColor: '#fff', logging: false });
+                    if (canvas.width > 0 && canvas.height > 0) {
+                      chartImages[key as keyof typeof chartImages] = canvas.toDataURL('image/jpeg', 0.92);
+                    }
+                  } catch { /* skip */ }
+                }
+              }
+              setOptionTab(origTab);
+
+              const pdfData: PData = {
+                customer,
+                pensionFundA: fmtW(pensionFundA),
+                pensionFundB: fmtW(pensionFundB),
+                retireAge,
+                comparisonRows: compRows,
+                // 종신형
+                lifetimeCards: [
+                  { label: '연금재원', value: fmtW(pensionFund) },
+                  { label: '연금수익률', value: `${lifetimeRate}%` },
+                  { label: '연금수령기간', value: `${lifetimeYears}년 (${retireAge}세~120세)` },
+                  { label: '연금액 (월)', value: `${fmt(Math.round(lr.monthlyPension / 1e4))}만원` },
+                  { label: '연금액 (연)', value: fmtW(lr.annualPension) },
+                ],
+                lifetimeMilestones: [
+                  { title: `10년차 (${retireAge + 10}세)`, items: [
+                    { label: '수령한 원금', value: fmtW(lr.milestone10yr.cumPrincipal) },
+                    { label: '수령한 이자', value: fmtW(lr.milestone10yr.cumInterest) },
+                    { label: '총 수령연금', value: fmtW(lr.milestone10yr.totalReceived) },
+                    { label: '남은 원금', value: fmtW(lr.milestone10yr.balance) },
+                  ]},
+                  { title: '100세', items: [
+                    { label: '수령한 원금', value: fmtW(lr.milestone100age.cumPrincipal) },
+                    { label: '수령한 이자', value: fmtW(lr.milestone100age.cumInterest) },
+                    { label: '총 수령연금', value: fmtW(lr.milestone100age.totalReceived) },
+                    { label: '남은 원금', value: fmtW(lr.milestone100age.balance) },
+                  ]},
+                ],
+                // 확정형
+                fixedCards: [
+                  { label: '연금재원', value: fmtW(pensionFund) },
+                  { label: '연금수익률', value: `${fixedRate}%` },
+                  { label: '연금수령기간', value: `${fixedPeriod}년 (${retireAge}세~${retireAge + (parseInt(fixedPeriod) || 30)}세)` },
+                  { label: '연금액 (월/연)', value: `${fmt(Math.round(fr.monthlyPension / 1e4))}만원 / ${fmtW(fr.annualPension)}` },
+                  { label: '총 수령연금', value: fmtW(fr.totalReceived) },
+                  { label: '총 수령이자', value: fmtW(fr.totalInterest) },
+                ],
+                // 무한지급형
+                infiniteCards: [
+                  { label: '연금재원', value: fmtW(pensionFund) },
+                  { label: '연금수익률', value: `${infiniteRate}%` },
+                  { label: '수령기간', value: '평생' },
+                  { label: '연금액 (월/연)', value: `${fmt(Math.round(ir.monthlyPension / 1e4))}만원 / ${fmtW(ir.annualPension)}` },
+                  { label: '총 연금액', value: fmtW(ir.totalPension) },
+                  { label: '상속재원', value: fmtW(ir.inheritanceAmount) },
+                ],
+                chartImages,
+                // 목표달성 플랜
+                goalInfo: [
+                  { label: '목표금액', value: fmtW(pensionFund) },
+                  { label: '은퇴나이', value: `${retireAge}세 (${savingYears + holdingYears}년)` },
+                  { label: '예상 수익률', value: `${(expectedRate * 100).toFixed(1)}%` },
+                  { label: '투자기간', value: `적립 ${savingYears}년 + 거치 ${holdingYears}년` },
+                  { label: '거치금액 시작값', value: `${baseLumpSum}만원 (이후 +1억씩 증가)` },
+                ],
+                goalRows: goalRows.map(r => ({
+                  lumpSum: fmtW(r.lumpSum),
+                  annualSavings: fmtW(r.annualSavings),
+                  pensionRate: `${(r.pensionRate * 100).toFixed(0)}%`,
+                  monthlyPension: `${fmt(Math.round(r.monthlyPension / 1e4))}만원/월`,
+                  inheritance100: fmtW(r.inheritance100),
+                  inheritancePositive: r.inheritance100 >= 0,
+                })),
+              };
+
+              await generatePensionPlanPdf(pdfData, `연금수령계획_${selectedCustomer?.name ?? ''}_${new Date().toISOString().slice(0, 10)}.pdf`);
+            } catch (e: unknown) {
+              const msg = e instanceof Error ? e.message : String(e);
+              alert(`PDF 생성 실패: ${msg}`);
+            }
+          }}
+          style={{ padding: '8px 16px', fontSize: '13px', fontWeight: 600, borderRadius: '8px', cursor: 'pointer', border: 'none', backgroundColor: '#1E3A5F', color: '#fff', display: 'flex', alignItems: 'center', gap: '6px' }}
+        >
+          📄 PDF 다운로드
+        </button>
       </div>
 
       {/* ===== 섹션1: 연금전환 옵션 비교 ===== */}
@@ -572,16 +679,18 @@ function LifetimeSection({ pv, rate, setRate, retireAge, result, pensionRateFrom
       </div>
 
       {/* 그래프: 매년 연금의 원금/이자 구성 */}
-      <div>
+      <div id="pension-chart-lifetime">
         <div style={{ fontSize: '13px', fontWeight: 600, color: '#374151', marginBottom: '8px' }}>연금 수령 구성 (원금 vs 이자)</div>
-        <PensionOptionChart data={result.yearlyData.map(d => ({
-          age: d.age,
-          balance: Math.round(d.yearPrincipal),
-          pension: Math.round(d.yearInterest),
-        }))} type="lifetime" retireAge={retireAge} showBalance isComposition />
+        <PensionOptionChart data={result.yearlyData.map(d => {
+          // 연간연금 = 원금 + 이자 (일정). 원금이 음수면 이자가 연금액 초과 → 전액 이자 처리
+          const annPmt = d.yearPrincipal + d.yearInterest;
+          const principal = Math.max(0, d.yearPrincipal);
+          const interest = annPmt - principal; // 원금이 0이면 이자=전액연금
+          return { age: d.age, balance: Math.round(principal), pension: Math.round(interest) };
+        })} type="lifetime" retireAge={retireAge} showBalance isComposition />
         <div style={{ display: 'flex', gap: '16px', justifyContent: 'center', marginTop: '8px', fontSize: '11px' }}>
-          <span><span style={{ display: 'inline-block', width: 12, height: 12, backgroundColor: 'rgba(30,58,95,0.15)', border: '1px solid #1E3A5F', borderRadius: 2, marginRight: 4, verticalAlign: 'middle' }} />원금 수령분</span>
-          <span><span style={{ display: 'inline-block', width: 12, height: 12, backgroundColor: '#F59E0B', borderRadius: 2, marginRight: 4, verticalAlign: 'middle' }} />이자 수령분</span>
+          <span><span style={{ display: 'inline-block', width: 12, height: 12, backgroundColor: '#F59E0B', borderRadius: 2, marginRight: 4, verticalAlign: 'middle' }} />이자 수령분 (감소)</span>
+          <span><span style={{ display: 'inline-block', width: 12, height: 12, backgroundColor: '#1E3A5F', borderRadius: 2, marginRight: 4, verticalAlign: 'middle' }} />원금 수령분 (증가)</span>
         </div>
       </div>
 
@@ -656,7 +765,7 @@ function FixedSection({ pv, rate, setRate, period, setPeriod, retireAge, result 
       </div>
 
       {/* 그래프: 120세까지, 수령기간만 바 표시 */}
-      <div>
+      <div id="pension-chart-fixed">
         <div style={{ fontSize: '13px', fontWeight: 600, color: '#374151', marginBottom: '8px' }}>연금수령 그래프</div>
         <PensionOptionChart data={fullChartData} type="fixed" retireAge={retireAge} />
       </div>
@@ -710,7 +819,7 @@ function InfiniteSection({ pv, rate, setRate, period, setPeriod, retireAge, resu
       </div>
 
       {/* 그래프: 120세까지 */}
-      <div>
+      <div id="pension-chart-infinite">
         <div style={{ fontSize: '13px', fontWeight: 600, color: '#374151', marginBottom: '8px' }}>연금수령 그래프</div>
         <PensionOptionChart data={fullChartData} type="infinite" retireAge={retireAge} showBalance />
       </div>

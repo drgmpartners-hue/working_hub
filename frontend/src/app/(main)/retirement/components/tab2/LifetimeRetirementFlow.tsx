@@ -297,8 +297,9 @@ function calcLifetimeRows(
   overrides: Record<number, YearOverride>,
   planStartYear: number
 ): LifetimeRow[] {
-  const expectedReturnRateBase = data.expected_return_rate ?? 0.06;
-  const retirementPensionRate = data.retirement_pension_rate ?? expectedReturnRateBase;
+  const p = (data as any).calculation_params || {};
+  const expectedReturnRateBase = (p.recommended_return_rate as number) ?? (p.existing_return_rate as number) ?? (data.expected_return_rate ?? 0.06);
+  const retirementPensionRate = (p.recommended_pension_rate as number) ?? (p.base_pension_rate as number) ?? (data.retirement_pension_rate ?? expectedReturnRateBase);
 
   // 1번탭 simulation_data를 그대로 사용 (연도, 연차, 나이, 구분, 누적원금, 총평가액 등 고정)
   const simData = (data.simulation_data ?? []) as Record<string, unknown>[];
@@ -308,6 +309,7 @@ function calcLifetimeRows(
   let prevNetAsset = 0;
   let needsRecalc = false; // override나 보정이 발생하면 이후 행 전체 재계산
   let currentDepositIn = 0; // 해당 연도 입금액
+  let cumulativeDepositIn = 0; // 누적 입금액
   let runningPension = 0;  // override 반영된 누적 중도인출
   const appliedYearKeys = Object.keys(appliedYears).map(Number).sort((a, b) => a - b);
 
@@ -394,6 +396,15 @@ function calcLifetimeRows(
       ? (appliedNetAssetReturnRate || 0)
       : (prevNetAsset > 0 ? ((adjustedNetAsset - prevNetAsset) / prevNetAsset * 100) : 0);
 
+    // 누적 입금액 계산
+    if (isAdjusted) {
+      // 적용된 행: 해당 연도 입금액을 누적에 더함
+      cumulativeDepositIn += currentDepositIn;
+    } else {
+      // 미적용: 누적원금을 그대로 사용
+      cumulativeDepositIn = origPrincipal;
+    }
+
     rows.push({
       year,
       calendarYear,
@@ -404,7 +415,7 @@ function calcLifetimeRows(
       annualSavings: appliedSavings,
       lumpSum: appliedLumpSum,
       returnRate: appliedReturnRate,
-      depositIn: currentDepositIn,
+      depositIn: cumulativeDepositIn,
       adjustedEvaluation,
       pension: ovPension,
       cumulativePension: runningPension,
@@ -606,7 +617,7 @@ function LifetimeTable({
             <th style={{ ...thStyle, color: '#2563EB' }}>일시납금액 ✎</th>
             <th style={{ ...thCenter, color: '#2563EB' }}>예상수익률 ✎</th>
             <th style={thStyle}>보정평가금액</th>
-            <th style={thStyle}>입금액</th>
+            <th style={thStyle}>누적 입금액</th>
             <th style={{ ...thStyle, color: '#DC2626' }}>중도인출 ✎</th>
             <th style={{ ...thStyle, color: '#DC2626' }}>중도인출누적</th>
             <th style={{ ...thStyle, color: '#1E3A5F' }}>보정후순자산</th>
@@ -867,7 +878,8 @@ export function LifetimeRetirementFlow({
   desiredPlanData: propDesiredPlanData,
   annualFlowData,
   appliedYears,
-}: LifetimeRetirementFlowProps) {
+  onRowsChange,
+}: LifetimeRetirementFlowProps & { onRowsChange?: (rows: LifetimeRow[]) => void }) {
   void annualFlowData;
   const { selectedCustomerId } = useRetirementStore();
 
@@ -935,6 +947,8 @@ export function LifetimeRetirementFlow({
     return calcLifetimeRows(currentAge, planData, appliedYears, overrides, startYear);
   }, [planData, currentAge, appliedYears, overrides, startYear]);
 
+  useEffect(() => { onRowsChange?.(rows); }, [rows, onRowsChange]);
+
   const retirementAge = planData?.desired_retirement_age ?? 65;
 
   // 수정된 셀 카운트
@@ -947,7 +961,7 @@ export function LifetimeRetirementFlow({
   const chartData = useMemo(() => {
     return rows.map((r) => ({
       age: r.age,
-      입금액: Math.round(r.depositIn),
+      '누적 입금액': Math.round(r.depositIn),
       총평가액: Math.round(r.totalEvaluation),
       보정후순자산: Math.round(r.adjustedNetAsset),
       phase: r.phase,
@@ -1074,10 +1088,13 @@ export function LifetimeRetirementFlow({
             데이터가 없습니다.
           </div>
         ) : (
-          <LifetimeFlowChart
-            data={chartData}
-            retirementAge={retirementAge}
-          />
+          <div id="print-chart-lifetime" className="print-chart-wrap">
+            <LifetimeFlowChart
+              data={chartData}
+              retirementAge={retirementAge}
+              noAnimation
+            />
+          </div>
         )}
       </AccordionSection>
     </div>

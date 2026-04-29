@@ -25,6 +25,7 @@ class InvestmentRecordBase(BaseModel):
     original_maturity_date: Optional[date] = Field(None, description="원만기일")
     predecessor_id: Optional[int] = Field(None, description="이전 상품 ID (자기참조)")
     successor_id: Optional[int] = Field(None, description="다음 상품 ID (자기참조)")
+    interim_evaluations: Optional[dict] = Field(None, description="중간평가 JSON: {연도: 평가금액}")
     memo: Optional[str] = Field(None, description="메모")
 
     @field_validator("investment_amount")
@@ -55,6 +56,7 @@ class InvestmentRecordUpdate(BaseModel):
     original_maturity_date: Optional[date] = None
     predecessor_id: Optional[int] = None
     successor_id: Optional[int] = None
+    interim_evaluations: Optional[dict] = None
     memo: Optional[str] = None
 
     @field_validator("investment_amount")
@@ -68,6 +70,7 @@ class InvestmentRecordUpdate(BaseModel):
 class InvestmentRecordResponse(InvestmentRecordBase):
     id: int
     return_rate: Optional[Decimal] = None
+    interim_evaluations: Optional[dict] = None
     created_at: datetime
     updated_at: datetime
 

@@ -63,10 +63,13 @@ export default function PensionOptionChart({ data, type, retireAge, showBalance,
   if (!data.length) return <div style={{ padding: '40px', textAlign: 'center', color: '#9CA3AF', fontSize: '13px' }}>데이터 없음</div>;
 
   const c = COLORS[type];
-  // Y축: showBalance면 잔액+연금 중 최대, 아니면 연금만 기준
+  // Y축: composition이면 합계 기준, showBalance면 잔액+연금 중 최대
   const maxPension = Math.max(...data.map(d => d.pension).filter(v => v > 0), 0);
-  const maxBalance = showBalance ? Math.max(...data.map(d => d.balance).filter(v => v > 0), 0) : 0;
-  const yMax = Math.max(maxPension, maxBalance) * 1.15 || 1;
+  const maxBalance = showBalance || isComposition ? Math.max(...data.map(d => d.balance).filter(v => v > 0), 0) : 0;
+  const maxTotal = isComposition ? Math.max(...data.map(d => d.pension + d.balance)) : 0;
+  const yMax = isComposition
+    ? maxTotal * 1.05  // composition: 연간연금에 딱 맞게 (5% 여유)
+    : Math.max(maxPension, maxBalance) * 1.15 || 1;
 
   const markers: { age: number; label: string }[] = [];
   if (type === 'lifetime') {
@@ -89,10 +92,16 @@ export default function PensionOptionChart({ data, type, retireAge, showBalance,
             interval={type === 'lifetime' ? 9 : type === 'infinite' ? 4 : 'preserveStartEnd'} />
           <YAxis fontSize={10} tick={{ fill: '#9CA3AF' }} tickFormatter={fmtAxis} domain={[0, yMax]} />
           <Tooltip content={<CustomTooltip isComposition={isComposition} />} />
-          {showBalance && <Area type="monotone" dataKey="balance" name="balance" fill={c.fill} stroke={c.balance} strokeWidth={2} />}
-          {type === 'infinite'
-            ? <Line type="monotone" dataKey="pension" name="pension" stroke={c.pension} strokeWidth={2} dot={false} />
-            : <Bar dataKey="pension" name="pension" fill={c.pension} opacity={0.6} barSize={type === 'fixed' ? 12 : 6} />}
+          {isComposition ? (<>
+            {/* 스택 바: 아래=이자(감소), 위=원금(증가) → 총합 일정 */}
+            <Bar dataKey="pension" name="pension" stackId="comp" fill="#F59E0B" opacity={0.75} barSize={8} />
+            <Bar dataKey="balance" name="balance" stackId="comp" fill="#1E3A5F" opacity={0.85} barSize={8} />
+          </>) : (<>
+            {showBalance && <Area type="monotone" dataKey="balance" name="balance" fill={c.fill} stroke={c.balance} strokeWidth={2} />}
+            {type === 'infinite'
+              ? <Line type="monotone" dataKey="pension" name="pension" stroke={c.pension} strokeWidth={2} dot={false} />
+              : <Bar dataKey="pension" name="pension" fill={c.pension} opacity={0.6} barSize={type === 'fixed' ? 12 : 6} />}
+          </>)}
           {markers.filter(m => m.age >= (data[0]?.age ?? 0) && m.age <= (data[data.length - 1]?.age ?? 999)).map(m => (
             <ReferenceLine key={m.age} x={m.age} stroke="#9CA3AF" strokeDasharray="4 4"
               label={{ value: m.label, position: 'top', fontSize: 10, fill: '#6B7280' }} />

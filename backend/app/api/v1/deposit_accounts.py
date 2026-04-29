@@ -55,6 +55,80 @@ async def recalculate_balances(account_id: int, db: AsyncSession) -> None:
 
 
 # ---------------------------------------------------------------------------
+# POST /retirement/deposit-accounts/{id}/recalculate
+# ---------------------------------------------------------------------------
+
+@router.post(
+    "/{account_id}/recalculate",
+    summary="예수금 계좌 투자기록 기반 재계산",
+    status_code=200,
+)
+async def recalculate_account(
+    account_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """투자기록 기반으로 자동생성된 거래를 일괄 재동기화하고 잔액을 재계산합니다."""
+    from app.models.investment_record import InvestmentRecord
+
+    # 1. 해당 계좌에 연결된 투자기록 조회
+    rec_result = await db.execute(
+        select(InvestmentRecord).where(InvestmentRecord.deposit_account_id == account_id)
+    )
+    records = rec_result.scalars().all()
+
+    updated_count = 0
+
+    for record in records:
+        # 상품명 조회
+        product_label = record.product_name or ""
+        if record.wrap_account_id:
+            from app.models.wrap_account import WrapAccount
+            wa_r = await db.execute(select(WrapAccount).where(WrapAccount.id == record.wrap_account_id))
+            wa = wa_r.scalar_one_or_none()
+            if wa:
+                product_label = wa.product_name
+
+        # 투자(출금) 거래 동기화
+        invest_r = await db.execute(
+            select(DepositTransaction).where(
+                DepositTransaction.investment_record_id == record.id,
+                DepositTransaction.transaction_type == "investment",
+            )
+        )
+        invest_txn = invest_r.scalar_one_or_none()
+        if invest_txn:
+            invest_txn.transaction_date = record.start_date
+            invest_txn.debit_amount = record.investment_amount
+            invest_txn.related_product = product_label
+            updated_count += 1
+
+        # 종결(입금) 거래 동기화
+        if record.status == "exit" and record.evaluation_amount:
+            term_r = await db.execute(
+                select(DepositTransaction).where(
+                    DepositTransaction.investment_record_id == record.id,
+                    DepositTransaction.transaction_type == "termination",
+                )
+            )
+            term_txn = term_r.scalar_one_or_none()
+            term_date = record.actual_maturity_date or record.end_date or record.start_date
+            if term_txn:
+                term_txn.transaction_date = term_date
+                term_txn.credit_amount = record.evaluation_amount
+                term_txn.related_product = product_label
+                term_txn.memo = f"{product_label} 종결 (투자: {record.start_date})"
+                updated_count += 1
+
+    # 2. 잔액 재계산
+    await db.flush()
+    await recalculate_balances(account_id, db)
+    await db.commit()
+
+    return {"message": f"{updated_count}건 동기화 완료", "updated_count": updated_count}
+
+
+# ---------------------------------------------------------------------------
 # GET /retirement/deposit-accounts?customer_id={cid}
 # ---------------------------------------------------------------------------
 

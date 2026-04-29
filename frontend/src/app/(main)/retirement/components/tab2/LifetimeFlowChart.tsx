@@ -19,7 +19,7 @@ import {
 
 interface ChartDataPoint {
   age: number;
-  입금액: number;
+  '누적 입금액': number;
   총평가액: number;
   보정후순자산: number;
   phase: string;
@@ -29,6 +29,7 @@ interface ChartDataPoint {
 interface LifetimeFlowChartProps {
   data: ChartDataPoint[];
   retirementAge: number;
+  noAnimation?: boolean;
 }
 
 /* ------------------------------------------------------------------ */
@@ -97,7 +98,7 @@ function CustomTooltip({ active, payload, label }: {
 /*  메인 차트 컴포넌트                                                   */
 /* ------------------------------------------------------------------ */
 
-export function LifetimeFlowChart({ data, retirementAge }: LifetimeFlowChartProps) {
+export function LifetimeFlowChart({ data, retirementAge, noAnimation }: LifetimeFlowChartProps) {
   return (
     <ResponsiveContainer width="100%" height={400}>
       <ComposedChart data={data} margin={{ top: 16, right: 24, left: 16, bottom: 8 }}>
@@ -130,7 +131,8 @@ export function LifetimeFlowChart({ data, retirementAge }: LifetimeFlowChartProp
         <Legend
           iconType="square"
           iconSize={10}
-          wrapperStyle={{ fontSize: 12, paddingTop: 8 }}
+          wrapperStyle={{ fontSize: 11, paddingTop: 8 }}
+          formatter={(value: string) => <span style={{ color: '#374151', fontSize: 11 }}>{value}</span>}
         />
 
         {/* 은퇴나이 기준선 */}
@@ -148,15 +150,16 @@ export function LifetimeFlowChart({ data, retirementAge }: LifetimeFlowChartProp
           }}
         />
 
-        {/* 입금액 Area (Navy) */}
+        {/* 누적 입금액 Area (Navy) */}
         <Area
           type="monotone"
-          dataKey="입금액"
+          dataKey="누적 입금액"
           stroke="#1E3A5F"
           strokeWidth={1.5}
           fill="url(#principalGrad)"
           dot={false}
           activeDot={{ r: 4 }}
+          isAnimationActive={!noAnimation}
         />
 
         {/* 총 평가액 Line (연한 파란) */}
@@ -168,6 +171,7 @@ export function LifetimeFlowChart({ data, retirementAge }: LifetimeFlowChartProp
           dot={false}
           activeDot={{ r: 4 }}
           strokeDasharray="4 2"
+          isAnimationActive={!noAnimation}
         />
 
         {/* 보정후순자산 Line (Teal 실선) */}
@@ -178,6 +182,7 @@ export function LifetimeFlowChart({ data, retirementAge }: LifetimeFlowChartProp
           strokeWidth={2.5}
           dot={false}
           activeDot={{ r: 5, fill: '#0D9488' }}
+          isAnimationActive={!noAnimation}
         />
       </ComposedChart>
     </ResponsiveContainer>

@@ -348,11 +348,13 @@ async def update_calculation_params(
     if not plan:
         raise HTTPException(status_code=404, detail="플랜을 찾을 수 없습니다.")
 
-    # calculation_params 병합
-    params = plan.calculation_params or {}
+    # calculation_params 병합 (새 dict 생성으로 SQLAlchemy 변경 감지 보장)
+    existing = dict(plan.calculation_params or {})
     new_params = body.get("calculation_params", {})
-    params.update(new_params)
-    plan.calculation_params = params
+    existing.update(new_params)
+    plan.calculation_params = existing  # 새 dict 할당 → 변경 감지 OK
+    from sqlalchemy.orm.attributes import flag_modified
+    flag_modified(plan, "calculation_params")
 
     await db.commit()
     return {"status": "ok"}

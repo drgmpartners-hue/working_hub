@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import dynamic from 'next/dynamic';
 import { Button } from '@/components/common/Button';
-import { ExportButtons } from '../ExportButtons';
+// PDF export: retirementPlanPdf.ts
 import { useRetirementStore } from '../../hooks/useRetirementStore';
 import { formatCurrency, formatInputCurrency, parseCurrency } from '../../utils/formatCurrency';
 import { API_URL } from '@/lib/api-url';
@@ -614,23 +614,107 @@ export function RetirementPlanTab() {
         margin: '0 auto',
       }}
     >
-      {/* 내보내기 버튼 */}
+      {/* PDF 다운로드 버튼 */}
       <div className="no-print" style={{ display: 'flex', justifyContent: 'flex-end' }}>
-        <ExportButtons
-          sectionGroups={[['pdf-tab2-info', 'pdf-tab2-table']]}
-          filename={`은퇴플랜_${selectedCustomer?.name ?? ''}.pdf`}
-          activeTab="은퇴플랜"
-          customerInfo={selectedCustomer ? {
-            name: selectedCustomer.name,
-            birthDate: selectedCustomer.birthDate ?? '-',
-            targetFund: selectedCustomer.targetFund > 0
-              ? (selectedCustomer.targetFund >= 1e8
+        <button
+          onClick={async () => {
+            if (!desiredPlanData?.simulation_data?.length) { alert('1번탭에서 시뮬레이션을 먼저 저장해주세요.'); return; }
+            try {
+              const { generateRetirementPlanPdf } = await import('../../utils/retirementPlanPdf');
+              type PData = import('../../utils/retirementPlanPdf').RetirementPlanPdfData;
+              type SRow = import('../../utils/retirementPlanPdf').SimRow;
+
+              const d = desiredPlanData;
+              const cp = d.calculation_params || {};
+              const simData = d.simulation_data || [];
+              const retAge = d.desired_retirement_age ?? 65;
+              const savYrs = d.savings_period_years ?? 0;
+              const holdYrs = d.holding_period_years ?? 0;
+              const planStartYear = d.plan_start_year ?? new Date().getFullYear();
+              const curYear = new Date().getFullYear();
+              const curAge = selectedCustomer?.currentAge ?? 0;
+              const planStartAge = curAge > 0 ? curAge - (curYear - planStartYear) : 0;
+              const retYear = planStartAge > 0 ? planStartYear + (retAge - planStartAge) : planStartYear + savYrs + holdYrs;
+
+              // 투자계획 집계
+              let totalSavings = 0, totalHolding = 0, savingsCount = 0;
+              for (const row of simData) {
+                const mp = Number(row.monthly_payment ?? 0);
+                const ad = Number(row.additional ?? 0);
+                if (mp > 0) { totalSavings += mp * 12; savingsCount++; }
+                if (ad > 0) totalHolding += ad;
+              }
+              const avgAnnualSavings = savingsCount > 0 ? totalSavings / savingsCount : 0;
+              const totalInvestment = totalSavings + totalHolding;
+
+              // 목표
+              const retireRow = simData.find((r: Record<string, unknown>) => Number(r.age) === retAge - 1);
+              const age100Row = simData.find((r: Record<string, unknown>) => Number(r.age) === 100);
+              const retireFund = Number(retireRow?.evaluation ?? 0);
+              const inheritFund = Number(age100Row?.evaluation ?? 0);
+              const invRate = ((cp.recommended_return_rate as number) ?? (cp.existing_return_rate as number) ?? (d.expected_return_rate ?? 0)) * 100;
+              const penRate = ((cp.recommended_pension_rate as number) ?? (cp.base_pension_rate as number) ?? ((d as any).retirement_pension_rate ?? 0)) * 100;
+              const futureMonthly = d.future_monthly_amount ?? 0;
+              const useInflInput = !!d.use_inflation_input;
+              const useInflCalc = !!d.use_inflation_calc;
+              const fmtOk = (v: number) => v >= 1e8 ? `${(v / 1e8).toFixed(1)}억원` : v >= 1e4 ? `${Math.round(v / 1e4).toLocaleString()}만원` : `${Math.round(v).toLocaleString()}원`;
+
+              const info: { [k: string]: string } = {
+                '플랜 시작': planStartAge > 0 ? `${planStartYear}년 (${planStartAge}세)` : `${planStartYear}년`,
+                '희망 은퇴': `${retYear}년 (${retAge}세)`,
+                '총 투자기간': `${savYrs + holdYrs}년`,
+                '구성': `적립 ${savYrs}년 + 거치 ${holdYrs}년`,
+                '연적립금액(평균)': avgAnnualSavings > 0 ? fmtOk(avgAnnualSavings) : '-',
+                '총거치금액': totalHolding > 0 ? fmtOk(totalHolding) : '-',
+                '총투자금액': totalInvestment > 0 ? fmtOk(totalInvestment) : '-',
+                '예상 투자수익률': `${invRate.toFixed(1)}%`,
+                '예상 연금수익률': `${penRate.toFixed(1)}%`,
+                '은퇴당시 연금액': futureMonthly > 0 ? `${Math.round(futureMonthly / 1e4).toLocaleString()}만원/월 (물가${useInflInput ? 'O' : 'X'})` : '-',
+                '은퇴자금': retireFund > 0 ? `${fmtOk(retireFund)} (물가${useInflCalc ? 'O' : 'X'})` : '-',
+                '상속자금': inheritFund > 0 ? `${fmtOk(inheritFund)} (100세)` : '0원',
+              };
+
+              // 시뮬레이션 행
+              let runCumPension = 0;
+              const simRows: SRow[] = simData.map((row: Record<string, unknown>, idx: number) => {
+                const year = Number(row.year ?? idx + 1);
+                const age = Number(row.age ?? 0);
+                const rawPhase = String(row.phase ?? row.type ?? '-');
+                const phase = rawPhase === 'saving' ? '적립' : rawPhase === 'holding' ? '거치' : rawPhase === 'retirement' ? '은퇴후' : rawPhase;
+                const pension = Number(row.pension ?? 0);
+                runCumPension += pension;
+                return {
+                  calYear: planStartYear + year - 1,
+                  year, age, phase,
+                  monthlyPayment: Number(row.monthly_payment ?? 0),
+                  additional: Number(row.additional ?? 0),
+                  cumulativePrincipal: Number(row.cumulative_principal ?? row.principal ?? 0),
+                  investmentReturn: Number(row.investment_return ?? row.profit ?? 0),
+                  pension, cumPension: runCumPension,
+                  evaluation: Number(row.evaluation ?? 0),
+                };
+              });
+
+              const customer = {
+                name: selectedCustomer?.name ?? '',
+                birthDate: selectedCustomer?.birthDate ?? '',
+                targetFund: selectedCustomer?.targetFund && selectedCustomer.targetFund >= 1e8
                   ? `${(selectedCustomer.targetFund / 1e8).toFixed(1)}억원`
-                  : `${selectedCustomer.targetFund.toLocaleString()}만원`)
-              : '-',
-            retireAge: selectedCustomer.retirementAge > 0 ? String(selectedCustomer.retirementAge) : '-',
-          } : undefined}
-        />
+                  : `${(selectedCustomer?.targetFund ?? 0).toLocaleString()}만원`,
+                retireAge: String(selectedCustomer?.retirementAge ?? '-'),
+              };
+
+              const pdfData: PData = { customer, info, simRows, retirementAge: retAge, chartId: 'pdf-tab2-growth-chart' };
+              await generateRetirementPlanPdf(pdfData, `은퇴플랜_${selectedCustomer?.name ?? ''}_${new Date().toISOString().slice(0, 10)}.pdf`);
+            } catch (e: unknown) {
+              const msg = e instanceof Error ? e.message : String(e);
+              alert(`PDF 생성 실패: ${msg}`);
+            }
+          }}
+          style={{ padding: '8px 16px', fontSize: '13px', fontWeight: 600, borderRadius: '8px', cursor: 'pointer', border: 'none', backgroundColor: '#1E3A5F', color: '#fff', display: 'flex', alignItems: 'center', gap: '6px' }}
+        >
+          📄 PDF 다운로드
+        </button>
       </div>
 
       {/* 상단: 기본정보 (1번탭 데이터 읽기전용) */}
@@ -712,7 +796,7 @@ export function RetirementPlanTab() {
 
       {/* 성장 그래프 */}
       {desiredPlanData?.simulation_data && desiredPlanData.simulation_data.length > 0 && (
-        <div style={cardStyle}>
+        <div id="pdf-tab2-growth-chart" style={cardStyle}>
           <h3 style={sectionTitleStyle}>성장 그래프</h3>
           <RetirementGrowthChart
             data={desiredPlanData.simulation_data.map((row: Record<string, unknown>) => ({

@@ -9,6 +9,7 @@ from sqlalchemy import (
     DateTime,
     ForeignKey,
     Integer,
+    JSON,
     Numeric,
     String,
     Text,
@@ -93,6 +94,9 @@ class InvestmentRecord(Base):
         ForeignKey("investment_records.id", ondelete="SET NULL"),
         nullable=True,
     )
+
+    # 중간평가 JSON: { "2023": 150000000, "2024": 180000000 }
+    interim_evaluations: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True, default=dict)
 
     memo: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
 

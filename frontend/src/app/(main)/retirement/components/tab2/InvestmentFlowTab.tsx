@@ -35,6 +35,7 @@ interface InvestmentRecord {
   original_maturity_date?: string | null;
   predecessor_id: number | null;
   successor_id: number | null;
+  interim_evaluations: Record<string, number> | null;
   memo: string | null;
 }
 
@@ -380,9 +381,13 @@ export function InvestmentFlowTab() {
   const [showNetAssetChart, setShowNetAssetChart] = useState(false);
   const [netAssetVisibility, setNetAssetVisibility] = useState({ netAsset: true, cumulativeDeposit: true, cumulativeProfit: true, netAssetReturnRate: true });
   const [showLifetimeFlow, setShowLifetimeFlow] = useState(false);
+  const [lifetimeRowsForPdf, setLifetimeRowsForPdf] = useState<any[]>([]);
+  const lifetimeRowsRef = useRef<any[]>([]);
+  const [isPrinting, setIsPrinting] = useState(false);
   const [desiredPlanData, setDesiredPlanData] = useState<any>(null);
   const [appliedYears, setAppliedYears] = useState<Record<number, any>>({});
   const [flowAccountFilter, setFlowAccountFilter] = useState<'all' | number>('all');
+  const [evalDetailYear, setEvalDetailYear] = useState<number | null>(null);
 
   // 투자기록 상태
   const [records, setRecords] = useState<InvestmentRecord[]>([]);
@@ -396,6 +401,48 @@ export function InvestmentFlowTab() {
 
   // 상태 변경 모달
   const [statusChangeRecord, setStatusChangeRecord] = useState<InvestmentRecord | null>(null);
+
+  // 중간평가 모달
+  const [interimRecord, setInterimRecord] = useState<InvestmentRecord | null>(null);
+  const [interimYear, setInterimYear] = useState('');
+  const [interimAmount, setInterimAmount] = useState('');
+  const [interimSaving, setInterimSaving] = useState(false);
+
+  const saveInterimEval = async () => {
+    if (!interimRecord || !interimYear || !interimAmount) return;
+    setInterimSaving(true);
+    try {
+      const existing = interimRecord.interim_evaluations || {};
+      const updated = { ...existing, [interimYear]: parseInt(interimAmount.replace(/\D/g, ''), 10) || 0 };
+      const res = await fetch(`${API_URL}/api/v1/retirement/investment-records/${interimRecord.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json', ...authLib.getAuthHeader() },
+        body: JSON.stringify({ interim_evaluations: updated }),
+      });
+      if (!res.ok) throw new Error();
+      setInterimRecord(null);
+      setInterimYear('');
+      setInterimAmount('');
+      fetchRecords();
+      fetchAnnualFlow();
+    } catch { alert('저장 실패'); }
+    finally { setInterimSaving(false); }
+  };
+
+  const deleteInterimEval = async (record: InvestmentRecord, year: string) => {
+    const existing = record.interim_evaluations || {};
+    const updated = { ...existing };
+    delete updated[year];
+    try {
+      await fetch(`${API_URL}/api/v1/retirement/investment-records/${record.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json', ...authLib.getAuthHeader() },
+        body: JSON.stringify({ interim_evaluations: Object.keys(updated).length > 0 ? updated : null }),
+      });
+      fetchRecords();
+      fetchAnnualFlow();
+    } catch { alert('삭제 실패'); }
+  };
 
   // Wrap 계좌 목록
   const [wrapAccounts, setWrapAccounts] = useState<WrapAccount[]>([]);
@@ -700,6 +747,7 @@ export function InvestmentFlowTab() {
     setTxEditCredit('');
     setTxEditDebit('');
     setTxEditMemo('');
+    setTimeout(() => { txScrollRefs.current[accountId]?.scrollTo({ top: 0, behavior: 'smooth' }); }, 50);
     setTxEditProduct('');
   };
 
@@ -792,6 +840,7 @@ export function InvestmentFlowTab() {
     setRecEditAmount('');
     setRecEditEval('');
     setRecEditJoinDate('');
+    setTimeout(() => { recScrollRef.current?.scrollTo({ top: 0, behavior: 'smooth' }); }, 50);
     setRecEditExpMaturity('');
     setRecEditActMaturity('');
     setRecEditOrigMaturity('');
@@ -879,6 +928,7 @@ export function InvestmentFlowTab() {
       if (!res.ok) throw new Error();
       cancelRecordEdit();
       fetchRecords();
+      fetchAnnualFlow();
       fetchDepositAccounts();
       expandedAccountIds.forEach(id => fetchTransactions(id));
     } catch {
@@ -888,10 +938,48 @@ export function InvestmentFlowTab() {
     }
   };
 
-  /* ---- 필터링된 기록 ---- */
-  const filteredRecords = accountFilter === 'all'
-    ? records
-    : records.filter((r) => r.deposit_account_id === accountFilter);
+  /* ---- 스크롤 ref ---- */
+  const txScrollRefs = useRef<Record<number, HTMLDivElement | null>>({});
+  const recScrollRef = useRef<HTMLDivElement | null>(null);
+
+  /* ---- 예수금 거래 년도 필터 ---- */
+  const [txYearFilter, setTxYearFilter] = useState<string>('all');
+
+  /* ---- 예수금 거래 정렬 (localStorage 영속화) ---- */
+  const [txSortKey, setTxSortKey] = useState<string>(() => {
+    if (typeof window !== 'undefined') return localStorage.getItem('tx_sort_key') || 'id';
+    return 'id';
+  });
+  const [txSortDir, setTxSortDir] = useState<'asc' | 'desc'>(() => {
+    if (typeof window !== 'undefined') return (localStorage.getItem('tx_sort_dir') as 'asc' | 'desc') || 'asc';
+    return 'asc';
+  });
+  useEffect(() => { localStorage.setItem('tx_sort_key', txSortKey); }, [txSortKey]);
+  useEffect(() => { localStorage.setItem('tx_sort_dir', txSortDir); }, [txSortDir]);
+  const toggleTxSort = (key: string) => {
+    if (txSortKey === key) setTxSortDir(d => d === 'asc' ? 'desc' : 'asc');
+    else { setTxSortKey(key); setTxSortDir('asc'); }
+  };
+  const sortTransactions = (txns: DepositTransaction[]) => {
+    return [...txns].sort((a, b) => {
+      let va: string | number | null = null, vb: string | number | null = null;
+      switch (txSortKey) {
+        case 'id': va = a.id; vb = b.id; break;
+        case 'transaction_date': va = a.transaction_date; vb = b.transaction_date; break;
+        case 'transaction_type': va = a.transaction_type; vb = b.transaction_type; break;
+        case 'related_product': va = a.related_product || ''; vb = b.related_product || ''; break;
+        case 'credit_amount': va = a.credit_amount; vb = b.credit_amount; break;
+        case 'debit_amount': va = a.debit_amount; vb = b.debit_amount; break;
+        case 'balance': va = a.balance; vb = b.balance; break;
+        default: return 0;
+      }
+      if (va == null && vb == null) return 0;
+      if (va == null) return 1;
+      if (vb == null) return -1;
+      const cmp = typeof va === 'number' && typeof vb === 'number' ? va - vb : String(va).localeCompare(String(vb));
+      return txSortDir === 'asc' ? cmp : -cmp;
+    });
+  };
 
   /* ---- 상품명 조회 (wrapAccounts에서 매칭) ---- */
   const getProductName = (record: InvestmentRecord): string => {
@@ -902,6 +990,47 @@ export function InvestmentFlowTab() {
     }
     return '-';
   };
+
+  /* ---- 투자기록 정렬 (localStorage 영속화) ---- */
+  const [recSortKey, setRecSortKey] = useState<string>(() => {
+    if (typeof window !== 'undefined') return localStorage.getItem('rec_sort_key') || 'id';
+    return 'id';
+  });
+  const [recSortDir, setRecSortDir] = useState<'asc' | 'desc'>(() => {
+    if (typeof window !== 'undefined') return (localStorage.getItem('rec_sort_dir') as 'asc' | 'desc') || 'asc';
+    return 'asc';
+  });
+  useEffect(() => { localStorage.setItem('rec_sort_key', recSortKey); }, [recSortKey]);
+  useEffect(() => { localStorage.setItem('rec_sort_dir', recSortDir); }, [recSortDir]);
+  const toggleRecSort = (key: string) => {
+    if (recSortKey === key) setRecSortDir(d => d === 'asc' ? 'desc' : 'asc');
+    else { setRecSortKey(key); setRecSortDir('asc'); }
+  };
+
+  /* ---- 필터링된 기록 ---- */
+  const filteredRecords = (() => {
+    const base = accountFilter === 'all' ? records : records.filter((r) => r.deposit_account_id === accountFilter);
+    return [...base].sort((a, b) => {
+      let va: string | number | null = null, vb: string | number | null = null;
+      switch (recSortKey) {
+        case 'id': va = a.id; vb = b.id; break;
+        case 'product_name': va = getProductName(a); vb = getProductName(b); break;
+        case 'investment_amount': va = a.investment_amount; vb = b.investment_amount; break;
+        case 'evaluation_amount': va = a.evaluation_amount ?? 0; vb = b.evaluation_amount ?? 0; break;
+        case 'return_rate': va = a.return_rate ?? -9999; vb = b.return_rate ?? -9999; break;
+        case 'status': va = a.status; vb = b.status; break;
+        case 'join_date': va = a.join_date || a.start_date || ''; vb = b.join_date || b.start_date || ''; break;
+        case 'expected_maturity_date': va = a.expected_maturity_date ?? ''; vb = b.expected_maturity_date ?? ''; break;
+        case 'actual_maturity_date': va = a.actual_maturity_date ?? ''; vb = b.actual_maturity_date ?? ''; break;
+        default: return 0;
+      }
+      if (va == null && vb == null) return 0;
+      if (va == null) return 1;
+      if (vb == null) return -1;
+      const cmp = typeof va === 'number' && typeof vb === 'number' ? va - vb : String(va).localeCompare(String(vb));
+      return recSortDir === 'asc' ? cmp : -cmp;
+    });
+  })();
 
   /* ---- 고객 미선택 ---- */
   if (!selectedCustomerId) {
@@ -920,20 +1049,177 @@ export function InvestmentFlowTab() {
   }
 
   const handlePrint = async () => {
-    // 프린트 전: 모든 예수금 계좌 펼치기 + 거래내역 로드
-    const allIds = new Set(depositAccounts.map(a => a.id));
-    setExpandedAccountIds(allIds);
-    // 펼쳐지지 않았던 계좌의 거래내역 로드
-    for (const a of depositAccounts) {
-      if (!accountTransactions[a.id]) {
-        await fetchTransactions(a.id);
-      }
-    }
-    // 그래프도 펼치기
+    setIsPrinting(true);
+
+    // 그래프 펼치기
     setShowFlowChart(true);
     setShowNetAssetChart(true);
-    // DOM 업데이트 대기 후 인쇄
-    setTimeout(() => window.print(), 500);
+    setShowLifetimeFlow(true);
+
+    // 예수금 거래내역 로드
+    const allAccIds = new Set(depositAccounts.map(a => a.id));
+    setExpandedAccountIds(allAccIds);
+    for (const a of depositAccounts) {
+      if (!accountTransactions[a.id]) await fetchTransactions(a.id);
+    }
+
+    // 차트 렌더링 대기
+    await new Promise(r => setTimeout(r, 1500));
+    window.dispatchEvent(new Event('resize'));
+    await new Promise(r => setTimeout(r, 500));
+
+    try {
+      const { generateInvestmentFlowPdf } = await import('../../utils/investmentFlowPdf');
+      type PdfDataType = import('../../utils/investmentFlowPdf').PdfData;
+      type DepositTxType = import('../../utils/investmentFlowPdf').DepositTx;
+      type InvestRecordType = import('../../utils/investmentFlowPdf').InvestRecord;
+
+      // 예수금 거래 데이터 조립 (발생일 기준 정렬)
+      const allTxs: DepositTxType[] = [];
+      const firstAcc = depositAccounts[0];
+      const txList = firstAcc ? [...(accountTransactions[firstAcc.id] || [])].sort((a: any, b: any) =>
+        (a.transaction_date || '').localeCompare(b.transaction_date || '')
+      ) : [];
+      txList.forEach((tx: any, idx: number) => {
+        allTxs.push({
+          no: tx.original_no ?? (idx + 1),
+          date: tx.transaction_date || '-',
+          type: tx.transaction_type || '-',
+          product: tx.related_product || '-',
+          credit: tx.credit_amount || 0,
+          debit: tx.debit_amount || 0,
+          balance: tx.balance || 0,
+          memo: tx.memo || '',
+        });
+      });
+
+      // 투자기록 데이터 조립
+      const investRecs: InvestRecordType[] = records
+        .filter((r: any) => r.record_type === 'investment')
+        .sort((a: any, b: any) => (a.start_date || a.join_date || '').localeCompare(b.start_date || b.join_date || ''))
+        .map((r: any, idx: number) => {
+          // 상품명: getProductName 함수 사용 (wrapAccounts 조회 포함)
+          let prodName = getProductName(r);
+          // 계좌명: deposit_account_nickname → depositAccounts 조회
+          let accName = r.deposit_account_nickname || '';
+          if (!accName && r.deposit_account_id && depositAccounts) {
+            const acc = depositAccounts.find((a: any) => a.id === r.deposit_account_id);
+            if (acc) accName = acc.nickname || `${acc.securities_company} ${acc.account_number || ''}`;
+          }
+          return {
+          no: idx + 1,
+          product: prodName || '-',
+          account: accName || '-',
+          investment: r.investment_amount || 0,
+          evaluation: r.evaluation_amount || 0,
+          returnRate: r.investment_amount > 0 ? `${((r.evaluation_amount - r.investment_amount) / r.investment_amount * 100).toFixed(2)}%` : '-',
+          status: r.status === 'exit' ? '종결' : '운용중',
+          startDate: r.start_date || r.join_date || '-',
+          expectedEnd: r.expected_maturity_date || '',
+          actualEnd: r.actual_maturity_date || '',
+          memo: r.memo || '',
+        };});
+
+      // 100세 플로우 기본정보 (화면 BasicInfoCard 동일 로직)
+      const cp = desiredPlanData?.calculation_params as any || {};
+      const lifetimeInfo: { [k: string]: string } = {};
+      if (desiredPlanData) {
+        const d = desiredPlanData;
+        const savYrs = d.savings_period_years ?? 0;
+        const holdYrs = d.holding_period_years ?? 0;
+        const planStartYear = d.plan_start_year ?? new Date().getFullYear();
+        const curYear = new Date().getFullYear();
+        const curAge = selectedCustomer?.birthDate ? (curYear - new Date(selectedCustomer.birthDate).getFullYear()) : 0;
+        const planStartAge = curAge - (curYear - planStartYear);
+        const retAge = d.desired_retirement_age ?? 60;
+        const retYear = planStartAge > 0 ? planStartYear + (retAge - planStartAge) : planStartYear + savYrs + holdYrs;
+        const simData = d.simulation_data || [];
+
+        // 테이블에서 실제 적립/거치 집계
+        let totalSavings = 0, totalHolding = 0, savingsCount = 0;
+        for (const row of simData) {
+          const mp = (row.monthly_payment as number) ?? 0;
+          const ad = (row.additional as number) ?? 0;
+          if (mp > 0) { totalSavings += mp * 12; savingsCount++; }
+          if (ad > 0) totalHolding += ad;
+        }
+        const avgAnnualSavings = savingsCount > 0 ? totalSavings / savingsCount : 0;
+        const totalInvestment = totalSavings + totalHolding;
+        const retireRow = simData.find((r: any) => (r.age as number) === retAge - 1);
+        const age100Row = simData.find((r: any) => (r.age as number) === 100);
+        const retireFund = (retireRow?.evaluation as number) ?? 0;
+        const inheritFund = (age100Row?.evaluation as number) ?? 0;
+
+        const invRate = ((cp.recommended_return_rate ?? cp.existing_return_rate ?? d.expected_return_rate ?? 0) * 100).toFixed(1);
+        const penRate = ((cp.recommended_pension_rate ?? cp.base_pension_rate ?? d.retirement_pension_rate ?? 0) * 100).toFixed(1);
+        const futureMonthly = d.future_monthly_amount ?? 0;
+        const useInflInput = !!d.use_inflation_input;
+        const useInflCalc = !!d.use_inflation_calc;
+        const fmtOk2 = (v: number) => v >= 1e8 ? `${(v / 1e8).toFixed(1)}억원` : v >= 1e4 ? `${Math.round(v / 1e4).toLocaleString()}만원` : `${v.toLocaleString()}원`;
+
+        // 기간 설정
+        lifetimeInfo['플랜 시작'] = planStartAge > 0 ? `${planStartYear}년 (${planStartAge}세)` : `${planStartYear}년`;
+        lifetimeInfo['희망 은퇴'] = `${retYear}년 (${retAge}세)`;
+        lifetimeInfo['총 투자기간'] = `${savYrs + holdYrs}년`;
+        lifetimeInfo['구성'] = `적립 ${savYrs}년 + 거치 ${holdYrs}년`;
+        // 투자 계획
+        lifetimeInfo['연적립금액(평균)'] = avgAnnualSavings > 0 ? fmtOk2(avgAnnualSavings) : '-';
+        lifetimeInfo['총거치금액'] = totalHolding > 0 ? fmtOk2(totalHolding) : '-';
+        lifetimeInfo['총투자금액'] = totalInvestment > 0 ? fmtOk2(totalInvestment) : '-';
+        // 목표
+        lifetimeInfo['예상 투자수익률'] = `${invRate}%`;
+        lifetimeInfo['예상 연금수익률'] = `${penRate}%`;
+        lifetimeInfo['은퇴당시 연금액'] = futureMonthly > 0 ? `${Math.round(futureMonthly / 1e4).toLocaleString()}만원/월 (물가${useInflInput ? 'O' : 'X'})` : '-';
+        lifetimeInfo['은퇴자금'] = retireFund > 0 ? `${fmtOk2(retireFund)} (물가${useInflCalc ? 'O' : 'X'})` : '-';
+        lifetimeInfo['상속자금'] = inheritFund > 0 ? `${fmtOk2(inheritFund)} (100세)` : '0원';
+      }
+
+      const targetFundStr = selectedCustomer?.targetFund
+        ? (selectedCustomer.targetFund >= 1e8
+          ? `${(selectedCustomer.targetFund / 1e8).toFixed(1)}억원`
+          : `${selectedCustomer.targetFund.toLocaleString()}만원`)
+        : '-';
+
+      const pdfData: PdfDataType = {
+        customer: {
+          name: selectedCustomer?.name ?? '',
+          birthDate: selectedCustomer?.birthDate ?? '',
+          targetFund: targetFundStr,
+          retireAge: String(selectedCustomer?.retirementAge ?? '-'),
+        },
+        flowRows: annualFlowData,
+        planStartYear: desiredPlanData?.plan_start_year ?? new Date().getFullYear(),
+        retirementAge: desiredPlanData?.desired_retirement_age ?? 65,
+        lifetimeRows: lifetimeRowsRef.current.map((r: any) => ({
+          year: r.year,
+          calendarYear: r.calendarYear,
+          age: r.age,
+          phase: r.phase ?? '-',
+          cumulativePrincipal: r.cumulativePrincipal ?? 0,
+          evaluation: r.totalEvaluation ?? 0,
+          annualSavings: r.annualSavings ?? 0,
+          lumpSum: r.lumpSum ?? 0,
+          expectedRate: r.returnRate ?? 0,
+          adjustedEval: r.adjustedEvaluation ?? 0,
+          depositIn: r.depositIn ?? 0,
+          pensionWithdraw: r.pension ?? 0,
+          cumulativeWithdraw: r.cumulativePension ?? 0,
+          netAsset: r.adjustedNetAsset ?? 0,
+          netAssetReturn: r.netAssetReturnRate ?? 0,
+        })),
+        lifetimeInfo,
+        depositTxs: allTxs,
+        depositAccountInfo: firstAcc ? `${firstAcc.securities_company} ${firstAcc.account_number || ''} "${firstAcc.nickname || ''}" 잔액: ${allTxs.length > 0 ? allTxs[allTxs.length - 1].balance.toLocaleString('ko-KR') : '-'}원` : '',
+        investRecords: investRecs,
+        chartIds: ['print-chart-flow', 'print-chart-netasset', 'print-chart-lifetime'],
+      };
+
+      await generateInvestmentFlowPdf(pdfData, `투자흐름_${selectedCustomer?.name ?? '보고서'}_${new Date().toISOString().slice(0, 10)}.pdf`);
+    } catch (e: any) {
+      console.error('PDF 생성 실패:', e);
+      alert(`PDF 생성 실패: ${e?.message || e}`);
+    }
+    setIsPrinting(false);
   };
 
   return (
@@ -941,63 +1227,77 @@ export function InvestmentFlowTab() {
       {/* 프린트 스타일 */}
       <style>{`
         @media print {
-          /* 세로 출력, 최소 여백 */
-          @page { size: landscape; margin: 5mm; }
+          @page { size: A4 portrait; margin: 12mm 10mm; }
 
-          /* 네비게이션, 사이드바, 고객선택바 등 숨김 */
           nav, header, .no-print, [data-no-print] { display: none !important; }
 
-          /* 전체 배경 흰색 */
-          body, html { background: #fff !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; font-size: 7px !important; }
+          body, html {
+            background: #fff !important;
+            -webkit-print-color-adjust: exact;
+            print-color-adjust: exact;
+            font-size: 8px !important;
+          }
 
-          /* 컨테이너 여백 */
           .investment-flow-container { gap: 0 !important; padding: 0 !important; }
 
-          /* 섹터1: 연간 투자흐름표 + 그래프 */
+          /* 각 섹션 페이지 분리 */
           .print-section-flow { page-break-after: always; }
+          .print-section-graphs { page-break-after: always; }
+          .print-section-lifetime { page-break-after: always; }
+          .print-section-deposit { page-break-after: always; }
+          .print-section-records { page-break-before: auto; }
 
-          /* 섹터2: 예수금 계좌 - 각 계좌별 페이지 분리 */
-          .print-section-deposit { page-break-before: always; }
+          /* 예수금 계좌별 분리 */
           .print-deposit-account { page-break-after: always; }
           .print-deposit-account:last-child { page-break-after: auto; }
-
-          /* 섹터3: 투자기록 */
-          .print-section-records { page-break-before: always; }
 
           /* 아코디언 강제 펼침 */
           .print-section-deposit [style*="display: none"] { display: block !important; }
 
-          /* 테이블 기본 스타일 */
+          /* 오버플로우 해제 (스크롤 영역 전체 보이기) */
+          div[style*="overflow"] { overflow: visible !important; max-height: none !important; }
+
+          /* 테이블 기본 */
           table { width: 100% !important; min-width: 0 !important; }
-          th { padding: 3px 5px !important; white-space: nowrap !important; }
-          td { padding: 3px 5px !important; white-space: nowrap !important; }
+          th, td { padding: 3px 5px !important; white-space: nowrap !important; }
+          thead { position: static !important; }
 
-          /* 연간 투자흐름표만 작게 */
-          .print-section-flow table { font-size: 7px !important; }
-          .print-section-flow th { font-size: 6.5px !important; padding: 2px 3px !important; }
-          .print-section-flow td { font-size: 7px !important; padding: 2px 3px !important; }
+          /* 연간 투자흐름표 - 컴팩트 유지 */
+          .print-section-flow table { font-size: 5.5px !important; }
+          .print-section-flow th { font-size: 5px !important; padding: 1px 2px !important; }
+          .print-section-flow td { font-size: 5.5px !important; padding: 1px 2px !important; }
 
-          /* 예수금, 투자기록은 크게 */
-          .print-section-deposit table { font-size: 9px !important; }
-          .print-section-deposit th { font-size: 8.5px !important; }
-          .print-section-deposit td { font-size: 9px !important; }
-          .print-section-records table { font-size: 9px !important; }
-          .print-section-records th { font-size: 8.5px !important; }
-          .print-section-records td { font-size: 9px !important; }
+          /* 100세 플로우 테이블 */
+          .print-section-lifetime table { font-size: 7px !important; }
+          .print-section-lifetime th { font-size: 6.5px !important; padding: 2px 3px !important; }
+          .print-section-lifetime td { font-size: 7px !important; padding: 2px 3px !important; }
 
-          /* 버튼, 필터 숨김 */
-          button, select, .no-print-btn { display: none !important; }
+          /* 예수금, 투자기록 */
+          .print-section-deposit table, .print-section-records table { font-size: 8px !important; }
+          .print-section-deposit th, .print-section-records th { font-size: 7.5px !important; padding: 3px 4px !important; }
+          .print-section-deposit td, .print-section-records td { font-size: 8px !important; padding: 3px 4px !important; }
 
-          /* 섹션 번호 제목 숨김, 인쇄용 헤더 표시 */
-          .print-section-title { display: none !important; }
-          .print-header { display: block !important; margin-bottom: 8px; }
+          /* 버튼, 필터, 컨트롤 숨김 */
+          button, select, input, .no-print-btn { display: none !important; }
 
-          /* 오버플로우 해제 */
-          div[style*="overflow"] { overflow: visible !important; }
+          /* 인쇄용 헤더/제목 표시 */
+          .print-header { display: flex !important; }
+          .print-section-title { display: block !important; }
+
+          /* 그래프 */
+          .print-chart-wrap { display: block !important; page-break-inside: avoid !important; }
+          .recharts-legend-wrapper { font-size: 8px !important; }
+          canvas { max-width: 100% !important; }
+
+          /* 테이블 헤더 페이지마다 반복 */
+          table thead { display: table-header-group !important; position: static !important; }
+          table tbody { display: table-row-group !important; }
+          table tr { page-break-inside: avoid !important; }
         }
 
         @media not print {
-          .print-section-title { display: none; }
+          .print-header { display: none !important; }
+          .print-section-title { display: none !important; }
         }
       `}</style>
 
@@ -1016,24 +1316,34 @@ export function InvestmentFlowTab() {
             fontWeight: 500,
           }}
         >
-          인쇄
+          {isPrinting ? 'PDF 생성 중...' : 'PDF 다운로드'}
         </button>
       </div>
 
       {/* 인쇄용 헤더 (화면에서는 숨김) */}
-      <div className="print-header" style={{ display: 'none' }}>
-        <div style={{ fontSize: 14, fontWeight: 700, color: '#1E3A5F', marginBottom: 4 }}>
-          Wrap 은퇴설계 - 투자흐름 보고서
+      <div className="print-header" style={{ display: 'none', alignItems: 'center', justifyContent: 'space-between', padding: '12px 0', marginBottom: 12, borderBottom: '3px solid #1E3A5F' }}>
+        <div>
+          <div style={{ fontSize: 18, fontWeight: 800, color: '#1E3A5F', letterSpacing: '-0.5px' }}>
+            Wrap 은퇴설계
+          </div>
+          <div style={{ fontSize: 10, color: '#6B7280', marginTop: 2, fontWeight: 500 }}>
+            투자흐름 보고서
+          </div>
         </div>
-        <div style={{ fontSize: 10, color: '#374151' }}>
-          고객: {selectedCustomer?.name} | 생년월일: {selectedCustomer?.birthDate} | 출력일: {new Date().toLocaleDateString('ko-KR')}
+        <div style={{ textAlign: 'right' }}>
+          <div style={{ fontSize: 12, fontWeight: 700, color: '#111827' }}>
+            {selectedCustomer?.name}
+          </div>
+          <div style={{ fontSize: 9, color: '#6B7280', marginTop: 2 }}>
+            {selectedCustomer?.birthDate} | 출력일: {new Date().toLocaleDateString('ko-KR')}
+          </div>
         </div>
       </div>
 
       {/* ===== 섹터1: 연간 투자흐름표 ===== */}
-      <section className="print-section-flow">
-        <div className="print-section-title">1. 연간 투자흐름표</div>
-        <div style={{
+      <section id="print-sec-flow" className="print-section-flow">
+        <div className="print-section-title" style={{ fontSize: 13, fontWeight: 700, color: '#1E3A5F', marginBottom: 8, paddingBottom: 4, borderBottom: '2px solid #1E3A5F' }}>1. 연간 투자흐름표</div>
+        <div className="no-print" style={{
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'space-between',
@@ -1088,15 +1398,15 @@ export function InvestmentFlowTab() {
           </div>
         </div>
 
-        <div style={{ overflowX: 'auto' }}>
+        <div style={{ overflowX: 'auto', overflowY: 'auto', maxHeight: 750, position: 'relative' }}>
           <table style={{ width: '100%', minWidth: 900, borderCollapse: 'collapse', fontSize: 13, whiteSpace: 'nowrap' }}>
-            <thead>
+            <thead style={{ position: 'sticky', top: 0, zIndex: 2 }}>
               <tr style={{ backgroundColor: '#F9FAFB' }}>
                 {[
                   { label: '연도', align: 'center', tip: '투자 활동이 발생한 연도' },
                   { label: '연차', align: 'center', tip: '최초 투자 연도를 1차로 산정' },
                   { label: '나이', align: 'center', tip: '해당 연도 기준 고객 나이 (만 나이)' },
-                  { label: '일시납금액', align: 'right', tip: '해당 연도에 신규 투자한 금액 합계' },
+                  { label: '일시납금액', align: 'right', tip: '예수금 입금(거치) 금액 합계 (투자 제외)' },
                   { label: '연적립금액', align: 'right', tip: '예수금 계좌의 "적립" 구분 입금액 합계' },
                   { label: '총납입금액', align: 'right', tip: '당해 투자금액 + 모든 미종결 투자금액' },
                   { label: '연간평가금액', align: 'right', tip: '당해 종결 평가금액 + 모든 미종결 투자금액' },
@@ -1161,8 +1471,8 @@ export function InvestmentFlowTab() {
                     ? '#DC2626'
                     : '#374151';
                   return (
+                    <React.Fragment key={year}>
                     <tr
-                      key={year}
                       style={{
                         borderBottom: '1px solid #F3F4F6',
                         backgroundColor: idx % 2 === 0 ? '#fff' : '#FAFAFA',
@@ -1175,7 +1485,11 @@ export function InvestmentFlowTab() {
                       <td style={tdRight}>{formatCurrency(row.lump_sum)}</td>
                       <td style={tdRight}>{formatCurrency(row.annual_savings)}</td>
                       <td style={{ ...tdRight, fontWeight: 700 }}>{formatCurrency(row.total_contribution)}</td>
-                      <td style={{ ...tdRight, fontWeight: 700 }}>{formatCurrency(row.annual_evaluation)}</td>
+                      <td
+                        onClick={() => setEvalDetailYear(evalDetailYear === row.year ? null : row.year)}
+                        style={{ ...tdRight, fontWeight: 700, cursor: 'pointer', textDecoration: 'underline', textDecorationStyle: 'dotted' as const, textUnderlineOffset: '3px' }}
+                        title="클릭하면 평가 상세 보기"
+                      >{formatCurrency(row.annual_evaluation)} {evalDetailYear === row.year ? '▲' : '▼'}</td>
                       <td style={{ ...tdRight, color: row.annual_return >= 0 ? '#16A34A' : '#DC2626' }}>
                         {formatCurrency(row.annual_return)}
                       </td>
@@ -1257,12 +1571,66 @@ export function InvestmentFlowTab() {
                         )}
                       </td>
                     </tr>
+                    {/* 평가상세 펼침 행 */}
+                    {evalDetailYear === row.year && (
+                      <tr>
+                        <td colSpan={20} style={{ padding: 0, backgroundColor: '#fff', borderBottom: '1px solid #E5E7EB' }}>
+                          <div style={{ display: 'flex', justifyContent: 'flex-start', paddingLeft: 'calc(4 * 80px + 4 * 12px)', paddingTop: 8, paddingBottom: 12, paddingRight: 16 }}>
+                            <div style={{ width: '100%', maxWidth: 700 }}>
+                              <div style={{ fontSize: 11, fontWeight: 600, color: '#6B7280', marginBottom: 6 }}>
+                                {row.year}년 평가 상세 — 총납입: {formatCurrency(row.total_contribution)} / 연간평가: {formatCurrency(row.annual_evaluation)}
+                              </div>
+                              <table style={{ width: '100%', fontSize: 11, borderCollapse: 'collapse', borderRadius: 6, overflow: 'hidden', border: '1px solid #E5E7EB' }}>
+                                <thead>
+                                  <tr style={{ backgroundColor: '#F1F5F9' }}>
+                                    <th style={{ padding: '5px 8px', textAlign: 'left', fontWeight: 600, color: '#475569', borderBottom: '1px solid #E2E8F0' }}>상품</th>
+                                    <th style={{ padding: '5px 8px', textAlign: 'right', fontWeight: 600, color: '#475569', borderBottom: '1px solid #E2E8F0' }}>투자금액</th>
+                                    <th style={{ padding: '5px 8px', textAlign: 'right', fontWeight: 600, color: '#D97706', borderBottom: '1px solid #E2E8F0' }}>중간평가</th>
+                                    <th style={{ padding: '5px 8px', textAlign: 'right', fontWeight: 600, color: '#059669', borderBottom: '1px solid #E2E8F0' }}>투자종료</th>
+                                    <th style={{ padding: '5px 8px', textAlign: 'right', fontWeight: 600, color: '#1E3A5F', borderBottom: '1px solid #E2E8F0' }}>평가금액</th>
+                                    <th style={{ padding: '5px 8px', textAlign: 'center', fontWeight: 600, color: '#475569', borderBottom: '1px solid #E2E8F0' }}>상태</th>
+                                  </tr>
+                                </thead>
+                                <tbody>
+                                  {records.filter(r => {
+                                    const sy = r.start_date ? parseInt(r.start_date.slice(0, 4)) : 9999;
+                                    const ey = r.end_date ? parseInt(r.end_date.slice(0, 4)) : 9999;
+                                    return sy <= row.year && ey >= row.year && r.record_type === 'investment';
+                                  }).map((r, rIdx) => {
+                                    const interim = r.interim_evaluations?.[String(row.year)];
+                                    const isExit = r.status === 'exit' && r.end_date && parseInt(r.end_date.slice(0, 4)) === row.year;
+                                    const exitVal = isExit ? (r.evaluation_amount ?? null) : null;
+                                    const evalVal = exitVal ?? interim ?? r.investment_amount;
+                                    const bg = rIdx % 2 === 0 ? '#FAFBFC' : '#fff';
+                                    return (
+                                      <tr key={r.id} style={{ backgroundColor: bg, borderBottom: '1px solid #F1F5F9' }}>
+                                        <td style={{ padding: '4px 8px', color: '#374151' }}>{getProductName(r)}</td>
+                                        <td style={{ padding: '4px 8px', textAlign: 'right', color: '#6B7280' }}>{r.investment_amount.toLocaleString()}</td>
+                                        <td style={{ padding: '4px 8px', textAlign: 'right', color: interim != null ? '#D97706' : '#D1D5DB', fontWeight: interim != null ? 700 : 400 }}>{interim != null ? interim.toLocaleString() : '-'}</td>
+                                        <td style={{ padding: '4px 8px', textAlign: 'right', color: exitVal != null ? '#059669' : '#D1D5DB', fontWeight: exitVal != null ? 700 : 400 }}>{exitVal != null ? exitVal.toLocaleString() : '-'}</td>
+                                        <td style={{ padding: '4px 8px', textAlign: 'right', fontWeight: 700, color: '#1E3A5F' }}>{evalVal.toLocaleString()}</td>
+                                        <td style={{ padding: '4px 8px', textAlign: 'center' }}>
+                                          <span style={{ fontSize: 10, padding: '2px 6px', borderRadius: 4, backgroundColor: isExit ? '#DCFCE7' : '#DBEAFE', color: isExit ? '#166534' : '#1E40AF', fontWeight: 600 }}>{isExit ? '종결' : '운용중'}</span>
+                                        </td>
+                                      </tr>
+                                    );
+                                  })}
+                                </tbody>
+                              </table>
+                            </div>
+                          </div>
+                        </td>
+                      </tr>
+                    )}
+                    </React.Fragment>
                   );
                 });
               })()}
             </tbody>
           </table>
         </div>
+
+      </section>
 
         {/* 그래프 버튼 행 - 우측 정렬 */}
         {annualFlowData.length > 0 && (
@@ -1291,51 +1659,60 @@ export function InvestmentFlowTab() {
           </div>
         )}
 
-        {/* 투자흐름 그래프 */}
-        {showFlowChart && annualFlowData.length > 0 && (
-          <div style={{ marginTop: 12, padding: 16, border: '1px solid #E5E7EB', borderRadius: 8, backgroundColor: '#fff' }}>
-            <div style={{ display: 'flex', gap: 12, marginBottom: 12, fontSize: 12, flexWrap: 'wrap' }}>
-              {([
-                { key: 'depositIn' as const, label: '입금액', color: '#8B5CF6' },
-                { key: 'contribution' as const, label: '총납입금액', color: '#4A90D9' },
-                { key: 'annualReturn' as const, label: '연간총수익', color: '#10B981' },
-                { key: 'returnRate' as const, label: '연수익률(%)', color: '#F59E0B' },
-              ] as const).map(({ key, label, color }) => (
-                <button key={key} onClick={() => setChartVisibility(prev => ({ ...prev, [key]: !prev[key] }))}
-                  style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '4px 10px', border: '1px solid #E5E7EB', borderRadius: 6, backgroundColor: chartVisibility[key] ? '#fff' : '#F3F4F6', cursor: 'pointer', opacity: chartVisibility[key] ? 1 : 0.4, fontSize: 12, color: '#374151' }}>
-                  <span style={{ width: 10, height: 10, borderRadius: 2, backgroundColor: color, display: 'inline-block' }} />
-                  {label}
-                </button>
-              ))}
+        {/* 투자흐름 그래프 + 순자산 그래프 */}
+        <section id="print-sec-graphs" className="print-section-graphs">
+          <div className="print-section-title" style={{ fontSize: 13, fontWeight: 700, color: '#1E3A5F', marginBottom: 8, paddingBottom: 4, borderBottom: '2px solid #1E3A5F' }}>2. 투자흐름 분석 그래프</div>
+          {showFlowChart && annualFlowData.length > 0 && (
+            <div style={{ marginTop: 12, padding: 16, border: '1px solid #E5E7EB', borderRadius: 8, backgroundColor: '#fff' }}>
+              <div style={{ display: 'flex', gap: 12, marginBottom: 12, fontSize: 12, flexWrap: 'wrap' }} className="no-print">
+                {([
+                  { key: 'depositIn' as const, label: '입금액', color: '#8B5CF6' },
+                  { key: 'contribution' as const, label: '총납입금액', color: '#4A90D9' },
+                  { key: 'annualReturn' as const, label: '연간총수익', color: '#10B981' },
+                  { key: 'returnRate' as const, label: '연수익률(%)', color: '#F59E0B' },
+                ] as const).map(({ key, label, color }) => (
+                  <button key={key} onClick={() => setChartVisibility(prev => ({ ...prev, [key]: !prev[key] }))}
+                    style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '4px 10px', border: '1px solid #E5E7EB', borderRadius: 6, backgroundColor: chartVisibility[key] ? '#fff' : '#F3F4F6', cursor: 'pointer', opacity: chartVisibility[key] ? 1 : 0.4, fontSize: 12, color: '#374151' }}>
+                    <span style={{ width: 10, height: 10, borderRadius: 2, backgroundColor: color, display: 'inline-block' }} />
+                    {label}
+                  </button>
+                ))}
+              </div>
+              <div id="print-chart-flow" className="print-chart-wrap">
+                <div className="print-section-title" style={{ fontSize: 11, fontWeight: 600, color: '#374151', marginBottom: 4 }}>투자흐름 그래프</div>
+                <AnnualFlowChart data={annualFlowData} visibility={chartVisibility} noAnimation={isPrinting} />
+              </div>
             </div>
-            <AnnualFlowChart data={annualFlowData} visibility={chartVisibility} />
-          </div>
-        )}
+          )}
 
-        {/* 순자산 그래프 */}
-        {showNetAssetChart && annualFlowData.length > 0 && (
-          <div style={{ marginTop: 12, padding: 16, border: '1px solid #E5E7EB', borderRadius: 8, backgroundColor: '#fff' }}>
-            <div style={{ display: 'flex', gap: 12, marginBottom: 12, fontSize: 12, flexWrap: 'wrap' }}>
-              {([
-                { key: 'cumulativeDeposit' as const, label: '누적입금액', color: '#4A90D9' },
-                { key: 'netAsset' as const, label: '순자산', color: '#1E3A5F' },
-                { key: 'cumulativeProfit' as const, label: '순이익', color: '#10B981' },
-                { key: 'netAssetReturnRate' as const, label: '순자산수익률(%)', color: '#F59E0B' },
-              ] as const).map(({ key, label, color }) => (
-                <button key={key} onClick={() => setNetAssetVisibility(prev => ({ ...prev, [key]: !prev[key] }))}
-                  style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '4px 10px', border: '1px solid #E5E7EB', borderRadius: 6, backgroundColor: netAssetVisibility[key] ? '#fff' : '#F3F4F6', cursor: 'pointer', opacity: netAssetVisibility[key] ? 1 : 0.4, fontSize: 12, color: '#374151' }}>
-                  <span style={{ width: 10, height: 10, borderRadius: 2, backgroundColor: color, display: 'inline-block' }} />
-                  {label}
-                </button>
-              ))}
+          {showNetAssetChart && annualFlowData.length > 0 && (
+            <div style={{ marginTop: 12, padding: 16, border: '1px solid #E5E7EB', borderRadius: 8, backgroundColor: '#fff' }}>
+              <div style={{ display: 'flex', gap: 12, marginBottom: 12, fontSize: 12, flexWrap: 'wrap' }} className="no-print">
+                {([
+                  { key: 'cumulativeDeposit' as const, label: '누적입금액', color: '#4A90D9' },
+                  { key: 'netAsset' as const, label: '순자산', color: '#1E3A5F' },
+                  { key: 'cumulativeProfit' as const, label: '순이익', color: '#10B981' },
+                  { key: 'netAssetReturnRate' as const, label: '순자산수익률(%)', color: '#F59E0B' },
+                ] as const).map(({ key, label, color }) => (
+                  <button key={key} onClick={() => setNetAssetVisibility(prev => ({ ...prev, [key]: !prev[key] }))}
+                    style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '4px 10px', border: '1px solid #E5E7EB', borderRadius: 6, backgroundColor: netAssetVisibility[key] ? '#fff' : '#F3F4F6', cursor: 'pointer', opacity: netAssetVisibility[key] ? 1 : 0.4, fontSize: 12, color: '#374151' }}>
+                    <span style={{ width: 10, height: 10, borderRadius: 2, backgroundColor: color, display: 'inline-block' }} />
+                    {label}
+                  </button>
+                ))}
+              </div>
+              <div id="print-chart-netasset" className="print-chart-wrap">
+                <div className="print-section-title" style={{ fontSize: 11, fontWeight: 600, color: '#374151', marginBottom: 4 }}>순자산 그래프</div>
+                <NetAssetChart data={annualFlowData} visibility={netAssetVisibility} noAnimation={isPrinting} />
+              </div>
             </div>
-            <NetAssetChart data={annualFlowData} visibility={netAssetVisibility} />
-          </div>
-        )}
+          )}
+        </section>
 
         {/* 100세 은퇴플로우 */}
         {showLifetimeFlow && (
-          <div style={{ marginTop: 12 }}>
+          <section id="print-sec-lifetime" className="print-section-lifetime" style={{ marginTop: 12 }}>
+            <div className="print-section-title" style={{ fontSize: 13, fontWeight: 700, color: '#1E3A5F', marginBottom: 8, paddingBottom: 4, borderBottom: '2px solid #1E3A5F' }}>3. 100세 은퇴플로우</div>
             <LifetimeRetirementFlow
               currentAge={(() => {
                 if (!selectedCustomer?.birthDate) return null;
@@ -1348,15 +1725,15 @@ export function InvestmentFlowTab() {
               desiredPlanData={desiredPlanData}
               annualFlowData={annualFlowData}
               appliedYears={appliedYears}
+              onRowsChange={(rows: any[]) => { setLifetimeRowsForPdf(rows); lifetimeRowsRef.current = rows; }}
             />
-          </div>
+          </section>
         )}
-      </section>
 
       {/* ===== 섹터2: 예수금 계좌 기록 ===== */}
-      <section className="print-section-deposit">
-        <div className="print-section-title">2. 예수금 계좌 기록</div>
-        <div style={{
+      <section id="print-sec-deposit" className="print-section-deposit">
+        <div className="print-section-title" style={{ fontSize: 13, fontWeight: 700, color: '#1E3A5F', marginBottom: 8, paddingBottom: 4, borderBottom: '2px solid #1E3A5F' }}>4. 예수금 계좌 기록</div>
+        <div className="no-print" style={{
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'space-between',
@@ -1410,7 +1787,11 @@ export function InvestmentFlowTab() {
           <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
             {depositAccounts.map((account) => {
               const isExpanded = expandedAccountIds.has(account.id);
-              const transactions = accountTransactions[account.id] ?? [];
+              const rawTransactions = accountTransactions[account.id] ?? [];
+              const txOrigIndex = new Map(rawTransactions.map((t, i) => [t.id, i + 1]));
+              const sortedTransactions = sortTransactions(rawTransactions);
+              const transactions = txYearFilter === 'all' ? sortedTransactions : sortedTransactions.filter(t => t.transaction_date?.startsWith(txYearFilter));
+              const txYears = [...new Set(rawTransactions.map(t => t.transaction_date?.slice(0, 4)).filter(Boolean))].sort();
               const txLoading = transactionsLoading[account.id] ?? false;
               const isAddingNewTx = newTxAccountId === account.id;
 
@@ -1472,6 +1853,25 @@ export function InvestmentFlowTab() {
                             style={{ padding: '4px 10px', fontSize: 12, fontWeight: 500, borderRadius: 6, border: '1px solid #D1D5DB', backgroundColor: '#fff', color: '#374151', cursor: 'pointer' }}
                           >
                             수정
+                          </button>
+                          <button
+                            onClick={async (e) => {
+                              e.stopPropagation();
+                              try {
+                                const res = await fetch(`${API_URL}/api/v1/retirement/deposit-accounts/${account.id}/recalculate`, {
+                                  method: 'POST', headers: { 'Content-Type': 'application/json', ...authLib.getAuthHeader() },
+                                });
+                                if (!res.ok) throw new Error();
+                                const result = await res.json();
+                                alert(`${result.updated_count}건 동기화 완료`);
+                                fetchDepositAccounts();
+                                fetchTransactions(account.id);
+                              } catch { alert('재계산 실패'); }
+                            }}
+                            title="투자기록 기반으로 자동생성된 거래(날짜/금액/상품명)를 일괄 재동기화하고 잔액을 재계산합니다."
+                            style={{ padding: '4px 10px', fontSize: 12, fontWeight: 500, borderRadius: 6, border: '1px solid #F59E0B', backgroundColor: '#FFFBEB', color: '#B45309', cursor: 'pointer' }}
+                          >
+                            🔄 재계산
                           </button>
                           <button
                             onClick={(e) => {
@@ -1537,23 +1937,68 @@ export function InvestmentFlowTab() {
 
                   {/* 거래내역 테이블 (아코디언) */}
                   {isExpanded && (
-                    <div style={{ overflowX: 'auto' }}>
+                    <div>
+                      {/* 년도 필터 + 건수 */}
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 12px', backgroundColor: '#F9FAFB', borderBottom: '1px solid #E5E7EB' }}>
+                        <span style={{ fontSize: 11, color: '#6B7280' }}>년도:</span>
+                        <select
+                          value={txYearFilter}
+                          onChange={e => setTxYearFilter(e.target.value)}
+                          style={{ fontSize: 11, padding: '2px 6px', borderRadius: 4, border: '1px solid #D1D5DB' }}
+                        >
+                          <option value="all">전체</option>
+                          {txYears.map(y => <option key={y} value={y}>{y}년</option>)}
+                        </select>
+                        <span style={{ fontSize: 11, color: '#9CA3AF' }}>({transactions.length}건{txYearFilter !== 'all' ? ` / 총 ${rawTransactions.length}건` : ''})</span>
+                        <button
+                          onClick={() => {
+                            if (transactions.length === 0) return;
+                            const TRANSACTION_TYPE_KR: Record<string, string> = { deposit: '입금', savings: '적립', investment: '투자', termination: '종료', withdrawal: '출금', interest: '이자' };
+                            const header = ['No', '발생일', '구분', '상품명', '입금액', '출금액', '잔액', '메모'];
+                            const rows = transactions.map((tx, i) => [
+                              txOrigIndex.get(tx.id) ?? (i + 1),
+                              tx.transaction_date,
+                              TRANSACTION_TYPE_KR[tx.transaction_type] ?? tx.transaction_type,
+                              tx.related_product || '',
+                              tx.credit_amount || 0,
+                              tx.debit_amount || 0,
+                              tx.balance,
+                              tx.memo || '',
+                            ]);
+                            const BOM = '\uFEFF';
+                            const csv = BOM + [header, ...rows].map(r => r.map(c => `"${String(c).replace(/"/g, '""')}"`).join(',')).join('\n');
+                            const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+                            const url = URL.createObjectURL(blob);
+                            const a = document.createElement('a');
+                            const acctName = account.nickname || account.securities_company || '계좌';
+                            a.href = url;
+                            a.download = `${acctName}_거래내역${txYearFilter !== 'all' ? `_${txYearFilter}` : ''}.csv`;
+                            a.click();
+                            URL.revokeObjectURL(url);
+                          }}
+                          style={{ marginLeft: 'auto', padding: '2px 8px', fontSize: 11, fontWeight: 500, borderRadius: 4, border: '1px solid #D1D5DB', backgroundColor: '#fff', color: '#374151', cursor: 'pointer' }}
+                        >
+                          📥 엑셀 다운
+                        </button>
+                      </div>
+                    <div ref={el => { txScrollRefs.current[account.id] = el; }} style={{ overflowX: 'auto', overflowY: 'auto', maxHeight: 480 }}>
                       <table style={{ minWidth: 780, borderCollapse: 'collapse', fontSize: 13, whiteSpace: 'nowrap', width: '100%' }}>
-                        <thead>
+                        <thead style={{ position: 'sticky', top: 0, zIndex: 2 }}>
                           <tr style={{ backgroundColor: '#F9FAFB' }}>
                             {[
-                              { label: 'No', align: 'center', width: 36 },
-                              { label: '발생일', align: 'center', width: 90 },
-                              { label: '구분', align: 'center', width: 52 },
-                              { label: '상품명', align: 'left', width: 120 },
-                              { label: '입금액', align: 'right', width: 110 },
-                              { label: '출금액', align: 'right', width: 110 },
-                              { label: '잔액', align: 'right', width: 110 },
-                              { label: '메모', align: 'left', width: 200 },
-                              { label: '액션', align: 'center', width: 70 },
-                            ].map(({ label, align, width }) => (
+                              { label: 'No', align: 'center', width: 36, sortKey: 'id' },
+                              { label: '발생일', align: 'center', width: 90, sortKey: 'transaction_date' },
+                              { label: '구분', align: 'center', width: 52, sortKey: 'transaction_type' },
+                              { label: '상품명', align: 'left', width: 120, sortKey: 'related_product' },
+                              { label: '입금액', align: 'right', width: 110, sortKey: 'credit_amount' },
+                              { label: '출금액', align: 'right', width: 110, sortKey: 'debit_amount' },
+                              { label: '잔액', align: 'right', width: 110, sortKey: 'balance' },
+                              { label: '메모', align: 'left', width: 200, sortKey: '' },
+                              { label: '액션', align: 'center', width: 70, sortKey: '' },
+                            ].map(({ label, align, width, sortKey }) => (
                               <th
                                 key={label}
+                                onClick={sortKey ? () => toggleTxSort(sortKey) : undefined}
                                 style={{
                                   padding: '8px 12px',
                                   textAlign: align as 'center' | 'left' | 'right',
@@ -1561,10 +2006,13 @@ export function InvestmentFlowTab() {
                                   color: '#6B7280',
                                   borderBottom: '1px solid #E5E7EB',
                                   fontSize: 12,
+                                  backgroundColor: '#F9FAFB',
                                   width: width ? `${width}px` : undefined,
+                                  cursor: sortKey ? 'pointer' : undefined,
+                                  userSelect: sortKey ? 'none' : undefined,
                                 }}
                               >
-                                {label}
+                                {label}{sortKey && txSortKey === sortKey ? (txSortDir === 'asc' ? ' ▲' : ' ▼') : sortKey ? ' ⇅' : ''}
                               </th>
                             ))}
                           </tr>
@@ -1665,7 +2113,7 @@ export function InvestmentFlowTab() {
                               if (isEditingThis) {
                                 return (
                                   <tr key={tx.id} style={{ backgroundColor: '#FFFFF0', borderBottom: '1px solid #FDE68A' }}>
-                                    <td style={{ ...txTdCenter, color: '#9CA3AF' }}>{idx + 1}</td>
+                                    <td style={{ ...txTdCenter, color: '#9CA3AF' }}>{txOrigIndex.get(tx.id) ?? (idx + 1)}</td>
                                     <td style={{ padding: '6px 8px' }}>
                                       <input
                                         type="date"
@@ -1748,7 +2196,7 @@ export function InvestmentFlowTab() {
                                     backgroundColor: idx % 2 === 0 ? '#fff' : '#FAFAFA',
                                   }}
                                 >
-                                  <td style={{ ...txTdCenter }}>{idx + 1}</td>
+                                  <td style={{ ...txTdCenter }}>{txOrigIndex.get(tx.id) ?? (idx + 1)}</td>
                                   <td style={{ ...txTdBase, color: '#6B7280' }}>{tx.transaction_date}</td>
                                   <td style={{ ...txTdCenter }}>
                                     <span style={{
@@ -1810,6 +2258,7 @@ export function InvestmentFlowTab() {
                         </tbody>
                       </table>
                     </div>
+                    </div>
                   )}
                 </div>
               );
@@ -1819,9 +2268,9 @@ export function InvestmentFlowTab() {
       </section>
 
       {/* ===== 섹터3: 투자기록 테이블 ===== */}
-      <section className="print-section-records">
-        <div className="print-section-title">3. 투자기록</div>
-        <div style={{
+      <section id="print-sec-records" className="print-section-records">
+        <div className="print-section-title" style={{ fontSize: 13, fontWeight: 700, color: '#1E3A5F', marginBottom: 8, paddingBottom: 4, borderBottom: '2px solid #1E3A5F' }}>5. 투자기록</div>
+        <div className="no-print" style={{
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'space-between',
@@ -1903,27 +2352,28 @@ export function InvestmentFlowTab() {
           </div>
         </div>
 
-        <div style={{ overflowX: 'auto' }}>
+        <div ref={recScrollRef} style={{ overflowX: 'auto', overflowY: 'auto', maxHeight: 520 }}>
           <table style={{ minWidth: 1300, borderCollapse: 'collapse', fontSize: 13, whiteSpace: 'nowrap' }}>
-            <thead>
+            <thead style={{ position: 'sticky', top: 0, zIndex: 2 }}>
               <tr style={{ backgroundColor: '#F9FAFB' }}>
                 {[
-                  { label: '#', align: 'left' },
-                  { label: '상품명', align: 'left' },
-                  { label: '계좌별명', align: 'left' },
-                  { label: '투자금액', align: 'right' },
-                  { label: '평가금액', align: 'right' },
-                  { label: '수익률', align: 'right' },
-                  { label: '상태', align: 'left' },
-                  { label: '가입일', align: 'left', highlight: true },
-                  { label: '예상만기일', align: 'left', highlight: true },
-                  { label: '실제만기일', align: 'left', highlight: true },
-                  { label: '원만기일', align: 'left', highlight: true },
-                  { label: '메모', align: 'left' },
-                  { label: '액션', align: 'center' },
-                ].map(({ label, align, highlight }) => (
+                  { label: '#', align: 'left', sortKey: 'id' },
+                  { label: '상품명', align: 'left', sortKey: 'product_name' },
+                  { label: '계좌별명', align: 'left', sortKey: '' },
+                  { label: '투자금액', align: 'right', sortKey: 'investment_amount' },
+                  { label: '평가금액', align: 'right', sortKey: 'evaluation_amount' },
+                  { label: '수익률', align: 'right', sortKey: 'return_rate' },
+                  { label: '상태', align: 'left', sortKey: 'status' },
+                  { label: '가입일', align: 'left', highlight: true, sortKey: 'join_date' },
+                  { label: '예상만기일', align: 'left', highlight: true, sortKey: 'expected_maturity_date' },
+                  { label: '실제만기일', align: 'left', highlight: true, sortKey: 'actual_maturity_date' },
+                  { label: '원만기일', align: 'left', highlight: true, sortKey: '' },
+                  { label: '메모', align: 'left', sortKey: '' },
+                  { label: '액션', align: 'center', sortKey: '' },
+                ].map(({ label, align, highlight, sortKey }) => (
                   <th
                     key={label}
+                    onClick={sortKey ? () => toggleRecSort(sortKey) : undefined}
                     style={{
                       padding: '9px 12px',
                       textAlign: align as 'left' | 'right',
@@ -1932,10 +2382,12 @@ export function InvestmentFlowTab() {
                       borderBottom: '1px solid #E5E7EB',
                       fontSize: 11,
                       whiteSpace: 'nowrap',
-                      backgroundColor: highlight ? '#EEF2F7' : undefined,
+                      backgroundColor: highlight ? '#EEF2F7' : '#F9FAFB',
+                      cursor: sortKey ? 'pointer' : undefined,
+                      userSelect: sortKey ? 'none' : undefined,
                     }}
                   >
-                    {label}
+                    {label}{sortKey && recSortKey === sortKey ? (recSortDir === 'asc' ? ' ▲' : ' ▼') : sortKey ? ' ⇅' : ''}
                   </th>
                 ))}
               </tr>
@@ -2268,22 +2720,24 @@ export function InvestmentFlowTab() {
                           </span>
 
                           {/* ing → exit 전환 버튼 */}
-                          {record.status === 'ing' && (
+                          {record.status === 'ing' && (<>
                             <button
                               onClick={() => setStatusChangeRecord({ ...record, product_name: getProductName(record) })}
                               title="종결 처리"
-                              style={{
-                                padding: '2px 6px',
-                                fontSize: 10,
-                                borderRadius: 4,
-                                border: '1px solid #E5E7EB',
-                                backgroundColor: '#fff',
-                                color: '#6B7280',
-                                cursor: 'pointer',
-                              }}
-                            >
-                              종결
-                            </button>
+                              style={{ padding: '2px 6px', fontSize: 10, borderRadius: 4, border: '1px solid #E5E7EB', backgroundColor: '#fff', color: '#6B7280', cursor: 'pointer' }}
+                            >종결</button>
+                            <button
+                              onClick={() => { setInterimRecord(record); setInterimYear(String(new Date().getFullYear())); setInterimAmount(''); }}
+                              title="중간평가 입력"
+                              style={{ padding: '2px 6px', fontSize: 10, borderRadius: 4, border: '1px solid #F59E0B', backgroundColor: '#FFFBEB', color: '#B45309', cursor: 'pointer' }}
+                            >중간</button>
+                          </>)}
+                          {/* 중간평가 뱃지 */}
+                          {record.interim_evaluations && Object.keys(record.interim_evaluations).length > 0 && (
+                            <span
+                              title={`중간평가: ${Object.entries(record.interim_evaluations).map(([y, v]) => `${y}년 ${(v as number).toLocaleString()}원`).join(', ')}`}
+                              style={{ fontSize: 9, padding: '1px 4px', borderRadius: 3, backgroundColor: '#FEF3C7', color: '#92400E', fontWeight: 600 }}
+                            >평가 {Object.keys(record.interim_evaluations).length}건</span>
                           )}
                         </div>
                       </td>
@@ -2338,6 +2792,51 @@ export function InvestmentFlowTab() {
           </table>
         </div>
       </section>
+
+      {/* ===== 중간평가 모달 ===== */}
+      {interimRecord && (
+        <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.4)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }}>
+          <div style={{ backgroundColor: '#fff', borderRadius: 12, padding: 24, width: 400, boxShadow: '0 20px 60px rgba(0,0,0,0.3)' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 16 }}>
+              <h3 style={{ fontSize: 16, fontWeight: 700 }}>중간평가 입력</h3>
+              <button onClick={() => setInterimRecord(null)} style={{ border: 'none', background: 'none', fontSize: 18, cursor: 'pointer' }}>×</button>
+            </div>
+            {/* 상품 정보 */}
+            <div style={{ backgroundColor: '#F9FAFB', borderRadius: 8, padding: 12, marginBottom: 16, fontSize: 13 }}>
+              <div><span style={{ color: '#6B7280' }}>상품명:</span> <strong>{getProductName(interimRecord)}</strong></div>
+              <div><span style={{ color: '#6B7280' }}>가입일:</span> {interimRecord.join_date || interimRecord.start_date}</div>
+              <div><span style={{ color: '#6B7280' }}>투자금액:</span> {interimRecord.investment_amount.toLocaleString()}원</div>
+            </div>
+            {/* 기존 중간평가 목록 */}
+            {interimRecord.interim_evaluations && Object.keys(interimRecord.interim_evaluations).length > 0 && (
+              <div style={{ marginBottom: 16 }}>
+                <div style={{ fontSize: 12, fontWeight: 600, color: '#6B7280', marginBottom: 6 }}>기존 중간평가</div>
+                {Object.entries(interimRecord.interim_evaluations).sort(([a], [b]) => Number(a) - Number(b)).map(([y, v]) => (
+                  <div key={y} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '4px 8px', fontSize: 12, backgroundColor: '#FFFBEB', borderRadius: 4, marginBottom: 2 }}>
+                    <span>{y}년: <strong>{(v as number).toLocaleString()}원</strong></span>
+                    <button onClick={() => { deleteInterimEval(interimRecord, y); setInterimRecord({ ...interimRecord, interim_evaluations: (() => { const u = { ...interimRecord.interim_evaluations }; delete u[y]; return u; })() }); }} style={{ border: 'none', background: 'none', color: '#EF4444', cursor: 'pointer', fontSize: 11 }}>삭제</button>
+                  </div>
+                ))}
+              </div>
+            )}
+            {/* 신규 입력 */}
+            <div style={{ display: 'flex', gap: 8, marginBottom: 16 }}>
+              <div style={{ flex: 1 }}>
+                <label style={{ fontSize: 12, fontWeight: 600, color: '#374151' }}>연도</label>
+                <input type="number" value={interimYear} onChange={e => setInterimYear(e.target.value)} style={{ width: '100%', padding: '8px 10px', border: '1px solid #D1D5DB', borderRadius: 6, fontSize: 13 }} />
+              </div>
+              <div style={{ flex: 2 }}>
+                <label style={{ fontSize: 12, fontWeight: 600, color: '#374151' }}>평가금액 (원)</label>
+                <input type="text" value={interimAmount ? Number(interimAmount).toLocaleString() : ''} onChange={e => setInterimAmount(e.target.value.replace(/[^\d]/g, ''))} placeholder="예: 150,000,000" style={{ width: '100%', padding: '8px 10px', border: '1px solid #D1D5DB', borderRadius: 6, fontSize: 13 }} />
+              </div>
+            </div>
+            <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+              <button onClick={() => setInterimRecord(null)} style={{ padding: '8px 16px', fontSize: 13, borderRadius: 6, border: '1px solid #D1D5DB', backgroundColor: '#fff', cursor: 'pointer' }}>취소</button>
+              <button onClick={saveInterimEval} disabled={interimSaving || !interimYear || !interimAmount} style={{ padding: '8px 16px', fontSize: 13, fontWeight: 600, borderRadius: 6, border: 'none', backgroundColor: '#F59E0B', color: '#fff', cursor: 'pointer', opacity: interimSaving ? 0.6 : 1 }}>{interimSaving ? '저장 중...' : '저장'}</button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* ===== 모달들 ===== */}
       {statusChangeRecord && (

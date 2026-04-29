@@ -28,7 +28,7 @@ def calculate_annual_flow(
     Returns:
         dict: 연간 투자흐름표 집계 결과
     """
-    lump_sum_amount = 0          # 당해 일시납금액 (investment 유형)
+    lump_sum_amount = 0          # 당해 일시납금액 (예수금 입금 유형만, 투자 제외)
     withdrawal_amount = 0        # 당해 인출금액
 
     # 모든 미종결 투자 추적
@@ -39,6 +39,7 @@ def calculate_annual_flow(
         record_type = rec.get("record_type")
         investment_amount = rec.get("investment_amount") or 0
         evaluation_amount = rec.get("evaluation_amount")
+        interim_evals = rec.get("interim_evaluations") or {}
         rec_status = rec.get("status")
         start_date = rec.get("start_date")
         end_date = rec.get("end_date")
@@ -54,11 +55,9 @@ def calculate_annual_flow(
         else:
             end_year = 9999
 
-        # 당해 시작된 기록: 일시납/인출 집계
+        # 당해 시작된 기록: 인출 집계 (일시납은 예수금 거래 기반으로 별도 처리)
         if start_year == year:
-            if record_type == "investment":
-                lump_sum_amount += investment_amount
-            elif record_type == "withdrawal":
+            if record_type == "withdrawal":
                 withdrawal_amount += investment_amount
 
         # 총납입금액: 해당 연도 기준 아직 살아있는(=미종결 OR 당해종결) 투자
@@ -68,13 +67,17 @@ def calculate_annual_flow(
 
         # 연간평가금액:
         # - 당해 종결: 평가금액 사용
-        # - 미종결 (end_year > year): 투자금액 사용
+        # - 미종결: 중간평가 있으면 중간평가, 없으면 투자금액(원금)
         if end_year == year and rec_status == "exit":
             # 당해 종결된 상품 → 평가금액
             annual_evaluation += (evaluation_amount or investment_amount)
         elif start_year <= year and end_year > year:
-            # 해당 연도에 활성이지만 아직 미종결 → 투자금액
-            annual_evaluation += investment_amount
+            # 해당 연도에 활성이지만 아직 미종결
+            interim_val = interim_evals.get(str(year))
+            if interim_val is not None:
+                annual_evaluation += interim_val
+            else:
+                annual_evaluation += investment_amount
 
     # 연간총수익: 연간평가금액 - 총납입금액
     annual_total_profit = annual_evaluation - total_payment
