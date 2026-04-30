@@ -6,6 +6,7 @@ import Link from 'next/link';
 import { Modal } from '@/components/common/Modal';
 import { authLib } from '@/lib/auth';
 import { API_URL } from '@/lib/api-url';
+import * as XLSX from 'xlsx';
 
 /* ------------------------------------------------------------------ */
 /*  Types                                                               */
@@ -905,6 +906,203 @@ export default function WrapAccountsPage() {
   }
 
   /* ------------------------------------------------------------------ */
+  /*  Notion Sync (동기화)                                                 */
+  /* ------------------------------------------------------------------ */
+
+  const [syncLoading, setSyncLoading] = useState(false);
+  const [syncResult, setSyncResult] = useState<{ added: number; updated: number; skipped: number; total: number } | null>(null);
+
+  async function handleNotionSync() {
+    const saved = loadNotionConfig();
+    if (!saved) {
+      alert('먼저 Notion DB를 연결해 주세요. (Notion 버튼 → DB 선택 → 필드 매핑)');
+      return;
+    }
+    const token = authLib.getToken();
+    if (!token) return;
+
+    if (!confirm(`Notion DB "${saved.dbTitle}"와 동기화합니다.\n\n• Notion에만 있는 상품 → 추가\n• 둘 다 있는 상품 → Notion 기준 업데이트\n• 여기에만 있는 상품 → 유지\n\n진행하시겠습니까?`)) return;
+
+    setSyncLoading(true);
+    setSyncResult(null);
+
+    try {
+      // 1. Notion 데이터 가져오기
+      const rowsRes = await fetch(`${API_URL}/api/v1/notion/databases/${saved.dbId}/rows`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!rowsRes.ok) throw new Error('Notion 데이터 조회 실패');
+      const notionRows: { id: string; properties: Record<string, string> }[] = await rowsRes.json();
+
+      // 2. 상품명 매핑 키 확인
+      const nameCol = saved.mapping['product_name'];
+      if (!nameCol) throw new Error('필드 매핑에서 "상품명" 컬럼이 설정되지 않았습니다.');
+
+      // 3. 기존 상품 맵 (상품명 → product)
+      const existingMap = new Map<string, Product>();
+      products.forEach(p => {
+        if (p.product_name) existingMap.set(p.product_name.trim(), p);
+      });
+
+      let added = 0, updated = 0, skipped = 0;
+
+      for (const row of notionRows) {
+        const productName = row.properties[nameCol]?.trim();
+        if (!productName) { skipped++; continue; } // 상품명 없으면 스킵
+
+        const body = nMapRow(row);
+        body.product_name = productName;
+
+        const existing = existingMap.get(productName);
+
+        if (existing) {
+          // 둘 다 있음 → Notion 기준 업데이트
+          try {
+            const res = await fetch(`${API_URL}/api/v1/retirement/wrap-accounts/${existing.id}`, {
+              method: 'PUT',
+              headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+              body: JSON.stringify(body),
+            });
+            if (res.ok) updated++;
+          } catch { /* ignore */ }
+        } else {
+          // Notion에만 있음 → 신규 등록
+          try {
+            const res = await fetch(`${API_URL}/api/v1/retirement/wrap-accounts`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+              body: JSON.stringify(body),
+            });
+            if (res.ok) added++;
+          } catch { /* ignore */ }
+        }
+      }
+
+      const total = notionRows.length;
+      setSyncResult({ added, updated, skipped, total });
+      fetchProducts();
+    } catch (err) {
+      alert(`동기화 실패: ${err instanceof Error ? err.message : '오류'}`);
+    } finally {
+      setSyncLoading(false);
+    }
+  }
+
+  /* ------------------------------------------------------------------ */
+  /*  Excel import / export                                               */
+  /* ------------------------------------------------------------------ */
+
+  const EXCEL_HEADERS: { key: string; label: string }[] = [
+    { key: 'in_out', label: 'In/Out' },
+    { key: 'product_name', label: '상품명' },
+    { key: 'category', label: '카테고리' },
+    { key: 'asset_class_1', label: '자산구분(1)' },
+    { key: 'asset_class_2', label: '자산구분(2)' },
+    { key: 'institution', label: '거래기관' },
+    { key: 'period', label: '기간' },
+    { key: 'risk_level', label: '투자위험' },
+    { key: 'currency', label: '화폐' },
+    { key: 'total_expected_return', label: '총기대수익률(%)' },
+    { key: 'annual_expected_return', label: '연기대수익률(%)' },
+    { key: 'port_1', label: '포트(1)' },
+    { key: 'port_2', label: '포트(2)' },
+    { key: 'port_3', label: '포트(3)' },
+    { key: 'port_4', label: '포트(4)' },
+    { key: 'port_5', label: '포트(5)' },
+    { key: 'port_6', label: '포트(6)' },
+    { key: 'port_7', label: '포트(7)' },
+    { key: 'port_8', label: '포트(8)' },
+    { key: 'port_9', label: '포트(9)' },
+    { key: 'port_10', label: '포트(10)' },
+    { key: 'description', label: '설명' },
+  ];
+
+  const excelFileRef = useRef<HTMLInputElement>(null);
+  const [excelUploading, setExcelUploading] = useState(false);
+
+  function downloadExcelSample() {
+    const headers = EXCEL_HEADERS.map(h => h.label);
+    const sampleRow = ['In', '(올원)에드목표전환형30호(삼성전자)', '투자상품', '투자자산', '국내주식', 'NH투자증권', '장기(10년 초과)', '성장형', '₩', '150', '6.0', '삼성전자', '', '', '', '', '', '', '', '', '', ''];
+    const ws = XLSX.utils.aoa_to_sheet([headers, sampleRow]);
+    // 열 너비 설정
+    ws['!cols'] = headers.map(h => ({ wch: Math.max(h.length * 2, 12) }));
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, '투자상품');
+    XLSX.writeFile(wb, '투자상품_샘플.xlsx');
+  }
+
+  function downloadExcelCurrent() {
+    const headers = EXCEL_HEADERS.map(h => h.label);
+    const rows = products.map(p => EXCEL_HEADERS.map(h => {
+      const val = (p as unknown as Record<string, unknown>)[h.key];
+      return val != null ? String(val) : '';
+    }));
+    const ws = XLSX.utils.aoa_to_sheet([headers, ...rows]);
+    ws['!cols'] = headers.map(h => ({ wch: Math.max(h.length * 2, 12) }));
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, '투자상품');
+    XLSX.writeFile(wb, `투자상품_${new Date().toISOString().slice(0, 10)}.xlsx`);
+  }
+
+  async function handleExcelUpload(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const token = authLib.getToken();
+    if (!token) return;
+
+    setExcelUploading(true);
+    try {
+      const ab = await file.arrayBuffer();
+      const wb = XLSX.read(ab, { type: 'array' });
+      const ws = wb.Sheets[wb.SheetNames[0]];
+      const raw: string[][] = XLSX.utils.sheet_to_json(ws, { header: 1 });
+
+      if (raw.length < 2) { alert('데이터가 없습니다.'); return; }
+
+      // 헤더 매핑
+      const fileHeaders = raw[0].map(h => String(h).trim());
+      const keyMap: (string | null)[] = fileHeaders.map(fh => {
+        const match = EXCEL_HEADERS.find(eh => eh.label === fh);
+        return match ? match.key : null;
+      });
+
+      let success = 0, fail = 0;
+      for (let i = 1; i < raw.length; i++) {
+        const row = raw[i];
+        if (!row || row.every(c => !c)) continue; // 빈 행 스킵
+        const body: Record<string, unknown> = {};
+        keyMap.forEach((key, ci) => {
+          if (!key) return;
+          const val = row[ci];
+          if (val == null || val === '') return;
+          if (key === 'total_expected_return' || key === 'annual_expected_return') {
+            const num = parseFloat(String(val).replace(/[^0-9.\-]/g, ''));
+            if (!isNaN(num)) body[key] = num;
+          } else {
+            body[key] = String(val).trim();
+          }
+        });
+        if (!body.product_name) continue; // 상품명 필수
+        try {
+          const res = await fetch(`${API_URL}/api/v1/retirement/wrap-accounts`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+            body: JSON.stringify(body),
+          });
+          if (res.ok) success++; else fail++;
+        } catch { fail++; }
+      }
+      alert(`${success}건 등록 완료${fail > 0 ? `, ${fail}건 실패` : ''}`);
+      fetchProducts();
+    } catch (err) {
+      alert(`엑셀 파일 처리 실패: ${err instanceof Error ? err.message : '오류'}`);
+    } finally {
+      setExcelUploading(false);
+      if (excelFileRef.current) excelFileRef.current.value = '';
+    }
+  }
+
+  /* ------------------------------------------------------------------ */
   /*  Render helpers                                                      */
   /* ------------------------------------------------------------------ */
 
@@ -1188,24 +1386,43 @@ export default function WrapAccountsPage() {
               투자 상품을 등록하고 관리합니다.
             </p>
           </div>
-          <div style={{ display: 'flex', gap: 8 }}>
-            <Btn variant="ghost" onClick={() => { setNStep('idle'); setNError(null); openAdd(); setTimeout(() => nOpenSelector(), 100); }}>
-              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
-                <polyline points="14 2 14 8 20 8" />
-              </svg>
-              Notion에서 가져오기
+          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+            <Btn variant="ghost" onClick={downloadExcelSample} style={{ fontSize: 11 }}>
+              📥 샘플 다운
+            </Btn>
+            <Btn variant="ghost" onClick={downloadExcelCurrent} style={{ fontSize: 11 }}>
+              📤 엑셀 내보내기
+            </Btn>
+            <Btn variant="ghost" onClick={() => excelFileRef.current?.click()} disabled={excelUploading} style={{ fontSize: 11 }}>
+              {excelUploading ? '업로드 중...' : '📄 엑셀 업로드'}
+            </Btn>
+            <input ref={excelFileRef} type="file" accept=".xlsx,.xls,.csv" onChange={handleExcelUpload} style={{ display: 'none' }} />
+            <Btn variant="ghost" onClick={() => { setNStep('idle'); setNError(null); openAdd(); setTimeout(() => nOpenSelector(), 100); }} style={{ fontSize: 11 }}>
+              📝 Notion
+            </Btn>
+            <Btn variant="ghost" onClick={handleNotionSync} disabled={syncLoading}
+              style={{ fontSize: 11, background: syncLoading ? '#F3F4F6' : '#EFF6FF', color: '#1D4ED8', borderColor: '#93C5FD' }}>
+              {syncLoading ? '🔄 동기화 중...' : '🔄 Notion 동기화'}
             </Btn>
             <Btn variant="primary" onClick={openAdd}>
-              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
-                <line x1="12" y1="5" x2="12" y2="19" />
-                <line x1="5" y1="12" x2="19" y2="12" />
-              </svg>
-              상품 등록
+              + 상품 등록
             </Btn>
           </div>
         </div>
       </div>
+
+      {/* Sync Result */}
+      {syncResult && (
+        <div style={{ marginBottom: 14, padding: '10px 16px', backgroundColor: '#F0FDF4', border: '1px solid #86EFAC', borderRadius: 8, fontSize: 13, color: '#166534', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <span>
+            동기화 완료 — 전체 {syncResult.total}건 중{' '}
+            <strong style={{ color: '#1D4ED8' }}>추가 {syncResult.added}건</strong>,{' '}
+            <strong style={{ color: '#D97706' }}>업데이트 {syncResult.updated}건</strong>,{' '}
+            <span style={{ color: '#9CA3AF' }}>스킵 {syncResult.skipped}건</span> (상품명 없음)
+          </span>
+          <button onClick={() => setSyncResult(null)} style={{ background: 'none', border: 'none', color: '#6B7280', cursor: 'pointer', fontSize: 16 }}>×</button>
+        </div>
+      )}
 
       {/* Toolbar */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 14, padding: '10px 14px', backgroundColor: '#fff', borderRadius: 10, border: '1px solid #E1E5EB' }}>
