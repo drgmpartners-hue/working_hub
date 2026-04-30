@@ -64,7 +64,7 @@ from app.models.customer_retirement_profile import CustomerRetirementProfile
 from app.models.desired_plan import DesiredPlan
 
 # No FK dependencies (wrap account product catalog)
-from app.models.wrap_account import WrapAccount
+from app.models.wrap_account import WrapAccount, ProductSelectOption
 
 # Depends on customer_retirement_profiles + wrap_accounts (investment records)
 from app.models.investment_record import InvestmentRecord
@@ -117,6 +117,7 @@ __all__ = [
     "CustomerRetirementProfile",
     "DesiredPlan",
     "WrapAccount",
+    "ProductSelectOption",
     "InvestmentRecord",
     "RetirementPlan",
     "InteractiveCalculation",

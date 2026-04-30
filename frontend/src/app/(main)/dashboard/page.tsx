@@ -45,8 +45,8 @@ const CATEGORIES: Array<{
         href: '/portfolio/product-master',
       },
       {
-        title: 'Wrap 은퇴 상품 관리',
-        description: 'Wrap 계좌 및 은퇴 상품 마스터 데이터를 등록하고 관리합니다',
+        title: '투자상품 관리',
+        description: '투자 상품을 등록하고 관리합니다.',
         href: '/data-management/wrap-accounts',
       },
     ],
