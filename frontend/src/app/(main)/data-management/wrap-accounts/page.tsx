@@ -6,7 +6,11 @@ import Link from 'next/link';
 import { Modal } from '@/components/common/Modal';
 import { authLib } from '@/lib/auth';
 import { API_URL } from '@/lib/api-url';
-import * as XLSX from 'xlsx';
+// xlsx는 동적 import로 로딩 (번들 사이즈 최적화 + Vercel 호환)
+async function loadXLSX() {
+  const mod = await import('xlsx');
+  return mod;
+}
 
 /* ------------------------------------------------------------------ */
 /*  Types                                                               */
@@ -162,7 +166,7 @@ function formToBody(f: ProductFormState): Record<string, unknown> {
 const PERIOD_OPTIONS = ['유동성(1년 이하)', '단기(3년 이하)', '중기(6년 이하)', '중장기(10년 이하)', '장기(10년 초과)'];
 const RISK_OPTIONS = ['절대안정형', '안정형', '안정성장형', '성장형', '절대성장형'];
 const CURRENCY_OPTIONS = ['₩', '$'];
-const IN_OUT_OPTIONS = ['In', 'Out'];
+const IN_OUT_OPTIONS = ['IN', 'OUT'];
 
 /* Notion field mapping keys */
 const NOTION_MAP_FIELDS: { k: string; l: string }[] = [
@@ -683,8 +687,17 @@ export default function WrapAccountsPage() {
     }
   }
 
+  const editFormRef = useRef(editForm);
+  editFormRef.current = editForm;
+  const [editTick, setEditTick] = useState(0); // 편집 행만 리렌더 트리거
+
   function setEdit(field: keyof ProductFormState, value: string | boolean) {
-    setEditForm(prev => ({ ...prev, [field]: value }));
+    setEditForm(prev => {
+      const next = { ...prev, [field]: value };
+      editFormRef.current = next;
+      return next;
+    });
+    setEditTick(t => t + 1);
   }
 
   /* ---- Add ---- */
@@ -1020,18 +1033,19 @@ export default function WrapAccountsPage() {
   const excelFileRef = useRef<HTMLInputElement>(null);
   const [excelUploading, setExcelUploading] = useState(false);
 
-  function downloadExcelSample() {
+  async function downloadExcelSample() {
+    const XLSX = await loadXLSX();
     const headers = EXCEL_HEADERS.map(h => h.label);
-    const sampleRow = ['In', '(올원)에드목표전환형30호(삼성전자)', '투자상품', '투자자산', '국내주식', 'NH투자증권', '장기(10년 초과)', '성장형', '₩', '150', '6.0', '삼성전자', '', '', '', '', '', '', '', '', '', ''];
+    const sampleRow = ['IN', '(올원)에드목표전환형30호(삼성전자)', '투자상품', '투자자산', '국내주식', 'NH투자증권', '장기(10년 초과)', '성장형', '₩', '150', '6.0', '삼성전자', '', '', '', '', '', '', '', '', '', ''];
     const ws = XLSX.utils.aoa_to_sheet([headers, sampleRow]);
-    // 열 너비 설정
     ws['!cols'] = headers.map(h => ({ wch: Math.max(h.length * 2, 12) }));
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, '투자상품');
     XLSX.writeFile(wb, '투자상품_샘플.xlsx');
   }
 
-  function downloadExcelCurrent() {
+  async function downloadExcelCurrent() {
+    const XLSX = await loadXLSX();
     const headers = EXCEL_HEADERS.map(h => h.label);
     const rows = products.map(p => EXCEL_HEADERS.map(h => {
       const val = (p as unknown as Record<string, unknown>)[h.key];
@@ -1052,6 +1066,7 @@ export default function WrapAccountsPage() {
 
     setExcelUploading(true);
     try {
+      const XLSX = await loadXLSX();
       const ab = await file.arrayBuffer();
       const wb = XLSX.read(ab, { type: 'array' });
       const ws = wb.Sheets[wb.SheetNames[0]];
@@ -1149,7 +1164,7 @@ export default function WrapAccountsPage() {
         );
       case 'in_out':
         if (!p.in_out) return dash;
-        return <Badge color={p.in_out === 'In' ? 'blue' : 'red'}>{p.in_out}</Badge>;
+        return <Badge color={p.in_out?.toUpperCase() === 'IN' ? 'blue' : 'red'}>{p.in_out?.toUpperCase()}</Badge>;
       case 'institution':
         return p.institution ? <Badge color="navy">{p.institution}</Badge> : dash;
       case 'is_active':
@@ -1540,7 +1555,7 @@ export default function WrapAccountsPage() {
               ) : (
                 filtered.map((p, idx) => {
                   const isEditing = editingId === p.id;
-                  const rowBg = isEditing ? '#EFF6FF' : idx % 2 === 0 ? '#FFFFFF' : '#F9FAFB';
+                  const rowBg = isEditing ? '#EFF6FF' : selectedIds.has(p.id) ? '#F0FDF4' : idx % 2 === 0 ? '#FFFFFF' : '#F9FAFB';
                   return (
                     <tr key={p.id} style={{ backgroundColor: rowBg }}>
                       {columns.map(col => {
