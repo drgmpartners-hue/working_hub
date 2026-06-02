@@ -420,7 +420,7 @@ export default function WrapAccountsPage() {
   const [filterCategory, setFilterCategory] = useState('');
   const [filterAsset1, setFilterAsset1] = useState('');
   const [filterAsset2, setFilterAsset2] = useState('');
-  const [freezeCols, setFreezeCols] = useState(true);
+  const [freezeCols, setFreezeCols] = useState(false);
 
   /* Multi-column sorting */
   type SortDir = 'asc' | 'desc';
@@ -1513,7 +1513,7 @@ export default function WrapAccountsPage() {
                           position: 'sticky',
                           left: FREEZE_LEFTS[frozenIdx],
                           zIndex: 12,
-                          boxShadow: frozenIdx === FREEZE_KEYS.length - 1 ? '2px 0 4px rgba(0,0,0,0.1)' : undefined,
+                          borderRight: frozenIdx === FREEZE_KEYS.length - 1 ? '2px solid #D1D5DB' : undefined,
                         } : {}),
                       }}
                     >
@@ -1570,7 +1570,7 @@ export default function WrapAccountsPage() {
                           left: FREEZE_LEFTS[frozenIdx],
                           zIndex: 3,
                           backgroundColor: rowBg,
-                          boxShadow: frozenIdx === FREEZE_KEYS.length - 1 ? '2px 0 4px rgba(0,0,0,0.06)' : undefined,
+                          borderRight: frozenIdx === FREEZE_KEYS.length - 1 ? '2px solid #D1D5DB' : undefined,
                         } : {};
 
                         if (col.key === 'no') {

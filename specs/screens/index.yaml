@@ -78,12 +78,24 @@ screens:
     file: wrap-account-mgmt.yaml
     auth: true
 
+  # === 고객 포트폴리오 관리 (FEAT-3 확장) ===
+
+  - name: 고객 포트폴리오 관리
+    route: /investment/portfolios
+    file: customer-portfolio.yaml
+    auth: true
+
+  - name: 개별 종목 상세 분석
+    route: "(overlay)"
+    file: stock-detail.yaml
+    auth: true
+
 categories:
   - name: 업무 자동화
     screens: [commission-dr-gm, commission-securities]
 
   - name: 투자 분석
-    screens: [portfolio-irp, stock-recommend, retirement-desired-plan, retirement-investment-flow, retirement-plan, retirement-interactive-calc, retirement-pension-plan]
+    screens: [portfolio-irp, stock-recommend, customer-portfolio, stock-detail, retirement-desired-plan, retirement-investment-flow, retirement-plan, retirement-interactive-calc, retirement-pension-plan]
 
   - name: 콘텐츠 제작
     screens: [content-card-news, content-report, content-cover-promo]

@@ -36,6 +36,7 @@ interface ClientAccount {
   account_type: string;
   account_number?: string;
   securities_company?: string;
+  representative?: string; // 투권인
   monthly_payment?: number;
 }
 
@@ -432,6 +433,9 @@ function Tab2Section({
 
   /* ---- Area 3 local state ---- */
   const [t2HistPeriod, setT2HistPeriod] = useState<PeriodKey>('1y');
+  const [t2NetAssetPeriod, setT2NetAssetPeriod] = useState<PeriodKey>('1y');
+  const [t2NetAssetData, setT2NetAssetData] = useState<HistoryPoint[]>([]);
+  const [t2NetAssetLoading, setT2NetAssetLoading] = useState(false);
 
   /* ---- Area 5 local state ---- */
   const [t2RebalRows, setT2RebalRows] = useState<RebalRow[]>([]);
@@ -977,6 +981,7 @@ function Tab2Section({
 
       /* Also load chart data */
       loadT2ChartData(accountId, t2HistPeriod);
+      loadT2NetAssetData(accountId, t2NetAssetPeriod);
     } catch {
       /* silent */
     } finally {
@@ -1003,13 +1008,15 @@ function Tab2Section({
         return;
       }
       const mostRecentDate = new Date(sorted[0].snapshot_date);
-      /* Calculate cutoff date based on period */
-      const cutoff = new Date(mostRecentDate);
-      if (period === '3m') cutoff.setMonth(cutoff.getMonth() - 3);
-      else if (period === '6m') cutoff.setMonth(cutoff.getMonth() - 6);
-      else cutoff.setFullYear(cutoff.getFullYear() - 1);
-      /* Filter by date range */
-      const filtered = sorted.filter((s) => new Date(s.snapshot_date) >= cutoff);
+      /* Filter by date range (max = 전체 기간) */
+      let filtered = sorted;
+      if (period !== 'max') {
+        const cutoff = new Date(mostRecentDate);
+        if (period === '3m') cutoff.setMonth(cutoff.getMonth() - 3);
+        else if (period === '6m') cutoff.setMonth(cutoff.getMonth() - 6);
+        else cutoff.setFullYear(cutoff.getFullYear() - 1);
+        filtered = sorted.filter((s) => new Date(s.snapshot_date) >= cutoff);
+      }
       /* Sort ascending for chart */
       const ascending = [...filtered].sort((a, b) => a.snapshot_date.localeCompare(b.snapshot_date));
       setHistoryPoints(ascending.map((s) => ({ date: s.snapshot_date, return_rate: s.total_return_rate })));
@@ -1017,6 +1024,31 @@ function Tab2Section({
       /* silent */
     } finally {
       setHistoryChartLoading(false);
+    }
+  }
+
+  async function loadT2NetAssetData(accountId: string, period: PeriodKey) {
+    setT2NetAssetLoading(true);
+    try {
+      const res = await fetch(
+        `${API_URL}/api/v1/snapshots/history?account_id=${accountId}&period=${period}`,
+        { headers: { ...authLib.getAuthHeader() } }
+      );
+      if (!res.ok) return;
+      const data = await res.json();
+      const items: Array<{ snapshot_date: string; total_evaluation?: number; deposit_amount?: number }> =
+        Array.isArray(data?.items) ? data.items : data?.history ?? [];
+      /* 이미 ascending 정렬되어 옴 — 순자산 = 평가금액 + 예수금 */
+      setT2NetAssetData(
+        items.map((s) => ({
+          date: String(s.snapshot_date),
+          net_asset: (s.total_evaluation ?? 0) + (s.deposit_amount ?? 0),
+        }))
+      );
+    } catch {
+      /* silent */
+    } finally {
+      setT2NetAssetLoading(false);
     }
   }
 
@@ -1708,7 +1740,7 @@ function Tab2Section({
         {/* Row 1: search + client + account type */}
         <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'flex-end', marginBottom: 12 }}>
           {/* 고객 검색 */}
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 5, minWidth: 140 }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 5, width: 120, minWidth: 120, flex: '0 0 auto' }}>
             <label style={{ fontSize: '0.8125rem', fontWeight: 600, color: '#374151' }}>고객 검색</label>
             <div style={{ position: 'relative' }}>
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#9CA3AF" strokeWidth="2"
@@ -1773,9 +1805,15 @@ function Tab2Section({
             </select>
           </div>
 
-          {/* 증권사 + 계좌번호 (read-only) */}
+          {/* 투권인 + 증권사 + 계좌번호 (read-only) */}
           {t2SelectedAccount && (
             <>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 5, minWidth: 100 }}>
+                <label style={{ fontSize: '0.8125rem', fontWeight: 600, color: '#374151' }}>투권인</label>
+                <div style={{ padding: '8px 10px', fontSize: '0.8125rem', border: '1px solid #E1E5EB', borderRadius: 8, backgroundColor: '#F9FAFB', color: '#374151', minWidth: 90 }}>
+                  {t2SelectedAccount.representative || '-'}
+                </div>
+              </div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 5, minWidth: 120 }}>
                 <label style={{ fontSize: '0.8125rem', fontWeight: 600, color: '#374151' }}>증권사</label>
                 <div style={{ padding: '8px 10px', fontSize: '0.8125rem', border: '1px solid #E1E5EB', borderRadius: 8, backgroundColor: '#F9FAFB', color: '#374151', minWidth: 100 }}>
@@ -2169,6 +2207,13 @@ function Tab2Section({
           onActivePeriodChange={(p) => {
             setT2HistPeriod(p);
             loadT2ChartData(histAccountId, p);
+          }}
+          netAssetData={t2NetAssetData}
+          netAssetLoading={t2NetAssetLoading}
+          netAssetPeriod={t2NetAssetPeriod}
+          onNetAssetPeriodChange={(p) => {
+            setT2NetAssetPeriod(p);
+            loadT2NetAssetData(histAccountId, p);
           }}
         />
       )}
@@ -6034,7 +6079,7 @@ export default function IRPPage() {
           <Card padding={16}>
             <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'flex-end' }}>
               {/* 고객 검색 */}
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 5, minWidth: 140 }}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 5, width: 120, minWidth: 120, flex: '0 0 auto' }}>
                 <label style={{ fontSize: '0.8125rem', fontWeight: 600, color: '#374151' }}>고객 검색</label>
                 <div style={{ position: 'relative' }}>
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#9CA3AF" strokeWidth="2"
@@ -6099,9 +6144,15 @@ export default function IRPPage() {
                 </select>
               </div>
 
-              {/* 증권사 + 계좌번호 (read-only) */}
+              {/* 투권인 + 증권사 + 계좌번호 (read-only) */}
               {tab3SelectedAccount && (
                 <>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 5, minWidth: 90 }}>
+                    <label style={{ fontSize: '0.8125rem', fontWeight: 600, color: '#374151' }}>투권인</label>
+                    <div style={{ padding: '8px 10px', fontSize: '0.8125rem', border: '1px solid #E1E5EB', borderRadius: 8, backgroundColor: '#F9FAFB', color: '#374151' }}>
+                      {tab3SelectedAccount.representative || '-'}
+                    </div>
+                  </div>
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 5, minWidth: 100 }}>
                     <label style={{ fontSize: '0.8125rem', fontWeight: 600, color: '#374151' }}>증권사</label>
                     <div style={{ padding: '8px 10px', fontSize: '0.8125rem', border: '1px solid #E1E5EB', borderRadius: 8, backgroundColor: '#F9FAFB', color: '#374151' }}>

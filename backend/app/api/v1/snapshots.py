@@ -91,13 +91,13 @@ async def get_snapshot_history(
 ):
     """Return snapshot history with region/risk weight breakdown for chart rendering.
 
-    - period: 3m | 6m | 1y (omit for all history)
+    - period: 3m | 6m | 1y | max (omit or max for all history)
     """
-    if period is not None and period not in ("3m", "6m", "1y"):
+    if period is not None and period not in ("3m", "6m", "1y", "max"):
         from fastapi import HTTPException as _HTTPException
         raise _HTTPException(
             status_code=422,
-            detail="period must be one of: 3m, 6m, 1y",
+            detail="period must be one of: 3m, 6m, 1y, max",
         )
     raw_items = await snapshot_service.get_history_with_weights(db, account_id, period)
     items = [SnapshotHistoryItem(**item) for item in raw_items]

@@ -58,7 +58,7 @@ interface ReportData {
     monthly_payment?: number;
   };
   holdings: Holding[];
-  history: { date: string; return_rate?: number }[];
+  history: { date: string; return_rate?: number; total_evaluation?: number; deposit_amount?: number }[];
   ai_comment?: string;
   ai_change_comment?: string;
 }
@@ -732,7 +732,8 @@ const ReportView = forwardRef<HTMLDivElement, ReportViewProps>(
     managerNote = '',
     onManagerNoteChange,
   }, ref) => {
-    const [historyRange, setHistoryRange] = useState<'3m' | '6m' | '1y'>('6m');
+    const [historyRange, setHistoryRange] = useState<'3m' | '6m' | '1y' | 'max'>('6m');
+    const [netAssetRange, setNetAssetRange] = useState<'3m' | '6m' | '1y' | 'max'>('6m');
 
     /* ---------- computed data ---------- */
 
@@ -766,18 +767,37 @@ const ReportView = forwardRef<HTMLDivElement, ReportViewProps>(
         .map(([name, value]) => ({ name, value }));
     }, [holdings]);
 
-    // history filter
-    const historyData = useMemo(() => {
-      if (!reportData?.history) return [];
-      const all = [...reportData.history].sort(
+    // 기간 필터 헬퍼 — range가 'max'면 전체 데이터를 그대로 반환
+    const filterByRange = (
+      items: { date: string }[],
+      range: '3m' | '6m' | '1y' | 'max'
+    ) => {
+      const all = [...items].sort(
         (a, b) => new Date(a.date).getTime() - new Date(b.date).getTime()
       );
+      if (range === 'max') return all;
       const cutoff = new Date();
-      if (historyRange === '3m') cutoff.setMonth(cutoff.getMonth() - 3);
-      else if (historyRange === '6m') cutoff.setMonth(cutoff.getMonth() - 6);
+      if (range === '3m') cutoff.setMonth(cutoff.getMonth() - 3);
+      else if (range === '6m') cutoff.setMonth(cutoff.getMonth() - 6);
       else cutoff.setFullYear(cutoff.getFullYear() - 1);
       return all.filter((d) => new Date(d.date) >= cutoff);
+    };
+
+    // history filter (수익률 추이)
+    const historyData = useMemo(() => {
+      if (!reportData?.history) return [];
+      return filterByRange(reportData.history, historyRange);
     }, [reportData, historyRange]);
+
+    // 순자산 추이 데이터 — 순자산 = 평가금액 + 예수금
+    const netAssetData = useMemo(() => {
+      if (!reportData?.history) return [];
+      const withNet = reportData.history.map((h) => ({
+        ...h,
+        net_asset: (h.total_evaluation ?? 0) + (h.deposit_amount ?? 0),
+      }));
+      return filterByRange(withNet, netAssetRange);
+    }, [reportData, netAssetRange]);
 
     /* ---------- styles ---------- */
 
@@ -1202,7 +1222,7 @@ const ReportView = forwardRef<HTMLDivElement, ReportViewProps>(
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
             <SubTitle>수익률 추이</SubTitle>
             <div style={{ display: 'flex', gap: 0, border: '1px solid #E1E5EB', borderRadius: 8, overflow: 'hidden' }}>
-              {(['3m', '6m', '1y'] as const).map((r) => (
+              {(['3m', '6m', '1y', 'max'] as const).map((r) => (
                 <button
                   key={r}
                   onClick={() => setHistoryRange(r)}
@@ -1217,7 +1237,7 @@ const ReportView = forwardRef<HTMLDivElement, ReportViewProps>(
                     transition: 'all 0.15s ease',
                   }}
                 >
-                  {r === '3m' ? '3개월' : r === '6m' ? '6개월' : '1년'}
+                  {r === '3m' ? '3개월' : r === '6m' ? '6개월' : r === '1y' ? '1년' : 'MAX'}
                 </button>
               ))}
             </div>
@@ -1261,6 +1281,78 @@ const ReportView = forwardRef<HTMLDivElement, ReportViewProps>(
                   stroke="#1E3A5F"
                   strokeWidth={2}
                   dot={{ r: 3, fill: '#1E3A5F' }}
+                  activeDot={{ r: 5 }}
+                  connectNulls={false}
+                />
+              </LineChart>
+            </ResponsiveContainer>
+          )}
+        </div>
+
+        {/* ===== 6-2. 순자산 추이 그래프 ===== */}
+        <div style={{ marginBottom: 24 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+            <SubTitle>순자산 추이</SubTitle>
+            <div style={{ display: 'flex', gap: 0, border: '1px solid #E1E5EB', borderRadius: 8, overflow: 'hidden' }}>
+              {(['3m', '6m', '1y', 'max'] as const).map((r) => (
+                <button
+                  key={r}
+                  onClick={() => setNetAssetRange(r)}
+                  style={{
+                    padding: '5px 12px',
+                    border: 'none',
+                    backgroundColor: netAssetRange === r ? '#1E3A5F' : 'transparent',
+                    color: netAssetRange === r ? '#fff' : '#6B7280',
+                    fontSize: '0.75rem',
+                    fontWeight: 600,
+                    cursor: 'pointer',
+                    transition: 'all 0.15s ease',
+                  }}
+                >
+                  {r === '3m' ? '3개월' : r === '6m' ? '6개월' : r === '1y' ? '1년' : 'MAX'}
+                </button>
+              ))}
+            </div>
+          </div>
+          {netAssetData.length === 0 ? (
+            <div
+              style={{
+                height: 160,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                color: '#9CA3AF',
+                fontSize: '0.875rem',
+                border: '1px solid #F3F4F6',
+                borderRadius: 8,
+              }}
+            >
+              이력 데이터가 없습니다.
+            </div>
+          ) : (
+            <ResponsiveContainer width="100%" height={200}>
+              <LineChart data={netAssetData} margin={{ top: 8, right: 16, left: 0, bottom: 0 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#F3F4F6" />
+                <XAxis
+                  dataKey="date"
+                  tick={{ fontSize: 10, fill: '#9CA3AF' }}
+                  tickFormatter={(v: string) => v.slice(5)}
+                />
+                <YAxis
+                  tick={{ fontSize: 10, fill: '#9CA3AF' }}
+                  tickFormatter={(v: number) => `${Math.round(v / 10000).toLocaleString('ko-KR')}만`}
+                  width={52}
+                />
+                <Tooltip
+                  formatter={(v: unknown) => [`${typeof v === 'number' ? v.toLocaleString('ko-KR') : v}원`, '순자산']}
+                  labelStyle={{ fontSize: '0.75rem' }}
+                />
+                <Line
+                  type="monotone"
+                  dataKey="net_asset"
+                  stroke="#0F766E"
+                  strokeWidth={2}
+                  dot={{ r: 3, fill: '#0F766E' }}
                   activeDot={{ r: 5 }}
                   connectNulls={false}
                 />

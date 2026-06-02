@@ -100,6 +100,9 @@ export function PortalReportView({ token, portalJwt, snapshots, onAccountChange,
   const [activePeriod, setActivePeriod] = useState<PeriodKey>('3m');
   const [historyData, setHistoryData] = useState<HistoryPoint[]>([]);
   const [historyLoading, setHistoryLoading] = useState(false);
+  const [netAssetPeriod, setNetAssetPeriod] = useState<PeriodKey>('6m');
+  const [netAssetData, setNetAssetData] = useState<HistoryPoint[]>([]);
+  const [netAssetLoading, setNetAssetLoading] = useState(false);
 
   const currentAccount = snapshots.find((s) => s.account_id === selectedAccountId);
   const allDates = currentAccount?.dates ?? [];
@@ -156,6 +159,30 @@ export function PortalReportView({ token, portalJwt, snapshots, onAccountChange,
     };
     fetchHistory();
   }, [selectedAccountId, activePeriod, portalJwt, token]);
+
+  useEffect(() => {
+    if (!selectedAccountId) return;
+    const fetchNetAsset = async () => {
+      setNetAssetLoading(true);
+      try {
+        const res = await fetch(
+          `${API_URL}/api/v1/client-portal/${token}/history?account_id=${selectedAccountId}&period=${netAssetPeriod}`,
+          { headers: { Authorization: `Bearer ${portalJwt}` } }
+        );
+        if (res.ok) {
+          const data = await res.json();
+          const items = (data.history ?? []).map((h: Record<string, unknown>) => ({
+            date: (h.snapshot_date ?? h.date ?? '') as string,
+            net_asset:
+              (((h.total_evaluation as number) ?? 0) + ((h.deposit_amount as number) ?? 0)),
+          }));
+          setNetAssetData(items);
+        }
+      } catch { /* silent */ }
+      finally { setNetAssetLoading(false); }
+    };
+    fetchNetAsset();
+  }, [selectedAccountId, netAssetPeriod, portalJwt, token]);
 
   const sortedHoldings = report ? [...report.holdings].sort((a, b) => (a.seq ?? 999) - (b.seq ?? 999)) : [];
   const regionDist = report?.region_distribution?.length ? report.region_distribution : computeDistribution(sortedHoldings, 'region');
@@ -297,6 +324,10 @@ export function PortalReportView({ token, portalJwt, snapshots, onAccountChange,
               historyLoading={historyLoading}
               activePeriod={activePeriod}
               onActivePeriodChange={setActivePeriod}
+              netAssetData={netAssetData}
+              netAssetLoading={netAssetLoading}
+              netAssetPeriod={netAssetPeriod}
+              onNetAssetPeriodChange={setNetAssetPeriod}
             />
           </div>
 

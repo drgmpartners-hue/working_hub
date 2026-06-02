@@ -198,14 +198,24 @@ async def get_report_data(
         keep_idx = max(deposit_indices, key=lambda i: holdings[i].evaluation_amount or 0)
         holdings = [h for i, h in enumerate(holdings) if i not in deposit_indices or i == keep_idx]
 
-    # Get all historical snapshots for return rate chart (최대 12개월)
+    # Get all historical snapshots for return rate / net asset chart (전체 기간)
     history_result = await db.execute(
-        select(PortfolioSnapshot.snapshot_date, PortfolioSnapshot.total_return_rate)
+        select(
+            PortfolioSnapshot.snapshot_date,
+            PortfolioSnapshot.total_return_rate,
+            PortfolioSnapshot.total_evaluation,
+            PortfolioSnapshot.deposit_amount,
+        )
         .where(PortfolioSnapshot.client_account_id == client_account_id)
         .order_by(PortfolioSnapshot.snapshot_date)
     )
     history = [
-        {"date": str(row.snapshot_date), "return_rate": row.total_return_rate}
+        {
+            "date": str(row.snapshot_date),
+            "return_rate": row.total_return_rate,
+            "total_evaluation": row.total_evaluation,
+            "deposit_amount": row.deposit_amount,
+        }
         for row in history_result.all()
     ]
 
@@ -307,7 +317,7 @@ async def get_history_with_weights(
     client_account_id:
         The account whose snapshots to fetch.
     period:
-        One of "3m", "6m", "1y".  None means all history.
+        One of "3m", "6m", "1y".  None or "max" means all history.
 
     Returns
     -------
@@ -316,10 +326,10 @@ async def get_history_with_weights(
     """
     filters = [PortfolioSnapshot.client_account_id == client_account_id]
 
-    if period is not None:
+    if period is not None and period != "max":
         days = _PERIOD_DAYS.get(period)
         if days is None:
-            raise ValueError(f"Invalid period '{period}'. Use 3m, 6m or 1y.")
+            raise ValueError(f"Invalid period '{period}'. Use 3m, 6m, 1y or max.")
         cutoff = datetime.utcnow().date() - timedelta(days=days)
         filters.append(PortfolioSnapshot.snapshot_date >= cutoff)
 
@@ -381,6 +391,7 @@ async def get_history_with_weights(
                 "snapshot_id": snap.id,
                 "snapshot_date": snap.snapshot_date,
                 "total_evaluation": snap.total_evaluation,
+                "deposit_amount": snap.deposit_amount,
                 "total_return_rate": snap.total_return_rate,
                 "region_weights": region_weights,
                 "risk_weights": risk_weights,

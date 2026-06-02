@@ -1,0 +1,124 @@
+# 신규 도메인 리소스 (FEAT-3 확장)
+# 원본: specs/domain/resources.yaml 에 추가됨
+
+resources:
+
+  customers:
+    endpoints:
+      - method: GET
+        path: /api/customers
+      - method: GET
+        path: /api/customers/:id
+      - method: POST
+        path: /api/customers
+      - method: PUT
+        path: /api/customers/:id
+    fields:
+      id: { type: integer, pk: true }
+      name: { type: string }
+      birth_date: { type: date }
+      phone: { type: string }
+      email: { type: string }
+      occupation: { type: string }
+      notes: { type: text }
+      created_at: { type: timestamp }
+
+  customer_portfolios:
+    endpoints:
+      - method: GET
+        path: /api/customers/:customer_id/portfolios
+      - method: POST
+        path: /api/customers/:customer_id/portfolios
+      - method: GET
+        path: /api/customers/:customer_id/portfolios/:id
+      - method: PUT
+        path: /api/customers/:customer_id/portfolios/:id
+      - method: DELETE
+        path: /api/customers/:customer_id/portfolios/:id
+    fields:
+      id: { type: integer, pk: true }
+      customer_id: { type: integer, fk: customers }
+      name: { type: string }
+      account_number: { type: string }
+      account_type: { type: string }
+      total_invested: { type: decimal }
+      cash_balance: { type: decimal }
+      created_at: { type: timestamp }
+
+  portfolio_holdings:
+    endpoints:
+      - method: GET
+        path: /api/portfolios/:portfolio_id/holdings
+      - method: POST
+        path: /api/portfolios/:portfolio_id/holdings
+      - method: PUT
+        path: /api/portfolios/:portfolio_id/holdings/:id
+      - method: DELETE
+        path: /api/portfolios/:portfolio_id/holdings/:id
+    fields:
+      id: { type: integer, pk: true }
+      portfolio_id: { type: integer, fk: customer_portfolios }
+      stock_code: { type: string }
+      stock_name: { type: string }
+      stock_type: { type: string, enum: [stock, etf] }
+      holding_type: { type: string, enum: [dividend, growth] }
+      quantity: { type: integer }
+      avg_price: { type: decimal }
+      purchase_date: { type: date }
+
+  stock_market_data:
+    description: "KIS API (primary) + 네이버 금융 (secondary fallback)"
+    endpoints:
+      - method: GET
+        path: /api/market/stocks/:code
+      - method: GET
+        path: /api/market/stocks/:code/chart
+      - method: GET
+        path: /api/market/stocks/:code/dividend
+      - method: GET
+        path: /api/market/stocks/:code/fundamentals
+      - method: GET
+        path: /api/market/stocks/:code/supply-demand
+    fields:
+      code: { type: string, pk: true }
+      name: { type: string }
+      stock_type: { type: string, enum: [stock, etf] }
+      current_price: { type: decimal }
+      change_rate: { type: decimal }
+      market_cap: { type: bigint }
+      # 차트
+      price_history: { type: jsonb }
+      ma5: { type: decimal }
+      ma20: { type: decimal }
+      ma60: { type: decimal }
+      ma120: { type: decimal }
+      volume_history: { type: jsonb }
+      # 밸류에이션 (주식)
+      per: { type: decimal }
+      eps: { type: decimal }
+      pbr: { type: decimal }
+      # 배당 (주식/ETF 공통)
+      dividend_yield: { type: decimal }
+      dividend_cycle: { type: string }
+      dividend_stability: { type: decimal }
+      dividend_growth: { type: decimal }
+      # 수급 (주식)
+      foreign_net_buy: { type: jsonb }
+      institutional_net_buy: { type: jsonb }
+      # 기업 정보 (주식)
+      sector: { type: string }
+      business_summary: { type: text }
+      revenue_trend: { type: jsonb }
+      operating_profit_trend: { type: jsonb }
+      themes: { type: jsonb }
+      # themes 예시: ["AI", "로봇", "방산"] — AI 분석 또는 증권사 API 태그 기반
+      supply_chain: { type: jsonb }
+      # supply_chain 구조:
+      #   customers: [{code, name, relation}]  # 납품처 (상위 기업)
+      #   suppliers: [{code, name, relation}]  # 납품사 (하위 기업)
+      #   partners:  [{code, name, relation}]  # 지분/파트너십 관계사
+      # ETF 전용
+      etf_holdings: { type: jsonb }
+      etf_top10_ratio: { type: jsonb }
+      data_source: { type: string, enum: [kis, naver] }
+      updated_at: { type: timestamp }

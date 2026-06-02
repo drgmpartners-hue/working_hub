@@ -1,0 +1,150 @@
+version: "2.0"
+
+screen:
+  name: 고객 포트폴리오 관리
+  route: /investment/portfolios
+  layout: full-width
+  auth: true
+  description: |
+    배당형·성장형 종목을 장기 보유하여 배당 안정성을 높이고
+    안정적 현금흐름 창출을 지원하는 고객별 포트폴리오 관리 화면
+
+data_requirements:
+  - resource: customers
+    needs: [id, name, phone, email]
+  - resource: customer_portfolios
+    needs: [id, customer_id, name, account_number, account_type, total_invested, cash_balance]
+  - resource: portfolio_holdings
+    needs: [id, portfolio_id, stock_code, stock_name, stock_type, holding_type, quantity, avg_price, purchase_date]
+  - resource: stock_market_data
+    needs: [code, name, current_price, change_rate, dividend_yield, dividend_cycle, per, pbr]
+
+components:
+  - id: customer_selector
+    type: select
+    position: header
+    function: 기존 고객 DB에서 고객 검색 및 선택
+    data_source:
+      resource: customers
+    events:
+      - on: change:customer
+        do: 선택 고객의 포트폴리오 목록 로드
+
+  - id: portfolio_tabs
+    type: tabs
+    position: main
+    function: 고객의 포트폴리오 목록을 탭으로 표시 (N개, 계좌 단위)
+    data_source:
+      resource: customer_portfolios
+    events:
+      - on: click:tab
+        do: 선택 포트폴리오 상세 로드
+      - on: click:add_portfolio
+        do: 새 포트폴리오 추가 모달 열기
+      - on: click:delete_portfolio
+        do: 포트폴리오 삭제 확인 후 제거
+
+  - id: portfolio_summary
+    type: stats_card
+    position: main
+    function: "포트폴리오 요약: 총 투자금액, 예수금, 평가금액, 수익률"
+    data_source:
+      resource: customer_portfolios
+    events:
+      - on: toggle:dividend_include
+        do: 배당 포함/미포함 수익률 전환
+
+  - id: dividend_overview
+    type: chart
+    position: main
+    function: "배당 현황: 월별 예상 배당수익 바 차트 + 연간 배당 합계/YoY 성장률"
+    data_source:
+      resource: portfolio_holdings
+      computed:
+        - monthly_expected_dividend
+        - annual_dividend_total
+        - dividend_yoy_growth
+
+  - id: performance_chart
+    type: chart
+    position: main
+    function: |
+      통합 성과 차트: 투자 시작일~현재
+      - 종목별 기준가 라인 차트 (색상 구분)
+      - 포트폴리오 전체 수익률 흐름 오버레이
+      - 배당 포함/미포함 토글로 수익률 전환
+    data_source:
+      resource: stock_market_data
+      filters: { codes: "portfolio_holdings.stock_code[]" }
+    events:
+      - on: toggle:dividend_mode
+        do: 배당 포함/미포함 수익률 라인 전환
+
+  - id: holdings_table
+    type: table
+    position: main
+    function: "포트폴리오 구성 테이블: 종목별 보유 현황 및 수익률"
+    columns:
+      - 종목명
+      - 유형 (배당형/성장형)
+      - 수량
+      - 평균단가
+      - 현재가
+      - 평가금액
+      - 수익률
+      - 배당수익률
+    data_source:
+      resource: portfolio_holdings
+    events:
+      - on: click:row
+        do: SCR-11 (stock-detail) 슬라이드업/팝업 열기
+      - on: click:add_holding
+        do: 종목 추가 모달 (직접 입력 or FEAT-3-1 추천에서 담기)
+      - on: click:delete_holding
+        do: 종목 제거 확인 후 삭제
+
+  - id: stock_detail_panel
+    type: slide_panel
+    position: overlay
+    function: SCR-11 개별 종목 상세 분석 슬라이드업 (holding_table 행 클릭 시)
+    ref_screen: stock-detail.yaml
+
+connections:
+  navigations:
+    - from: customer_selector
+      to: /dashboard
+    - from: holdings_table:add_from_recommend
+      to: /investment/stock-recommend
+  shared_components:
+    - header_bar
+
+tests:
+  - name: 고객 선택 후 포트폴리오 로드
+    when: 고객 드롭다운에서 고객 선택
+    then:
+      - 해당 고객의 포트폴리오 탭 목록 표시
+      - 첫 번째 포트폴리오 자동 선택 및 요약 표시
+
+  - name: 수익률 토글
+    when: 배당 포함/미포함 토글 클릭
+    then:
+      - portfolio_summary 수익률 수치 즉시 변경
+      - performance_chart 수익률 라인 즉시 전환
+
+  - name: 배당 현황 표시
+    when: 포트폴리오 선택 후 dividend_overview 렌더
+    then:
+      - 월별 예상 배당금 바 차트 표시
+      - 연간 배당 합계 및 YoY 성장률 표시
+
+  - name: 종목 클릭 → 상세 분석
+    when: holdings_table 종목 행 클릭
+    then:
+      - SCR-11 슬라이드 패널 열림
+      - 해당 종목의 차트·배당·밸류에이션 정보 로드
+
+  - name: 포트폴리오 추가/삭제
+    when: 포트폴리오 추가 or 삭제 액션
+    then:
+      - 추가 시 새 탭 생성 및 선택
+      - 삭제 시 확인 모달 후 탭 제거

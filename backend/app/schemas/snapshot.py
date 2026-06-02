@@ -88,6 +88,7 @@ class SnapshotHistoryItem(BaseModel):
     snapshot_id: str
     snapshot_date: date
     total_evaluation: Optional[float] = None
+    deposit_amount: Optional[float] = None
     total_return_rate: Optional[float] = None
     region_weights: dict[str, float] = {}
     risk_weights: dict[str, float] = {}

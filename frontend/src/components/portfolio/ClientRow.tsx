@@ -1,7 +1,6 @@
 'use client';
 
 import { useState, useRef, useCallback, useEffect } from 'react';
-import { Button } from '@/components/common/Button';
 import { Card } from '@/components/common/Card';
 import { API_URL } from '@/lib/api-url';
 import { authLib } from '@/lib/auth';
@@ -107,7 +106,7 @@ const labelStyle: React.CSSProperties = {
 /*  Component                                                           */
 /* ------------------------------------------------------------------ */
 
-export function ClientRow({ index, clients, data, onChange, onRemove }: ClientRowProps) {
+export function ClientRow({ index, clients, data, onChange }: ClientRowProps) {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const pasteZoneRef = useRef<HTMLDivElement>(null);
 
@@ -367,13 +366,6 @@ export function ClientRow({ index, clients, data, onChange, onRemove }: ClientRo
           >
             고객 {index + 1}
           </span>
-          <Button variant="ghost" size="sm" onClick={onRemove} style={{ color: '#EF4444', padding: '4px 8px' }}>
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
-              <line x1="18" y1="6" x2="6" y2="18" />
-              <line x1="6" y1="6" x2="18" y2="18" />
-            </svg>
-            삭제
-          </Button>
         </div>
 
         {/* 2-column layout: 왼쪽 고객정보 + 오른쪽 이미지 캡쳐 */}

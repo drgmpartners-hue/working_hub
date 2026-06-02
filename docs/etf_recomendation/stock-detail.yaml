@@ -1,0 +1,216 @@
+version: "2.0"
+
+screen:
+  name: 개별 종목 상세 분석
+  route: "(overlay - 독립 라우트 없음)"
+  layout: slide-panel
+  auth: true
+  description: |
+    주식 또는 ETF 개별 종목의 상세 분석 정보를 슬라이드업/팝업으로 제공.
+    SCR-10 포트폴리오 테이블 또는 SCR-06 추천 화면에서 종목 클릭 시 진입.
+    stock_type(stock/etf)에 따라 표시 섹션이 다름.
+
+data_requirements:
+  - resource: stock_market_data
+    needs:
+      - code
+      - name
+      - stock_type
+      - current_price
+      - change_rate
+      - price_history
+      - ma5
+      - ma20
+      - ma60
+      - ma120
+      - volume_history
+      - per
+      - eps
+      - pbr
+      - dividend_yield
+      - dividend_cycle
+      - dividend_stability
+      - dividend_growth
+      - foreign_net_buy
+      - institutional_net_buy
+      - sector
+      - business_summary
+      - revenue_trend
+      - operating_profit_trend
+      - themes
+      - supply_chain
+      - etf_holdings
+      - etf_top10_ratio
+      - data_source
+
+components:
+  - id: detail_header
+    type: header
+    position: panel-top
+    function: "종목명, 티커, 현재가, 등락률, 타입 뱃지(주식/ETF), 닫기 버튼"
+    data_source:
+      resource: stock_market_data
+    events:
+      - on: click:close
+        do: 슬라이드 패널 닫기
+
+  - id: price_chart
+    type: chart
+    position: panel-main
+    function: |
+      가격 차트 (상단) + 거래량 서브차트 (하단)
+      - 이동평균선: 5일(단기) / 20일(단중기) / 60일(중기) / 120일(장기)
+      - 기간 선택: 1개월 / 3개월 / 6개월 / 1년 / 전체
+      - stock_type 무관 공통 표시
+    data_source:
+      resource: stock_market_data
+      fields: [price_history, ma5, ma20, ma60, ma120, volume_history]
+    events:
+      - on: change:period
+        do: 선택 기간 차트 데이터 갱신
+
+  # === 주식(stock) 전용 섹션 ===
+
+  - id: valuation_section
+    type: stats_card
+    position: panel-main
+    condition: stock_type == "stock"
+    function: "밸류에이션 지표: PER, EPS, PBR (업종 평균 대비 색상 표시)"
+    data_source:
+      resource: stock_market_data
+      fields: [per, eps, pbr]
+
+  - id: supply_demand_chart
+    type: chart
+    position: panel-main
+    condition: stock_type == "stock"
+    function: |
+      수급 차트: 외국인 순매수 / 기관 순매수 바 차트
+      - 기간 선택: 1개월 / 3개월 / 6개월
+    data_source:
+      resource: stock_market_data
+      fields: [foreign_net_buy, institutional_net_buy]
+    events:
+      - on: change:period
+        do: 선택 기간 수급 데이터 갱신
+
+  - id: company_info_section
+    type: info_card
+    position: panel-main
+    condition: stock_type == "stock"
+    function: |
+      기업 정보: 업종, 시가총액, 주요 사업 요약
+      + 소속 투자 테마 태그 (예: AI, 로봇, 방산 등 — 복수 테마 가능)
+    data_source:
+      resource: stock_market_data
+      fields: [sector, market_cap, business_summary, themes]
+
+  - id: revenue_chart
+    type: chart
+    position: panel-main
+    condition: stock_type == "stock"
+    function: "수익 구조: 매출·영업이익 트렌드 (최근 4분기 바 차트)"
+    data_source:
+      resource: stock_market_data
+      fields: [revenue_trend, operating_profit_trend]
+
+  - id: supply_chain_section
+    type: list
+    position: panel-main
+    condition: stock_type == "stock"
+    function: |
+      공급망/비즈니스 관계 기업 표시 (동일 업종 X, 상하관계 O)
+      - 납품처 (이 기업이 납품하는 상위 기업): 예) 레인보우 로보틱스 → 삼성전자
+      - 납품사 (이 기업에 납품하는 하위 기업)
+      - 관계사 (지분/파트너십 관계)
+      - 각 기업 클릭 시 해당 종목 상세로 패널 내용 교체
+    data_source:
+      resource: stock_market_data
+      fields: [supply_chain]
+    events:
+      - on: click:related_company
+        do: 해당 종목 상세로 패널 내용 교체
+
+  # === ETF 전용 섹션 ===
+
+  - id: etf_dividend_section
+    type: stats_card
+    position: panel-main
+    condition: stock_type == "etf"
+    function: "배당 정보: 배당주기, 배당수익률, 배당안정성 지표, 배당성장성 지표"
+    data_source:
+      resource: stock_market_data
+      fields: [dividend_cycle, dividend_yield, dividend_stability, dividend_growth]
+
+  - id: etf_holdings_chart
+    type: chart
+    position: panel-main
+    condition: stock_type == "etf"
+    function: "ETF 포트폴리오 구성: 편입 종목 Top 10 비중 파이/바 차트"
+    data_source:
+      resource: stock_market_data
+      fields: [etf_top10_ratio]
+
+  - id: etf_holdings_table
+    type: table
+    position: panel-main
+    condition: stock_type == "etf"
+    function: "편입 기업 분석: 주요 편입 종목별 비중·수익률 테이블"
+    columns:
+      - 종목명
+      - 비중(%)
+      - 수익률(1개월)
+      - 수익률(3개월)
+    data_source:
+      resource: stock_market_data
+      fields: [etf_holdings]
+
+  # === 공통 액션 ===
+
+  - id: action_buttons
+    type: button_group
+    position: panel-bottom
+    function: "포트폴리오에 담기 / 종목풀에 추가"
+    events:
+      - on: click:add_to_portfolio
+        do: SCR-10 포트폴리오 선택 모달 열기
+      - on: click:add_to_pool
+        do: 회사 종목풀에 추가
+
+connections:
+  from_screens:
+    - customer-portfolio (SCR-10) - holdings_table 행 클릭
+    - stock-recommend (SCR-06) - Step 2 종목 클릭
+  data_sources_note: "KIS API primary / 네이버 금융 secondary fallback"
+
+tests:
+  - name: 주식 타입 - 전체 섹션 표시
+    when: stock_type == stock 인 종목 클릭
+    then:
+      - price_chart 표시 (5/20/60/120일 이동평균 + 거래량)
+      - valuation_section 표시 (PER/EPS/PBR)
+      - supply_demand_chart 표시
+      - company_info_section 표시 (업종 + 시총 + 사업요약 + 테마 태그)
+      - revenue_chart 표시
+      - supply_chain_section 표시 (납품처/납품사/관계사)
+      - etf 전용 섹션 미표시
+
+  - name: ETF 타입 - 전체 섹션 표시
+    when: stock_type == etf 인 종목 클릭
+    then:
+      - price_chart 표시
+      - etf_dividend_section 표시
+      - etf_holdings_chart, etf_holdings_table 표시
+      - 주식 전용 섹션 미표시
+
+  - name: 데이터 소스 fallback
+    when: KIS API 응답 실패
+    then:
+      - 네이버 금융 API로 자동 전환
+      - data_source 표시가 "naver"로 변경
+
+  - name: 관련 종목 전환 (주식)
+    when: related_stocks_list에서 다른 종목 클릭
+    then:
+      - 패널 내용이 선택 종목 데이터로 교체
+      - 패널 닫힘 없이 내용만 갱신

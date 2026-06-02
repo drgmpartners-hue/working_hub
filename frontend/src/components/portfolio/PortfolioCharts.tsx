@@ -22,6 +22,7 @@ import {
 export interface HistoryPoint {
   date: string;
   return_rate?: number;
+  net_asset?: number; // 순자산 = 평가금액 + 예수금
 }
 
 export interface DistributionItem {
@@ -29,7 +30,7 @@ export interface DistributionItem {
   value: number; // 평가금액
 }
 
-export type PeriodKey = '3m' | '6m' | '1y';
+export type PeriodKey = '3m' | '6m' | '1y' | 'max';
 
 /* ------------------------------------------------------------------ */
 /*  Props                                                               */
@@ -45,6 +46,11 @@ interface PortfolioChartsProps {
   historyLoading: boolean;
   activePeriod: PeriodKey;
   onActivePeriodChange: (period: PeriodKey) => void;
+  /* 순자산 추이 (선택) — 제공 시 수익률 추이 아래에 그래프 표시 */
+  netAssetData?: HistoryPoint[];
+  netAssetLoading?: boolean;
+  netAssetPeriod?: PeriodKey;
+  onNetAssetPeriodChange?: (period: PeriodKey) => void;
 }
 
 /* ------------------------------------------------------------------ */
@@ -74,6 +80,7 @@ const PERIOD_LABELS: Record<PeriodKey, string> = {
   '3m': '3개월',
   '6m': '6개월',
   '1y': '1년',
+  max: 'MAX',
 };
 
 /* ------------------------------------------------------------------ */
@@ -114,6 +121,31 @@ function CustomLineTooltip({ active, payload, label }: { active?: boolean; paylo
       <div style={{ fontWeight: 700, color }}>
         {val > 0 ? '+' : ''}{val.toFixed(2)}%
       </div>
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/*  Custom Tooltip for Net Asset LineChart                              */
+/* ------------------------------------------------------------------ */
+
+function CustomNetAssetTooltip({ active, payload, label }: { active?: boolean; payload?: { value?: number }[]; label?: string }) {
+  if (!active || !payload || !payload.length) return null;
+  const val = payload[0]?.value;
+  if (val == null) return null;
+  return (
+    <div
+      style={{
+        backgroundColor: '#fff',
+        border: '1px solid #E1E5EB',
+        borderRadius: 8,
+        padding: '8px 12px',
+        fontSize: '0.8125rem',
+        boxShadow: '0 2px 8px rgba(0,0,0,0.08)',
+      }}
+    >
+      <div style={{ color: '#6B7280', marginBottom: 4 }}>{label}</div>
+      <div style={{ fontWeight: 700, color: '#0F766E' }}>{val.toLocaleString('ko-KR')}원</div>
     </div>
   );
 }
@@ -269,10 +301,20 @@ export function PortfolioCharts({
   historyLoading,
   activePeriod,
   onActivePeriodChange,
+  netAssetData,
+  netAssetLoading = false,
+  netAssetPeriod = '6m',
+  onNetAssetPeriodChange,
 }: PortfolioChartsProps) {
   const chartData = historyData.map((p) => ({
     date: formatDateLabel(p.date),
     수익률: p.return_rate ?? null,
+  }));
+
+  const showNetAsset = !!netAssetData && !!onNetAssetPeriodChange;
+  const netChartData = (netAssetData ?? []).map((p) => ({
+    date: formatDateLabel(p.date),
+    순자산: p.net_asset ?? null,
   }));
 
   return (
@@ -295,7 +337,7 @@ export function PortfolioCharts({
           </div>
           {/* Period tabs */}
           <div style={{ display: 'flex', gap: 0, border: '1px solid #E1E5EB', borderRadius: 8, overflow: 'hidden' }}>
-            {(['3m', '6m', '1y'] as PeriodKey[]).map((period) => (
+            {(['3m', '6m', '1y', 'max'] as PeriodKey[]).map((period) => (
               <button
                 key={period}
                 onClick={() => onActivePeriodChange(period)}
@@ -388,6 +430,91 @@ export function PortfolioCharts({
           </ResponsiveContainer>
         )}
       </div>
+
+      {/* 기간별 순자산 라인차트 */}
+      {showNetAsset && (
+        <div
+          style={{
+            border: '1px solid #E1E5EB',
+            borderRadius: 12,
+            padding: 20,
+            backgroundColor: '#fff',
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <div style={{ width: 3, height: 18, borderRadius: 2, backgroundColor: '#0F766E' }} />
+              <span style={{ fontSize: '0.9375rem', fontWeight: 700, color: '#1A1A2E' }}>
+                순자산 추이
+              </span>
+            </div>
+            {/* Period tabs */}
+            <div style={{ display: 'flex', gap: 0, border: '1px solid #E1E5EB', borderRadius: 8, overflow: 'hidden' }}>
+              {(['3m', '6m', '1y', 'max'] as PeriodKey[]).map((period) => (
+                <button
+                  key={period}
+                  onClick={() => onNetAssetPeriodChange?.(period)}
+                  style={{
+                    padding: '6px 14px',
+                    fontSize: '0.8125rem',
+                    fontWeight: netAssetPeriod === period ? 700 : 500,
+                    color: netAssetPeriod === period ? '#fff' : '#6B7280',
+                    backgroundColor: netAssetPeriod === period ? '#0F766E' : 'transparent',
+                    border: 'none',
+                    cursor: 'pointer',
+                    transition: 'all 0.15s ease',
+                  }}
+                >
+                  {PERIOD_LABELS[period]}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {netAssetLoading ? (
+            <div style={{ height: 220, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#9CA3AF', fontSize: '0.875rem' }}>
+              로딩 중...
+            </div>
+          ) : netChartData.length === 0 ? (
+            <div style={{ height: 220, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#9CA3AF', fontSize: '0.875rem' }}>
+              이력 데이터가 없습니다.
+            </div>
+          ) : netChartData.length < 3 ? (
+            <div style={{ height: 220, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#9CA3AF', fontSize: '0.875rem', textAlign: 'center', padding: '0 20px' }}>
+              데이터가 3개 이상인 경우 그래프가 구현됩니다.
+            </div>
+          ) : (
+            <ResponsiveContainer width="100%" height={220}>
+              <LineChart data={netChartData} margin={{ top: 8, right: 16, left: 0, bottom: 4 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#F3F4F6" />
+                <XAxis
+                  dataKey="date"
+                  tick={{ fontSize: 11, fill: '#9CA3AF' }}
+                  tickLine={false}
+                  axisLine={{ stroke: '#E1E5EB' }}
+                />
+                <YAxis
+                  tickFormatter={(v: number) => `${Math.round(v / 10000).toLocaleString('ko-KR')}만`}
+                  tick={{ fontSize: 11, fill: '#9CA3AF' }}
+                  tickLine={false}
+                  axisLine={false}
+                  width={56}
+                />
+                <Tooltip content={<CustomNetAssetTooltip />} />
+                <Line
+                  type="monotone"
+                  dataKey="순자산"
+                  stroke="#0F766E"
+                  strokeWidth={2}
+                  dot={{ r: 3, fill: '#0F766E', strokeWidth: 0 }}
+                  activeDot={{ r: 5, fill: '#14B8A6', strokeWidth: 0 }}
+                  connectNulls={false}
+                />
+              </LineChart>
+            </ResponsiveContainer>
+          )}
+        </div>
+      )}
 
       {/* 분산 차트 2개 - 웹: 가로, 모바일: 세로 */}
       <div style={{ display: 'grid', gap: 16 }} className="chart-distribution-grid">
