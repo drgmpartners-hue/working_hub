@@ -440,6 +440,7 @@ function Tab2Section({
   /* ---- Area 5 local state ---- */
   const [t2RebalRows, setT2RebalRows] = useState<RebalRow[]>([]);
   const [t2RebalSaving, setT2RebalSaving] = useState(false);
+  const [t2MatchEvalChecked, setT2MatchEvalChecked] = useState(false);
   const [t2ProductSearch, setT2ProductSearch] = useState('');
   const [t2AddProductOpen, setT2AddProductOpen] = useState(false);
   const [t2Toast, setT2Toast] = useState('');
@@ -1389,6 +1390,16 @@ function Tab2Section({
       const updated = prev.map((r) =>
         r.id !== id ? r : { ...r, rebalRatio: isNaN(num) ? 0 : num }
       );
+      return recalcRebalRows(updated);
+    });
+  }
+
+  /* 체크 시 보유 상품의 재조정 비율을 현재 평가비율과 동일하게 채움 (이후 수동 조정 시작점) */
+  function handleT2MatchEvalRatio(checked: boolean) {
+    setT2MatchEvalChecked(checked);
+    if (!checked) return;
+    setT2RebalRows((prev) => {
+      const updated = prev.map((r) => (r.isRow1 ? r : { ...r, rebalRatio: r.evalRatio }));
       return recalcRebalRows(updated);
     });
   }
@@ -2611,7 +2622,18 @@ function Tab2Section({
                   <th style={thStyle}>평가손익</th>
                   <th style={thStyle}>수익률</th>
                   <th style={thStyle}>평가비율</th>
-                  <th style={{ ...thStyle, minWidth: 100, backgroundColor: '#059669', color: '#fff' }}>재조정 비율</th>
+                  <th style={{ ...thStyle, minWidth: 100, backgroundColor: '#059669', color: '#fff' }}>
+                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, justifyContent: 'center' }}>
+                      <input
+                        type="checkbox"
+                        checked={t2MatchEvalChecked}
+                        onChange={(e) => handleT2MatchEvalRatio(e.target.checked)}
+                        data-tooltip="체크 시 보유 상품의 재조정 비율을 현재 평가비율과 동일하게 채웁니다."
+                        style={{ width: 13, height: 13, cursor: 'pointer', accentColor: '#fff' }}
+                      />
+                      재조정 비율
+                    </span>
+                  </th>
                   <th style={{ ...thStyle, minWidth: 110, backgroundColor: '#059669', color: '#fff' }}>재조정 잔액</th>
                   <th style={{ ...thStyle, minWidth: 100, backgroundColor: '#059669', color: '#fff' }}>
                     <span data-tooltip="±10,000원 이하인 경우 0원으로 자동 처리됩니다." style={{ cursor: 'help', borderBottom: '1px dashed rgba(255,255,255,0.5)' }}>Sell/Buy</span>
@@ -6295,7 +6317,7 @@ export default function IRPPage() {
                       style={{ ...btnBase, color: '#92400E', backgroundColor: (alimtalkSending || !reportSaved) ? '#E5E7EB' : '#FEF3C7', border: '1px solid #FCD34D' }}>
                       {alimtalkSending ? '발송 중...' : '알림톡 발송'}
                     </button>
-                    {reportSaved && <span style={{ fontSize: '0.5625rem', color: '#9CA3AF' }}>* 유효 7일</span>}
+                    {reportSaved && <span style={{ fontSize: '0.5625rem', color: '#9CA3AF' }}>* 유효 1개월</span>}
                   </div>
                 </div>
 

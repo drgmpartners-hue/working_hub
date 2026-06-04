@@ -306,14 +306,15 @@ export function PortfolioCharts({
   netAssetPeriod = '6m',
   onNetAssetPeriodChange,
 }: PortfolioChartsProps) {
+  // date는 전체(YYYY-MM-DD)로 보존 → X축 라벨만 짧게(MM/DD) 표시, 툴팁은 전체 날짜 노출
   const chartData = historyData.map((p) => ({
-    date: formatDateLabel(p.date),
+    date: p.date,
     수익률: p.return_rate ?? null,
   }));
 
   const showNetAsset = !!netAssetData && !!onNetAssetPeriodChange;
   const netChartData = (netAssetData ?? []).map((p) => ({
-    date: formatDateLabel(p.date),
+    date: p.date,
     순자산: p.net_asset ?? null,
   }));
 
@@ -405,6 +406,7 @@ export function PortfolioCharts({
               <CartesianGrid strokeDasharray="3 3" stroke="#F3F4F6" />
               <XAxis
                 dataKey="date"
+                tickFormatter={formatDateLabel}
                 tick={{ fontSize: 11, fill: '#9CA3AF' }}
                 tickLine={false}
                 axisLine={{ stroke: '#E1E5EB' }}
@@ -489,6 +491,7 @@ export function PortfolioCharts({
                 <CartesianGrid strokeDasharray="3 3" stroke="#F3F4F6" />
                 <XAxis
                   dataKey="date"
+                  tickFormatter={formatDateLabel}
                   tick={{ fontSize: 11, fill: '#9CA3AF' }}
                   tickLine={false}
                   axisLine={{ stroke: '#E1E5EB' }}

@@ -103,8 +103,8 @@ async def update_suggestion(
         suggestion.manager_note = body.manager_note
     # 재저장 시 created_at 갱신 (담당자 의견 48시간 기준점)
     suggestion.created_at = datetime.utcnow()
-    # 만료일도 갱신 (저장 시점으로부터 7일)
-    suggestion.expires_at = datetime.utcnow() + timedelta(days=7)
+    # 만료일도 갱신 (저장 시점으로부터 1개월)
+    suggestion.expires_at = datetime.utcnow() + timedelta(days=30)
     await db.commit()
     return {"id": suggestion.id, "updated": True}
 

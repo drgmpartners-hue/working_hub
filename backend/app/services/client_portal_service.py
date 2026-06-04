@@ -382,7 +382,7 @@ async def create_suggestion(
         ai_comment=ai_comment,
         manager_note=manager_note,
         created_by=created_by,
-        expires_at=datetime.utcnow() + timedelta(days=7),
+        expires_at=datetime.utcnow() + timedelta(days=30),
     )
     db.add(suggestion)
     await db.commit()

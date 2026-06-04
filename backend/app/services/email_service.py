@@ -88,7 +88,7 @@ async def send_suggestion_email(
     """
     try:
         expires_str = (
-            expires_at.strftime("%Y년 %m월 %d일") if expires_at else "7일 후"
+            expires_at.strftime("%Y년 %m월 %d일") if expires_at else "1개월 후"
         )
 
         if not settings.SMTP_HOST:
