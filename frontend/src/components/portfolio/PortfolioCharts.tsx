@@ -101,10 +101,12 @@ function formatDateLabel(dateStr: string): string {
 /*  Custom Tooltip for LineChart                                        */
 /* ------------------------------------------------------------------ */
 
-function CustomLineTooltip({ active, payload, label }: { active?: boolean; payload?: { value?: number }[]; label?: string }) {
+function CustomLineTooltip({ active, payload }: { active?: boolean; payload?: Array<{ value?: number; payload?: { date?: string } }> }) {
   if (!active || !payload || !payload.length) return null;
   const val = payload[0]?.value;
   if (val == null) return null;
+  // X축 tickFormatter(MM/DD)와 무관하게 원본 전체 날짜(YYYY-MM-DD)를 표시
+  const fullDate = payload[0]?.payload?.date ?? '';
   const color = val > 0 ? '#10B981' : val < 0 ? '#EF4444' : '#374151';
   return (
     <div
@@ -117,7 +119,7 @@ function CustomLineTooltip({ active, payload, label }: { active?: boolean; paylo
         boxShadow: '0 2px 8px rgba(0,0,0,0.08)',
       }}
     >
-      <div style={{ color: '#6B7280', marginBottom: 4 }}>{label}</div>
+      <div style={{ color: '#6B7280', marginBottom: 4 }}>{fullDate}</div>
       <div style={{ fontWeight: 700, color }}>
         {val > 0 ? '+' : ''}{val.toFixed(2)}%
       </div>
@@ -129,10 +131,12 @@ function CustomLineTooltip({ active, payload, label }: { active?: boolean; paylo
 /*  Custom Tooltip for Net Asset LineChart                              */
 /* ------------------------------------------------------------------ */
 
-function CustomNetAssetTooltip({ active, payload, label }: { active?: boolean; payload?: { value?: number }[]; label?: string }) {
+function CustomNetAssetTooltip({ active, payload }: { active?: boolean; payload?: Array<{ value?: number; payload?: { date?: string } }> }) {
   if (!active || !payload || !payload.length) return null;
   const val = payload[0]?.value;
   if (val == null) return null;
+  // X축 tickFormatter(MM/DD)와 무관하게 원본 전체 날짜(YYYY-MM-DD)를 표시
+  const fullDate = payload[0]?.payload?.date ?? '';
   return (
     <div
       style={{
@@ -144,7 +148,7 @@ function CustomNetAssetTooltip({ active, payload, label }: { active?: boolean; p
         boxShadow: '0 2px 8px rgba(0,0,0,0.08)',
       }}
     >
-      <div style={{ color: '#6B7280', marginBottom: 4 }}>{label}</div>
+      <div style={{ color: '#6B7280', marginBottom: 4 }}>{fullDate}</div>
       <div style={{ fontWeight: 700, color: '#0F766E' }}>{val.toLocaleString('ko-KR')}원</div>
     </div>
   );
