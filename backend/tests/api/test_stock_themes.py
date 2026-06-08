@@ -125,6 +125,38 @@ class TestAnalyzeStockThemes:
                 )
         assert resp.status_code == 200
 
+
+# ---------------------------------------------------------------------------
+# POST /api/v1/stocks/themes/refresh (테마 반영)
+# ---------------------------------------------------------------------------
+
+class TestRefreshStockThemes:
+    """POST /api/v1/stocks/themes/refresh"""
+
+    def test_refresh_returns_200_with_themes(self):
+        populated = [
+            _make_theme("t1", "AI반도체·HBM", ai_score=94.2),
+            _make_theme("t2", "방산", ai_score=86.1),
+        ]
+        with patch(
+            "app.api.v1.stock.stock_service.populate_themes",
+            new=AsyncMock(return_value=populated),
+        ):
+            app = _make_app()
+            with TestClient(app) as client:
+                resp = client.post("/api/v1/stocks/themes/refresh")
+        assert resp.status_code == 200
+        body = resp.json()
+        assert len(body) == 2
+        assert body[0]["theme_name"] == "AI반도체·HBM"
+
+    def test_refresh_requires_authentication(self):
+        app_no_auth = FastAPI()
+        app_no_auth.include_router(stock_router, prefix="/api/v1")
+        client = TestClient(app_no_auth, raise_server_exceptions=False)
+        resp = client.post("/api/v1/stocks/themes/refresh")
+        assert resp.status_code == 401
+
     def test_analyze_response_has_ai_score(self):
         analyzed = [_make_theme(ai_score=87.5)]
         with patch(

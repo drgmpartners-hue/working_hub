@@ -26,6 +26,7 @@ export function ThemeList({ basket, onAddToBasket, onRemoveFromBasket }: ThemeLi
   const [themes, setThemes] = useState<StockTheme[]>([]);
   const [loading, setLoading] = useState(false);
   const [analyzingId, setAnalyzingId] = useState<number | null>(null);
+  const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -67,6 +68,24 @@ export function ThemeList({ basket, onAddToBasket, onRemoveFromBasket }: ThemeLi
       setError(err instanceof Error ? err.message : '분석 중 오류가 발생했습니다.');
     } finally {
       setAnalyzingId(null);
+    }
+  }
+
+  async function refreshThemes() {
+    setRefreshing(true);
+    setError(null);
+    try {
+      const res = await fetch(`${API_URL}/api/v1/stocks/themes/refresh`, {
+        method: 'POST',
+        headers: { ...authLib.getAuthHeader() },
+      });
+      if (!res.ok) throw new Error('테마 반영에 실패했습니다.');
+      const data = await res.json();
+      setThemes(Array.isArray(data) ? data : data.themes ?? []);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : '테마 반영 중 오류가 발생했습니다.');
+    } finally {
+      setRefreshing(false);
     }
   }
 
@@ -134,14 +153,69 @@ export function ThemeList({ basket, onAddToBasket, onRemoveFromBasket }: ThemeLi
 
   if (themes.length === 0) {
     return (
-      <div style={{ textAlign: 'center', padding: '48px 0', color: '#6B7280', fontSize: '0.875rem' }}>
-        등록된 테마가 없습니다.
+      <div style={{ textAlign: 'center', padding: '40px 16px', color: 'var(--text-muted)', fontSize: '0.875rem' }}>
+        <p style={{ margin: '0 0 16px' }}>등록된 테마가 없습니다.</p>
+        <button
+          onClick={refreshThemes}
+          disabled={refreshing}
+          style={{
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: 8,
+            padding: '10px 20px',
+            borderRadius: 8,
+            border: 'none',
+            cursor: refreshing ? 'default' : 'pointer',
+            backgroundColor: '#2E8B8B',
+            color: '#fff',
+            fontSize: '0.875rem',
+            fontWeight: 600,
+            opacity: refreshing ? 0.7 : 1,
+          }}
+        >
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"
+            style={refreshing ? { animation: 'spin 0.7s linear infinite' } : undefined}>
+            <polyline points="23 4 23 10 17 10" />
+            <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10" />
+          </svg>
+          {refreshing ? '테마 반영 중...' : '테마 반영하기'}
+        </button>
+        <p style={{ margin: '12px 0 0', fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+          소스에서 추천 테마를 불러옵니다.
+        </p>
       </div>
     );
   }
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+      <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 2 }}>
+        <button
+          onClick={refreshThemes}
+          disabled={refreshing}
+          style={{
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: 6,
+            padding: '6px 12px',
+            borderRadius: 6,
+            border: '1px solid var(--border)',
+            cursor: refreshing ? 'default' : 'pointer',
+            backgroundColor: 'var(--bg-card)',
+            color: 'var(--text-muted)',
+            fontSize: '0.75rem',
+            fontWeight: 600,
+            opacity: refreshing ? 0.7 : 1,
+          }}
+        >
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"
+            style={refreshing ? { animation: 'spin 0.7s linear infinite' } : undefined}>
+            <polyline points="23 4 23 10 17 10" />
+            <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10" />
+          </svg>
+          {refreshing ? '반영 중...' : '테마 반영'}
+        </button>
+      </div>
       {themes.map((theme) => {
         const inBasket = isInBasket(theme.id);
         const isAnalyzing = analyzingId === theme.id;

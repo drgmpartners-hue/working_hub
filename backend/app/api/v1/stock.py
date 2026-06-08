@@ -42,6 +42,24 @@ async def list_themes(
 
 
 @router.post(
+    "/themes/refresh",
+    response_model=list[StockThemeResponse],
+    summary="Populate stock themes from source (mock — curated list)",
+)
+async def refresh_themes(
+    current_user: CurrentUser,
+    db: Annotated[AsyncSession, Depends(get_db)],
+) -> list[StockThemeResponse]:
+    """테마 목록을 소스에서 반영(upsert, 멱등).
+
+    현재는 큐레이션 mock 테마. 추후 네이버 금융 테마 + ETF 구성종목 역설계 +
+    뉴스 공출현(08-stock-etf §5)으로 교체.
+    """
+    themes = await stock_service.populate_themes(db)
+    return [StockThemeResponse.model_validate(t) for t in themes]
+
+
+@router.post(
     "/themes/analyze",
     response_model=list[StockThemeResponse],
     summary="Analyze selected stock themes (mock AI)",
