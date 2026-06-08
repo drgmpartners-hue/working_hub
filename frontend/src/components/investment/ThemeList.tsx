@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import type { CSSProperties } from 'react';
 import { Button } from '@/components/common/Button';
 import { Card } from '@/components/common/Card';
 import { authLib } from '@/lib/auth';
@@ -28,6 +29,8 @@ export function ThemeList({ basket, onAddToBasket, onRemoveFromBasket }: ThemeLi
   const [analyzingId, setAnalyzingId] = useState<number | null>(null);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [search, setSearch] = useState('');
+  const [sortBy, setSortBy] = useState<'score_desc' | 'score_asc' | 'name_asc' | 'name_desc'>('score_desc');
 
   useEffect(() => {
     fetchThemes();
@@ -187,9 +190,64 @@ export function ThemeList({ basket, onAddToBasket, onRemoveFromBasket }: ThemeLi
     );
   }
 
+  const displayThemes = themes
+    .filter((t) =>
+      search.trim() === '' ? true : t.theme_name.toLowerCase().includes(search.trim().toLowerCase())
+    )
+    .sort((a, b) => {
+      switch (sortBy) {
+        case 'score_desc':
+          return (b.ai_score ?? -1) - (a.ai_score ?? -1);
+        case 'score_asc':
+          return (a.ai_score ?? -1) - (b.ai_score ?? -1);
+        case 'name_asc':
+          return a.theme_name.localeCompare(b.theme_name, 'ko');
+        case 'name_desc':
+          return b.theme_name.localeCompare(a.theme_name, 'ko');
+        default:
+          return 0;
+      }
+    });
+
+  const controlStyle: CSSProperties = {
+    height: 34,
+    padding: '0 10px',
+    borderRadius: 6,
+    border: '1px solid var(--border)',
+    backgroundColor: 'var(--bg-card)',
+    color: 'var(--text-primary)',
+    fontSize: '0.8125rem',
+    outline: 'none',
+  };
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-      <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 2 }}>
+      {/* 검색 + 정렬 + 테마 반영 */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+        <div style={{ position: 'relative', flex: 1, minWidth: 180 }}>
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--text-muted)" strokeWidth="2" strokeLinecap="round"
+            style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none' }}>
+            <circle cx="11" cy="11" r="8" />
+            <path d="m21 21-4.35-4.35" />
+          </svg>
+          <input
+            type="text"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="테마명 검색"
+            style={{ ...controlStyle, width: '100%', paddingLeft: 30 }}
+          />
+        </div>
+        <select
+          value={sortBy}
+          onChange={(e) => setSortBy(e.target.value as typeof sortBy)}
+          style={{ ...controlStyle, cursor: 'pointer' }}
+        >
+          <option value="score_desc">점수 높은순</option>
+          <option value="score_asc">점수 낮은순</option>
+          <option value="name_asc">테마명 가나다순</option>
+          <option value="name_desc">테마명 가나다 역순</option>
+        </select>
         <button
           onClick={refreshThemes}
           disabled={refreshing}
@@ -197,7 +255,8 @@ export function ThemeList({ basket, onAddToBasket, onRemoveFromBasket }: ThemeLi
             display: 'inline-flex',
             alignItems: 'center',
             gap: 6,
-            padding: '6px 12px',
+            height: 34,
+            padding: '0 12px',
             borderRadius: 6,
             border: '1px solid var(--border)',
             cursor: refreshing ? 'default' : 'pointer',
@@ -216,7 +275,14 @@ export function ThemeList({ basket, onAddToBasket, onRemoveFromBasket }: ThemeLi
           {refreshing ? '반영 중...' : '테마 반영'}
         </button>
       </div>
-      {themes.map((theme) => {
+
+      {displayThemes.length === 0 && (
+        <div style={{ textAlign: 'center', padding: '32px 0', color: 'var(--text-muted)', fontSize: '0.875rem' }}>
+          &lsquo;{search}&rsquo; 검색 결과가 없습니다.
+        </div>
+      )}
+
+      {displayThemes.map((theme) => {
         const inBasket = isInBasket(theme.id);
         const isAnalyzing = analyzingId === theme.id;
 
@@ -226,7 +292,7 @@ export function ThemeList({ basket, onAddToBasket, onRemoveFromBasket }: ThemeLi
             padding={16}
             hoverable
             style={{
-              border: inBasket ? '1px solid #2E8B8B' : '1px solid #E1E5EB',
+              border: inBasket ? '1px solid #2E8B8B' : '1px solid var(--border)',
               transition: 'border-color 0.15s ease',
             }}
           >
@@ -263,7 +329,7 @@ export function ThemeList({ basket, onAddToBasket, onRemoveFromBasket }: ThemeLi
               {/* Content */}
               <div style={{ flex: 1, minWidth: 0 }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
-                  <span style={{ fontSize: '0.9375rem', fontWeight: 700, color: '#1A1A2E' }}>
+                  <span style={{ fontSize: '0.9375rem', fontWeight: 700, color: 'var(--text-primary)' }}>
                     {theme.theme_name}
                   </span>
                   {theme.category && (
@@ -306,7 +372,7 @@ export function ThemeList({ basket, onAddToBasket, onRemoveFromBasket }: ThemeLi
                     variant="ghost"
                     loading={isAnalyzing}
                     onClick={() => analyzeTheme(theme)}
-                    style={{ fontSize: '0.8125rem', color: '#1E3A5F', border: '1px solid #E1E5EB' }}
+                    style={{ fontSize: '0.8125rem', color: 'var(--text-primary)', border: '1px solid var(--border)' }}
                   >
                     <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
                       <circle cx="11" cy="11" r="8" />
