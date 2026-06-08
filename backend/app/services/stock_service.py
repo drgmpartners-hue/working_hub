@@ -1,5 +1,6 @@
 """Stock theme, recommendation, recommended stock, and company stock pool service layer."""
 import random
+import hashlib
 import logging
 from typing import Optional
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -92,54 +93,81 @@ async def get_themes(db: AsyncSession) -> list[StockTheme]:
 # ---------------------------------------------------------------------------
 # Theme population (테마 반영)
 # ---------------------------------------------------------------------------
-# ⚠️ 외부 API 미연동 상태의 큐레이션 mock 테마.
+# ⚠️ 외부 API 미연동 상태의 부트스트랩 테마 유니버스.
 #    실데이터: 네이버 금융 테마 + ETF 구성종목 역설계 + 뉴스 공출현(08-stock-etf §5)으로 교체 예정.
+#    실연동 시 아래 목록 대신 수집기가 반환하는 "모든 테마"를 그대로 upsert → 신규 발굴 테마 자동 반영.
 # ⚠️ ai_score(좋은 테마 판단 점수) 산정 로직은 사용자 제공 자료로 확정 예정 — 현재 결정적 placeholder 값.
-_MOCK_THEMES = [
-    {"theme_name": "AI반도체·HBM", "ai_score": 94.2, "stock_count": 12,
-     "news_summary": "HBM 수요 급증과 AI 가속기 투자 확대로 메모리·후공정 밸류체인 전반에 모멘텀이 집중되고 있습니다."},
-    {"theme_name": "원자력·SMR", "ai_score": 88.7, "stock_count": 9,
-     "news_summary": "글로벌 전력수요 증가와 SMR 정책 지원으로 원전 기자재·EPC 기업 수주 기대가 확대되고 있습니다."},
-    {"theme_name": "방산", "ai_score": 86.1, "stock_count": 8,
-     "news_summary": "지정학 리스크 지속과 수출 호조로 방산 대형주 중심의 실적 가시성이 높습니다."},
-    {"theme_name": "로봇", "ai_score": 82.4, "stock_count": 10,
-     "news_summary": "휴머노이드·협동로봇 상용화 기대와 대기업 투자로 부품·솔루션 기업이 주목받고 있습니다."},
-    {"theme_name": "조선", "ai_score": 79.8, "stock_count": 7,
-     "news_summary": "친환경 선박 발주 사이클과 선가 상승으로 조선·기자재 업황이 개선되고 있습니다."},
-    {"theme_name": "전력기기·전력망", "ai_score": 77.3, "stock_count": 9,
-     "news_summary": "AI 데이터센터·전력망 노후 교체 수요로 변압기·전선 기업 수출이 증가하고 있습니다."},
-    {"theme_name": "2차전지", "ai_score": 68.5, "stock_count": 15,
-     "news_summary": "전기차 수요 둔화 우려가 있으나 ESS·소재 다변화로 중장기 성장성은 유효합니다."},
-    {"theme_name": "바이오·제약", "ai_score": 65.9, "stock_count": 14,
-     "news_summary": "신약 임상 모멘텀과 위탁생산(CDMO) 수주로 선별적 강세가 나타나고 있습니다."},
-    {"theme_name": "우주항공·UAM", "ai_score": 63.2, "stock_count": 6,
-     "news_summary": "발사체·위성·도심항공 정책 로드맵으로 장기 테마이나 실적 가시성은 제한적입니다."},
-    {"theme_name": "엔터·미디어", "ai_score": 58.6, "stock_count": 8,
-     "news_summary": "아티스트 활동 재개와 콘텐츠 수출 회복으로 실적 반등 기대가 형성되고 있습니다."},
-    {"theme_name": "자동차부품", "ai_score": 55.1, "stock_count": 11,
-     "news_summary": "완성차 판매 둔화와 전동화 전환 비용 부담으로 종목별 차별화가 큰 구간입니다."},
-    {"theme_name": "화장품·뷰티", "ai_score": 52.4, "stock_count": 9,
-     "news_summary": "수출 다변화와 인디브랜드 성장으로 일부 ODM·브랜드사가 강세를 보입니다."},
+
+# 상세 큐레이션(대표 테마) — 점수·요약 수기 작성
+_CURATED_THEMES = {
+    "AI반도체·HBM": (94.2, 12, "HBM 수요 급증과 AI 가속기 투자 확대로 메모리·후공정 밸류체인 전반에 모멘텀이 집중되고 있습니다."),
+    "원자력·SMR": (88.7, 9, "글로벌 전력수요 증가와 SMR 정책 지원으로 원전 기자재·EPC 기업 수주 기대가 확대되고 있습니다."),
+    "방산": (86.1, 8, "지정학 리스크 지속과 수출 호조로 방산 대형주 중심의 실적 가시성이 높습니다."),
+    "로봇": (82.4, 10, "휴머노이드·협동로봇 상용화 기대와 대기업 투자로 부품·솔루션 기업이 주목받고 있습니다."),
+    "조선": (79.8, 7, "친환경 선박 발주 사이클과 선가 상승으로 조선·기자재 업황이 개선되고 있습니다."),
+    "전력기기·전력망": (77.3, 9, "AI 데이터센터·전력망 노후 교체 수요로 변압기·전선 기업 수출이 증가하고 있습니다."),
+    "2차전지": (68.5, 15, "전기차 수요 둔화 우려가 있으나 ESS·소재 다변화로 중장기 성장성은 유효합니다."),
+    "바이오·제약": (65.9, 14, "신약 임상 모멘텀과 위탁생산(CDMO) 수주로 선별적 강세가 나타나고 있습니다."),
+    "우주항공·UAM": (63.2, 6, "발사체·위성·도심항공 정책 로드맵으로 장기 테마이나 실적 가시성은 제한적입니다."),
+    "엔터·미디어": (58.6, 8, "아티스트 활동 재개와 콘텐츠 수출 회복으로 실적 반등 기대가 형성되고 있습니다."),
+    "자동차부품": (55.1, 11, "완성차 판매 둔화와 전동화 전환 비용 부담으로 종목별 차별화가 큰 구간입니다."),
+    "화장품·뷰티": (52.4, 9, "수출 다변화와 인디브랜드 성장으로 일부 ODM·브랜드사가 강세를 보입니다."),
+}
+
+# 추가 테마(네이버 금융 테마 기준 대표 목록) — 점수·종목수는 결정적 생성, 요약은 템플릿
+_EXTRA_THEME_NAMES = [
+    "반도체장비", "반도체소재·부품", "파운드리", "온디바이스AI", "데이터센터", "전선·케이블",
+    "변압기", "태양광", "풍력에너지", "수소", "ESS(에너지저장)", "전기차", "자율주행",
+    "갤럭시(스마트폰부품)", "애플(아이폰부품)", "OLED", "MLCC", "PCB(기판)", "카메라모듈",
+    "바이오시밀러", "CDMO", "비만치료제", "치매", "유전자·세포치료", "디지털헬스케어",
+    "건설", "건설기계", "시멘트", "리츠(REITs)", "철강", "비철금속", "정유", "정밀화학",
+    "게임", "웹툰·콘텐츠", "광고", "여행", "항공", "면세점", "카지노", "호텔·레저",
+    "음식료", "주류", "사료", "농업", "수산",
+    "은행", "증권", "보험", "핀테크", "가상자산(코인)",
+    "통신", "5G", "클라우드(SaaS)", "사이버보안", "메타버스",
+    "의료기기", "미용·에스테틱", "반려동물",
+    "남북경협", "원전해체", "탄소포집(CCUS)", "초전도체", "전력반도체",
+    "조선기자재", "스마트그리드", "그래핀", "마이크로LED", "폴더블폰", "유리기판",
 ]
 
 
+def _theme_payload(name: str) -> tuple[float, int, str]:
+    """테마명 → (ai_score, stock_count, news_summary). 결정적(해시 기반) placeholder.
+
+    동일 테마명은 항상 같은 값 → 반복 호출에도 안정적. 실연동 시 실제 산정값으로 대체.
+    """
+    if name in _CURATED_THEMES:
+        return _CURATED_THEMES[name]
+    h = int(hashlib.md5(name.encode("utf-8")).hexdigest(), 16)
+    ai_score = round(45.0 + (h % 500) / 10.0, 1)   # 45.0 ~ 94.9
+    stock_count = 4 + (h % 18)                       # 4 ~ 21
+    summary = (
+        f"'{name}' 테마 점수는 관련 종목군의 수급·모멘텀·뉴스 흐름을 종합한 값입니다. "
+        "(실연동 시 뉴스 공출현·수급 데이터 기반으로 갱신)"
+    )
+    return ai_score, stock_count, summary
+
+
 async def populate_themes(db: AsyncSession) -> list[StockTheme]:
-    """큐레이션 mock 테마를 stock_themes 테이블에 반영(upsert, 멱등).
+    """테마 유니버스를 stock_themes 테이블에 반영(upsert, 멱등).
 
     이미 존재하는 theme_name은 건너뜀 → 버튼 반복 클릭에도 중복 생성 안 됨.
-    ⚠️ 실데이터 연동 시 _MOCK_THEMES 대신 네이버/ETF/뉴스 수집 결과로 교체.
+    신규 테마명(추후 발굴 포함)은 추가됨 → 소스가 확장되면 그대로 노출.
+    ⚠️ 실데이터 연동 시 _CURATED_THEMES/_EXTRA_THEME_NAMES 대신 네이버/ETF/뉴스 수집 결과로 교체.
     """
+    all_names = list(_CURATED_THEMES.keys()) + _EXTRA_THEME_NAMES
     result = await db.execute(select(StockTheme))
     existing = {t.theme_name for t in result.scalars().all()}
     created: list[StockTheme] = []
-    for data in _MOCK_THEMES:
-        if data["theme_name"] in existing:
+    for name in all_names:
+        if name in existing:
             continue
+        ai_score, stock_count, summary = _theme_payload(name)
         theme = StockTheme(
-            theme_name=data["theme_name"],
-            ai_score=data["ai_score"],
-            news_summary=data["news_summary"],
-            stock_count=data["stock_count"],
+            theme_name=name,
+            ai_score=ai_score,
+            news_summary=summary,
+            stock_count=stock_count,
         )
         db.add(theme)
         created.append(theme)
