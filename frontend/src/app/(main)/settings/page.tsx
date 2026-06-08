@@ -118,6 +118,69 @@ const API_PROVIDERS: ProviderDef[] = [
     },
   },
   {
+    key: 'kis',
+    label: '한국투자증권(KIS) Open API',
+    description: '주식·ETF 시세(수정주가 OHLCV), 주식기본조회에 사용됩니다. (주식·ETF 추천 고도화 주력 시세 소스)',
+    icon: '📊',
+    color: '#0A4DA0',
+    fields: [
+      { name: 'api_key', label: 'APP Key', placeholder: 'APP Key를 입력하세요' },
+      { name: 'api_secret', label: 'APP Secret', placeholder: 'APP Secret를 입력하세요' },
+    ],
+    guide: {
+      title: '한국투자증권 KIS Developers 키 발급 방법',
+      steps: [
+        'KIS Developers(https://apiportal.koreainvestment.com)에 접속합니다.',
+        '한국투자증권 계좌로 로그인합니다. (없으면 계좌 개설 필요)',
+        '[KIS Developers 신청] 에서 앱을 등록합니다.',
+        '발급된 APP Key와 APP Secret을 복사합니다.',
+        '시세 조회는 모의투자 앱으로도 가능합니다. 수정주가 옵션 사용에 유의하세요.',
+      ],
+    },
+  },
+  {
+    key: 'dart',
+    label: 'DART OpenAPI (금융감독원)',
+    description: '재무제표(기업분석)·공시 조회에 사용됩니다. 정식·무료.',
+    icon: '🏛️',
+    color: '#1B5E20',
+    fields: [
+      { name: 'api_key', label: '인증키(API Key)', placeholder: '40자리 인증키를 입력하세요' },
+    ],
+    guide: {
+      title: 'DART OpenAPI 인증키 발급 방법',
+      steps: [
+        'DART OpenAPI(https://opendart.fss.or.kr)에 접속합니다.',
+        '회원가입 후 로그인합니다.',
+        '[인증키 신청/관리] > [인증키 신청] 을 클릭합니다.',
+        '이메일 인증 후 발급된 40자리 인증키를 복사합니다.',
+        '일일 호출 한도(기본 20,000건)에 유의하세요.',
+      ],
+    },
+  },
+  {
+    key: 'naver_search',
+    label: '네이버 검색 OpenAPI (뉴스)',
+    description: '종목·테마 관련 뉴스 검색 및 공출현 분석에 사용됩니다. 정식·무료.',
+    icon: '🟢',
+    color: '#03C75A',
+    fields: [
+      { name: 'api_key', label: 'Client ID', placeholder: 'Client ID를 입력하세요' },
+      { name: 'api_secret', label: 'Client Secret', placeholder: 'Client Secret를 입력하세요' },
+    ],
+    guide: {
+      title: '네이버 검색 OpenAPI 키 발급 방법',
+      steps: [
+        '네이버 개발자센터(https://developers.naver.com)에 접속합니다.',
+        '네이버 계정으로 로그인합니다.',
+        '[Application] > [애플리케이션 등록] 을 클릭합니다.',
+        '사용 API에서 [검색] 을 선택하고 애플리케이션을 등록합니다.',
+        '발급된 Client ID와 Client Secret을 복사합니다.',
+        '검색 API는 일일 25,000건 쿼터가 있습니다.',
+      ],
+    },
+  },
+  {
     key: 'notion',
     label: 'Notion API',
     description: '고객 데이터, 상담 기록 등을 Notion 워크스페이스와 연동합니다.',

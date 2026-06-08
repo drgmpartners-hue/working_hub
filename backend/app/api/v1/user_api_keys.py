@@ -39,7 +39,7 @@ def _mask(value: str) -> str:
 
 # --- Schemas ---
 
-VALID_PROVIDERS = ["kiwoom", "claude", "gemini", "solapi", "notion"]
+VALID_PROVIDERS = ["kiwoom", "claude", "gemini", "solapi", "notion", "kis", "dart", "naver_search"]
 
 
 class ApiKeyCreate(BaseModel):
@@ -164,6 +164,13 @@ async def test_api_key(
             return await _test_solapi(body.api_key, body.api_secret or "")
         elif provider == "notion":
             return await _test_notion(body.api_key)
+        elif provider == "kis":
+            return await _test_kis(body.api_key, body.api_secret or "")
+        elif provider == "dart":
+            return await _test_dart(body.api_key)
+        elif provider == "naver_search":
+            return await _test_naver_search(body.api_key, body.api_secret or "")
+        return TestResult(success=False, message="이 제공자는 연결 테스트를 지원하지 않습니다.")
     except Exception as e:
         return TestResult(success=False, message=f"테스트 중 오류: {str(e)}")
 
@@ -204,6 +211,13 @@ async def test_saved_api_key(
             return await _test_solapi(api_key, api_secret)
         elif provider == "notion":
             return await _test_notion(api_key)
+        elif provider == "kis":
+            return await _test_kis(api_key, api_secret)
+        elif provider == "dart":
+            return await _test_dart(api_key)
+        elif provider == "naver_search":
+            return await _test_naver_search(api_key, api_secret)
+        return TestResult(success=False, message="이 제공자는 연결 테스트를 지원하지 않습니다.")
     except Exception as e:
         return TestResult(success=False, message=f"테스트 중 오류: {str(e)}")
 
@@ -386,6 +400,75 @@ async def _test_notion(token: str) -> TestResult:
         detail = ""
         try:
             detail = res.json().get("message", res.text[:100])
+        except Exception:
+            detail = res.text[:100] if res.text else ""
+        return TestResult(success=False, message=f"API 응답 오류 (status={res.status_code}): {detail}")
+
+
+async def _test_kis(app_key: str, app_secret: str) -> TestResult:
+    """Test 한국투자증권(KIS) Open API by requesting an OAuth access token."""
+    if not app_secret:
+        return TestResult(success=False, message="APP Secret이 필요합니다.")
+    async with httpx.AsyncClient(timeout=10) as client:
+        res = await client.post(
+            "https://openapi.koreainvestment.com:9443/oauth2/tokenP",
+            json={
+                "grant_type": "client_credentials",
+                "appkey": app_key,
+                "appsecret": app_secret,
+            },
+        )
+    if res.status_code == 200 and res.json().get("access_token"):
+        return TestResult(success=True, message="연결 성공! KIS 액세스 토큰 발급 확인됨")
+    elif res.status_code in (401, 403):
+        return TestResult(success=False, message="인증 실패: APP Key 또는 APP Secret이 올바르지 않습니다.")
+    else:
+        detail = ""
+        try:
+            detail = res.json().get("msg1", res.text[:100])
+        except Exception:
+            detail = res.text[:100] if res.text else ""
+        return TestResult(success=False, message=f"API 응답 오류 (status={res.status_code}): {detail}")
+
+
+async def _test_dart(api_key: str) -> TestResult:
+    """Test DART OpenAPI by calling 공시검색(list.json) with the auth key."""
+    async with httpx.AsyncClient(timeout=10) as client:
+        res = await client.get(
+            "https://opendart.fss.or.kr/api/list.json",
+            params={"crtfc_key": api_key, "page_count": 1},
+        )
+    if res.status_code == 200:
+        data = res.json()
+        status_code = data.get("status")
+        # DART: "000" 정상, "013" 데이터없음(키는 유효), "020" 사용한도초과 → 키는 유효
+        if status_code in ("000", "013", "020"):
+            return TestResult(success=True, message="연결 성공! DART 인증키 유효 확인됨")
+        return TestResult(success=False, message=f"인증 실패: {data.get('message', status_code)}")
+    return TestResult(success=False, message=f"API 응답 오류 (status={res.status_code})")
+
+
+async def _test_naver_search(client_id: str, client_secret: str) -> TestResult:
+    """Test 네이버 검색 OpenAPI(뉴스) with Client ID/Secret headers."""
+    if not client_secret:
+        return TestResult(success=False, message="Client Secret이 필요합니다.")
+    async with httpx.AsyncClient(timeout=10) as client:
+        res = await client.get(
+            "https://openapi.naver.com/v1/search/news.json",
+            params={"query": "테스트", "display": 1},
+            headers={
+                "X-Naver-Client-Id": client_id,
+                "X-Naver-Client-Secret": client_secret,
+            },
+        )
+    if res.status_code == 200:
+        return TestResult(success=True, message="연결 성공! 네이버 검색 API 인증 확인됨")
+    elif res.status_code in (401, 403):
+        return TestResult(success=False, message="인증 실패: Client ID 또는 Secret이 올바르지 않습니다.")
+    else:
+        detail = ""
+        try:
+            detail = res.json().get("errorMessage", res.text[:100])
         except Exception:
             detail = res.text[:100] if res.text else ""
         return TestResult(success=False, message=f"API 응답 오류 (status={res.status_code}): {detail}")
