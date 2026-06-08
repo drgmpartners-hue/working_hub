@@ -69,6 +69,7 @@ interface SignalApiData {
   eps?: number;
   dividend_yield?: number;
   price_history?: Array<{ date: string; close: number; volume?: number }>;
+  data_source?: string; // "kis"=실시간 / "mock"=예시
 }
 
 type BacktestPeriod = '1m' | '3m' | '6m' | '1y' | '3y';
@@ -605,7 +606,25 @@ export function StockDetailPanel({ stock, open, onClose }: StockDetailPanelProps
           <Divider />
 
           {/* 6. 종합점수 */}
-          <SectionTitle>종합점수</SectionTitle>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <SectionTitle>종합점수</SectionTitle>
+            {signals && (
+              <span
+                style={{
+                  marginBottom: 8,
+                  padding: '2px 8px',
+                  borderRadius: 999,
+                  fontSize: '0.6875rem',
+                  fontWeight: 600,
+                  backgroundColor: signals.data_source === 'kis' ? 'rgba(5,150,105,0.12)' : 'rgba(148,163,184,0.15)',
+                  color: signals.data_source === 'kis' ? '#059669' : 'var(--text-muted)',
+                }}
+                title={signals.data_source === 'kis' ? 'KIS 실시세 기반 실데이터' : '외부 키 미연동 — 예시(mock) 데이터'}
+              >
+                {signals.data_source === 'kis' ? '● 실시간 (KIS)' : '○ 예시 데이터'}
+              </span>
+            )}
+          </div>
           <div style={{ marginBottom: 14 }}>
             {composite_score != null ? (
               <>
