@@ -103,10 +103,10 @@ export function TemplateEditPanel({ analysisId, onSaved }: TemplateEditPanelProp
     width: '100%',
     padding: '6px 10px',
     fontSize: '0.8125rem',
-    border: '1px solid #E1E5EB',
+    border: '1px solid var(--border)',
     borderRadius: 6,
-    backgroundColor: '#FFFFFF',
-    color: '#1A1A2E',
+    backgroundColor: 'var(--bg-card)',
+    color: 'var(--text-primary)',
     outline: 'none',
     boxSizing: 'border-box',
   };
@@ -118,8 +118,8 @@ export function TemplateEditPanel({ analysisId, onSaved }: TemplateEditPanelProp
           style={{
             width: 28,
             height: 28,
-            border: '2px solid #E1E5EB',
-            borderTopColor: '#1E3A5F',
+            border: '2px solid var(--border)',
+            borderTopColor: 'var(--blue-500)',
             borderRadius: '50%',
             animation: 'spin 0.7s linear infinite',
           }}
@@ -133,10 +133,10 @@ export function TemplateEditPanel({ analysisId, onSaved }: TemplateEditPanelProp
       <div
         style={{
           padding: '16px 20px',
-          backgroundColor: '#FEF2F2',
-          border: '1px solid #FECACA',
+          backgroundColor: 'var(--danger-bg)',
+          border: '1px solid rgba(239,68,68,0.35)',
           borderRadius: 8,
-          color: '#B91C1C',
+          color: 'var(--danger)',
           fontSize: '0.875rem',
         }}
       >
@@ -151,7 +151,7 @@ export function TemplateEditPanel({ analysisId, onSaved }: TemplateEditPanelProp
         style={{
           padding: '48px 0',
           textAlign: 'center',
-          color: '#6B7280',
+          color: 'var(--text-muted)',
           fontSize: '0.875rem',
         }}
       >
@@ -171,15 +171,15 @@ export function TemplateEditPanel({ analysisId, onSaved }: TemplateEditPanelProp
           marginBottom: 16,
         }}
       >
-        <p style={{ margin: 0, fontSize: '0.875rem', color: '#6B7280' }}>
-          총 <strong style={{ color: '#1A1A2E' }}>{items.length}</strong>개 항목
+        <p style={{ margin: 0, fontSize: '0.875rem', color: 'var(--text-muted)' }}>
+          총 <strong style={{ color: 'var(--text-primary)' }}>{items.length}</strong>개 항목
         </p>
         <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
           {saveSuccess && (
             <span
               style={{
                 fontSize: '0.8125rem',
-                color: '#059669',
+                color: 'var(--success)',
                 display: 'flex',
                 alignItems: 'center',
                 gap: 4,
@@ -198,10 +198,10 @@ export function TemplateEditPanel({ analysisId, onSaved }: TemplateEditPanelProp
       </div>
 
       {/* Table */}
-      <div style={{ overflowX: 'auto', borderRadius: 10, border: '1px solid #E1E5EB' }}>
+      <div style={{ overflowX: 'auto', borderRadius: 10, border: '1px solid var(--border)' }}>
         <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.875rem' }}>
           <thead>
-            <tr style={{ backgroundColor: '#F5F7FA' }}>
+            <tr style={{ backgroundColor: 'var(--bg-surface)' }}>
               {['상품명', '상품유형', '평가금액 (원)', '수익률 (%)', '비중 (%)'].map((h) => (
                 <th
                   key={h}
@@ -210,10 +210,10 @@ export function TemplateEditPanel({ analysisId, onSaved }: TemplateEditPanelProp
                     textAlign: 'left',
                     fontWeight: 600,
                     fontSize: '0.75rem',
-                    color: '#6B7280',
+                    color: 'var(--text-muted)',
                     letterSpacing: '0.04em',
                     textTransform: 'uppercase',
-                    borderBottom: '1px solid #E1E5EB',
+                    borderBottom: '1px solid var(--border)',
                     whiteSpace: 'nowrap',
                   }}
                 >
@@ -230,7 +230,7 @@ export function TemplateEditPanel({ analysisId, onSaved }: TemplateEditPanelProp
                   key={item.id}
                   onClick={() => setEditingId(item.id)}
                   style={{
-                    borderBottom: '1px solid #E1E5EB',
+                    borderBottom: '1px solid var(--border)',
                     cursor: 'pointer',
                     backgroundColor: isEditing ? 'rgba(46,139,139,0.04)' : 'transparent',
                     transition: 'background-color 0.12s ease',
@@ -258,7 +258,7 @@ export function TemplateEditPanel({ analysisId, onSaved }: TemplateEditPanelProp
                         onClick={(e) => e.stopPropagation()}
                       />
                     ) : (
-                      <span style={{ color: '#1A1A2E', fontWeight: 500 }}>
+                      <span style={{ color: 'var(--text-primary)', fontWeight: 500 }}>
                         {item.product_name}
                       </span>
                     )}
@@ -282,8 +282,8 @@ export function TemplateEditPanel({ analysisId, onSaved }: TemplateEditPanelProp
                           padding: '2px 8px',
                           borderRadius: 4,
                           fontSize: '0.75rem',
-                          backgroundColor: '#EEF2F7',
-                          color: '#1E3A5F',
+                          backgroundColor: 'var(--bg-card-2)',
+                          color: 'var(--blue-400)',
                           fontWeight: 500,
                         }}
                       >
@@ -371,7 +371,7 @@ export function TemplateEditPanel({ analysisId, onSaved }: TemplateEditPanelProp
       </div>
 
       {editingId !== null && (
-        <p style={{ marginTop: 10, fontSize: '0.8125rem', color: '#6B7280' }}>
+        <p style={{ marginTop: 10, fontSize: '0.8125rem', color: 'var(--text-muted)' }}>
           * 다른 행을 클릭하면 편집 행이 전환됩니다. 수정 후 <strong>전체 저장</strong>을 눌러 저장하세요.
         </p>
       )}

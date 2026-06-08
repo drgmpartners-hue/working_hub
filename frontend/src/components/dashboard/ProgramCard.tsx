@@ -72,7 +72,7 @@ export function ProgramCard({
             margin: 0,
             fontSize: '15px',
             fontWeight: 600,
-            color: '#1A1A2E',
+            color: 'var(--text-primary)',
             letterSpacing: '-0.2px',
             lineHeight: 1.4,
           }}
@@ -83,7 +83,7 @@ export function ProgramCard({
           style={{
             margin: '4px 0 0',
             fontSize: '13px',
-            color: '#6B7280',
+            color: 'var(--text-muted)',
             lineHeight: 1.5,
             overflow: 'hidden',
             textOverflow: 'ellipsis',

@@ -43,15 +43,15 @@ function CustomTooltip({
   return (
     <div
       style={{
-        backgroundColor: '#ffffff',
-        border: '1px solid #E5E7EB',
+        backgroundColor: 'var(--bg-card)',
+        border: '1px solid var(--border)',
         borderRadius: '8px',
         padding: '10px 14px',
         boxShadow: '0 2px 8px rgba(0,0,0,0.10)',
         fontSize: '13px',
       }}
     >
-      <div style={{ color: '#6B7280', marginBottom: '6px', fontWeight: 600 }}>
+      <div style={{ color: 'var(--text-muted)', marginBottom: '6px', fontWeight: 600 }}>
         {label}세
       </div>
       {payload.map((entry) => (
@@ -83,7 +83,7 @@ function CustomLegend() {
             borderRadius: '2px',
           }}
         />
-        <span style={{ color: '#374151' }}>모으기 (Navy)</span>
+        <span style={{ color: 'var(--text-secondary)' }}>모으기 (Navy)</span>
       </div>
       <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
         <div
@@ -94,7 +94,7 @@ function CustomLegend() {
             borderRadius: '2px',
           }}
         />
-        <span style={{ color: '#374151' }}>쓰기 (Gold)</span>
+        <span style={{ color: 'var(--text-secondary)' }}>쓰기 (Gold)</span>
       </div>
     </div>
   );
@@ -107,8 +107,8 @@ export default function LifecycleChart({ data, retirementAge }: LifecycleChartPr
         <ComposedChart data={data} margin={{ top: 16, right: 24, left: 8, bottom: 0 }}>
           <defs>
             <linearGradient id="accumulationGradient" x1="0" y1="0" x2="0" y2="1">
-              <stop offset="5%" stopColor="#1E3A5F" stopOpacity={0.35} />
-              <stop offset="95%" stopColor="#1E3A5F" stopOpacity={0.05} />
+              <stop offset="5%" stopColor="#3B82F6" stopOpacity={0.35} />
+              <stop offset="95%" stopColor="#3B82F6" stopOpacity={0.05} />
             </linearGradient>
             <linearGradient id="distributionGradient" x1="0" y1="0" x2="0" y2="1">
               <stop offset="5%" stopColor="#D4A847" stopOpacity={0.45} />
@@ -116,7 +116,7 @@ export default function LifecycleChart({ data, retirementAge }: LifecycleChartPr
             </linearGradient>
           </defs>
 
-          <CartesianGrid vertical={false} stroke="#F0F0F0" />
+          <CartesianGrid vertical={false} stroke="#243049" />
 
           <XAxis
             dataKey="age"
@@ -140,14 +140,14 @@ export default function LifecycleChart({ data, retirementAge }: LifecycleChartPr
           {/* 은퇴나이 세로 점선 */}
           <ReferenceLine
             x={retirementAge}
-            stroke="#1E3A5F"
+            stroke="#3B82F6"
             strokeDasharray="6 4"
             strokeWidth={2}
             label={{
               value: `은퇴 ${retirementAge}세`,
               position: 'top',
               fontSize: 11,
-              fill: '#1E3A5F',
+              fill: '#3B82F6',
               fontWeight: 600,
             }}
           />
@@ -157,11 +157,11 @@ export default function LifecycleChart({ data, retirementAge }: LifecycleChartPr
             type="monotone"
             dataKey="accumulation"
             name="모으기"
-            stroke="#1E3A5F"
+            stroke="#3B82F6"
             strokeWidth={2.5}
             fill="url(#accumulationGradient)"
             dot={false}
-            activeDot={{ r: 5, fill: '#1E3A5F', stroke: '#ffffff', strokeWidth: 2 }}
+            activeDot={{ r: 5, fill: '#3B82F6', stroke: '#ffffff', strokeWidth: 2 }}
             connectNulls={false}
           />
 

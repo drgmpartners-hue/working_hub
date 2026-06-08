@@ -34,11 +34,11 @@ interface DataReadyPayload {
 /* ------------------------------------------------------------------ */
 function StatusBadge({ status }: { status: CalcStatus }) {
   const cfg: Record<CalcStatus, { label: string; bg: string; color: string }> = {
-    idle:       { label: '대기',    bg: '#F5F7FA',                 color: '#6B7280' },
-    pending:    { label: '처리 대기', bg: 'rgba(74,144,217,0.1)', color: '#4A90D9' },
-    processing: { label: '계산 중',  bg: 'rgba(74,144,217,0.1)', color: '#4A90D9' },
-    completed:  { label: '완료',    bg: 'rgba(16,185,129,0.1)',  color: '#10B981' },
-    failed:     { label: '실패',    bg: 'rgba(239,68,68,0.1)',   color: '#EF4444' },
+    idle:       { label: '대기',    bg: '#F5F7FA',                 color: 'var(--text-muted)' },
+    pending:    { label: '처리 대기', bg: 'rgba(74,144,217,0.1)', color: 'var(--blue-400)' },
+    processing: { label: '계산 중',  bg: 'rgba(74,144,217,0.1)', color: 'var(--blue-400)' },
+    completed:  { label: '완료',    bg: 'rgba(16,185,129,0.1)',  color: 'var(--success)' },
+    failed:     { label: '실패',    bg: 'rgba(239,68,68,0.1)',   color: 'var(--danger)' },
   };
   const { label, bg, color } = cfg[status] ?? cfg.idle;
   return (
@@ -103,7 +103,7 @@ function TemplateCalcPanel({
         style={{
           padding: '40px 24px',
           textAlign: 'center',
-          color: '#6B7280',
+          color: 'var(--text-muted)',
           fontSize: '0.875rem',
         }}
       >
@@ -142,7 +142,7 @@ function TemplateCalcPanel({
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#10B981" strokeWidth="2.5" strokeLinecap="round">
           <polyline points="20 6 9 17 4 12" />
         </svg>
-        <span style={{ fontSize: '0.8125rem', color: '#10B981', fontWeight: 500 }}>
+        <span style={{ fontSize: '0.8125rem', color: 'var(--success)', fontWeight: 500 }}>
           데이터 준비 완료 —{' '}
           {dataReady.source === 'crawling'
             ? `크롤링 작업 #${dataReady.crawlingJobId}`
@@ -152,7 +152,7 @@ function TemplateCalcPanel({
 
       {/* Template selection */}
       <div>
-        <p style={{ margin: '0 0 12px', fontSize: '0.875rem', fontWeight: 500, color: '#1A1A2E' }}>
+        <p style={{ margin: '0 0 12px', fontSize: '0.875rem', fontWeight: 500, color: 'var(--text-primary)' }}>
           정산 템플릿 선택
         </p>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
@@ -188,10 +188,10 @@ function TemplateCalcPanel({
                   }}
                 />
                 <div>
-                  <p style={{ margin: 0, fontSize: '0.875rem', fontWeight: 600, color: '#1A1A2E' }}>
+                  <p style={{ margin: 0, fontSize: '0.875rem', fontWeight: 600, color: 'var(--text-primary)' }}>
                     {tmpl.label}
                   </p>
-                  <p style={{ margin: '3px 0 0', fontSize: '0.8125rem', color: '#6B7280' }}>
+                  <p style={{ margin: '3px 0 0', fontSize: '0.8125rem', color: 'var(--text-muted)' }}>
                     {tmpl.description}
                   </p>
                 </div>
@@ -225,7 +225,7 @@ function TemplateCalcPanel({
             backgroundColor: 'rgba(239,68,68,0.06)',
             border: '1px solid rgba(239,68,68,0.2)',
             fontSize: '0.8125rem',
-            color: '#EF4444',
+            color: 'var(--danger)',
           }}
         >
           {calcError}
@@ -271,7 +271,7 @@ function PreviewDownloadPanel({
         style={{
           padding: '48px 24px',
           textAlign: 'center',
-          color: '#6B7280',
+          color: 'var(--text-muted)',
           fontSize: '0.9rem',
         }}
       >
@@ -332,7 +332,7 @@ function PreviewDownloadPanel({
 
       {/* Summary */}
       <div>
-        <h3 style={{ margin: '0 0 12px', fontSize: '0.9375rem', fontWeight: 600, color: '#1A1A2E' }}>
+        <h3 style={{ margin: '0 0 12px', fontSize: '0.9375rem', fontWeight: 600, color: 'var(--text-primary)' }}>
           정산 요약
         </h3>
         <Table
@@ -344,7 +344,7 @@ function PreviewDownloadPanel({
 
       {/* Detailed results */}
       <div>
-        <h3 style={{ margin: '0 0 12px', fontSize: '0.9375rem', fontWeight: 600, color: '#1A1A2E' }}>
+        <h3 style={{ margin: '0 0 12px', fontSize: '0.9375rem', fontWeight: 600, color: 'var(--text-primary)' }}>
           상세 결과
         </h3>
         <CalculationResultTable
@@ -500,11 +500,11 @@ export default function SecuritiesPage() {
             backgroundColor: 'transparent',
             cursor: 'pointer',
             fontSize: '0.8125rem',
-            color: '#6B7280',
+            color: 'var(--text-muted)',
             marginBottom: '12px',
             transition: 'color 0.15s ease',
           }}
-          onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.color = '#1A1A2E'; }}
+          onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.color = 'var(--text-primary)'; }}
           onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.color = '#6B7280'; }}
         >
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -520,14 +520,14 @@ export default function SecuritiesPage() {
                 width: 36,
                 height: 4,
                 borderRadius: 2,
-                background: 'linear-gradient(90deg, #2E8B8B 0%, #4A90D9 100%)',
+                background: 'linear-gradient(90deg, #2E8B8B 0%, var(--blue-400) 100%)',
                 marginBottom: 12,
               }}
             />
-            <h1 style={{ margin: 0, fontSize: '22px', fontWeight: 800, color: '#1A1A2E', letterSpacing: '-0.4px' }}>
+            <h1 style={{ margin: 0, fontSize: '22px', fontWeight: 800, color: 'var(--text-primary)', letterSpacing: '-0.4px' }}>
               증권사 수당정산 계산기
             </h1>
-            <p style={{ margin: '6px 0 0', fontSize: '0.875rem', color: '#6B7280' }}>
+            <p style={{ margin: '6px 0 0', fontSize: '0.875rem', color: 'var(--text-muted)' }}>
               크롤링 또는 엑셀 업로드로 증권사 수당 데이터를 수집하고 정산합니다.
             </p>
           </div>
@@ -582,7 +582,7 @@ export default function SecuritiesPage() {
                 style={{
                   fontSize: '0.8125rem',
                   fontWeight: activeTab === step.key ? 600 : 400,
-                  color: activeTab === step.key ? '#1A1A2E' : '#6B7280',
+                  color: activeTab === step.key ? 'var(--text-primary)' : '#6B7280',
                   whiteSpace: 'nowrap',
                 }}
               >
@@ -612,10 +612,10 @@ export default function SecuritiesPage() {
         {/* ---- Tab 1: Data Source ---- */}
         {activeTab === 'data' && (
           <Card padding={24}>
-            <h2 style={{ margin: '0 0 6px', fontSize: '1rem', fontWeight: 600, color: '#1A1A2E' }}>
+            <h2 style={{ margin: '0 0 6px', fontSize: '1rem', fontWeight: 600, color: 'var(--text-primary)' }}>
               데이터 수집
             </h2>
-            <p style={{ margin: '0 0 20px', fontSize: '0.8125rem', color: '#6B7280' }}>
+            <p style={{ margin: '0 0 20px', fontSize: '0.8125rem', color: 'var(--text-muted)' }}>
               크롤링으로 실시간 수집하거나 엑셀 파일을 직접 업로드하세요.
             </p>
 
@@ -644,10 +644,10 @@ export default function SecuritiesPage() {
         {activeTab === 'template' && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
             <Card padding={24}>
-              <h2 style={{ margin: '0 0 6px', fontSize: '1rem', fontWeight: 600, color: '#1A1A2E' }}>
+              <h2 style={{ margin: '0 0 6px', fontSize: '1rem', fontWeight: 600, color: 'var(--text-primary)' }}>
                 템플릿 선택 & 계산 실행
               </h2>
-              <p style={{ margin: '0 0 20px', fontSize: '0.8125rem', color: '#6B7280' }}>
+              <p style={{ margin: '0 0 20px', fontSize: '0.8125rem', color: 'var(--text-muted)' }}>
                 정산 유형을 선택하고 수당 계산을 시작하세요.
               </p>
 
@@ -664,7 +664,7 @@ export default function SecuritiesPage() {
             {(calcStatus === 'processing' || calcStatus === 'completed' || results.length > 0) && (
               <Card padding={24}>
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
-                  <h2 style={{ margin: 0, fontSize: '1rem', fontWeight: 600, color: '#1A1A2E' }}>
+                  <h2 style={{ margin: 0, fontSize: '1rem', fontWeight: 600, color: 'var(--text-primary)' }}>
                     계산 결과
                   </h2>
                   {calcStatus === 'completed' && results.length > 0 && (
@@ -693,10 +693,10 @@ export default function SecuritiesPage() {
         {/* ---- Tab 3: Preview & Download ---- */}
         {activeTab === 'preview' && (
           <Card padding={24}>
-            <h2 style={{ margin: '0 0 6px', fontSize: '1rem', fontWeight: 600, color: '#1A1A2E' }}>
+            <h2 style={{ margin: '0 0 6px', fontSize: '1rem', fontWeight: 600, color: 'var(--text-primary)' }}>
               미리보기 & 다운로드
             </h2>
-            <p style={{ margin: '0 0 20px', fontSize: '0.8125rem', color: '#6B7280' }}>
+            <p style={{ margin: '0 0 20px', fontSize: '0.8125rem', color: 'var(--text-muted)' }}>
               계산 결과를 확인하고 PDF 또는 엑셀로 내보내세요.
             </p>
             <PreviewDownloadPanel

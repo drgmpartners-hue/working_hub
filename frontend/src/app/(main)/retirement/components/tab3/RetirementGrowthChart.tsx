@@ -47,16 +47,16 @@ function CustomTooltip({
   return (
     <div
       style={{
-        backgroundColor: '#ffffff',
-        border: '1px solid #E5E7EB',
+        backgroundColor: 'var(--bg-card)',
+        border: '1px solid var(--border)',
         borderRadius: '8px',
         padding: '10px 14px',
         boxShadow: '0 2px 8px rgba(0,0,0,0.10)',
         fontSize: '13px',
       }}
     >
-      <div style={{ color: '#6B7280', marginBottom: '4px' }}>{label}세 ({phase})</div>
-      <div style={{ color: '#1E3A5F', fontWeight: 700 }}>
+      <div style={{ color: 'var(--text-muted)', marginBottom: '4px' }}>{label}세 ({phase})</div>
+      <div style={{ color: 'var(--blue-400)', fontWeight: 700 }}>
         {val >= 100000000
           ? `${(val / 100000000).toFixed(2)}억원`
           : `${Math.round(val / 10000).toLocaleString('ko-KR')}만원`}
@@ -90,8 +90,8 @@ export default function RetirementGrowthChart({
       <AreaChart data={chartData} margin={{ top: 4, right: 16, left: 8, bottom: 0 }}>
         <defs>
           <linearGradient id="savingGradient3" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="5%" stopColor="#1E3A5F" stopOpacity={0.25} />
-            <stop offset="95%" stopColor="#1E3A5F" stopOpacity={0.03} />
+            <stop offset="5%" stopColor="#3B82F6" stopOpacity={0.25} />
+            <stop offset="95%" stopColor="#3B82F6" stopOpacity={0.03} />
           </linearGradient>
           <linearGradient id="holdingGradient3" x1="0" y1="0" x2="0" y2="1">
             <stop offset="5%" stopColor="#D4A847" stopOpacity={0.25} />
@@ -99,7 +99,7 @@ export default function RetirementGrowthChart({
           </linearGradient>
         </defs>
 
-        <CartesianGrid vertical={false} stroke="#F0F0F0" />
+        <CartesianGrid vertical={false} stroke="#243049" />
 
         <XAxis
           dataKey="age"
@@ -152,11 +152,11 @@ export default function RetirementGrowthChart({
         <Area
           type="monotone"
           dataKey="saving"
-          stroke="#1E3A5F"
+          stroke="#3B82F6"
           strokeWidth={2}
           fill="url(#savingGradient3)"
           dot={false}
-          activeDot={{ r: 5, fill: '#1E3A5F', stroke: '#fff', strokeWidth: 2 }}
+          activeDot={{ r: 5, fill: '#3B82F6', stroke: '#fff', strokeWidth: 2 }}
           connectNulls={false}
         />
 

@@ -105,7 +105,7 @@ const TRANSACTION_TYPE_LABELS: Record<TransactionType, string> = {
 const TRANSACTION_TYPE_COLORS: Record<TransactionType, string> = {
   investment: '#3B82F6',
   termination: '#10B981',
-  deposit: '#1E3A5F',
+  deposit: '#3B82F6',
   withdrawal: '#EF4444',
   interest: '#D4A847',
   savings: '#8B5CF6',
@@ -137,24 +137,24 @@ const RECORD_TYPE_LABELS: Record<string, string> = {
 const inlineInput: React.CSSProperties = {
   height: 30,
   fontSize: 12,
-  border: '1.5px solid #3B82F6',
+  border: '1.5px solid var(--blue-400)',
   borderRadius: 5,
   padding: '0 6px',
   outline: 'none',
   boxSizing: 'border-box',
-  backgroundColor: '#fff',
+  backgroundColor: 'var(--bg-card)',
   width: '100%',
 };
 
 const inlineSelect: React.CSSProperties = {
   height: 30,
   fontSize: 12,
-  border: '1.5px solid #3B82F6',
+  border: '1.5px solid var(--blue-400)',
   borderRadius: 5,
   padding: '0 4px',
   outline: 'none',
   boxSizing: 'border-box',
-  backgroundColor: '#fff',
+  backgroundColor: 'var(--bg-card)',
   width: '100%',
   cursor: 'pointer',
 };
@@ -165,7 +165,7 @@ const inlineSaveBtn: React.CSSProperties = {
   fontWeight: 600,
   borderRadius: 4,
   border: 'none',
-  backgroundColor: '#1E3A5F',
+  backgroundColor: 'var(--blue-600)',
   color: '#fff',
   cursor: 'pointer',
   whiteSpace: 'nowrap',
@@ -176,9 +176,9 @@ const inlineCancelBtn: React.CSSProperties = {
   fontSize: 11,
   fontWeight: 500,
   borderRadius: 4,
-  border: '1px solid #D1D5DB',
-  backgroundColor: '#fff',
-  color: '#6B7280',
+  border: '1px solid var(--border-strong)',
+  backgroundColor: 'var(--bg-card)',
+  color: 'var(--text-muted)',
   cursor: 'pointer',
   whiteSpace: 'nowrap',
 };
@@ -222,16 +222,16 @@ function StatusChangeModal({ record, onClose, onSave }: StatusChangeModalProps) 
   return (
     <Modal open onClose={onClose} title="종결 처리" maxWidth={440}>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-        <div style={{ padding: '12px 14px', backgroundColor: '#F9FAFB', borderRadius: 8, fontSize: 13, color: '#374151' }}>
+        <div style={{ padding: '12px 14px', backgroundColor: 'var(--bg-surface)', borderRadius: 8, fontSize: 13, color: 'var(--text-secondary)' }}>
           <div style={{ marginBottom: 8 }}><strong>{record.product_name || '(상품명)'}</strong> 를 종결 처리합니다.</div>
-          <div style={{ display: 'flex', gap: 16, fontSize: 12, color: '#6B7280' }}>
-            <span>투자금액: <strong style={{ color: '#111827' }}>{record.investment_amount?.toLocaleString() ?? '-'}원</strong></span>
-            <span>가입일: <strong style={{ color: '#111827' }}>{record.start_date || record.join_date || '-'}</strong></span>
+          <div style={{ display: 'flex', gap: 16, fontSize: 12, color: 'var(--text-muted)' }}>
+            <span>투자금액: <strong style={{ color: 'var(--text-primary)' }}>{record.investment_amount?.toLocaleString() ?? '-'}원</strong></span>
+            <span>가입일: <strong style={{ color: 'var(--text-primary)' }}>{record.start_date || record.join_date || '-'}</strong></span>
           </div>
         </div>
 
         <div>
-          <label style={labelStyle}>종료일 <span style={{ color: '#EF4444' }}>*</span></label>
+          <label style={labelStyle}>종료일 <span style={{ color: 'var(--danger)' }}>*</span></label>
           <input
             type="date"
             value={endDate}
@@ -241,7 +241,7 @@ function StatusChangeModal({ record, onClose, onSave }: StatusChangeModalProps) 
         </div>
 
         <div>
-          <label style={labelStyle}>평가금액 (만원) <span style={{ color: '#EF4444' }}>*</span></label>
+          <label style={labelStyle}>평가금액 (만원) <span style={{ color: 'var(--danger)' }}>*</span></label>
           <input
             type="text"
             inputMode="numeric"
@@ -264,7 +264,7 @@ function StatusChangeModal({ record, onClose, onSave }: StatusChangeModalProps) 
           </div>
         )}
 
-        {error && <p style={{ color: '#DC2626', fontSize: 13, margin: 0 }}>{error}</p>}
+        {error && <p style={{ color: 'var(--danger)', fontSize: 13, margin: 0 }}>{error}</p>}
 
         <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
           <button onClick={onClose} style={cancelBtnStyle}>취소</button>
@@ -323,7 +323,7 @@ function AddDepositAccountModal({ customerId, onClose, onSaved }: AddDepositAcco
     <Modal open onClose={onClose} title="예수금 계좌 추가" maxWidth={440}>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
         <div>
-          <label style={labelStyle}>증권사 <span style={{ color: '#EF4444' }}>*</span></label>
+          <label style={labelStyle}>증권사 <span style={{ color: 'var(--danger)' }}>*</span></label>
           <input
             type="text"
             value={securitiesCompany}
@@ -352,7 +352,7 @@ function AddDepositAccountModal({ customerId, onClose, onSaved }: AddDepositAcco
             style={inputStyle}
           />
         </div>
-        {error && <p style={{ color: '#DC2626', fontSize: 13, margin: 0 }}>{error}</p>}
+        {error && <p style={{ color: 'var(--danger)', fontSize: 13, margin: 0 }}>{error}</p>}
         <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
           <button onClick={onClose} style={cancelBtnStyle}>취소</button>
           <button onClick={handleSave} disabled={saving} style={saveBtnStyle}>
@@ -1040,7 +1040,7 @@ export function InvestmentFlowTab() {
         alignItems: 'center',
         justifyContent: 'center',
         minHeight: 320,
-        color: '#9CA3AF',
+        color: 'var(--text-muted)',
         fontSize: 14,
       }}>
         고객을 먼저 선택해주세요.
@@ -1308,9 +1308,9 @@ export function InvestmentFlowTab() {
           style={{
             padding: '6px 16px',
             fontSize: 13,
-            border: '1px solid #1E3A5F',
+            border: '1px solid var(--blue-500)',
             borderRadius: 6,
-            backgroundColor: '#1E3A5F',
+            backgroundColor: 'var(--blue-600)',
             color: '#fff',
             cursor: 'pointer',
             fontWeight: 500,
@@ -1321,20 +1321,20 @@ export function InvestmentFlowTab() {
       </div>
 
       {/* 인쇄용 헤더 (화면에서는 숨김) */}
-      <div className="print-header" style={{ display: 'none', alignItems: 'center', justifyContent: 'space-between', padding: '12px 0', marginBottom: 12, borderBottom: '3px solid #1E3A5F' }}>
+      <div className="print-header" style={{ display: 'none', alignItems: 'center', justifyContent: 'space-between', padding: '12px 0', marginBottom: 12, borderBottom: '3px solid var(--blue-500)' }}>
         <div>
-          <div style={{ fontSize: 18, fontWeight: 800, color: '#1E3A5F', letterSpacing: '-0.5px' }}>
+          <div style={{ fontSize: 18, fontWeight: 800, color: 'var(--blue-400)', letterSpacing: '-0.5px' }}>
             Wrap 은퇴설계
           </div>
-          <div style={{ fontSize: 10, color: '#6B7280', marginTop: 2, fontWeight: 500 }}>
+          <div style={{ fontSize: 10, color: 'var(--text-muted)', marginTop: 2, fontWeight: 500 }}>
             투자흐름 보고서
           </div>
         </div>
         <div style={{ textAlign: 'right' }}>
-          <div style={{ fontSize: 12, fontWeight: 700, color: '#111827' }}>
+          <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-primary)' }}>
             {selectedCustomer?.name}
           </div>
-          <div style={{ fontSize: 9, color: '#6B7280', marginTop: 2 }}>
+          <div style={{ fontSize: 9, color: 'var(--text-muted)', marginTop: 2 }}>
             {selectedCustomer?.birthDate} | 출력일: {new Date().toLocaleDateString('ko-KR')}
           </div>
         </div>
@@ -1342,16 +1342,16 @@ export function InvestmentFlowTab() {
 
       {/* ===== 섹터1: 연간 투자흐름표 ===== */}
       <section id="print-sec-flow" className="print-section-flow">
-        <div className="print-section-title" style={{ fontSize: 13, fontWeight: 700, color: '#1E3A5F', marginBottom: 8, paddingBottom: 4, borderBottom: '2px solid #1E3A5F' }}>1. 연간 투자흐름표</div>
+        <div className="print-section-title" style={{ fontSize: 13, fontWeight: 700, color: 'var(--blue-400)', marginBottom: 8, paddingBottom: 4, borderBottom: '2px solid var(--blue-500)' }}>1. 연간 투자흐름표</div>
         <div className="no-print" style={{
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'space-between',
           marginBottom: 12,
         }}>
-          <h3 style={{ margin: 0, fontSize: 15, fontWeight: 600, color: '#1E3A5F' }}>
+          <h3 style={{ margin: 0, fontSize: 15, fontWeight: 600, color: 'var(--blue-400)' }}>
             연간 투자흐름표
-            <span style={{ marginLeft: 8, fontSize: 12, fontWeight: 400, color: '#9CA3AF' }}>
+            <span style={{ marginLeft: 8, fontSize: 12, fontWeight: 400, color: 'var(--text-muted)' }}>
               (단위: 원)
             </span>
           </h3>
@@ -1375,11 +1375,11 @@ export function InvestmentFlowTab() {
               style={{
                 padding: '5px 12px',
                 fontSize: 12,
-                border: '1px solid #D1D5DB',
+                border: '1px solid var(--border-strong)',
                 borderRadius: 6,
-                backgroundColor: '#fff',
+                backgroundColor: 'var(--bg-card)',
                 cursor: 'pointer',
-                color: '#374151',
+                color: 'var(--text-secondary)',
               }}
             >
               재계산
@@ -1401,7 +1401,7 @@ export function InvestmentFlowTab() {
         <div style={{ overflowX: 'auto', overflowY: 'auto', maxHeight: 750, position: 'relative' }}>
           <table style={{ width: '100%', minWidth: 900, borderCollapse: 'collapse', fontSize: 13, whiteSpace: 'nowrap' }}>
             <thead style={{ position: 'sticky', top: 0, zIndex: 2 }}>
-              <tr style={{ backgroundColor: '#F9FAFB' }}>
+              <tr style={{ backgroundColor: 'var(--bg-surface)' }}>
                 {[
                   { label: '연도', align: 'center', tip: '투자 활동이 발생한 연도' },
                   { label: '연차', align: 'center', tip: '최초 투자 연도를 1차로 산정' },
@@ -1429,14 +1429,14 @@ export function InvestmentFlowTab() {
                       padding: '8px 12px',
                       textAlign: align as 'center' | 'right',
                       fontWeight: 600,
-                      color: '#6B7280',
-                      borderBottom: '1px solid #E5E7EB',
+                      color: 'var(--text-muted)',
+                      borderBottom: '1px solid var(--border)',
                       fontSize: 12,
                       cursor: 'help',
                       position: 'relative',
                     }}
                   >
-                    <span style={{ borderBottom: '1px dashed #9CA3AF' }}>{label}</span>
+                    <span style={{ borderBottom: '1px dashed var(--border-strong)' }}>{label}</span>
                   </th>
                 ))}
               </tr>
@@ -1444,7 +1444,7 @@ export function InvestmentFlowTab() {
             <tbody>
               {annualFlowLoading ? (
                 <tr>
-                  <td colSpan={17} style={{ textAlign: 'center', padding: 24, color: '#9CA3AF', fontSize: 13 }}>
+                  <td colSpan={17} style={{ textAlign: 'center', padding: 24, color: 'var(--text-muted)', fontSize: 13 }}>
                     불러오는 중...
                   </td>
                 </tr>
@@ -1457,7 +1457,7 @@ export function InvestmentFlowTab() {
                   const row = dataMap.get(year);
                   if (!row) {
                     return (
-                      <tr key={year} style={{ borderBottom: '1px solid #F3F4F6', backgroundColor: idx % 2 === 0 ? '#fff' : '#FAFAFA' }}>
+                      <tr key={year} style={{ borderBottom: '1px solid var(--border)', backgroundColor: idx % 2 === 0 ? '#fff' : '#FAFAFA' }}>
                         <td style={tdCenter}>{year}</td>
                         {Array.from({ length: 16 }).map((_, i) => (
                           <td key={i} style={{ padding: '9px 12px', textAlign: 'center', color: '#D1D5DB', fontSize: 13 }}>-</td>
@@ -1474,7 +1474,7 @@ export function InvestmentFlowTab() {
                     <React.Fragment key={year}>
                     <tr
                       style={{
-                        borderBottom: '1px solid #F3F4F6',
+                        borderBottom: '1px solid var(--border)',
                         backgroundColor: idx % 2 === 0 ? '#fff' : '#FAFAFA',
                         ...(year === currentYear ? { backgroundColor: '#FFFFF0' } : {}),
                       }}
@@ -1500,14 +1500,14 @@ export function InvestmentFlowTab() {
                       <td style={tdRight}>{formatCurrency(row.cumulative_deposit_in)}</td>
                       <td style={tdRight}>{formatCurrency(row.withdrawal)}</td>
                       <td style={tdRight}>{formatCurrency(row.cumulative_withdrawal)}</td>
-                      <td style={{ ...tdRight, fontWeight: 700, color: '#1E3A5F' }}>
+                      <td style={{ ...tdRight, fontWeight: 700, color: 'var(--blue-400)' }}>
                         {formatCurrency(row.total_evaluation)}
                       </td>
                       {/* 순자산증가율 */}
                       {(() => {
                         const prevRow = dataMap.get(year - 1);
                         const prevAsset = prevRow?.total_evaluation ?? 0;
-                        if (!prevAsset || prevAsset === 0) return <td style={{ ...tdRight, color: '#9CA3AF' }}>-</td>;
+                        if (!prevAsset || prevAsset === 0) return <td style={{ ...tdRight, color: 'var(--text-muted)' }}>-</td>;
                         const rate = ((row.total_evaluation - prevAsset) / prevAsset * 100);
                         const color = rate > 0 ? '#16A34A' : rate < 0 ? '#DC2626' : '#374151';
                         return <td style={{ ...tdRight, fontWeight: 700, color }}>{rate.toFixed(2)}%</td>;
@@ -1522,16 +1522,16 @@ export function InvestmentFlowTab() {
                       {/* 순자산수익률: 순이익 / (누적입금액 - 누적인출액) × 100 */}
                       {(() => {
                         const netInvestment = row.cumulative_deposit_in - row.cumulative_withdrawal;
-                        if (!netInvestment || netInvestment === 0) return <td style={{ ...tdRight, color: '#9CA3AF' }}>-</td>;
+                        if (!netInvestment || netInvestment === 0) return <td style={{ ...tdRight, color: 'var(--text-muted)' }}>-</td>;
                         const netProfit = row.total_evaluation - netInvestment;
                         const rate = (netProfit / netInvestment * 100);
                         const color = rate > 0 ? '#16A34A' : rate < 0 ? '#DC2626' : '#374151';
                         return <td style={{ ...tdRight, fontWeight: 700, color }}>{rate.toFixed(2)}%</td>;
                       })()}
                       {/* 100세 플로우 적용/취소 - 당해연도는 버튼 없음 */}
-                      <td style={{ padding: '6px 8px', textAlign: 'center', whiteSpace: 'nowrap', borderBottom: '1px solid #F3F4F6' }}>
+                      <td style={{ padding: '6px 8px', textAlign: 'center', whiteSpace: 'nowrap', borderBottom: '1px solid var(--border)' }}>
                         {row.year === new Date().getFullYear() ? (
-                          <span style={{ fontSize: 10, color: '#9CA3AF' }}>당해</span>
+                          <span style={{ fontSize: 10, color: 'var(--text-muted)' }}>당해</span>
                         ) : appliedYears[row.year] ? (
                           <button
                             className="no-print-btn"
@@ -1540,7 +1540,7 @@ export function InvestmentFlowTab() {
                               setAppliedYears(next);
                               saveAppliedYears(next);
                             }}
-                            style={{ padding: '3px 10px', fontSize: 11, border: '1px solid #DC2626', borderRadius: 4, backgroundColor: '#FEF2F2', color: '#DC2626', cursor: 'pointer', fontWeight: 500 }}
+                            style={{ padding: '3px 10px', fontSize: 11, border: '1px solid var(--danger)', borderRadius: 4, backgroundColor: 'var(--danger-bg)', color: 'var(--danger)', cursor: 'pointer', fontWeight: 500 }}
                           >
                             취소
                           </button>
@@ -1564,7 +1564,7 @@ export function InvestmentFlowTab() {
                               setAppliedYears(next);
                               saveAppliedYears(next);
                             }}
-                            style={{ padding: '3px 10px', fontSize: 11, border: '1px solid #1E3A5F', borderRadius: 4, backgroundColor: '#EFF6FF', color: '#1E3A5F', cursor: 'pointer', fontWeight: 500 }}
+                            style={{ padding: '3px 10px', fontSize: 11, border: '1px solid var(--blue-500)', borderRadius: 4, backgroundColor: 'rgba(56,189,248,0.12)', color: 'var(--blue-400)', cursor: 'pointer', fontWeight: 500 }}
                           >
                             적용
                           </button>
@@ -1574,21 +1574,21 @@ export function InvestmentFlowTab() {
                     {/* 평가상세 펼침 행 */}
                     {evalDetailYear === row.year && (
                       <tr>
-                        <td colSpan={20} style={{ padding: 0, backgroundColor: '#fff', borderBottom: '1px solid #E5E7EB' }}>
+                        <td colSpan={20} style={{ padding: 0, backgroundColor: 'var(--bg-card)', borderBottom: '1px solid var(--border)' }}>
                           <div style={{ display: 'flex', justifyContent: 'flex-start', paddingLeft: 'calc(4 * 80px + 4 * 12px)', paddingTop: 8, paddingBottom: 12, paddingRight: 16 }}>
                             <div style={{ width: '100%', maxWidth: 700 }}>
-                              <div style={{ fontSize: 11, fontWeight: 600, color: '#6B7280', marginBottom: 6 }}>
+                              <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-muted)', marginBottom: 6 }}>
                                 {row.year}년 평가 상세 — 총납입: {formatCurrency(row.total_contribution)} / 연간평가: {formatCurrency(row.annual_evaluation)}
                               </div>
-                              <table style={{ width: '100%', fontSize: 11, borderCollapse: 'collapse', borderRadius: 6, overflow: 'hidden', border: '1px solid #E5E7EB' }}>
+                              <table style={{ width: '100%', fontSize: 11, borderCollapse: 'collapse', borderRadius: 6, overflow: 'hidden', border: '1px solid var(--border)' }}>
                                 <thead>
-                                  <tr style={{ backgroundColor: '#F1F5F9' }}>
-                                    <th style={{ padding: '5px 8px', textAlign: 'left', fontWeight: 600, color: '#475569', borderBottom: '1px solid #E2E8F0' }}>상품</th>
-                                    <th style={{ padding: '5px 8px', textAlign: 'right', fontWeight: 600, color: '#475569', borderBottom: '1px solid #E2E8F0' }}>투자금액</th>
-                                    <th style={{ padding: '5px 8px', textAlign: 'right', fontWeight: 600, color: '#D97706', borderBottom: '1px solid #E2E8F0' }}>중간평가</th>
-                                    <th style={{ padding: '5px 8px', textAlign: 'right', fontWeight: 600, color: '#059669', borderBottom: '1px solid #E2E8F0' }}>투자종료</th>
-                                    <th style={{ padding: '5px 8px', textAlign: 'right', fontWeight: 600, color: '#1E3A5F', borderBottom: '1px solid #E2E8F0' }}>평가금액</th>
-                                    <th style={{ padding: '5px 8px', textAlign: 'center', fontWeight: 600, color: '#475569', borderBottom: '1px solid #E2E8F0' }}>상태</th>
+                                  <tr style={{ backgroundColor: 'var(--bg-card-2)' }}>
+                                    <th style={{ padding: '5px 8px', textAlign: 'left', fontWeight: 600, color: 'var(--text-secondary)', borderBottom: '1px solid var(--border)' }}>상품</th>
+                                    <th style={{ padding: '5px 8px', textAlign: 'right', fontWeight: 600, color: 'var(--text-secondary)', borderBottom: '1px solid var(--border)' }}>투자금액</th>
+                                    <th style={{ padding: '5px 8px', textAlign: 'right', fontWeight: 600, color: 'var(--warning)', borderBottom: '1px solid var(--border)' }}>중간평가</th>
+                                    <th style={{ padding: '5px 8px', textAlign: 'right', fontWeight: 600, color: 'var(--success)', borderBottom: '1px solid var(--border)' }}>투자종료</th>
+                                    <th style={{ padding: '5px 8px', textAlign: 'right', fontWeight: 600, color: 'var(--blue-400)', borderBottom: '1px solid var(--border)' }}>평가금액</th>
+                                    <th style={{ padding: '5px 8px', textAlign: 'center', fontWeight: 600, color: 'var(--text-secondary)', borderBottom: '1px solid var(--border)' }}>상태</th>
                                   </tr>
                                 </thead>
                                 <tbody>
@@ -1603,12 +1603,12 @@ export function InvestmentFlowTab() {
                                     const evalVal = exitVal ?? interim ?? r.investment_amount;
                                     const bg = rIdx % 2 === 0 ? '#FAFBFC' : '#fff';
                                     return (
-                                      <tr key={r.id} style={{ backgroundColor: bg, borderBottom: '1px solid #F1F5F9' }}>
-                                        <td style={{ padding: '4px 8px', color: '#374151' }}>{getProductName(r)}</td>
-                                        <td style={{ padding: '4px 8px', textAlign: 'right', color: '#6B7280' }}>{r.investment_amount.toLocaleString()}</td>
+                                      <tr key={r.id} style={{ backgroundColor: bg, borderBottom: '1px solid var(--border)' }}>
+                                        <td style={{ padding: '4px 8px', color: 'var(--text-secondary)' }}>{getProductName(r)}</td>
+                                        <td style={{ padding: '4px 8px', textAlign: 'right', color: 'var(--text-muted)' }}>{r.investment_amount.toLocaleString()}</td>
                                         <td style={{ padding: '4px 8px', textAlign: 'right', color: interim != null ? '#D97706' : '#D1D5DB', fontWeight: interim != null ? 700 : 400 }}>{interim != null ? interim.toLocaleString() : '-'}</td>
                                         <td style={{ padding: '4px 8px', textAlign: 'right', color: exitVal != null ? '#059669' : '#D1D5DB', fontWeight: exitVal != null ? 700 : 400 }}>{exitVal != null ? exitVal.toLocaleString() : '-'}</td>
-                                        <td style={{ padding: '4px 8px', textAlign: 'right', fontWeight: 700, color: '#1E3A5F' }}>{evalVal.toLocaleString()}</td>
+                                        <td style={{ padding: '4px 8px', textAlign: 'right', fontWeight: 700, color: 'var(--blue-400)' }}>{evalVal.toLocaleString()}</td>
                                         <td style={{ padding: '4px 8px', textAlign: 'center' }}>
                                           <span style={{ fontSize: 10, padding: '2px 6px', borderRadius: 4, backgroundColor: isExit ? '#DCFCE7' : '#DBEAFE', color: isExit ? '#166534' : '#1E40AF', fontWeight: 600 }}>{isExit ? '종결' : '운용중'}</span>
                                         </td>
@@ -1638,21 +1638,21 @@ export function InvestmentFlowTab() {
             <button
               onClick={() => setShowFlowChart(!showFlowChart)}
               className="no-print-btn"
-              style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '6px 14px', border: '1px solid #E5E7EB', borderRadius: 8, backgroundColor: showFlowChart ? '#EFF6FF' : '#F9FAFB', cursor: 'pointer', fontSize: 13, color: '#374151', fontWeight: 500 }}
+              style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '6px 14px', border: '1px solid var(--border)', borderRadius: 8, backgroundColor: showFlowChart ? '#EFF6FF' : '#F9FAFB', cursor: 'pointer', fontSize: 13, color: 'var(--text-secondary)', fontWeight: 500 }}
             >
               {showFlowChart ? '\u25BC' : '\u25B6'} 투자흐름 그래프
             </button>
             <button
               onClick={() => setShowNetAssetChart(!showNetAssetChart)}
               className="no-print-btn"
-              style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '6px 14px', border: '1px solid #E5E7EB', borderRadius: 8, backgroundColor: showNetAssetChart ? '#EFF6FF' : '#F9FAFB', cursor: 'pointer', fontSize: 13, color: '#374151', fontWeight: 500 }}
+              style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '6px 14px', border: '1px solid var(--border)', borderRadius: 8, backgroundColor: showNetAssetChart ? '#EFF6FF' : '#F9FAFB', cursor: 'pointer', fontSize: 13, color: 'var(--text-secondary)', fontWeight: 500 }}
             >
               {showNetAssetChart ? '\u25BC' : '\u25B6'} 순자산 그래프
             </button>
             <button
               onClick={() => setShowLifetimeFlow(!showLifetimeFlow)}
               className="no-print-btn"
-              style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '6px 14px', border: '1px solid #1E3A5F', borderRadius: 8, backgroundColor: showLifetimeFlow ? '#1E3A5F' : '#F9FAFB', color: showLifetimeFlow ? '#fff' : '#1E3A5F', cursor: 'pointer', fontSize: 13, fontWeight: 600 }}
+              style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '6px 14px', border: '1px solid var(--blue-500)', borderRadius: 8, backgroundColor: showLifetimeFlow ? '#3B82F6' : '#F9FAFB', color: showLifetimeFlow ? '#fff' : '#3B82F6', cursor: 'pointer', fontSize: 13, fontWeight: 600 }}
             >
               {showLifetimeFlow ? '\u25BC' : '\u25B6'} 100세 은퇴플로우
             </button>
@@ -1661,48 +1661,48 @@ export function InvestmentFlowTab() {
 
         {/* 투자흐름 그래프 + 순자산 그래프 */}
         <section id="print-sec-graphs" className="print-section-graphs">
-          <div className="print-section-title" style={{ fontSize: 13, fontWeight: 700, color: '#1E3A5F', marginBottom: 8, paddingBottom: 4, borderBottom: '2px solid #1E3A5F' }}>2. 투자흐름 분석 그래프</div>
+          <div className="print-section-title" style={{ fontSize: 13, fontWeight: 700, color: 'var(--blue-400)', marginBottom: 8, paddingBottom: 4, borderBottom: '2px solid var(--blue-500)' }}>2. 투자흐름 분석 그래프</div>
           {showFlowChart && annualFlowData.length > 0 && (
-            <div style={{ marginTop: 12, padding: 16, border: '1px solid #E5E7EB', borderRadius: 8, backgroundColor: '#fff' }}>
+            <div style={{ marginTop: 12, padding: 16, border: '1px solid var(--border)', borderRadius: 8, backgroundColor: 'var(--bg-card)' }}>
               <div style={{ display: 'flex', gap: 12, marginBottom: 12, fontSize: 12, flexWrap: 'wrap' }} className="no-print">
                 {([
                   { key: 'depositIn' as const, label: '입금액', color: '#8B5CF6' },
-                  { key: 'contribution' as const, label: '총납입금액', color: '#4A90D9' },
-                  { key: 'annualReturn' as const, label: '연간총수익', color: '#10B981' },
-                  { key: 'returnRate' as const, label: '연수익률(%)', color: '#F59E0B' },
+                  { key: 'contribution' as const, label: '총납입금액', color: 'var(--blue-400)' },
+                  { key: 'annualReturn' as const, label: '연간총수익', color: 'var(--success)' },
+                  { key: 'returnRate' as const, label: '연수익률(%)', color: 'var(--warning)' },
                 ] as const).map(({ key, label, color }) => (
                   <button key={key} onClick={() => setChartVisibility(prev => ({ ...prev, [key]: !prev[key] }))}
-                    style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '4px 10px', border: '1px solid #E5E7EB', borderRadius: 6, backgroundColor: chartVisibility[key] ? '#fff' : '#F3F4F6', cursor: 'pointer', opacity: chartVisibility[key] ? 1 : 0.4, fontSize: 12, color: '#374151' }}>
+                    style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '4px 10px', border: '1px solid var(--border)', borderRadius: 6, backgroundColor: chartVisibility[key] ? '#fff' : '#243049', cursor: 'pointer', opacity: chartVisibility[key] ? 1 : 0.4, fontSize: 12, color: 'var(--text-secondary)' }}>
                     <span style={{ width: 10, height: 10, borderRadius: 2, backgroundColor: color, display: 'inline-block' }} />
                     {label}
                   </button>
                 ))}
               </div>
               <div id="print-chart-flow" className="print-chart-wrap">
-                <div className="print-section-title" style={{ fontSize: 11, fontWeight: 600, color: '#374151', marginBottom: 4 }}>투자흐름 그래프</div>
+                <div className="print-section-title" style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-secondary)', marginBottom: 4 }}>투자흐름 그래프</div>
                 <AnnualFlowChart data={annualFlowData} visibility={chartVisibility} noAnimation={isPrinting} />
               </div>
             </div>
           )}
 
           {showNetAssetChart && annualFlowData.length > 0 && (
-            <div style={{ marginTop: 12, padding: 16, border: '1px solid #E5E7EB', borderRadius: 8, backgroundColor: '#fff' }}>
+            <div style={{ marginTop: 12, padding: 16, border: '1px solid var(--border)', borderRadius: 8, backgroundColor: 'var(--bg-card)' }}>
               <div style={{ display: 'flex', gap: 12, marginBottom: 12, fontSize: 12, flexWrap: 'wrap' }} className="no-print">
                 {([
-                  { key: 'cumulativeDeposit' as const, label: '누적입금액', color: '#4A90D9' },
-                  { key: 'netAsset' as const, label: '순자산', color: '#1E3A5F' },
-                  { key: 'cumulativeProfit' as const, label: '순이익', color: '#10B981' },
-                  { key: 'netAssetReturnRate' as const, label: '순자산수익률(%)', color: '#F59E0B' },
+                  { key: 'cumulativeDeposit' as const, label: '누적입금액', color: 'var(--blue-400)' },
+                  { key: 'netAsset' as const, label: '순자산', color: 'var(--blue-400)' },
+                  { key: 'cumulativeProfit' as const, label: '순이익', color: 'var(--success)' },
+                  { key: 'netAssetReturnRate' as const, label: '순자산수익률(%)', color: 'var(--warning)' },
                 ] as const).map(({ key, label, color }) => (
                   <button key={key} onClick={() => setNetAssetVisibility(prev => ({ ...prev, [key]: !prev[key] }))}
-                    style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '4px 10px', border: '1px solid #E5E7EB', borderRadius: 6, backgroundColor: netAssetVisibility[key] ? '#fff' : '#F3F4F6', cursor: 'pointer', opacity: netAssetVisibility[key] ? 1 : 0.4, fontSize: 12, color: '#374151' }}>
+                    style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '4px 10px', border: '1px solid var(--border)', borderRadius: 6, backgroundColor: netAssetVisibility[key] ? '#fff' : '#243049', cursor: 'pointer', opacity: netAssetVisibility[key] ? 1 : 0.4, fontSize: 12, color: 'var(--text-secondary)' }}>
                     <span style={{ width: 10, height: 10, borderRadius: 2, backgroundColor: color, display: 'inline-block' }} />
                     {label}
                   </button>
                 ))}
               </div>
               <div id="print-chart-netasset" className="print-chart-wrap">
-                <div className="print-section-title" style={{ fontSize: 11, fontWeight: 600, color: '#374151', marginBottom: 4 }}>순자산 그래프</div>
+                <div className="print-section-title" style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-secondary)', marginBottom: 4 }}>순자산 그래프</div>
                 <NetAssetChart data={annualFlowData} visibility={netAssetVisibility} noAnimation={isPrinting} />
               </div>
             </div>
@@ -1712,7 +1712,7 @@ export function InvestmentFlowTab() {
         {/* 100세 은퇴플로우 */}
         {showLifetimeFlow && (
           <section id="print-sec-lifetime" className="print-section-lifetime" style={{ marginTop: 12 }}>
-            <div className="print-section-title" style={{ fontSize: 13, fontWeight: 700, color: '#1E3A5F', marginBottom: 8, paddingBottom: 4, borderBottom: '2px solid #1E3A5F' }}>3. 100세 은퇴플로우</div>
+            <div className="print-section-title" style={{ fontSize: 13, fontWeight: 700, color: 'var(--blue-400)', marginBottom: 8, paddingBottom: 4, borderBottom: '2px solid var(--blue-500)' }}>3. 100세 은퇴플로우</div>
             <LifetimeRetirementFlow
               currentAge={(() => {
                 if (!selectedCustomer?.birthDate) return null;
@@ -1732,18 +1732,18 @@ export function InvestmentFlowTab() {
 
       {/* ===== 섹터2: 예수금 계좌 기록 ===== */}
       <section id="print-sec-deposit" className="print-section-deposit">
-        <div className="print-section-title" style={{ fontSize: 13, fontWeight: 700, color: '#1E3A5F', marginBottom: 8, paddingBottom: 4, borderBottom: '2px solid #1E3A5F' }}>4. 예수금 계좌 기록</div>
+        <div className="print-section-title" style={{ fontSize: 13, fontWeight: 700, color: 'var(--blue-400)', marginBottom: 8, paddingBottom: 4, borderBottom: '2px solid var(--blue-500)' }}>4. 예수금 계좌 기록</div>
         <div className="no-print" style={{
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'space-between',
           marginBottom: 12,
         }}>
-          <h3 style={{ margin: 0, fontSize: 15, fontWeight: 600, color: '#1E3A5F' }}>
+          <h3 style={{ margin: 0, fontSize: 15, fontWeight: 600, color: 'var(--blue-400)' }}>
             예수금 계좌 기록
           </h3>
           <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginLeft: 'auto' }}>
-            <label style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 12, color: '#6B7280', cursor: 'pointer' }}>
+            <label style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 12, color: 'var(--text-muted)', cursor: 'pointer' }}>
               <input type="checkbox" checked={showHidden} onChange={() => setShowHidden(!showHidden)} style={{ cursor: 'pointer' }} />
               숨긴 계좌 보기
             </label>
@@ -1758,7 +1758,7 @@ export function InvestmentFlowTab() {
                 fontWeight: 600,
                 borderRadius: 7,
                 border: 'none',
-                backgroundColor: '#1E3A5F',
+                backgroundColor: 'var(--blue-600)',
                 color: '#fff',
                 cursor: 'pointer',
               }}
@@ -1769,16 +1769,16 @@ export function InvestmentFlowTab() {
         </div>
 
         {depositAccountsLoading ? (
-          <div style={{ textAlign: 'center', padding: 24, color: '#9CA3AF', fontSize: 13 }}>
+          <div style={{ textAlign: 'center', padding: 24, color: 'var(--text-muted)', fontSize: 13 }}>
             불러오는 중...
           </div>
         ) : depositAccounts.length === 0 ? (
           <div style={{
             textAlign: 'center',
             padding: 24,
-            color: '#9CA3AF',
+            color: 'var(--text-muted)',
             fontSize: 13,
-            border: '1px dashed #E5E7EB',
+            border: '1px dashed var(--border)',
             borderRadius: 8,
           }}>
             등록된 예수금 계좌가 없습니다.
@@ -1800,7 +1800,7 @@ export function InvestmentFlowTab() {
                   key={account.id}
                   className="print-deposit-account"
                   style={{
-                    border: '1px solid #E5E7EB',
+                    border: '1px solid var(--border)',
                     borderRadius: 8,
                     overflow: 'hidden',
                   }}
@@ -1812,8 +1812,8 @@ export function InvestmentFlowTab() {
                       alignItems: 'center',
                       justifyContent: 'space-between',
                       padding: '10px 16px',
-                      backgroundColor: '#F8FAFC',
-                      borderLeft: `3px solid ${account.is_active ? '#1E3A5F' : '#D1D5DB'}`,
+                      backgroundColor: 'var(--bg-surface)',
+                      borderLeft: `3px solid ${account.is_active ? '#3B82F6' : '#D1D5DB'}`,
                       opacity: account.is_active ? 1 : 0.6,
                       cursor: 'pointer',
                       userSelect: 'none',
@@ -1821,26 +1821,26 @@ export function InvestmentFlowTab() {
                     onClick={() => toggleAccountExpand(account.id)}
                   >
                     <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                      <span style={{ fontSize: 14, color: '#374151' }}>📁</span>
-                      <span style={{ fontSize: 13, fontWeight: 600, color: '#1E3A5F' }}>
+                      <span style={{ fontSize: 14, color: 'var(--text-secondary)' }}>📁</span>
+                      <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--blue-400)' }}>
                         {account.securities_company}
                         {account.account_number && (
-                          <span style={{ fontWeight: 400, color: '#6B7280', marginLeft: 6 }}>
+                          <span style={{ fontWeight: 400, color: 'var(--text-muted)', marginLeft: 6 }}>
                             {account.account_number}
                           </span>
                         )}
                         {account.nickname && (
-                          <span style={{ fontWeight: 400, color: '#9CA3AF', marginLeft: 6 }}>
+                          <span style={{ fontWeight: 400, color: 'var(--text-muted)', marginLeft: 6 }}>
                             &quot;{account.nickname}&quot;
                           </span>
                         )}
                         {!account.is_active && (
-                          <span style={{ fontSize: 11, color: '#EF4444', fontWeight: 600, marginLeft: 8, backgroundColor: '#FEF2F2', padding: '1px 6px', borderRadius: 4 }}>숨김</span>
+                          <span style={{ fontSize: 11, color: 'var(--danger)', fontWeight: 600, marginLeft: 8, backgroundColor: 'var(--danger-bg)', padding: '1px 6px', borderRadius: 4 }}>숨김</span>
                         )}
                       </span>
-                      <span style={{ fontSize: 13, color: '#374151' }}>
+                      <span style={{ fontSize: 13, color: 'var(--text-secondary)' }}>
                         잔액:{' '}
-                        <strong style={{ color: '#1E3A5F' }}>
+                        <strong style={{ color: 'var(--blue-400)' }}>
                           {(account.current_balance ?? 0).toLocaleString()}원
                         </strong>
                       </span>
@@ -1850,7 +1850,7 @@ export function InvestmentFlowTab() {
                         <>
                           <button
                             onClick={(e) => { e.stopPropagation(); setEditingAccount(account); }}
-                            style={{ padding: '4px 10px', fontSize: 12, fontWeight: 500, borderRadius: 6, border: '1px solid #D1D5DB', backgroundColor: '#fff', color: '#374151', cursor: 'pointer' }}
+                            style={{ padding: '4px 10px', fontSize: 12, fontWeight: 500, borderRadius: 6, border: '1px solid var(--border-strong)', backgroundColor: 'var(--bg-card)', color: 'var(--text-secondary)', cursor: 'pointer' }}
                           >
                             수정
                           </button>
@@ -1869,7 +1869,7 @@ export function InvestmentFlowTab() {
                               } catch { alert('재계산 실패'); }
                             }}
                             title="투자기록 기반으로 자동생성된 거래(날짜/금액/상품명)를 일괄 재동기화하고 잔액을 재계산합니다."
-                            style={{ padding: '4px 10px', fontSize: 12, fontWeight: 500, borderRadius: 6, border: '1px solid #F59E0B', backgroundColor: '#FFFBEB', color: '#B45309', cursor: 'pointer' }}
+                            style={{ padding: '4px 10px', fontSize: 12, fontWeight: 500, borderRadius: 6, border: '1px solid var(--warning)', backgroundColor: 'var(--warning-bg)', color: 'var(--warning)', cursor: 'pointer' }}
                           >
                             🔄 재계산
                           </button>
@@ -1887,9 +1887,9 @@ export function InvestmentFlowTab() {
                               fontSize: 12,
                               fontWeight: 600,
                               borderRadius: 6,
-                              border: '1px solid #1E3A5F',
-                              backgroundColor: '#fff',
-                              color: '#1E3A5F',
+                              border: '1px solid var(--blue-500)',
+                              backgroundColor: 'var(--bg-card)',
+                              color: 'var(--blue-400)',
                               cursor: 'pointer',
                             }}
                           >
@@ -1907,7 +1907,7 @@ export function InvestmentFlowTab() {
                                   fetchDepositAccounts();
                                 } catch { /* silent */ }
                               }}
-                              style={{ padding: '4px 10px', fontSize: 12, fontWeight: 500, borderRadius: 6, border: '1px solid #E5E7EB', backgroundColor: '#fff', color: '#EF4444', cursor: 'pointer' }}
+                              style={{ padding: '4px 10px', fontSize: 12, fontWeight: 500, borderRadius: 6, border: '1px solid var(--border)', backgroundColor: 'var(--bg-card)', color: 'var(--danger)', cursor: 'pointer' }}
                             >
                               숨김
                             </button>
@@ -1924,14 +1924,14 @@ export function InvestmentFlowTab() {
                                   fetchDepositAccounts();
                                 } catch { /* silent */ }
                               }}
-                              style={{ padding: '4px 10px', fontSize: 12, fontWeight: 600, borderRadius: 6, border: '1px solid #10B981', backgroundColor: '#ECFDF5', color: '#10B981', cursor: 'pointer' }}
+                              style={{ padding: '4px 10px', fontSize: 12, fontWeight: 600, borderRadius: 6, border: '1px solid var(--success)', backgroundColor: 'var(--success-bg)', color: 'var(--success)', cursor: 'pointer' }}
                             >
                               활성화
                             </button>
                           )}
                         </>
                       )}
-                      <span style={{ fontSize: 13, color: '#9CA3AF' }}>{isExpanded ? '▲' : '▼'}</span>
+                      <span style={{ fontSize: 13, color: 'var(--text-muted)' }}>{isExpanded ? '▲' : '▼'}</span>
                     </div>
                   </div>
 
@@ -1939,17 +1939,17 @@ export function InvestmentFlowTab() {
                   {isExpanded && (
                     <div>
                       {/* 년도 필터 + 건수 */}
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 12px', backgroundColor: '#F9FAFB', borderBottom: '1px solid #E5E7EB' }}>
-                        <span style={{ fontSize: 11, color: '#6B7280' }}>년도:</span>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 12px', backgroundColor: 'var(--bg-surface)', borderBottom: '1px solid var(--border)' }}>
+                        <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>년도:</span>
                         <select
                           value={txYearFilter}
                           onChange={e => setTxYearFilter(e.target.value)}
-                          style={{ fontSize: 11, padding: '2px 6px', borderRadius: 4, border: '1px solid #D1D5DB' }}
+                          style={{ fontSize: 11, padding: '2px 6px', borderRadius: 4, border: '1px solid var(--border-strong)' }}
                         >
                           <option value="all">전체</option>
                           {txYears.map(y => <option key={y} value={y}>{y}년</option>)}
                         </select>
-                        <span style={{ fontSize: 11, color: '#9CA3AF' }}>({transactions.length}건{txYearFilter !== 'all' ? ` / 총 ${rawTransactions.length}건` : ''})</span>
+                        <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>({transactions.length}건{txYearFilter !== 'all' ? ` / 총 ${rawTransactions.length}건` : ''})</span>
                         <button
                           onClick={() => {
                             if (transactions.length === 0) return;
@@ -1976,7 +1976,7 @@ export function InvestmentFlowTab() {
                             a.click();
                             URL.revokeObjectURL(url);
                           }}
-                          style={{ marginLeft: 'auto', padding: '2px 8px', fontSize: 11, fontWeight: 500, borderRadius: 4, border: '1px solid #D1D5DB', backgroundColor: '#fff', color: '#374151', cursor: 'pointer' }}
+                          style={{ marginLeft: 'auto', padding: '2px 8px', fontSize: 11, fontWeight: 500, borderRadius: 4, border: '1px solid var(--border-strong)', backgroundColor: 'var(--bg-card)', color: 'var(--text-secondary)', cursor: 'pointer' }}
                         >
                           📥 엑셀 다운
                         </button>
@@ -1984,7 +1984,7 @@ export function InvestmentFlowTab() {
                     <div ref={el => { txScrollRefs.current[account.id] = el; }} style={{ overflowX: 'auto', overflowY: 'auto', maxHeight: 480 }}>
                       <table style={{ minWidth: 780, borderCollapse: 'collapse', fontSize: 13, whiteSpace: 'nowrap', width: '100%' }}>
                         <thead style={{ position: 'sticky', top: 0, zIndex: 2 }}>
-                          <tr style={{ backgroundColor: '#F9FAFB' }}>
+                          <tr style={{ backgroundColor: 'var(--bg-surface)' }}>
                             {[
                               { label: 'No', align: 'center', width: 36, sortKey: 'id' },
                               { label: '발생일', align: 'center', width: 90, sortKey: 'transaction_date' },
@@ -2003,10 +2003,10 @@ export function InvestmentFlowTab() {
                                   padding: '8px 12px',
                                   textAlign: align as 'center' | 'left' | 'right',
                                   fontWeight: 600,
-                                  color: '#6B7280',
-                                  borderBottom: '1px solid #E5E7EB',
+                                  color: 'var(--text-muted)',
+                                  borderBottom: '1px solid var(--border)',
                                   fontSize: 12,
-                                  backgroundColor: '#F9FAFB',
+                                  backgroundColor: 'var(--bg-surface)',
                                   width: width ? `${width}px` : undefined,
                                   cursor: sortKey ? 'pointer' : undefined,
                                   userSelect: sortKey ? 'none' : undefined,
@@ -2020,8 +2020,8 @@ export function InvestmentFlowTab() {
                         <tbody>
                           {/* 신규 거래 입력 행 */}
                           {isAddingNewTx && (
-                            <tr style={{ backgroundColor: '#FFFFF0', borderBottom: '1px solid #FDE68A' }}>
-                              <td style={{ ...txTdCenter, color: '#9CA3AF' }}>-</td>
+                            <tr style={{ backgroundColor: '#FFFFF0', borderBottom: '1px solid rgba(245,158,11,0.35)' }}>
+                              <td style={{ ...txTdCenter, color: 'var(--text-muted)' }}>-</td>
                               <td style={{ padding: '6px 8px' }}>
                                 <input
                                   type="date"
@@ -2070,7 +2070,7 @@ export function InvestmentFlowTab() {
                                   style={{ ...inlineInput, textAlign: 'right' }}
                                 />
                               </td>
-                              <td style={{ ...txTdRight, color: '#9CA3AF' }}>-</td>
+                              <td style={{ ...txTdRight, color: 'var(--text-muted)' }}>-</td>
                               <td style={{ padding: '6px 8px' }}>
                                 <input
                                   type="text"
@@ -2095,13 +2095,13 @@ export function InvestmentFlowTab() {
 
                           {txLoading ? (
                             <tr>
-                              <td colSpan={9} style={{ textAlign: 'center', padding: 20, color: '#9CA3AF', fontSize: 13 }}>
+                              <td colSpan={9} style={{ textAlign: 'center', padding: 20, color: 'var(--text-muted)', fontSize: 13 }}>
                                 불러오는 중...
                               </td>
                             </tr>
                           ) : transactions.length === 0 && !isAddingNewTx ? (
                             <tr>
-                              <td colSpan={9} style={{ textAlign: 'center', padding: 20, color: '#9CA3AF', fontSize: 13 }}>
+                              <td colSpan={9} style={{ textAlign: 'center', padding: 20, color: 'var(--text-muted)', fontSize: 13 }}>
                                 거래내역이 없습니다.
                               </td>
                             </tr>
@@ -2112,8 +2112,8 @@ export function InvestmentFlowTab() {
 
                               if (isEditingThis) {
                                 return (
-                                  <tr key={tx.id} style={{ backgroundColor: '#FFFFF0', borderBottom: '1px solid #FDE68A' }}>
-                                    <td style={{ ...txTdCenter, color: '#9CA3AF' }}>{txOrigIndex.get(tx.id) ?? (idx + 1)}</td>
+                                  <tr key={tx.id} style={{ backgroundColor: '#FFFFF0', borderBottom: '1px solid rgba(245,158,11,0.35)' }}>
+                                    <td style={{ ...txTdCenter, color: 'var(--text-muted)' }}>{txOrigIndex.get(tx.id) ?? (idx + 1)}</td>
                                     <td style={{ padding: '6px 8px' }}>
                                       <input
                                         type="date"
@@ -2162,7 +2162,7 @@ export function InvestmentFlowTab() {
                                         style={{ ...inlineInput, textAlign: 'right' }}
                                       />
                                     </td>
-                                    <td style={{ ...txTdRight, fontWeight: 700, color: '#1E3A5F' }}>
+                                    <td style={{ ...txTdRight, fontWeight: 700, color: 'var(--blue-400)' }}>
                                       {tx.balance.toLocaleString()}
                                     </td>
                                     <td style={{ padding: '6px 8px' }}>
@@ -2192,12 +2192,12 @@ export function InvestmentFlowTab() {
                                 <tr
                                   key={tx.id}
                                   style={{
-                                    borderBottom: '1px solid #F3F4F6',
+                                    borderBottom: '1px solid var(--border)',
                                     backgroundColor: idx % 2 === 0 ? '#fff' : '#FAFAFA',
                                   }}
                                 >
                                   <td style={{ ...txTdCenter }}>{txOrigIndex.get(tx.id) ?? (idx + 1)}</td>
-                                  <td style={{ ...txTdBase, color: '#6B7280' }}>{tx.transaction_date}</td>
+                                  <td style={{ ...txTdBase, color: 'var(--text-muted)' }}>{tx.transaction_date}</td>
                                   <td style={{ ...txTdCenter }}>
                                     <span style={{
                                       display: 'inline-block',
@@ -2211,29 +2211,29 @@ export function InvestmentFlowTab() {
                                       {TRANSACTION_TYPE_LABELS[tx.transaction_type]}
                                     </span>
                                   </td>
-                                  <td style={{ ...txTdBase, color: '#374151', fontSize: 12 }}>
+                                  <td style={{ ...txTdBase, color: 'var(--text-secondary)', fontSize: 12 }}>
                                     {tx.related_product || <span style={{ color: '#D1D5DB' }}>-</span>}
                                   </td>
-                                  <td style={{ ...txTdRight, color: tx.credit_amount > 0 ? '#1E3A5F' : '#9CA3AF' }}>
+                                  <td style={{ ...txTdRight, color: tx.credit_amount > 0 ? '#3B82F6' : '#9CA3AF' }}>
                                     {tx.credit_amount > 0 ? tx.credit_amount.toLocaleString() : '-'}
                                   </td>
                                   <td style={{ ...txTdRight, color: tx.debit_amount > 0 ? '#EF4444' : '#9CA3AF' }}>
                                     {tx.debit_amount > 0 ? tx.debit_amount.toLocaleString() : '-'}
                                   </td>
-                                  <td style={{ ...txTdRight, fontWeight: 700, color: '#1E3A5F' }}>
+                                  <td style={{ ...txTdRight, fontWeight: 700, color: 'var(--blue-400)' }}>
                                     {tx.balance.toLocaleString()}
                                   </td>
-                                  <td style={{ ...txTdBase, color: '#6B7280', maxWidth: 200, fontSize: 11, lineHeight: '1.4', overflow: 'hidden', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' as const, wordBreak: 'break-word' }} title={tx.memo || ''}>
+                                  <td style={{ ...txTdBase, color: 'var(--text-muted)', maxWidth: 200, fontSize: 11, lineHeight: '1.4', overflow: 'hidden', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' as const, wordBreak: 'break-word' }} title={tx.memo || ''}>
                                     {tx.memo || <span style={{ color: '#D1D5DB' }}>-</span>}
                                   </td>
                                   <td style={{ ...txTdCenter, whiteSpace: 'nowrap' }}>
                                     {tx.investment_record_id ? (
-                                      <span style={{ fontSize: 11, color: '#9CA3AF' }}>자동</span>
+                                      <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>자동</span>
                                     ) : (
                                       <>
                                         <button
                                           onClick={() => startEditTx(tx)}
-                                          style={{ padding: '2px 6px', fontSize: 11, borderRadius: 4, border: '1px solid #D1D5DB', backgroundColor: '#fff', color: '#374151', cursor: 'pointer', marginRight: 3 }}
+                                          style={{ padding: '2px 6px', fontSize: 11, borderRadius: 4, border: '1px solid var(--border-strong)', backgroundColor: 'var(--bg-card)', color: 'var(--text-secondary)', cursor: 'pointer', marginRight: 3 }}
                                         >수정</button>
                                         <button
                                           onClick={async () => {
@@ -2246,7 +2246,7 @@ export function InvestmentFlowTab() {
                                               fetchDepositAccounts();
                                             } catch { /* silent */ }
                                           }}
-                                          style={{ padding: '2px 6px', fontSize: 11, borderRadius: 4, border: '1px solid #FECACA', backgroundColor: '#FEF2F2', color: '#EF4444', cursor: 'pointer' }}
+                                          style={{ padding: '2px 6px', fontSize: 11, borderRadius: 4, border: '1px solid rgba(239,68,68,0.35)', backgroundColor: 'var(--danger-bg)', color: 'var(--danger)', cursor: 'pointer' }}
                                         >삭제</button>
                                       </>
                                     )}
@@ -2269,7 +2269,7 @@ export function InvestmentFlowTab() {
 
       {/* ===== 섹터3: 투자기록 테이블 ===== */}
       <section id="print-sec-records" className="print-section-records">
-        <div className="print-section-title" style={{ fontSize: 13, fontWeight: 700, color: '#1E3A5F', marginBottom: 8, paddingBottom: 4, borderBottom: '2px solid #1E3A5F' }}>5. 투자기록</div>
+        <div className="print-section-title" style={{ fontSize: 13, fontWeight: 700, color: 'var(--blue-400)', marginBottom: 8, paddingBottom: 4, borderBottom: '2px solid var(--blue-500)' }}>5. 투자기록</div>
         <div className="no-print" style={{
           display: 'flex',
           alignItems: 'center',
@@ -2277,7 +2277,7 @@ export function InvestmentFlowTab() {
           marginBottom: 12,
         }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-            <h3 style={{ margin: 0, fontSize: 15, fontWeight: 600, color: '#1E3A5F' }}>
+            <h3 style={{ margin: 0, fontSize: 15, fontWeight: 600, color: 'var(--blue-400)' }}>
               투자기록
             </h3>
 
@@ -2297,8 +2297,8 @@ export function InvestmentFlowTab() {
                     fontSize: 12,
                     fontWeight: statusFilter === value ? 600 : 400,
                     borderRadius: 6,
-                    border: statusFilter === value ? '1.5px solid #1E3A5F' : '1px solid #E5E7EB',
-                    backgroundColor: statusFilter === value ? '#1E3A5F' : '#fff',
+                    border: statusFilter === value ? '1.5px solid #3B82F6' : '1px solid #E5E7EB',
+                    backgroundColor: statusFilter === value ? '#3B82F6' : '#fff',
                     color: statusFilter === value ? '#fff' : '#6B7280',
                     cursor: 'pointer',
                     transition: 'all 0.15s ease',
@@ -2314,7 +2314,7 @@ export function InvestmentFlowTab() {
                 onChange={(e) => setAccountFilter(e.target.value === 'all' ? 'all' : Number(e.target.value))}
                 style={{
                   padding: '4px 8px', fontSize: 12, borderRadius: 6,
-                  border: '1px solid #E5E7EB', color: '#374151', cursor: 'pointer',
+                  border: '1px solid var(--border)', color: 'var(--text-secondary)', cursor: 'pointer',
                   backgroundColor: accountFilter !== 'all' ? '#EFF6FF' : '#fff',
                 }}
               >
@@ -2334,7 +2334,7 @@ export function InvestmentFlowTab() {
               style={{
                 display: 'flex', alignItems: 'center', gap: 4, padding: '7px 14px',
                 fontSize: 13, fontWeight: 600, borderRadius: 7, border: 'none',
-                backgroundColor: '#1E3A5F', color: '#fff', cursor: 'pointer',
+                backgroundColor: 'var(--blue-600)', color: '#fff', cursor: 'pointer',
               }}
             >
               + 투자기록 추가
@@ -2343,8 +2343,8 @@ export function InvestmentFlowTab() {
               onClick={() => setShowAddProductModal(true)}
               style={{
                 display: 'flex', alignItems: 'center', gap: 4, padding: '7px 14px',
-                fontSize: 13, fontWeight: 600, borderRadius: 7, border: '1px solid #1E3A5F',
-                backgroundColor: '#fff', color: '#1E3A5F', cursor: 'pointer',
+                fontSize: 13, fontWeight: 600, borderRadius: 7, border: '1px solid var(--blue-500)',
+                backgroundColor: 'var(--bg-card)', color: 'var(--blue-400)', cursor: 'pointer',
               }}
             >
               + 상품 추가
@@ -2355,7 +2355,7 @@ export function InvestmentFlowTab() {
         <div ref={recScrollRef} style={{ overflowX: 'auto', overflowY: 'auto', maxHeight: 520 }}>
           <table style={{ minWidth: 1300, borderCollapse: 'collapse', fontSize: 13, whiteSpace: 'nowrap' }}>
             <thead style={{ position: 'sticky', top: 0, zIndex: 2 }}>
-              <tr style={{ backgroundColor: '#F9FAFB' }}>
+              <tr style={{ backgroundColor: 'var(--bg-surface)' }}>
                 {[
                   { label: '#', align: 'left', sortKey: 'id' },
                   { label: '상품명', align: 'left', sortKey: 'product_name' },
@@ -2378,8 +2378,8 @@ export function InvestmentFlowTab() {
                       padding: '9px 12px',
                       textAlign: align as 'left' | 'right',
                       fontWeight: 600,
-                      color: '#6B7280',
-                      borderBottom: '1px solid #E5E7EB',
+                      color: 'var(--text-muted)',
+                      borderBottom: '1px solid var(--border)',
                       fontSize: 11,
                       whiteSpace: 'nowrap',
                       backgroundColor: highlight ? '#EEF2F7' : '#F9FAFB',
@@ -2395,8 +2395,8 @@ export function InvestmentFlowTab() {
             <tbody>
               {/* 신규 투자기록 입력 행 */}
               {addingRecord && (
-                <tr style={{ backgroundColor: '#FFFFF0', borderBottom: '1px solid #FDE68A' }}>
-                  <td style={{ ...tdBase, color: '#9CA3AF' }}>-</td>
+                <tr style={{ backgroundColor: '#FFFFF0', borderBottom: '1px solid rgba(245,158,11,0.35)' }}>
+                  <td style={{ ...tdBase, color: 'var(--text-muted)' }}>-</td>
                   {/* 상품 */}
                   <td style={{ padding: '6px 8px', minWidth: 160 }}>
                     <select
@@ -2441,7 +2441,7 @@ export function InvestmentFlowTab() {
                   {/* 수익률 */}
                   <td style={{ ...tdRight, color: '#D1D5DB', fontSize: 12 }}>-</td>
                   {/* 상태 */}
-                  <td style={{ ...tdBase, color: '#9CA3AF', fontSize: 12 }}>운용중</td>
+                  <td style={{ ...tdBase, color: 'var(--text-muted)', fontSize: 12 }}>운용중</td>
                   {/* 가입일 */}
                   <td style={{ padding: '6px 8px', minWidth: 120 }}>
                     <input
@@ -2490,13 +2490,13 @@ export function InvestmentFlowTab() {
 
               {recordsLoading ? (
                 <tr>
-                  <td colSpan={17} style={{ textAlign: 'center', padding: 24, color: '#9CA3AF', fontSize: 13 }}>
+                  <td colSpan={17} style={{ textAlign: 'center', padding: 24, color: 'var(--text-muted)', fontSize: 13 }}>
                     불러오는 중...
                   </td>
                 </tr>
               ) : filteredRecords.length === 0 && !addingRecord ? (
                 <tr>
-                  <td colSpan={17} style={{ textAlign: 'center', padding: 24, color: '#9CA3AF', fontSize: 13 }}>
+                  <td colSpan={17} style={{ textAlign: 'center', padding: 24, color: 'var(--text-muted)', fontSize: 13 }}>
                     투자기록이 없습니다.
                   </td>
                 </tr>
@@ -2522,9 +2522,9 @@ export function InvestmentFlowTab() {
                           if (el) rowRefs.current.set(record.id, el);
                           else rowRefs.current.delete(record.id);
                         }}
-                        style={{ backgroundColor: '#FFFFF0', borderBottom: '1px solid #FDE68A' }}
+                        style={{ backgroundColor: '#FFFFF0', borderBottom: '1px solid rgba(245,158,11,0.35)' }}
                       >
-                        <td style={{ ...tdBase, color: '#9CA3AF' }}>{idx + 1}</td>
+                        <td style={{ ...tdBase, color: 'var(--text-muted)' }}>{idx + 1}</td>
                         {/* 상품 */}
                         <td style={{ padding: '6px 8px', minWidth: 160 }}>
                           <select
@@ -2576,7 +2576,7 @@ export function InvestmentFlowTab() {
                           />
                         </td>
                         {/* 수익률 - 자동계산 표시 */}
-                        <td style={{ ...tdRight, color: '#9CA3AF', fontSize: 12 }}>
+                        <td style={{ ...tdRight, color: 'var(--text-muted)', fontSize: 12 }}>
                           {recEditEval && recEditAmount
                             ? (() => {
                                 const inv = parseInt(recEditAmount, 10);
@@ -2590,7 +2590,7 @@ export function InvestmentFlowTab() {
                             : '-'}
                         </td>
                         {/* 상태 */}
-                        <td style={{ ...tdBase, color: '#9CA3AF', fontSize: 12 }}>
+                        <td style={{ ...tdBase, color: 'var(--text-muted)', fontSize: 12 }}>
                           {recEditActMaturity ? '종결' : STATUS_LABELS[record.status]}
                         </td>
                         {/* 가입일 */}
@@ -2668,19 +2668,19 @@ export function InvestmentFlowTab() {
                         else rowRefs.current.delete(record.id);
                       }}
                       style={{
-                        borderBottom: '1px solid #F3F4F6',
+                        borderBottom: '1px solid var(--border)',
                         backgroundColor: isHighlighted ? '#FEF9C3' : idx % 2 === 0 ? '#fff' : '#FAFAFA',
                         transition: 'background-color 0.4s ease',
                       }}
                     >
-                      <td style={{ ...tdBase, color: '#9CA3AF', width: 36 }}>{idx + 1}</td>
+                      <td style={{ ...tdBase, color: 'var(--text-muted)', width: 36 }}>{idx + 1}</td>
                       <td style={tdBase}>{getProductName(record)}</td>
                       {/* 계좌별명 */}
                       <td style={tdBase}>
                         {(() => {
                           const acct = depositAccounts.find(a => a.id === record.deposit_account_id);
                           return acct ? (
-                            <span style={{ color: '#1E3A5F', fontWeight: 500 }}>
+                            <span style={{ color: 'var(--blue-400)', fontWeight: 500 }}>
                               {acct.nickname || `${acct.securities_company} ${acct.account_number || ''}`}
                             </span>
                           ) : <span style={{ color: '#D1D5DB' }}>-</span>;
@@ -2724,38 +2724,38 @@ export function InvestmentFlowTab() {
                             <button
                               onClick={() => setStatusChangeRecord({ ...record, product_name: getProductName(record) })}
                               title="종결 처리"
-                              style={{ padding: '2px 6px', fontSize: 10, borderRadius: 4, border: '1px solid #E5E7EB', backgroundColor: '#fff', color: '#6B7280', cursor: 'pointer' }}
+                              style={{ padding: '2px 6px', fontSize: 10, borderRadius: 4, border: '1px solid var(--border)', backgroundColor: 'var(--bg-card)', color: 'var(--text-muted)', cursor: 'pointer' }}
                             >종결</button>
                             <button
                               onClick={() => { setInterimRecord(record); setInterimYear(String(new Date().getFullYear())); setInterimAmount(''); }}
                               title="중간평가 입력"
-                              style={{ padding: '2px 6px', fontSize: 10, borderRadius: 4, border: '1px solid #F59E0B', backgroundColor: '#FFFBEB', color: '#B45309', cursor: 'pointer' }}
+                              style={{ padding: '2px 6px', fontSize: 10, borderRadius: 4, border: '1px solid var(--warning)', backgroundColor: 'var(--warning-bg)', color: 'var(--warning)', cursor: 'pointer' }}
                             >중간</button>
                           </>)}
                           {/* 중간평가 뱃지 */}
                           {record.interim_evaluations && Object.keys(record.interim_evaluations).length > 0 && (
                             <span
                               title={`중간평가: ${Object.entries(record.interim_evaluations).map(([y, v]) => `${y}년 ${(v as number).toLocaleString()}원`).join(', ')}`}
-                              style={{ fontSize: 9, padding: '1px 4px', borderRadius: 3, backgroundColor: '#FEF3C7', color: '#92400E', fontWeight: 600 }}
+                              style={{ fontSize: 9, padding: '1px 4px', borderRadius: 3, backgroundColor: 'var(--warning-bg)', color: 'var(--warning)', fontWeight: 600 }}
                             >평가 {Object.keys(record.interim_evaluations).length}건</span>
                           )}
                         </div>
                       </td>
 
                       {/* 가입일 (start_date를 fallback으로 사용) */}
-                      <td style={{ ...tdBase, backgroundColor: idx % 2 === 0 ? '#F8F9FC' : '#F2F4F9', color: '#6B7280' }}>
+                      <td style={{ ...tdBase, backgroundColor: idx % 2 === 0 ? '#F8F9FC' : '#F2F4F9', color: 'var(--text-muted)' }}>
                         {record.join_date || record.start_date || '-'}
                       </td>
-                      <td style={{ ...tdBase, backgroundColor: idx % 2 === 0 ? '#F8F9FC' : '#F2F4F9', color: '#6B7280' }}>
+                      <td style={{ ...tdBase, backgroundColor: idx % 2 === 0 ? '#F8F9FC' : '#F2F4F9', color: 'var(--text-muted)' }}>
                         {record.expected_maturity_date ?? '-'}
                       </td>
-                      <td style={{ ...tdBase, backgroundColor: idx % 2 === 0 ? '#F8F9FC' : '#F2F4F9', color: '#6B7280' }}>
+                      <td style={{ ...tdBase, backgroundColor: idx % 2 === 0 ? '#F8F9FC' : '#F2F4F9', color: 'var(--text-muted)' }}>
                         {record.actual_maturity_date ?? '-'}
                       </td>
-                      <td style={{ ...tdBase, backgroundColor: idx % 2 === 0 ? '#F8F9FC' : '#F2F4F9', color: '#6B7280' }}>
+                      <td style={{ ...tdBase, backgroundColor: idx % 2 === 0 ? '#F8F9FC' : '#F2F4F9', color: 'var(--text-muted)' }}>
                         {record.original_maturity_date ?? '-'}
                       </td>
-                      <td style={{ ...tdBase, color: '#6B7280', maxWidth: 180, fontSize: 11, lineHeight: '1.4', overflow: 'hidden', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' as const, wordBreak: 'break-word' }} title={record.memo || ''}>
+                      <td style={{ ...tdBase, color: 'var(--text-muted)', maxWidth: 180, fontSize: 11, lineHeight: '1.4', overflow: 'hidden', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' as const, wordBreak: 'break-word' }} title={record.memo || ''}>
                         {record.memo || '-'}
                       </td>
 
@@ -2763,7 +2763,7 @@ export function InvestmentFlowTab() {
                       <td style={{ ...tdBase, textAlign: 'center', whiteSpace: 'nowrap' }}>
                         <button
                           onClick={() => startEditRecord(record)}
-                          style={{ padding: '3px 8px', fontSize: 11, fontWeight: 500, borderRadius: 4, border: '1px solid #D1D5DB', backgroundColor: '#fff', color: '#374151', cursor: 'pointer', marginRight: 4 }}
+                          style={{ padding: '3px 8px', fontSize: 11, fontWeight: 500, borderRadius: 4, border: '1px solid var(--border-strong)', backgroundColor: 'var(--bg-card)', color: 'var(--text-secondary)', cursor: 'pointer', marginRight: 4 }}
                         >
                           수정
                         </button>
@@ -2779,7 +2779,7 @@ export function InvestmentFlowTab() {
                               expandedAccountIds.forEach(aid => fetchTransactions(aid));
                             } catch { /* silent */ }
                           }}
-                          style={{ padding: '3px 8px', fontSize: 11, fontWeight: 500, borderRadius: 4, border: '1px solid #FECACA', backgroundColor: '#FEF2F2', color: '#EF4444', cursor: 'pointer' }}
+                          style={{ padding: '3px 8px', fontSize: 11, fontWeight: 500, borderRadius: 4, border: '1px solid rgba(239,68,68,0.35)', backgroundColor: 'var(--danger-bg)', color: 'var(--danger)', cursor: 'pointer' }}
                         >
                           삭제
                         </button>
@@ -2796,25 +2796,25 @@ export function InvestmentFlowTab() {
       {/* ===== 중간평가 모달 ===== */}
       {interimRecord && (
         <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.4)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }}>
-          <div style={{ backgroundColor: '#fff', borderRadius: 12, padding: 24, width: 400, boxShadow: '0 20px 60px rgba(0,0,0,0.3)' }}>
+          <div style={{ backgroundColor: 'var(--bg-card)', borderRadius: 12, padding: 24, width: 400, boxShadow: '0 20px 60px rgba(0,0,0,0.3)' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 16 }}>
               <h3 style={{ fontSize: 16, fontWeight: 700 }}>중간평가 입력</h3>
               <button onClick={() => setInterimRecord(null)} style={{ border: 'none', background: 'none', fontSize: 18, cursor: 'pointer' }}>×</button>
             </div>
             {/* 상품 정보 */}
-            <div style={{ backgroundColor: '#F9FAFB', borderRadius: 8, padding: 12, marginBottom: 16, fontSize: 13 }}>
-              <div><span style={{ color: '#6B7280' }}>상품명:</span> <strong>{getProductName(interimRecord)}</strong></div>
-              <div><span style={{ color: '#6B7280' }}>가입일:</span> {interimRecord.join_date || interimRecord.start_date}</div>
-              <div><span style={{ color: '#6B7280' }}>투자금액:</span> {interimRecord.investment_amount.toLocaleString()}원</div>
+            <div style={{ backgroundColor: 'var(--bg-surface)', borderRadius: 8, padding: 12, marginBottom: 16, fontSize: 13 }}>
+              <div><span style={{ color: 'var(--text-muted)' }}>상품명:</span> <strong>{getProductName(interimRecord)}</strong></div>
+              <div><span style={{ color: 'var(--text-muted)' }}>가입일:</span> {interimRecord.join_date || interimRecord.start_date}</div>
+              <div><span style={{ color: 'var(--text-muted)' }}>투자금액:</span> {interimRecord.investment_amount.toLocaleString()}원</div>
             </div>
             {/* 기존 중간평가 목록 */}
             {interimRecord.interim_evaluations && Object.keys(interimRecord.interim_evaluations).length > 0 && (
               <div style={{ marginBottom: 16 }}>
-                <div style={{ fontSize: 12, fontWeight: 600, color: '#6B7280', marginBottom: 6 }}>기존 중간평가</div>
+                <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-muted)', marginBottom: 6 }}>기존 중간평가</div>
                 {Object.entries(interimRecord.interim_evaluations).sort(([a], [b]) => Number(a) - Number(b)).map(([y, v]) => (
-                  <div key={y} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '4px 8px', fontSize: 12, backgroundColor: '#FFFBEB', borderRadius: 4, marginBottom: 2 }}>
+                  <div key={y} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '4px 8px', fontSize: 12, backgroundColor: 'var(--warning-bg)', borderRadius: 4, marginBottom: 2 }}>
                     <span>{y}년: <strong>{(v as number).toLocaleString()}원</strong></span>
-                    <button onClick={() => { deleteInterimEval(interimRecord, y); setInterimRecord({ ...interimRecord, interim_evaluations: (() => { const u = { ...interimRecord.interim_evaluations }; delete u[y]; return u; })() }); }} style={{ border: 'none', background: 'none', color: '#EF4444', cursor: 'pointer', fontSize: 11 }}>삭제</button>
+                    <button onClick={() => { deleteInterimEval(interimRecord, y); setInterimRecord({ ...interimRecord, interim_evaluations: (() => { const u = { ...interimRecord.interim_evaluations }; delete u[y]; return u; })() }); }} style={{ border: 'none', background: 'none', color: 'var(--danger)', cursor: 'pointer', fontSize: 11 }}>삭제</button>
                   </div>
                 ))}
               </div>
@@ -2822,17 +2822,17 @@ export function InvestmentFlowTab() {
             {/* 신규 입력 */}
             <div style={{ display: 'flex', gap: 8, marginBottom: 16 }}>
               <div style={{ flex: 1 }}>
-                <label style={{ fontSize: 12, fontWeight: 600, color: '#374151' }}>연도</label>
-                <input type="number" value={interimYear} onChange={e => setInterimYear(e.target.value)} style={{ width: '100%', padding: '8px 10px', border: '1px solid #D1D5DB', borderRadius: 6, fontSize: 13 }} />
+                <label style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-secondary)' }}>연도</label>
+                <input type="number" value={interimYear} onChange={e => setInterimYear(e.target.value)} style={{ width: '100%', padding: '8px 10px', border: '1px solid var(--border-strong)', borderRadius: 6, fontSize: 13 }} />
               </div>
               <div style={{ flex: 2 }}>
-                <label style={{ fontSize: 12, fontWeight: 600, color: '#374151' }}>평가금액 (원)</label>
-                <input type="text" value={interimAmount ? Number(interimAmount).toLocaleString() : ''} onChange={e => setInterimAmount(e.target.value.replace(/[^\d]/g, ''))} placeholder="예: 150,000,000" style={{ width: '100%', padding: '8px 10px', border: '1px solid #D1D5DB', borderRadius: 6, fontSize: 13 }} />
+                <label style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-secondary)' }}>평가금액 (원)</label>
+                <input type="text" value={interimAmount ? Number(interimAmount).toLocaleString() : ''} onChange={e => setInterimAmount(e.target.value.replace(/[^\d]/g, ''))} placeholder="예: 150,000,000" style={{ width: '100%', padding: '8px 10px', border: '1px solid var(--border-strong)', borderRadius: 6, fontSize: 13 }} />
               </div>
             </div>
             <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
-              <button onClick={() => setInterimRecord(null)} style={{ padding: '8px 16px', fontSize: 13, borderRadius: 6, border: '1px solid #D1D5DB', backgroundColor: '#fff', cursor: 'pointer' }}>취소</button>
-              <button onClick={saveInterimEval} disabled={interimSaving || !interimYear || !interimAmount} style={{ padding: '8px 16px', fontSize: 13, fontWeight: 600, borderRadius: 6, border: 'none', backgroundColor: '#F59E0B', color: '#fff', cursor: 'pointer', opacity: interimSaving ? 0.6 : 1 }}>{interimSaving ? '저장 중...' : '저장'}</button>
+              <button onClick={() => setInterimRecord(null)} style={{ padding: '8px 16px', fontSize: 13, borderRadius: 6, border: '1px solid var(--border-strong)', backgroundColor: 'var(--bg-card)', cursor: 'pointer' }}>취소</button>
+              <button onClick={saveInterimEval} disabled={interimSaving || !interimYear || !interimAmount} style={{ padding: '8px 16px', fontSize: 13, fontWeight: 600, borderRadius: 6, border: 'none', backgroundColor: 'var(--warning)', color: '#fff', cursor: 'pointer', opacity: interimSaving ? 0.6 : 1 }}>{interimSaving ? '저장 중...' : '저장'}</button>
             </div>
           </div>
         </div>
@@ -3018,43 +3018,43 @@ function AddWrapProductModal({ onClose, onSaved }: { onClose: () => void; onSave
   };
 
   const mS: React.CSSProperties = { position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.4)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 100 };
-  const cS: React.CSSProperties = { backgroundColor: '#fff', borderRadius: 12, padding: 28, width: 480, boxShadow: '0 8px 24px rgba(0,0,0,0.15)' };
-  const iS: React.CSSProperties = { width: '100%', padding: '10px 12px', fontSize: 14, border: '1px solid #D1D5DB', borderRadius: 8, outline: 'none', boxSizing: 'border-box' };
-  const lS: React.CSSProperties = { fontSize: 13, fontWeight: 600, color: '#374151', display: 'block', marginBottom: 4 };
+  const cS: React.CSSProperties = { backgroundColor: 'var(--bg-card)', borderRadius: 12, padding: 28, width: 480, boxShadow: '0 8px 24px rgba(0,0,0,0.15)' };
+  const iS: React.CSSProperties = { width: '100%', padding: '10px 12px', fontSize: 14, border: '1px solid var(--border-strong)', borderRadius: 8, outline: 'none', boxSizing: 'border-box' };
+  const lS: React.CSSProperties = { fontSize: 13, fontWeight: 600, color: 'var(--text-secondary)', display: 'block', marginBottom: 4 };
 
   return (
     <div style={mS} onClick={onClose}>
       <div style={cS} onClick={e => e.stopPropagation()}>
-        <h3 style={{ margin: '0 0 20px', fontSize: '1.1rem', fontWeight: 700, color: '#1E3A5F' }}>Wrap 은퇴 상품 등록</h3>
+        <h3 style={{ margin: '0 0 20px', fontSize: '1.1rem', fontWeight: 700, color: 'var(--blue-400)' }}>Wrap 은퇴 상품 등록</h3>
 
         {/* Notion 가져오기 */}
         <div style={{ marginBottom: 14 }}>
           {nStep === 'idle' && (
             <button onClick={loadDbs} disabled={nLoading}
-              style={{ width: '100%', padding: '9px', borderRadius: 8, border: '1px dashed #D1D5DB', background: '#FAFBFC', color: '#374151', fontSize: 13, fontWeight: 500, cursor: nLoading ? 'wait' : 'pointer', opacity: nLoading ? 0.6 : 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
+              style={{ width: '100%', padding: '9px', borderRadius: 8, border: '1px dashed var(--border-strong)', background: 'var(--bg-surface)', color: 'var(--text-secondary)', fontSize: 13, fontWeight: 500, cursor: nLoading ? 'wait' : 'pointer', opacity: nLoading ? 0.6 : 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
               {nLoading ? <><span className="notion-spinner" style={{ marginRight: 6 }} />Notion 연결 중...</> : nSelectedDbId ? <>📝 Notion 불러오기 ({nSelectedDbTitle})</> : <>📝 Notion에서 가져오기</>}
             </button>
           )}
           {nError && (
-            <div style={{ marginTop: 6, padding: '6px 10px', borderRadius: 6, background: '#FEF2F2', border: '1px solid #FECACA', fontSize: 12, color: '#DC2626' }}>
-              {nError} <button onClick={resetN} style={{ marginLeft: 6, background: 'none', border: 'none', color: '#DC2626', textDecoration: 'underline', cursor: 'pointer', fontSize: 12 }}>닫기</button>
+            <div style={{ marginTop: 6, padding: '6px 10px', borderRadius: 6, background: 'var(--danger-bg)', border: '1px solid rgba(239,68,68,0.35)', fontSize: 12, color: 'var(--danger)' }}>
+              {nError} <button onClick={resetN} style={{ marginLeft: 6, background: 'none', border: 'none', color: 'var(--danger)', textDecoration: 'underline', cursor: 'pointer', fontSize: 12 }}>닫기</button>
             </div>
           )}
           {nStep === 'selectDb' && (
-            <div style={{ border: '1px solid #E5E7EB', borderRadius: 8, overflow: 'hidden' }}>
-              <div style={{ padding: '7px 10px', background: '#F0F4FA', fontSize: 12, fontWeight: 600, color: '#1E3A5F', display: 'flex', justifyContent: 'space-between' }}>
-                <span>데이터베이스 선택</span><button onClick={resetN} style={{ background: 'none', border: 'none', color: '#9CA3AF', cursor: 'pointer', fontSize: 12 }}>취소</button>
+            <div style={{ border: '1px solid var(--border)', borderRadius: 8, overflow: 'hidden' }}>
+              <div style={{ padding: '7px 10px', background: '#F0F4FA', fontSize: 12, fontWeight: 600, color: 'var(--blue-400)', display: 'flex', justifyContent: 'space-between' }}>
+                <span>데이터베이스 선택</span><button onClick={resetN} style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', fontSize: 12 }}>취소</button>
               </div>
-              <div style={{ padding: '6px 8px', borderBottom: '1px solid #E5E7EB' }}>
-                <input type="text" placeholder="검색..." value={nDbSearch} onChange={e => setNDbSearch(e.target.value)} style={{ width: '100%', padding: '5px 8px', borderRadius: 6, border: '1px solid #D1D5DB', fontSize: 12 }} />
+              <div style={{ padding: '6px 8px', borderBottom: '1px solid var(--border)' }}>
+                <input type="text" placeholder="검색..." value={nDbSearch} onChange={e => setNDbSearch(e.target.value)} style={{ width: '100%', padding: '5px 8px', borderRadius: 6, border: '1px solid var(--border-strong)', fontSize: 12 }} />
               </div>
               {nLoading ? (
-                <div style={{ padding: 20, textAlign: 'center', color: '#6B7280', fontSize: 13 }}>불러오는 중...</div>
+                <div style={{ padding: 20, textAlign: 'center', color: 'var(--text-muted)', fontSize: 13 }}>불러오는 중...</div>
               ) : (
                 <div style={{ maxHeight: 180, overflowY: 'auto' }}>
                   {nDbs.filter(d => !nDbSearch || d.title.toLowerCase().includes(nDbSearch.toLowerCase())).map(d => (
                     <button key={d.id} onClick={() => { setNDbSearch(''); setNSelectedDbTitle(d.title); loadRows(d.id); }}
-                      style={{ width: '100%', padding: '9px 10px', border: 'none', borderBottom: '1px solid #F3F4F6', background: '#fff', textAlign: 'left', cursor: 'pointer', fontSize: 13, display: 'flex', alignItems: 'center', gap: 8 }}
+                      style={{ width: '100%', padding: '9px 10px', border: 'none', borderBottom: '1px solid var(--border)', background: 'var(--bg-card)', textAlign: 'left', cursor: 'pointer', fontSize: 13, display: 'flex', alignItems: 'center', gap: 8 }}
                       onMouseOver={e => (e.currentTarget.style.background = '#F9FAFB')} onMouseOut={e => (e.currentTarget.style.background = '#fff')}>
                       <span>{d.icon ?? '📄'}</span><span style={{ fontWeight: 500 }}>{d.title}</span>
                     </button>
@@ -3064,58 +3064,58 @@ function AddWrapProductModal({ onClose, onSaved }: { onClose: () => void; onSave
             </div>
           )}
           {nStep === 'mapping' && (
-            <div style={{ border: '1px solid #E5E7EB', borderRadius: 8, overflow: 'hidden' }}>
-              <div style={{ padding: '7px 10px', background: '#F0F4FA', fontSize: 12, fontWeight: 600, color: '#1E3A5F', display: 'flex', justifyContent: 'space-between' }}>
+            <div style={{ border: '1px solid var(--border)', borderRadius: 8, overflow: 'hidden' }}>
+              <div style={{ padding: '7px 10px', background: '#F0F4FA', fontSize: 12, fontWeight: 600, color: 'var(--blue-400)', display: 'flex', justifyContent: 'space-between' }}>
                 <span>필드 매핑 → 상품 선택{nSelectedDbTitle ? ` (${nSelectedDbTitle})` : ''}</span>
                 <div style={{ display: 'flex', gap: 8 }}>
-                  <button onClick={() => { clearNotionProductConfig(); setNRows([]); setNCols([]); setNRowSearch(''); fetchDbList(); }} style={{ background: 'none', border: 'none', color: '#3B82F6', cursor: 'pointer', fontSize: 11 }}>DB 변경</button>
-                  <button onClick={resetN} style={{ background: 'none', border: 'none', color: '#9CA3AF', cursor: 'pointer', fontSize: 12 }}>취소</button>
+                  <button onClick={() => { clearNotionProductConfig(); setNRows([]); setNCols([]); setNRowSearch(''); fetchDbList(); }} style={{ background: 'none', border: 'none', color: 'var(--blue-400)', cursor: 'pointer', fontSize: 11 }}>DB 변경</button>
+                  <button onClick={resetN} style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', fontSize: 12 }}>취소</button>
                 </div>
               </div>
               {nLoading ? (
-                <div style={{ padding: 20, textAlign: 'center', color: '#6B7280', fontSize: 13 }}>데이터 불러오는 중...</div>
+                <div style={{ padding: 20, textAlign: 'center', color: 'var(--text-muted)', fontSize: 13 }}>데이터 불러오는 중...</div>
               ) : (<>
-                <div style={{ padding: '8px 10px', background: '#FAFBFC', borderBottom: '1px solid #E5E7EB' }}>
-                  <div style={{ fontSize: 11, color: '#6B7280', marginBottom: 4 }}>Notion → 상품 필드 매핑</div>
+                <div style={{ padding: '8px 10px', background: 'var(--bg-surface)', borderBottom: '1px solid var(--border)' }}>
+                  <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 4 }}>Notion → 상품 필드 매핑</div>
                   <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 5 }}>
                     {[{ k: 'product_name', l: '상품명 *' }, { k: 'company', l: '거래기관' }, { k: 'target', l: '자산구분' }, { k: 'return_rate', l: '수익률' }, { k: 'desc', l: '설명' }].map(f => (
                       <div key={f.k} style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 12 }}>
-                        <span style={{ width: 58, color: '#374151', fontWeight: 500, flexShrink: 0 }}>{f.l}</span>
+                        <span style={{ width: 58, color: 'var(--text-secondary)', fontWeight: 500, flexShrink: 0 }}>{f.l}</span>
                         <select value={nMap[f.k] ?? ''} onChange={e => {
                             const updated = { ...nMap, [f.k]: e.target.value };
                             setNMap(updated);
                             if (nSelectedDbId) saveNotionProductConfig(nSelectedDbId, nSelectedDbTitle, updated);
                           }}
-                          style={{ flex: 1, padding: '3px 5px', borderRadius: 4, border: '1px solid #D1D5DB', fontSize: 11, background: nMap[f.k] ? '#ECFDF5' : '#fff' }}>
+                          style={{ flex: 1, padding: '3px 5px', borderRadius: 4, border: '1px solid var(--border-strong)', fontSize: 11, background: nMap[f.k] ? '#ECFDF5' : '#fff' }}>
                           <option value="">--</option>{nCols.map(c => <option key={c} value={c}>{c}</option>)}
                         </select>
                       </div>
                     ))}
                   </div>
                 </div>
-                <div style={{ padding: '6px 8px', borderBottom: '1px solid #E5E7EB' }}>
-                  <input type="text" placeholder="상품 검색..." value={nRowSearch} onChange={e => setNRowSearch(e.target.value)} style={{ width: '100%', padding: '5px 8px', borderRadius: 6, border: '1px solid #D1D5DB', fontSize: 12 }} />
+                <div style={{ padding: '6px 8px', borderBottom: '1px solid var(--border)' }}>
+                  <input type="text" placeholder="상품 검색..." value={nRowSearch} onChange={e => setNRowSearch(e.target.value)} style={{ width: '100%', padding: '5px 8px', borderRadius: 6, border: '1px solid var(--border-strong)', fontSize: 12 }} />
                 </div>
                 <div style={{ maxHeight: 200, overflowY: 'auto' }}>
                   {(() => {
                     const q = nRowSearch.toLowerCase().trim();
                     const f = q ? nRows.filter(r => Object.values(r.properties).some(v => v?.toLowerCase().includes(q))) : nRows;
-                    if (!f.length) return <div style={{ padding: 14, textAlign: 'center', color: '#9CA3AF', fontSize: 13 }}>{q ? '검색 결과 없음' : '데이터 없음'}</div>;
+                    if (!f.length) return <div style={{ padding: 14, textAlign: 'center', color: 'var(--text-muted)', fontSize: 13 }}>{q ? '검색 결과 없음' : '데이터 없음'}</div>;
                     return f.map(r => {
                       const dn = nMap.product_name ? (r.properties[nMap.product_name] ?? '-') : Object.values(r.properties)[0] ?? '-';
                       const dc = nMap.company ? (r.properties[nMap.company] ?? '') : '';
                       return (
                         <button key={r.id} onClick={() => applyRow(r)}
-                          style={{ width: '100%', padding: '8px 10px', border: 'none', borderBottom: '1px solid #F3F4F6', background: '#fff', textAlign: 'left', cursor: 'pointer', fontSize: 12, display: 'flex', gap: 10 }}
+                          style={{ width: '100%', padding: '8px 10px', border: 'none', borderBottom: '1px solid var(--border)', background: 'var(--bg-card)', textAlign: 'left', cursor: 'pointer', fontSize: 12, display: 'flex', gap: 10 }}
                           onMouseOver={e => (e.currentTarget.style.background = '#F0FFF4')} onMouseOut={e => (e.currentTarget.style.background = '#fff')}>
-                          <span style={{ fontWeight: 600, color: '#111827' }}>{dn}</span>
-                          {dc && <span style={{ color: '#6B7280', fontSize: 11 }}>{dc}</span>}
+                          <span style={{ fontWeight: 600, color: 'var(--text-primary)' }}>{dn}</span>
+                          {dc && <span style={{ color: 'var(--text-muted)', fontSize: 11 }}>{dc}</span>}
                         </button>
                       );
                     });
                   })()}
                 </div>
-                <div style={{ padding: '5px 8px', background: '#F9FAFB', borderTop: '1px solid #E5E7EB', fontSize: 10, color: '#9CA3AF' }}>총 {nRows.length}건 · 클릭하면 폼에 자동 입력</div>
+                <div style={{ padding: '5px 8px', background: 'var(--bg-surface)', borderTop: '1px solid var(--border)', fontSize: 10, color: 'var(--text-muted)' }}>총 {nRows.length}건 · 클릭하면 폼에 자동 입력</div>
               </>)}
             </div>
           )}
@@ -3123,11 +3123,11 @@ function AddWrapProductModal({ onClose, onSaved }: { onClose: () => void; onSave
 
         <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
           <div>
-            <label style={lS}>상품명 <span style={{ color: '#EF4444' }}>*</span></label>
+            <label style={lS}>상품명 <span style={{ color: 'var(--danger)' }}>*</span></label>
             <input style={iS} value={productName} onChange={e => setProductName(e.target.value)} placeholder="예: (올원)예드목표전환형30호" />
           </div>
           <div>
-            <label style={lS}>거래기관 <span style={{ color: '#EF4444' }}>*</span></label>
+            <label style={lS}>거래기관 <span style={{ color: 'var(--danger)' }}>*</span></label>
             <input style={iS} value={company} onChange={e => setCompany(e.target.value)} placeholder="예: NH투자증권" />
           </div>
           <div>
@@ -3143,10 +3143,10 @@ function AddWrapProductModal({ onClose, onSaved }: { onClose: () => void; onSave
             <textarea style={{ ...iS, minHeight: 50, resize: 'vertical' }} value={description} onChange={e => setDescription(e.target.value)} placeholder="상품 설명 (선택)" />
           </div>
         </div>
-        {error && <p style={{ color: '#EF4444', fontSize: 13, marginTop: 8 }}>{error}</p>}
+        {error && <p style={{ color: 'var(--danger)', fontSize: 13, marginTop: 8 }}>{error}</p>}
         <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 20 }}>
-          <button onClick={onClose} style={{ padding: '8px 18px', fontSize: 14, color: '#6B7280', backgroundColor: '#F3F4F6', border: '1px solid #E1E5EB', borderRadius: 8, cursor: 'pointer' }}>취소</button>
-          <button onClick={handleSave} disabled={saving} style={{ padding: '8px 18px', fontSize: 14, fontWeight: 600, color: '#fff', backgroundColor: saving ? '#9CA3AF' : '#1E3A5F', border: 'none', borderRadius: 8, cursor: saving ? 'not-allowed' : 'pointer' }}>
+          <button onClick={onClose} style={{ padding: '8px 18px', fontSize: 14, color: 'var(--text-muted)', backgroundColor: 'var(--bg-surface)', border: '1px solid var(--border)', borderRadius: 8, cursor: 'pointer' }}>취소</button>
+          <button onClick={handleSave} disabled={saving} style={{ padding: '8px 18px', fontSize: 14, fontWeight: 600, color: '#fff', backgroundColor: saving ? '#9CA3AF' : '#3B82F6', border: 'none', borderRadius: 8, cursor: saving ? 'not-allowed' : 'pointer' }}>
             {saving ? '등록 중...' : '등록'}
           </button>
         </div>
@@ -3189,17 +3189,17 @@ function EditDepositAccountModal({ account, onClose, onSaved }: {
   };
 
   const mStyle: React.CSSProperties = { position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.4)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 100 };
-  const cStyle: React.CSSProperties = { backgroundColor: '#fff', borderRadius: 12, padding: 28, width: 440, boxShadow: '0 8px 24px rgba(0,0,0,0.15)' };
-  const iStyle: React.CSSProperties = { width: '100%', padding: '10px 12px', fontSize: 14, border: '1px solid #D1D5DB', borderRadius: 8, outline: 'none', boxSizing: 'border-box' };
-  const lStyle: React.CSSProperties = { fontSize: 13, fontWeight: 600, color: '#374151', display: 'block', marginBottom: 4 };
+  const cStyle: React.CSSProperties = { backgroundColor: 'var(--bg-card)', borderRadius: 12, padding: 28, width: 440, boxShadow: '0 8px 24px rgba(0,0,0,0.15)' };
+  const iStyle: React.CSSProperties = { width: '100%', padding: '10px 12px', fontSize: 14, border: '1px solid var(--border-strong)', borderRadius: 8, outline: 'none', boxSizing: 'border-box' };
+  const lStyle: React.CSSProperties = { fontSize: 13, fontWeight: 600, color: 'var(--text-secondary)', display: 'block', marginBottom: 4 };
 
   return (
     <div style={mStyle} onClick={onClose}>
       <div style={cStyle} onClick={e => e.stopPropagation()}>
-        <h3 style={{ margin: '0 0 20px', fontSize: '1.1rem', fontWeight: 700, color: '#1E3A5F' }}>예수금 계좌 수정</h3>
+        <h3 style={{ margin: '0 0 20px', fontSize: '1.1rem', fontWeight: 700, color: 'var(--blue-400)' }}>예수금 계좌 수정</h3>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
           <div>
-            <label style={lStyle}>거래기관 <span style={{ color: '#EF4444' }}>*</span></label>
+            <label style={lStyle}>거래기관 <span style={{ color: 'var(--danger)' }}>*</span></label>
             <input style={iStyle} value={company} onChange={e => setCompany(e.target.value)} />
           </div>
           <div>
@@ -3211,10 +3211,10 @@ function EditDepositAccountModal({ account, onClose, onSaved }: {
             <input style={iStyle} value={nick} onChange={e => setNick(e.target.value)} placeholder="예: 메인계좌" />
           </div>
         </div>
-        {error && <p style={{ color: '#EF4444', fontSize: 13, marginTop: 8 }}>{error}</p>}
+        {error && <p style={{ color: 'var(--danger)', fontSize: 13, marginTop: 8 }}>{error}</p>}
         <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 20 }}>
-          <button onClick={onClose} style={{ padding: '8px 18px', fontSize: 14, color: '#6B7280', backgroundColor: '#F3F4F6', border: '1px solid #E1E5EB', borderRadius: 8, cursor: 'pointer' }}>취소</button>
-          <button onClick={handleSave} disabled={saving} style={{ padding: '8px 18px', fontSize: 14, fontWeight: 600, color: '#fff', backgroundColor: saving ? '#9CA3AF' : '#1E3A5F', border: 'none', borderRadius: 8, cursor: saving ? 'not-allowed' : 'pointer' }}>
+          <button onClick={onClose} style={{ padding: '8px 18px', fontSize: 14, color: 'var(--text-muted)', backgroundColor: 'var(--bg-surface)', border: '1px solid var(--border)', borderRadius: 8, cursor: 'pointer' }}>취소</button>
+          <button onClick={handleSave} disabled={saving} style={{ padding: '8px 18px', fontSize: 14, fontWeight: 600, color: '#fff', backgroundColor: saving ? '#9CA3AF' : '#3B82F6', border: 'none', borderRadius: 8, cursor: saving ? 'not-allowed' : 'pointer' }}>
             {saving ? '수정 중...' : '수정'}
           </button>
         </div>
@@ -3230,7 +3230,7 @@ function EditDepositAccountModal({ account, onClose, onSaved }: {
 const tdBase: React.CSSProperties = {
   padding: '9px 12px',
   verticalAlign: 'middle',
-  color: '#1A1A2E',
+  color: 'var(--text-primary)',
   fontSize: 13,
 };
 
@@ -3249,32 +3249,32 @@ const labelStyle: React.CSSProperties = {
   display: 'block',
   fontSize: 12,
   fontWeight: 600,
-  color: '#374151',
+  color: 'var(--text-secondary)',
   marginBottom: 4,
 };
 
 const inputStyle: React.CSSProperties = {
   width: '100%',
   padding: '8px 10px',
-  border: '1px solid #D1D5DB',
+  border: '1px solid var(--border-strong)',
   borderRadius: 7,
   fontSize: 13,
-  color: '#1A1A2E',
+  color: 'var(--text-primary)',
   outline: 'none',
   boxSizing: 'border-box',
-  backgroundColor: '#fff',
+  backgroundColor: 'var(--bg-card)',
 };
 
 const selectStyle: React.CSSProperties = {
   width: '100%',
   padding: '8px 10px',
-  border: '1px solid #D1D5DB',
+  border: '1px solid var(--border-strong)',
   borderRadius: 7,
   fontSize: 13,
-  color: '#1A1A2E',
+  color: 'var(--text-primary)',
   outline: 'none',
   boxSizing: 'border-box',
-  backgroundColor: '#fff',
+  backgroundColor: 'var(--bg-card)',
   cursor: 'pointer',
 };
 
@@ -3283,9 +3283,9 @@ const cancelBtnStyle: React.CSSProperties = {
   fontSize: 13,
   fontWeight: 500,
   borderRadius: 7,
-  border: '1px solid #E5E7EB',
-  backgroundColor: '#fff',
-  color: '#6B7280',
+  border: '1px solid var(--border)',
+  backgroundColor: 'var(--bg-card)',
+  color: 'var(--text-muted)',
   cursor: 'pointer',
 };
 
@@ -3295,7 +3295,7 @@ const saveBtnStyle: React.CSSProperties = {
   fontWeight: 600,
   borderRadius: 7,
   border: 'none',
-  backgroundColor: '#1E3A5F',
+  backgroundColor: 'var(--blue-600)',
   color: '#fff',
   cursor: 'pointer',
 };
@@ -3304,7 +3304,7 @@ const saveBtnStyle: React.CSSProperties = {
 const txTdBase: React.CSSProperties = {
   padding: '8px 12px',
   verticalAlign: 'middle',
-  color: '#1A1A2E',
+  color: 'var(--text-primary)',
   fontSize: 13,
 };
 

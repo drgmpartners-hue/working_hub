@@ -26,11 +26,11 @@ interface CommissionCalc {
 /* ------------------------------------------------------------------ */
 function StatusBadge({ status }: { status: CalcStatus }) {
   const config: Record<CalcStatus, { label: string; bg: string; color: string }> = {
-    idle:       { label: '대기',    bg: '#F5F7FA',                  color: '#6B7280' },
-    pending:    { label: '처리 대기', bg: 'rgba(74,144,217,0.1)',  color: '#4A90D9' },
-    processing: { label: '계산 중',  bg: 'rgba(74,144,217,0.1)',  color: '#4A90D9' },
-    completed:  { label: '완료',    bg: 'rgba(16,185,129,0.1)',   color: '#10B981' },
-    failed:     { label: '실패',    bg: 'rgba(239,68,68,0.1)',    color: '#EF4444' },
+    idle:       { label: '대기',    bg: '#F5F7FA',                  color: 'var(--text-muted)' },
+    pending:    { label: '처리 대기', bg: 'rgba(74,144,217,0.1)',  color: 'var(--blue-400)' },
+    processing: { label: '계산 중',  bg: 'rgba(74,144,217,0.1)',  color: 'var(--blue-400)' },
+    completed:  { label: '완료',    bg: 'rgba(16,185,129,0.1)',   color: 'var(--success)' },
+    failed:     { label: '실패',    bg: 'rgba(239,68,68,0.1)',    color: 'var(--danger)' },
   };
   const { label, bg, color } = config[status] ?? config.idle;
 
@@ -84,7 +84,7 @@ function PreviewPanel({
         style={{
           padding: '48px 24px',
           textAlign: 'center',
-          color: '#6B7280',
+          color: 'var(--text-muted)',
           fontSize: '0.9rem',
         }}
       >
@@ -131,8 +131,8 @@ function PreviewPanel({
           <Card key={item.label} padding={16}>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
               <span style={{ fontSize: '1.375rem' }}>{item.icon}</span>
-              <span style={{ fontSize: '0.75rem', color: '#6B7280', fontWeight: 500 }}>{item.label}</span>
-              <span style={{ fontSize: '1.125rem', fontWeight: 700, color: '#1A1A2E' }}>{item.value}</span>
+              <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', fontWeight: 500 }}>{item.label}</span>
+              <span style={{ fontSize: '1.125rem', fontWeight: 700, color: 'var(--text-primary)' }}>{item.value}</span>
             </div>
           </Card>
         ))}
@@ -303,11 +303,11 @@ export default function DrGmPage() {
             backgroundColor: 'transparent',
             cursor: 'pointer',
             fontSize: '0.8125rem',
-            color: '#6B7280',
+            color: 'var(--text-muted)',
             marginBottom: '12px',
             transition: 'color 0.15s ease',
           }}
-          onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.color = '#1A1A2E'; }}
+          onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.color = 'var(--text-primary)'; }}
           onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.color = '#6B7280'; }}
         >
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -323,14 +323,14 @@ export default function DrGmPage() {
                 width: 36,
                 height: 4,
                 borderRadius: 2,
-                background: 'linear-gradient(90deg, #1E3A5F 0%, #4A90D9 100%)',
+                background: 'linear-gradient(90deg, var(--blue-600) 0%, var(--blue-400) 100%)',
                 marginBottom: 12,
               }}
             />
-            <h1 style={{ margin: 0, fontSize: '22px', fontWeight: 800, color: '#1A1A2E', letterSpacing: '-0.4px' }}>
+            <h1 style={{ margin: 0, fontSize: '22px', fontWeight: 800, color: 'var(--text-primary)', letterSpacing: '-0.4px' }}>
               Dr.GM 수당정산 계산기
             </h1>
-            <p style={{ margin: '6px 0 0', fontSize: '0.875rem', color: '#6B7280' }}>
+            <p style={{ margin: '6px 0 0', fontSize: '0.875rem', color: 'var(--text-muted)' }}>
               Dr.GM 엑셀 데이터를 업로드하여 수당을 자동 계산합니다.
             </p>
           </div>
@@ -350,7 +350,7 @@ export default function DrGmPage() {
           <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
             {/* Upload section */}
             <Card padding={24}>
-              <h2 style={{ margin: '0 0 16px', fontSize: '1rem', fontWeight: 600, color: '#1A1A2E' }}>
+              <h2 style={{ margin: '0 0 16px', fontSize: '1rem', fontWeight: 600, color: 'var(--text-primary)' }}>
                 1단계: 엑셀 파일 업로드
               </h2>
               <ExcelUpload
@@ -362,10 +362,10 @@ export default function DrGmPage() {
 
             {/* Calculation section */}
             <Card padding={24}>
-              <h2 style={{ margin: '0 0 6px', fontSize: '1rem', fontWeight: 600, color: '#1A1A2E' }}>
+              <h2 style={{ margin: '0 0 6px', fontSize: '1rem', fontWeight: 600, color: 'var(--text-primary)' }}>
                 2단계: 수당 계산 실행
               </h2>
-              <p style={{ margin: '0 0 16px', fontSize: '0.8125rem', color: '#6B7280' }}>
+              <p style={{ margin: '0 0 16px', fontSize: '0.8125rem', color: 'var(--text-muted)' }}>
                 업로드된 파일을 기반으로 Dr.GM 수당 계산을 시작합니다.
               </p>
 
@@ -383,7 +383,7 @@ export default function DrGmPage() {
                 </Button>
 
                 {!uploadResult && (
-                  <span style={{ fontSize: '0.8125rem', color: '#6B7280' }}>
+                  <span style={{ fontSize: '0.8125rem', color: 'var(--text-muted)' }}>
                     파일을 먼저 업로드하세요.
                   </span>
                 )}
@@ -411,7 +411,7 @@ export default function DrGmPage() {
                     backgroundColor: 'rgba(239,68,68,0.06)',
                     border: '1px solid rgba(239,68,68,0.2)',
                     fontSize: '0.8125rem',
-                    color: '#EF4444',
+                    color: 'var(--danger)',
                   }}
                 >
                   {calcError}
@@ -422,7 +422,7 @@ export default function DrGmPage() {
             {/* Live result preview */}
             {(calcStatus === 'processing' || calcStatus === 'completed' || results.length > 0) && (
               <Card padding={24}>
-                <h2 style={{ margin: '0 0 16px', fontSize: '1rem', fontWeight: 600, color: '#1A1A2E' }}>
+                <h2 style={{ margin: '0 0 16px', fontSize: '1rem', fontWeight: 600, color: 'var(--text-primary)' }}>
                   계산 결과
                 </h2>
                 <CalculationResultTable

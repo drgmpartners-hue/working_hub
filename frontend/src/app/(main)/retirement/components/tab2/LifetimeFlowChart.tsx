@@ -53,7 +53,7 @@ function tooltipFormatter(value: unknown, name: unknown): [string, string] {
   return [formatted, n];
 }
 
-const tooltipStyle = { fontSize: 12, borderRadius: 8, border: '1px solid #E5E7EB' };
+const tooltipStyle = { fontSize: 12, borderRadius: 8, border: '1px solid var(--border)' };
 
 /* ------------------------------------------------------------------ */
 /*  커스텀 툴팁                                                          */
@@ -68,15 +68,15 @@ function CustomTooltip({ active, payload, label }: {
   return (
     <div
       style={{
-        backgroundColor: '#fff',
-        border: '1px solid #E5E7EB',
+        backgroundColor: 'var(--bg-card)',
+        border: '1px solid var(--border)',
         borderRadius: 8,
         padding: '10px 14px',
         fontSize: 12,
         boxShadow: '0 4px 12px rgba(0,0,0,0.1)',
       }}
     >
-      <div style={{ fontWeight: 700, color: '#1E3A5F', marginBottom: 6 }}>{label}세</div>
+      <div style={{ fontWeight: 700, color: 'var(--blue-400)', marginBottom: 6 }}>{label}세</div>
       {payload.map((p) => {
         const v = p.value;
         const formatted =
@@ -104,12 +104,12 @@ export function LifetimeFlowChart({ data, retirementAge, noAnimation }: Lifetime
       <ComposedChart data={data} margin={{ top: 16, right: 24, left: 16, bottom: 8 }}>
         <defs>
           <linearGradient id="principalGrad" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="5%" stopColor="#1E3A5F" stopOpacity={0.25} />
-            <stop offset="95%" stopColor="#1E3A5F" stopOpacity={0.04} />
+            <stop offset="5%" stopColor="#3B82F6" stopOpacity={0.25} />
+            <stop offset="95%" stopColor="#3B82F6" stopOpacity={0.04} />
           </linearGradient>
         </defs>
 
-        <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#F3F4F6" />
+        <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#243049" />
 
         <XAxis
           dataKey="age"
@@ -132,7 +132,7 @@ export function LifetimeFlowChart({ data, retirementAge, noAnimation }: Lifetime
           iconType="square"
           iconSize={10}
           wrapperStyle={{ fontSize: 11, paddingTop: 8 }}
-          formatter={(value: string) => <span style={{ color: '#374151', fontSize: 11 }}>{value}</span>}
+          formatter={(value: string) => <span style={{ color: 'var(--text-secondary)', fontSize: 11 }}>{value}</span>}
         />
 
         {/* 은퇴나이 기준선 */}
@@ -154,7 +154,7 @@ export function LifetimeFlowChart({ data, retirementAge, noAnimation }: Lifetime
         <Area
           type="monotone"
           dataKey="누적 입금액"
-          stroke="#1E3A5F"
+          stroke="#3B82F6"
           strokeWidth={1.5}
           fill="url(#principalGrad)"
           dot={false}

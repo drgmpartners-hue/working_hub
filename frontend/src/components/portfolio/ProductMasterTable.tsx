@@ -40,20 +40,20 @@ const thStyle: React.CSSProperties = {
   padding: '10px 14px',
   fontSize: '0.75rem',
   fontWeight: 700,
-  color: '#6B7280',
+  color: 'var(--text-muted)',
   textTransform: 'uppercase',
   letterSpacing: '0.04em',
   textAlign: 'left',
-  backgroundColor: '#F8FAFC',
-  borderBottom: '2px solid #E1E5EB',
+  backgroundColor: 'var(--bg-surface)',
+  borderBottom: '1px solid var(--border)',
   whiteSpace: 'nowrap',
 };
 
 const tdStyle: React.CSSProperties = {
   padding: '10px 14px',
   fontSize: '0.8125rem',
-  color: '#1A1A2E',
-  borderBottom: '1px solid #F1F5F9',
+  color: 'var(--text-primary)',
+  borderBottom: '1px solid var(--border)',
   verticalAlign: 'middle',
 };
 
@@ -61,11 +61,11 @@ const editInputStyle: React.CSSProperties = {
   width: '100%',
   padding: '6px 8px',
   fontSize: '0.8125rem',
-  border: '1px solid #CBD5E1',
+  border: '1px solid var(--border-strong)',
   borderRadius: 6,
   outline: 'none',
-  color: '#1A1A2E',
-  backgroundColor: '#FFFFFF',
+  color: 'var(--text-primary)',
+  backgroundColor: 'var(--bg-card)',
   boxSizing: 'border-box',
 };
 
@@ -93,7 +93,7 @@ function getRiskColor(risk?: string) {
 
 function getRegionColor(region?: string) {
   switch (region) {
-    case '국내': return '#1E3A5F';
+    case '국내': return '#3B82F6';
     case '미국': return '#7C3AED';
     case '글로벌': return '#0EA5E9';
     case '베트남': return '#EF4444';
@@ -206,7 +206,7 @@ export function ProductMasterTable({ items, onUpdate, onDelete }: ProductMasterT
         style={{
           padding: '60px 24px',
           textAlign: 'center',
-          color: '#9CA3AF',
+          color: 'var(--text-muted)',
           fontSize: '0.9375rem',
         }}
       >
@@ -253,20 +253,13 @@ export function ProductMasterTable({ items, onUpdate, onDelete }: ProductMasterT
               <tr
                 key={item.id}
                 style={{
-                  backgroundColor: isEditing ? '#FAFBFF' : idx % 2 === 0 ? '#FFFFFF' : '#FAFAFA',
-                  transition: 'background-color 0.1s ease',
-                }}
-                onMouseEnter={(e) => {
-                  if (!isEditing) (e.currentTarget as HTMLTableRowElement).style.backgroundColor = '#F0F4FF';
-                }}
-                onMouseLeave={(e) => {
-                  if (!isEditing)
-                    (e.currentTarget as HTMLTableRowElement).style.backgroundColor =
-                      idx % 2 === 0 ? '#FFFFFF' : '#FAFAFA';
+                  borderBottom: '1px solid var(--border)',
+                  backgroundColor: isEditing ? 'var(--bg-card-2)' : undefined,
+                  transition: 'background 0.12s',
                 }}
               >
                 {/* NO */}
-                <td style={{ ...tdStyle, textAlign: 'center', color: '#9CA3AF', fontWeight: 600 }}>
+                <td style={{ ...tdStyle, textAlign: 'center', color: 'var(--text-muted)', fontWeight: 600 }}>
                   {idx + 1}
                 </td>
 
@@ -353,14 +346,14 @@ export function ProductMasterTable({ items, onUpdate, onDelete }: ProductMasterT
                       ))}
                     </select>
                   ) : (
-                    <span style={{ color: item.product_type ? '#1A1A2E' : '#C4C9D4' }}>
+                    <span style={{ color: item.product_type ? 'var(--text-primary)' : '#C4C9D4' }}>
                       {item.product_type ?? '-'}
                     </span>
                   )}
                 </td>
 
                 {/* 종목코드 */}
-                <td style={{ ...tdStyle, color: '#6B7280', fontFamily: 'monospace', fontSize: '0.75rem' }}>
+                <td style={{ ...tdStyle, color: 'var(--text-muted)', fontFamily: 'monospace', fontSize: '0.75rem' }}>
                   {isEditing ? (
                     <input
                       type="text"
@@ -397,23 +390,42 @@ export function ProductMasterTable({ items, onUpdate, onDelete }: ProductMasterT
                     </div>
                   ) : (
                     <div style={{ display: 'flex', gap: 6, justifyContent: 'center' }}>
-                      <Button
-                        variant="secondary"
-                        size="sm"
+                      <button
+                        type="button"
                         onClick={() => startEdit(item)}
                         disabled={!!editingId || isDeleting}
+                        style={{
+                          padding: '5px 12px',
+                          borderRadius: 7,
+                          border: '1px solid var(--border-strong)',
+                          background: 'var(--bg-card)',
+                          color: 'var(--text-secondary)',
+                          fontSize: '0.75rem',
+                          fontWeight: 500,
+                          cursor: (!!editingId || isDeleting) ? 'not-allowed' : 'pointer',
+                          opacity: (!!editingId || isDeleting) ? 0.5 : 1,
+                        }}
                       >
                         수정
-                      </Button>
-                      <Button
-                        variant="danger"
-                        size="sm"
-                        loading={isDeleting}
+                      </button>
+                      <button
+                        type="button"
                         onClick={() => handleDelete(item.id, item.product_name)}
-                        disabled={!!editingId && editingId !== item.id}
+                        disabled={isDeleting || (!!editingId && editingId !== item.id)}
+                        style={{
+                          padding: '5px 12px',
+                          borderRadius: 7,
+                          border: '1px solid rgba(239,68,68,0.35)',
+                          background: 'var(--danger-bg)',
+                          color: 'var(--danger)',
+                          fontSize: '0.75rem',
+                          fontWeight: 500,
+                          cursor: isDeleting ? 'wait' : 'pointer',
+                          opacity: (!!editingId && editingId !== item.id) ? 0.5 : 1,
+                        }}
                       >
-                        삭제
-                      </Button>
+                        {isDeleting ? '삭제 중...' : '삭제'}
+                      </button>
                     </div>
                   )}
                 </td>

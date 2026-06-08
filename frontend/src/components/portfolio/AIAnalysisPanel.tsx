@@ -106,7 +106,7 @@ export function AIAnalysisPanel({ analysisId, onApplySuggestions }: AIAnalysisPa
               width: 44,
               height: 44,
               borderRadius: 10,
-              backgroundColor: '#EEF2F7',
+              backgroundColor: 'var(--bg-card-2)',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
@@ -119,10 +119,10 @@ export function AIAnalysisPanel({ analysisId, onApplySuggestions }: AIAnalysisPa
             </svg>
           </div>
           <div style={{ flex: 1 }}>
-            <h3 style={{ margin: '0 0 4px', fontSize: '0.9375rem', fontWeight: 600, color: '#1A1A2E' }}>
+            <h3 style={{ margin: '0 0 4px', fontSize: '0.9375rem', fontWeight: 600, color: 'var(--text-primary)' }}>
               AI 포트폴리오 분석
             </h3>
-            <p style={{ margin: '0 0 14px', fontSize: '0.8125rem', color: '#6B7280', lineHeight: 1.5 }}>
+            <p style={{ margin: '0 0 14px', fontSize: '0.8125rem', color: 'var(--text-muted)', lineHeight: 1.5 }}>
               현재 포트폴리오를 AI로 분석하여 리밸런싱 제안을 받습니다.
               분석에는 10~30초가 소요될 수 있습니다.
             </p>
@@ -144,10 +144,10 @@ export function AIAnalysisPanel({ analysisId, onApplySuggestions }: AIAnalysisPa
         <div
           style={{
             padding: '14px 16px',
-            backgroundColor: '#FEF2F2',
-            border: '1px solid #FECACA',
+            backgroundColor: 'var(--danger-bg)',
+            border: '1px solid rgba(239,68,68,0.35)',
             borderRadius: 8,
-            color: '#B91C1C',
+            color: 'var(--danger)',
             fontSize: '0.875rem',
           }}
         >
@@ -165,7 +165,7 @@ export function AIAnalysisPanel({ analysisId, onApplySuggestions }: AIAnalysisPa
                 margin: '0 0 12px',
                 fontSize: '0.875rem',
                 fontWeight: 600,
-                color: '#1E3A5F',
+                color: 'var(--blue-400)',
                 display: 'flex',
                 alignItems: 'center',
                 gap: 6,
@@ -180,14 +180,14 @@ export function AIAnalysisPanel({ analysisId, onApplySuggestions }: AIAnalysisPa
               style={{
                 margin: 0,
                 fontSize: '0.875rem',
-                color: '#374151',
+                color: 'var(--text-secondary)',
                 lineHeight: 1.7,
                 whiteSpace: 'pre-wrap',
               }}
             >
               {result.ai_analysis}
             </p>
-            <p style={{ margin: '10px 0 0', fontSize: '0.75rem', color: '#9CA3AF' }}>
+            <p style={{ margin: '10px 0 0', fontSize: '0.75rem', color: 'var(--text-muted)' }}>
               생성일시: {new Date(result.generated_at).toLocaleString('ko-KR')}
             </p>
           </Card>
@@ -208,14 +208,14 @@ export function AIAnalysisPanel({ analysisId, onApplySuggestions }: AIAnalysisPa
                     margin: 0,
                     fontSize: '0.875rem',
                     fontWeight: 600,
-                    color: '#1E3A5F',
+                    color: 'var(--blue-400)',
                   }}
                 >
                   리밸런싱 제안 ({result.rebalancing_suggestions.length}건)
                 </h3>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                   {applied && (
-                    <span style={{ fontSize: '0.8125rem', color: '#059669', display: 'flex', alignItems: 'center', gap: 4 }}>
+                    <span style={{ fontSize: '0.8125rem', color: 'var(--success)', display: 'flex', alignItems: 'center', gap: 4 }}>
                       <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
                         <polyline points="20 6 9 17 4 12" />
                       </svg>
@@ -244,15 +244,15 @@ export function AIAnalysisPanel({ analysisId, onApplySuggestions }: AIAnalysisPa
                       style={{
                         padding: '12px 14px',
                         borderRadius: 8,
-                        border: '1px solid #E1E5EB',
-                        backgroundColor: '#FAFBFC',
+                        border: '1px solid var(--border)',
+                        backgroundColor: 'var(--bg-surface)',
                         display: 'flex',
                         flexDirection: 'column',
                         gap: 6,
                       }}
                     >
                       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                        <span style={{ fontSize: '0.875rem', fontWeight: 600, color: '#1A1A2E' }}>
+                        <span style={{ fontSize: '0.875rem', fontWeight: 600, color: 'var(--text-primary)' }}>
                           {s.product_name}
                         </span>
                         <span
@@ -268,7 +268,7 @@ export function AIAnalysisPanel({ analysisId, onApplySuggestions }: AIAnalysisPa
                           {colors.label}
                         </span>
                       </div>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: '0.8125rem', color: '#6B7280' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: '0.8125rem', color: 'var(--text-muted)' }}>
                         <span>현재 {s.current_weight.toFixed(1)}%</span>
                         <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                           <polyline points="9 18 15 12 9 6" />
@@ -281,7 +281,7 @@ export function AIAnalysisPanel({ analysisId, onApplySuggestions }: AIAnalysisPa
                         </span>
                       </div>
                       {s.reason && (
-                        <p style={{ margin: 0, fontSize: '0.8125rem', color: '#374151', lineHeight: 1.5 }}>
+                        <p style={{ margin: 0, fontSize: '0.8125rem', color: 'var(--text-secondary)', lineHeight: 1.5 }}>
                           {s.reason}
                         </p>
                       )}

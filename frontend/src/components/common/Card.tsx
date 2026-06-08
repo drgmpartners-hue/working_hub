@@ -11,8 +11,8 @@ interface CardProps extends HTMLAttributes<HTMLDivElement> {
 export const Card = forwardRef<HTMLDivElement, CardProps>(
   ({ hoverable = false, padding = 20, noBorder = false, children, style, onMouseEnter, onMouseLeave, ...rest }, ref) => {
     const baseStyle: React.CSSProperties = {
-      backgroundColor: '#FFFFFF',
-      border: noBorder ? 'none' : '1px solid #E1E5EB',
+      backgroundColor: 'var(--bg-card)',
+      border: noBorder ? 'none' : '1px solid var(--border)',
       borderRadius: 12,
       padding,
       boxShadow: '0 1px 3px rgba(0,0,0,0.06), 0 1px 2px rgba(0,0,0,0.04)',

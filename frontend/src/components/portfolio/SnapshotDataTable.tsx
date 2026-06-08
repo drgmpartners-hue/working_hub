@@ -76,11 +76,11 @@ const returnRateColor = (rate?: number) => {
 
 const riskLevelStyle = (level?: string): React.CSSProperties => {
   if (!level) return {};
-  if (level === '절대성장형') return { backgroundColor: '#FEF2F2', color: '#DC2626' };
-  if (level === '성장형') return { backgroundColor: '#FFFBEB', color: '#D97706' };
-  if (level === '안정형') return { backgroundColor: '#ECFDF5', color: '#059669' };
-  if (level === '절대안정형') return { backgroundColor: '#EFF6FF', color: '#2563EB' };
-  return { backgroundColor: '#F3F4F6', color: '#374151' };
+  if (level === '절대성장형') return { backgroundColor: 'var(--danger-bg)', color: 'var(--danger)' };
+  if (level === '성장형') return { backgroundColor: 'var(--warning-bg)', color: 'var(--warning)' };
+  if (level === '안정형') return { backgroundColor: 'var(--success-bg)', color: 'var(--success)' };
+  if (level === '절대안정형') return { backgroundColor: 'rgba(56,189,248,0.12)', color: 'var(--blue-500)' };
+  return { backgroundColor: 'var(--bg-surface)', color: 'var(--text-secondary)' };
 };
 
 /* ------------------------------------------------------------------ */
@@ -99,14 +99,14 @@ function SummaryCard({ label, value, accent }: { label: string; value: string; a
         minWidth: 120,
       }}
     >
-      <div style={{ fontSize: '0.75rem', color: '#6B7280', fontWeight: 500, marginBottom: 4 }}>
+      <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', fontWeight: 500, marginBottom: 4 }}>
         {label}
       </div>
       <div
         style={{
           fontSize: '1rem',
           fontWeight: 700,
-          color: accent ? '#1E3A5F' : '#1A1A2E',
+          color: accent ? '#1E3A5F' : 'var(--text-primary)',
           letterSpacing: '-0.3px',
         }}
       >
@@ -124,7 +124,7 @@ function LoadingSkeleton() {
           key={i}
           style={{
             height: 40,
-            backgroundColor: '#F3F4F6',
+            backgroundColor: 'var(--bg-surface)',
             borderRadius: 6,
             animation: 'pulse 1.5s ease-in-out infinite',
             opacity: 1 - i * 0.15,
@@ -189,9 +189,9 @@ function HoldingRow({ holding: initialHolding, index, snapshotId, editable, onSa
   const tdStyle: React.CSSProperties = {
     padding: '9px 12px',
     fontSize: '0.8125rem',
-    color: '#374151',
+    color: 'var(--text-secondary)',
     textAlign: 'right',
-    borderBottom: '1px solid #F3F4F6',
+    borderBottom: '1px solid var(--border)',
     whiteSpace: 'nowrap',
   };
 
@@ -201,13 +201,13 @@ function HoldingRow({ holding: initialHolding, index, snapshotId, editable, onSa
       onMouseLeave={(e) => { (e.currentTarget as HTMLTableRowElement).style.backgroundColor = 'transparent'; }}
       style={{ transition: 'background-color 0.1s ease' }}
     >
-      <td style={{ ...tdStyle, textAlign: 'center', color: '#9CA3AF' }}>
+      <td style={{ ...tdStyle, textAlign: 'center', color: 'var(--text-muted)' }}>
         {h.seq ?? index + 1}
       </td>
       <td style={{ ...tdStyle, textAlign: 'left' }}>
-        <div style={{ fontWeight: 500, color: '#1A1A2E' }}>{h.product_name}</div>
+        <div style={{ fontWeight: 500, color: 'var(--text-primary)' }}>{h.product_name}</div>
         {h.product_type && (
-          <div style={{ fontSize: '0.6875rem', color: '#9CA3AF', marginTop: 1 }}>{h.product_type}</div>
+          <div style={{ fontSize: '0.6875rem', color: 'var(--text-muted)', marginTop: 1 }}>{h.product_type}</div>
         )}
       </td>
 
@@ -221,12 +221,12 @@ function HoldingRow({ holding: initialHolding, index, snapshotId, editable, onSa
               width: '100%',
               padding: '5px 6px',
               fontSize: '0.75rem',
-              border: '1px solid #E1E5EB',
+              border: '1px solid var(--border)',
               borderRadius: 6,
               outline: 'none',
-              backgroundColor: '#fff',
+              backgroundColor: 'var(--bg-card)',
               cursor: 'pointer',
-              color: '#1A1A2E',
+              color: 'var(--text-primary)',
             }}
           >
             <option value="">선택</option>
@@ -261,12 +261,12 @@ function HoldingRow({ holding: initialHolding, index, snapshotId, editable, onSa
               width: '100%',
               padding: '5px 6px',
               fontSize: '0.75rem',
-              border: '1px solid #E1E5EB',
+              border: '1px solid var(--border)',
               borderRadius: 6,
               outline: 'none',
-              backgroundColor: '#fff',
+              backgroundColor: 'var(--bg-card)',
               cursor: 'pointer',
-              color: '#1A1A2E',
+              color: 'var(--text-primary)',
             }}
           >
             <option value="">선택</option>
@@ -280,8 +280,8 @@ function HoldingRow({ holding: initialHolding, index, snapshotId, editable, onSa
               style={{
                 fontSize: '0.75rem',
                 fontWeight: 500,
-                color: '#1E3A5F',
-                backgroundColor: '#EEF2F7',
+                color: 'var(--blue-400)',
+                backgroundColor: 'var(--bg-card-2)',
                 padding: '2px 6px',
                 borderRadius: 4,
               }}
@@ -300,7 +300,7 @@ function HoldingRow({ holding: initialHolding, index, snapshotId, editable, onSa
       <td style={{ ...tdStyle, color: returnRateColor(h.return_rate), fontWeight: 600 }}>
         {h.return_rate != null ? `${h.return_rate > 0 ? '+' : ''}${h.return_rate.toFixed(2)}%` : '-'}
       </td>
-      <td style={{ ...tdStyle, color: '#374151' }}>
+      <td style={{ ...tdStyle, color: 'var(--text-secondary)' }}>
         {h.weight != null ? `${(h.weight * 100).toFixed(1)}%` : '-'}
       </td>
 
@@ -370,10 +370,10 @@ export function SnapshotDataTable({
     padding: '10px 12px',
     fontSize: '0.75rem',
     fontWeight: 600,
-    color: '#6B7280',
+    color: 'var(--text-muted)',
     textAlign: 'right',
-    backgroundColor: '#F5F7FA',
-    borderBottom: '1px solid #E1E5EB',
+    backgroundColor: 'var(--bg-surface)',
+    borderBottom: '1px solid var(--border)',
     whiteSpace: 'nowrap',
   };
 
@@ -386,9 +386,9 @@ export function SnapshotDataTable({
     padding: '10px 12px',
     fontSize: '0.8125rem',
     fontWeight: 700,
-    color: '#1A1A2E',
+    color: 'var(--text-primary)',
     textAlign: 'right',
-    backgroundColor: '#F5F7FA',
+    backgroundColor: 'var(--bg-surface)',
     whiteSpace: 'nowrap',
   };
 
@@ -402,32 +402,32 @@ export function SnapshotDataTable({
   return (
     <div
       style={{
-        border: '1px solid #E1E5EB',
+        border: '1px solid var(--border)',
         borderRadius: 12,
         overflow: 'hidden',
-        backgroundColor: '#FFFFFF',
+        backgroundColor: 'var(--bg-card)',
       }}
     >
       {/* Header */}
       <div
         style={{
           padding: '14px 20px',
-          borderBottom: '1px solid #E1E5EB',
+          borderBottom: '1px solid var(--border)',
           display: 'flex',
           alignItems: 'center',
           gap: 10,
-          backgroundColor: '#FFFFFF',
+          backgroundColor: 'var(--bg-card)',
         }}
       >
-        <span style={{ fontSize: '0.9375rem', fontWeight: 700, color: '#1A1A2E' }}>
+        <span style={{ fontSize: '0.9375rem', fontWeight: 700, color: 'var(--text-primary)' }}>
           {clientName || '고객명'}
         </span>
         <span
           style={{
             fontSize: '0.75rem',
             fontWeight: 600,
-            color: '#1E3A5F',
-            backgroundColor: '#EEF2F7',
+            color: 'var(--blue-400)',
+            backgroundColor: 'var(--bg-card-2)',
             padding: '2px 8px',
             borderRadius: 5,
           }}
@@ -435,7 +435,7 @@ export function SnapshotDataTable({
           {accountTypeLabel(accountType)}
         </span>
         {snapshot && (
-          <span style={{ fontSize: '0.75rem', color: '#9CA3AF', marginLeft: 'auto' }}>
+          <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginLeft: 'auto' }}>
             조회일: {snapshot.snapshot_date}
           </span>
         )}
@@ -443,8 +443,8 @@ export function SnapshotDataTable({
           <span
             style={{
               fontSize: '0.6875rem',
-              color: '#6B7280',
-              backgroundColor: '#F3F4F6',
+              color: 'var(--text-muted)',
+              backgroundColor: 'var(--bg-surface)',
               padding: '2px 8px',
               borderRadius: 4,
             }}
@@ -461,7 +461,7 @@ export function SnapshotDataTable({
           style={{
             padding: '40px 20px',
             textAlign: 'center',
-            color: '#9CA3AF',
+            color: 'var(--text-muted)',
             fontSize: '0.875rem',
           }}
         >
@@ -476,7 +476,7 @@ export function SnapshotDataTable({
               gap: 10,
               padding: '14px 20px',
               flexWrap: 'wrap',
-              borderBottom: '1px solid #E1E5EB',
+              borderBottom: '1px solid var(--border)',
             }}
           >
             <SummaryCard label="예수금" value={`${fmt(snapshot.deposit_amount)}원`} />

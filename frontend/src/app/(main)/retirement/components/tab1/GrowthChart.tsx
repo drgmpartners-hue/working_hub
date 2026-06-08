@@ -31,11 +31,11 @@ function Tip({ active, payload, label }: { active?: boolean; payload?: Array<{ v
   const mod = payload.find(p => p.dataKey === 'modified');
   const princ = payload.find(p => p.dataKey === 'principal');
   return (
-    <div style={{ backgroundColor: '#fff', border: '1px solid #E5E7EB', borderRadius: 8, padding: '10px 14px', boxShadow: '0 2px 8px rgba(0,0,0,0.10)', fontSize: 13 }}>
-      <div style={{ color: '#6B7280', marginBottom: 4, fontWeight: 600 }}>{label}세</div>
-      {orig && <div style={{ color: '#1E3A5F' }}>기존: {orig.value.toLocaleString('ko-KR')}만원</div>}
+    <div style={{ backgroundColor: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 8, padding: '10px 14px', boxShadow: '0 2px 8px rgba(0,0,0,0.10)', fontSize: 13 }}>
+      <div style={{ color: 'var(--text-muted)', marginBottom: 4, fontWeight: 600 }}>{label}세</div>
+      {orig && <div style={{ color: 'var(--blue-400)' }}>기존: {orig.value.toLocaleString('ko-KR')}만원</div>}
       {mod && <div style={{ color: '#E85D04' }}>수정: {mod.value.toLocaleString('ko-KR')}만원</div>}
-      {princ && princ.value > 0 && <div style={{ color: '#9CA3AF', fontSize: 12 }}>원금: {princ.value.toLocaleString('ko-KR')}만원</div>}
+      {princ && princ.value > 0 && <div style={{ color: 'var(--text-muted)', fontSize: 12 }}>원금: {princ.value.toLocaleString('ko-KR')}만원</div>}
     </div>
   );
 }
@@ -52,7 +52,7 @@ export default function GrowthChart({ data, retirementAge, showModified, savings
       <ComposedChart data={data} margin={{ top: 4, right: 16, left: 8, bottom: 0 }}>
         {/* 배경색 구간: 적립 */}
         {savEnd > minAge && (
-          <ReferenceArea x1={minAge} x2={Math.min(savEnd, retStart)} fill="#1E3A5F" fillOpacity={0.04} />
+          <ReferenceArea x1={minAge} x2={Math.min(savEnd, retStart)} fill="#3B82F6" fillOpacity={0.04} />
         )}
         {/* 배경색 구간: 거치 */}
         {savEnd < retStart && (
@@ -63,13 +63,13 @@ export default function GrowthChart({ data, retirementAge, showModified, savings
           <ReferenceArea x1={retStart} x2={maxAge} fill="#16A34A" fillOpacity={0.04} />
         )}
 
-        <CartesianGrid vertical={false} stroke="#F0F0F0" />
+        <CartesianGrid vertical={false} stroke="#243049" />
         <XAxis dataKey="age" tickLine={false} axisLine={false} tick={{ fontSize: 11, fill: '#9CA3AF' }} tickFormatter={v => `${v}세`} interval="preserveStartEnd" />
         <YAxis tickLine={false} axisLine={false} tick={{ fontSize: 11, fill: '#9CA3AF' }} tickFormatter={fmtY} width={56} />
         <Tooltip content={<Tip />} />
 
         <Line type="monotone" dataKey="principal" stroke="#9CA3AF" strokeWidth={1.5} strokeDasharray="4 4" dot={false} connectNulls name="투자원금" />
-        <Line type="monotone" dataKey="original" stroke="#1E3A5F" strokeWidth={2.5} dot={false} connectNulls name="기존 은퇴플랜" />
+        <Line type="monotone" dataKey="original" stroke="#3B82F6" strokeWidth={2.5} dot={false} connectNulls name="기존 은퇴플랜" />
         {showModified && <Line type="monotone" dataKey="modified" stroke="#E85D04" strokeWidth={2.5} dot={false} connectNulls name="수정 은퇴플랜" />}
 
         {/* 적립→거치 경계선 */}

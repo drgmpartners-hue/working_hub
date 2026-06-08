@@ -120,22 +120,22 @@ function buildSim(p: {
    스타일
    ================================================================ */
 const SH: React.CSSProperties = {
-  background: 'linear-gradient(135deg, #1E3A5F 0%, #2D5A8E 100%)',
+  background: 'linear-gradient(135deg, var(--blue-600) 0%, #2D5A8E 100%)',
   color: '#fff', padding: '14px 20px', borderRadius: '12px 12px 0 0',
   display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontWeight: 700, fontSize: '15px',
 };
 const SB: React.CSSProperties = {
-  border: '1px solid #D1D5DB', borderTop: 'none', borderRadius: '0 0 12px 12px', padding: '20px', backgroundColor: '#FAFBFC',
+  border: '1px solid var(--border-strong)', borderTop: 'none', borderRadius: '0 0 12px 12px', padding: '20px', backgroundColor: 'var(--bg-surface)',
 };
-const CARD: React.CSSProperties = { backgroundColor: '#fff', border: '1px solid #E5E7EB', borderRadius: '8px', padding: '12px 14px' };
-const CARD_G: React.CSSProperties = { background: 'linear-gradient(135deg, #ECFDF5 0%, #D1FAE5 100%)', border: '1px solid #A7F3D0', borderRadius: '8px', padding: '12px 14px' };
-const CL: React.CSSProperties = { fontSize: '11px', color: '#6B7280', marginBottom: '6px', fontWeight: 500 };
-const CV: React.CSSProperties = { fontSize: '18px', fontWeight: 700, color: '#1E3A5F', fontFamily: 'Inter, monospace' };
+const CARD: React.CSSProperties = { backgroundColor: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: '8px', padding: '12px 14px' };
+const CARD_G: React.CSSProperties = { background: 'linear-gradient(135deg, var(--success-bg) 0%, var(--success-bg) 100%)', border: '1px solid rgba(16,185,129,0.35)', borderRadius: '8px', padding: '12px 14px' };
+const CL: React.CSSProperties = { fontSize: '11px', color: 'var(--text-muted)', marginBottom: '6px', fontWeight: 500 };
+const CV: React.CSSProperties = { fontSize: '18px', fontWeight: 700, color: 'var(--blue-400)', fontFamily: 'Inter, monospace' };
 const IS: React.CSSProperties = {
-  width: '100%', height: '32px', padding: '0 52px 0 10px', fontSize: '14px', color: '#1A1A2E',
-  backgroundColor: '#fff', border: '1px solid #D1D5DB', borderRadius: '6px', outline: 'none', boxSizing: 'border-box', textAlign: 'right',
+  width: '100%', height: '32px', padding: '0 52px 0 10px', fontSize: '14px', color: 'var(--text-primary)',
+  backgroundColor: 'var(--bg-card)', border: '1px solid var(--border-strong)', borderRadius: '6px', outline: 'none', boxSizing: 'border-box', textAlign: 'right',
 };
-const US: React.CSSProperties = { position: 'absolute', right: '8px', top: '50%', transform: 'translateY(-50%)', fontSize: '11px', color: '#9CA3AF', pointerEvents: 'none' };
+const US: React.CSSProperties = { position: 'absolute', right: '8px', top: '50%', transform: 'translateY(-50%)', fontSize: '11px', color: 'var(--text-muted)', pointerEvents: 'none' };
 const TC: React.CSSProperties = { padding: '6px 8px', textAlign: 'center', fontSize: '13px' };
 const TRs: React.CSSProperties = { padding: '6px 8px', textAlign: 'right', fontFamily: 'Inter, monospace', fontSize: '13px' };
 
@@ -530,7 +530,7 @@ export function DesiredPlanTab() {
               alert(`PDF 생성 실패: ${msg}`);
             }
           }}
-          style={{ padding: '8px 16px', fontSize: '13px', fontWeight: 600, borderRadius: '8px', cursor: 'pointer', border: 'none', backgroundColor: '#1E3A5F', color: '#fff', display: 'flex', alignItems: 'center', gap: '6px' }}
+          style={{ padding: '8px 16px', fontSize: '13px', fontWeight: 600, borderRadius: '8px', cursor: 'pointer', border: 'none', backgroundColor: 'var(--blue-600)', color: '#fff', display: 'flex', alignItems: 'center', gap: '6px' }}
         >
           📄 PDF 다운로드
         </button>
@@ -592,7 +592,7 @@ export function DesiredPlanTab() {
                 ? (modReqHold > 0 ? `${fmt(Math.round(modReqHold / 1e4))}만원` : '0원 (적립만 충분)')
                 : (reqHold > 0 ? `${fmt(Math.round(reqHold / 1e4))}만원` : '0원')
               }</div>
-              <div style={{ fontSize: '10px', color: '#9CA3AF', marginTop: '4px' }}>
+              <div style={{ fontSize: '10px', color: 'var(--text-muted)', marginTop: '4px' }}>
                 {recRetR > 0 ? `추천수익률 ${recRetR}% → 수정목표 기준` : '기존수익률 기준 계산'}
               </div>
             </div>
@@ -611,7 +611,7 @@ export function DesiredPlanTab() {
                 <div style={{ ...CV, color: isTargetOvershot ? '#EA580C' : '#059669' }}>
                   {modTargetFund > 0 ? fmtW(modTargetFund) : '-'}
                 </div>
-                <div style={{ fontSize: '10px', color: '#9CA3AF', marginTop: '4px' }}>
+                <div style={{ fontSize: '10px', color: 'var(--text-muted)', marginTop: '4px' }}>
                   {isTargetOvershot
                     ? `투자초과 (기본목표: ${fmtW(modBaseTarget)})`
                     : modPR / 100 > infRate / 100 ? '영구연금 기준' : 'PV 40년 기준'}
@@ -624,8 +624,8 @@ export function DesiredPlanTab() {
 
       {/* ==================== 시뮬레이션 그래프 ==================== */}
       {gData.length > 0 && (
-        <div id="pdf-tab1-graph" style={{ backgroundColor: '#fff', border: '1px solid #E5E7EB', borderRadius: '12px', padding: '20px' }}>
-          <h3 style={{ fontSize: '15px', fontWeight: 700, color: '#1E3A5F', margin: '0 0 12px' }}>시뮬레이션 그래프</h3>
+        <div id="pdf-tab1-graph" style={{ backgroundColor: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: '12px', padding: '20px' }}>
+          <h3 style={{ fontSize: '15px', fontWeight: 700, color: 'var(--blue-400)', margin: '0 0 12px' }}>시뮬레이션 그래프</h3>
           <div style={{ display: 'flex', gap: '20px', marginBottom: '12px', fontSize: '12px' }}>
             <LG color="#1E3A5F" label="기존 은퇴플랜" />
             {hasMod && <LG color="#E85D04" label="수정 은퇴플랜" />}
@@ -648,14 +648,14 @@ export function DesiredPlanTab() {
             <IfC label="투자기간" v={invYrs > 0 ? `${invYrs}년 (적립 ${savYrs} + 거치 ${holdYrs})` : '-'} />
             <IfC label="적립금액(연)" v={annSav > 0 ? `${fmt(annSav)}만원/연` : '-'} />
             {/* 연거치 금액: 실제 시뮬에 적용된 modHolding 기준 */}
-            <div style={holdAmt > 0 && extraHolding > 0 ? CARD_G : holdAmt > 0 && holdAmt * 1e4 > modReqHold ? { ...CARD, background: 'linear-gradient(135deg, #FFF7ED 0%, #FFEDD5 100%)', border: '1px solid #FDBA74' } : { ...CARD, backgroundColor: '#F8FAFC' }}>
+            <div style={holdAmt > 0 && extraHolding > 0 ? CARD_G : holdAmt > 0 && holdAmt * 1e4 > modReqHold ? { ...CARD, background: 'linear-gradient(135deg, #FFF7ED 0%, #FFEDD5 100%)', border: '1px solid #FDBA74' } : { ...CARD, backgroundColor: 'var(--bg-surface)' }}>
               <div style={CL}>연거치 금액</div>
               {holdAmt > 0 && extraHolding > 0 ? (<>
                 {/* Case1: 필요거치 > 거치가능 (부족) */}
                 <div style={CV}>{fmtW(modReqHold)}</div>
-                <div style={{ fontSize: '10px', color: '#6B7280', marginTop: '4px', lineHeight: 1.5 }}>
+                <div style={{ fontSize: '10px', color: 'var(--text-muted)', marginTop: '4px', lineHeight: 1.5 }}>
                   거치 가능: {fmtW(holdAmt * 1e4)}<br/>
-                  <span style={{ color: '#EF4444', fontWeight: 600 }}>추가 필요: {fmtW(extraHolding)}</span>
+                  <span style={{ color: 'var(--danger)', fontWeight: 600 }}>추가 필요: {fmtW(extraHolding)}</span>
                 </div>
               </>) : holdAmt > 0 && holdAmt * 1e4 > modReqHold ? (<>
                 {/* Case2: 거치가능 > 필요거치 (초과) */}
@@ -682,22 +682,22 @@ export function DesiredPlanTab() {
 
       {/* ==================== 은퇴플랜 시뮬레이션 ==================== */}
       {showTbl && dispTbl.length > 0 && (
-        <div id="pdf-tab1-sim" style={{ backgroundColor: '#fff', border: '1px solid #E5E7EB', borderRadius: '12px', padding: '20px' }}>
+        <div id="pdf-tab1-sim" style={{ backgroundColor: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: '12px', padding: '20px' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px' }}>
-            <h3 style={{ fontSize: '15px', fontWeight: 700, color: '#1E3A5F', margin: 0 }}>은퇴플랜 시뮬레이션</h3>
+            <h3 style={{ fontSize: '15px', fontWeight: 700, color: 'var(--blue-400)', margin: 0 }}>은퇴플랜 시뮬레이션</h3>
             <button onClick={() => setOv({})}
-              style={{ padding: '5px 14px', fontSize: '12px', fontWeight: 600, color: '#EF4444', backgroundColor: '#FEF2F2',
-                border: '1px solid #FECACA', borderRadius: '6px', cursor: 'pointer' }}>수정 초기화</button>
+              style={{ padding: '5px 14px', fontSize: '12px', fontWeight: 600, color: 'var(--danger)', backgroundColor: 'var(--danger-bg)',
+                border: '1px solid rgba(239,68,68,0.35)', borderRadius: '6px', cursor: 'pointer' }}>수정 초기화</button>
           </div>
           <div style={{ overflowX: 'auto', maxHeight: '500px', overflowY: 'auto' }}>
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px' }}>
               <thead>
-                <tr style={{ backgroundColor: '#F9FAFB', position: 'sticky', top: 0, zIndex: 1 }}>
+                <tr style={{ backgroundColor: 'var(--bg-surface)', position: 'sticky', top: 0, zIndex: 1 }}>
                   {['연도','연차','나이','구분','월적립(만)','거치(만)','연금인출','누적원금','평가금액'].map(h => (
-                    <th key={h} style={{ padding: '8px', borderBottom: '2px solid #E5E7EB',
+                    <th key={h} style={{ padding: '8px', borderBottom: '2px solid var(--border)',
                       textAlign: ['연도','연차','나이','구분'].includes(h) ? 'center' : 'right',
                       fontWeight: 600, color: h === '연금인출' ? '#DC2626' : '#6B7280', whiteSpace: 'nowrap',
-                      backgroundColor: '#F9FAFB', fontSize: '12px' }}>{h}</th>
+                      backgroundColor: 'var(--bg-surface)', fontSize: '12px' }}>{h}</th>
                   ))}
                 </tr>
               </thead>
@@ -714,7 +714,7 @@ export function DesiredPlanTab() {
                   const bg = isRA ? 'rgba(30,58,95,0.12)' : is100 ? 'rgba(220,38,38,0.08)' : r.phase === 'saving' ? '#EFF6FF' : r.phase === 'holding' ? '#FFFBEB' : '#F0FDF4';
                   return (
                     <tr key={r.year} style={{ borderBottom: isHL ? '2px solid' : '1px solid #F3F4F6', borderBottomColor: isRA ? '#1E3A5F' : is100 ? '#DC2626' : undefined, backgroundColor: bg }}>
-                      <td style={{ ...TC, fontSize: 11, color: '#9CA3AF' }}>{pSY + r.year - 1}</td>
+                      <td style={{ ...TC, fontSize: 11, color: 'var(--text-muted)' }}>{pSY + r.year - 1}</td>
                       <td style={TC}>{r.year}</td>
                       <td style={{ ...TC, fontWeight: isHL ? 700 : 400, color: isRA ? '#1E3A5F' : is100 ? '#DC2626' : '#374151' }}>{r.age}세{isRA && ' ★'}{is100 && ' ★'}</td>
                       <td style={{ ...TC, color: pc, fontWeight: 600 }}>{pl}</td>
@@ -746,7 +746,7 @@ export function DesiredPlanTab() {
                 })}
               </tbody>
             </table>
-            <div style={{ textAlign: 'right', fontSize: '10px', color: '#9CA3AF', marginTop: '4px' }}>(단위: 만원) 파란 테두리 = 수정된 값</div>
+            <div style={{ textAlign: 'right', fontSize: '10px', color: 'var(--text-muted)', marginTop: '4px' }}>(단위: 만원) 파란 테두리 = 수정된 값</div>
           </div>
         </div>
       )}
@@ -793,10 +793,10 @@ function IfC({ label, v, sub, g, hl }: {
   label: string; v: string; sub?: string; g?: boolean; hl?: boolean;
 }) {
   return (
-    <div style={g ? CARD_G : { ...CARD, backgroundColor: '#F8FAFC' }}>
+    <div style={g ? CARD_G : { ...CARD, backgroundColor: 'var(--bg-surface)' }}>
       <div style={CL}>{label}</div>
-      <div style={{ ...CV, ...(hl ? { color: '#059669' } : {}), fontSize: v.length > 12 ? '14px' : v.length > 8 ? '16px' : '18px' }}>{v}</div>
-      {sub && <div style={{ fontSize: '10px', color: '#9CA3AF', marginTop: '4px' }}>{sub}</div>}
+      <div style={{ ...CV, ...(hl ? { color: 'var(--success)' } : {}), fontSize: v.length > 12 ? '14px' : v.length > 8 ? '16px' : '18px' }}>{v}</div>
+      {sub && <div style={{ fontSize: '10px', color: 'var(--text-muted)', marginTop: '4px' }}>{sub}</div>}
     </div>
   );
 }
@@ -808,7 +808,7 @@ function Tog({ label, c, f }: { label: string; c: boolean; f: () => void }) {
       <button type="button" onClick={f} style={{ width: 36, height: 20, borderRadius: 10, border: 'none',
         backgroundColor: c ? '#10B981' : 'rgba(255,255,255,0.3)', cursor: 'pointer', position: 'relative', transition: 'background-color 0.2s' }}>
         <span style={{ position: 'absolute', top: 2, left: c ? 18 : 2, width: 16, height: 16, borderRadius: '50%',
-          backgroundColor: '#fff', transition: 'left 0.2s', boxShadow: '0 1px 2px rgba(0,0,0,0.2)' }} />
+          backgroundColor: 'var(--bg-card)', transition: 'left 0.2s', boxShadow: '0 1px 2px rgba(0,0,0,0.2)' }} />
       </button>
     </label>
   );

@@ -48,7 +48,7 @@ export function Table<T = Record<string, unknown>>({
         width: '100%',
         overflowX: 'auto',
         borderRadius: 10,
-        border: '1px solid #E1E5EB',
+        border: '1px solid var(--border)',
       }}
     >
       <table
@@ -56,12 +56,12 @@ export function Table<T = Record<string, unknown>>({
           width: '100%',
           borderCollapse: 'collapse',
           fontSize: '0.875rem',
-          color: '#1A1A2E',
+          color: 'var(--text-primary)',
         }}
       >
         {/* Head */}
         <thead>
-          <tr style={{ backgroundColor: '#F5F7FA' }}>
+          <tr style={{ backgroundColor: 'var(--bg-surface)' }}>
             {columns.map((col) => (
               <th
                 key={col.key}
@@ -70,10 +70,10 @@ export function Table<T = Record<string, unknown>>({
                   textAlign: col.align ?? (col.numeric ? 'right' : 'left'),
                   fontWeight: 600,
                   fontSize: '0.75rem',
-                  color: '#6B7280',
+                  color: 'var(--text-muted)',
                   letterSpacing: '0.04em',
                   textTransform: 'uppercase',
-                  borderBottom: '1px solid #E1E5EB',
+                  borderBottom: '1px solid var(--border)',
                   whiteSpace: 'nowrap',
                   width: col.width,
                   minWidth: col.width,
@@ -91,15 +91,15 @@ export function Table<T = Record<string, unknown>>({
             <tr>
               <td
                 colSpan={columns.length}
-                style={{ padding: '40px 0', textAlign: 'center', color: '#6B7280' }}
+                style={{ padding: '40px 0', textAlign: 'center', color: 'var(--text-muted)' }}
               >
                 <div
                   style={{
                     display: 'inline-block',
                     width: 24,
                     height: 24,
-                    border: '2px solid #E1E5EB',
-                    borderTopColor: '#1E3A5F',
+                    border: '2px solid var(--border)',
+                    borderTopColor: 'var(--blue-500)',
                     borderRadius: '50%',
                     animation: 'spin 0.7s linear infinite',
                   }}
@@ -110,7 +110,7 @@ export function Table<T = Record<string, unknown>>({
             <tr>
               <td
                 colSpan={columns.length}
-                style={{ padding: '40px 0', textAlign: 'center', color: '#6B7280', fontStyle: 'italic' }}
+                style={{ padding: '40px 0', textAlign: 'center', color: 'var(--text-muted)', fontStyle: 'italic' }}
               >
                 {emptyMessage}
               </td>
@@ -144,7 +144,7 @@ function TableRow<T>({
       onMouseLeave={(e) => {
         (e.currentTarget as HTMLTableRowElement).style.backgroundColor = 'transparent';
       }}
-      style={{ borderBottom: '1px solid #E1E5EB', transition: 'background-color 0.12s ease' }}
+      style={{ borderBottom: '1px solid var(--border)', transition: 'background-color 0.12s ease' }}
     >
       {columns.map((col) => {
         const rawValue = (row as Record<string, unknown>)[col.key];

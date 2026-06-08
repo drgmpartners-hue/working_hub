@@ -196,8 +196,8 @@ export function CustomerSelector() {
     <div
       style={{
         minHeight: '64px',
-        backgroundColor: '#F9FAFB',
-        borderBottom: '1px solid #E5E7EB',
+        backgroundColor: 'var(--bg-surface)',
+        borderBottom: '1px solid var(--border)',
         display: 'flex',
         alignItems: 'center',
         padding: '10px 24px',
@@ -206,7 +206,7 @@ export function CustomerSelector() {
     >
       {/* 검색 */}
       <div style={{ display: 'flex', flexDirection: 'column', gap: 2, minWidth: 140 }}>
-        <label style={{ fontSize: '0.75rem', fontWeight: 600, color: '#374151' }}>검색</label>
+        <label style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-secondary)' }}>검색</label>
         <input
           type="text"
           placeholder="이름/고유번호"
@@ -215,10 +215,10 @@ export function CustomerSelector() {
           style={{
             padding: '6px 10px',
             fontSize: '0.8125rem',
-            border: '1px solid #E1E5EB',
+            border: '1px solid var(--border)',
             borderRadius: 8,
             outline: 'none',
-            color: '#1A1A2E',
+            color: 'var(--text-primary)',
             width: '100%',
             boxSizing: 'border-box',
           }}
@@ -227,7 +227,7 @@ export function CustomerSelector() {
 
       {/* 고객 선택 */}
       <div style={{ display: 'flex', flexDirection: 'column', gap: 2, minWidth: 220 }}>
-        <label style={{ fontSize: '0.75rem', fontWeight: 600, color: '#374151' }}>고객 선택</label>
+        <label style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-secondary)' }}>고객 선택</label>
         <select
           value={selectedCustomer?.id ?? ''}
           onChange={(e) => handleClientChange(e.target.value)}
@@ -235,11 +235,11 @@ export function CustomerSelector() {
           style={{
             padding: '6px 10px',
             fontSize: '0.8125rem',
-            border: '1px solid #E1E5EB',
+            border: '1px solid var(--border)',
             borderRadius: 8,
             outline: 'none',
-            color: selectedCustomer ? '#1A1A2E' : '#9CA3AF',
-            backgroundColor: '#fff',
+            color: selectedCustomer ? 'var(--text-primary)' : '#9CA3AF',
+            backgroundColor: 'var(--bg-card)',
             cursor: isLoading ? 'wait' : 'pointer',
           }}
         >
@@ -262,7 +262,7 @@ export function CustomerSelector() {
             fontSize: '0.8125rem',
             fontWeight: 600,
             color: '#fff',
-            backgroundColor: '#1E3A5F',
+            backgroundColor: 'var(--blue-600)',
             border: 'none',
             borderRadius: 8,
             cursor: 'pointer',
@@ -280,23 +280,23 @@ export function CustomerSelector() {
           <div style={{ display: 'flex', alignItems: 'center', gap: 32 }}>
           {/* 고객명 */}
           <div style={{ textAlign: 'center' }}>
-            <div style={{ fontSize: 11, color: '#9CA3AF', marginBottom: 3 }}>고객명</div>
-            <div style={{ fontSize: 14, fontWeight: 700, color: '#1E3A5F' }}>{selectedCustomer.name}</div>
+            <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 3 }}>고객명</div>
+            <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--blue-400)' }}>{selectedCustomer.name}</div>
           </div>
           {/* 생년월일 */}
           {selectedClient.birth_date && (
             <div style={{ textAlign: 'center' }}>
-              <div style={{ fontSize: 11, color: '#9CA3AF', marginBottom: 3 }}>생년월일</div>
-              <div style={{ fontSize: 13, fontWeight: 600, color: '#374151' }}>
-                {selectedClient.birth_date}{age !== null && <span style={{ color: '#1E3A5F', marginLeft: 4 }}>(만 {age}세)</span>}
+              <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 3 }}>생년월일</div>
+              <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-secondary)' }}>
+                {selectedClient.birth_date}{age !== null && <span style={{ color: 'var(--blue-400)', marginLeft: 4 }}>(만 {age}세)</span>}
               </div>
             </div>
           )}
           {/* 목표은퇴자금 */}
           {selectedCustomer.targetFund > 0 && (
             <div style={{ textAlign: 'center' }}>
-              <div style={{ fontSize: 11, color: '#9CA3AF', marginBottom: 3 }}>목표은퇴자금</div>
-              <div style={{ fontSize: 13, fontWeight: 700, color: '#1E3A5F' }}>
+              <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 3 }}>목표은퇴자금</div>
+              <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--blue-400)' }}>
                 {(() => {
                   const v = selectedCustomer.targetFund;
                   if (v >= 1e8) return `${(v / 1e8).toFixed(1)}억원`;
@@ -308,8 +308,8 @@ export function CustomerSelector() {
           {/* 희망은퇴나이 */}
           {selectedCustomer.retirementAge > 0 && (
             <div style={{ textAlign: 'center' }}>
-              <div style={{ fontSize: 11, color: '#9CA3AF', marginBottom: 3 }}>희망은퇴나이</div>
-              <div style={{ fontSize: 14, fontWeight: 700, color: '#1E3A5F' }}>{selectedCustomer.retirementAge}세</div>
+              <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 3 }}>희망은퇴나이</div>
+              <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--blue-400)' }}>{selectedCustomer.retirementAge}세</div>
             </div>
           )}
           </div>
@@ -334,7 +334,7 @@ export function CustomerSelector() {
       >
         <div
           style={{
-            backgroundColor: '#fff',
+            backgroundColor: 'var(--bg-card)',
             borderRadius: 14,
             padding: '28px',
             width: '100%',
@@ -347,12 +347,12 @@ export function CustomerSelector() {
         >
           {/* 모달 헤더 */}
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '22px' }}>
-            <h3 style={{ margin: 0, fontSize: '18px', fontWeight: 700, color: '#111827' }}>
+            <h3 style={{ margin: 0, fontSize: '18px', fontWeight: 700, color: 'var(--text-primary)' }}>
               고객 추가
             </h3>
             <button
               onClick={closeAddModal}
-              style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#9CA3AF', padding: '4px', lineHeight: 1 }}
+              style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', padding: '4px', lineHeight: 1 }}
             >
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                 <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
@@ -363,7 +363,7 @@ export function CustomerSelector() {
           {/* 고객명 */}
           <div style={{ marginBottom: '16px' }}>
             <label style={modalLabelStyle}>
-              고객명 <span style={{ color: '#DC2626' }}>*</span>
+              고객명 <span style={{ color: 'var(--danger)' }}>*</span>
             </label>
             <input
               type="text"
@@ -378,7 +378,7 @@ export function CustomerSelector() {
           {/* 생년월일 */}
           <div style={{ marginBottom: '16px' }}>
             <label style={modalLabelStyle}>
-              생년월일 <span style={{ color: '#DC2626' }}>*</span>
+              생년월일 <span style={{ color: 'var(--danger)' }}>*</span>
             </label>
             <input
               type="date"
@@ -429,10 +429,10 @@ export function CustomerSelector() {
                 marginBottom: '16px',
                 padding: '10px 14px',
                 borderRadius: '8px',
-                background: '#FFF5F5',
-                border: '1px solid #FECACA',
+                background: 'var(--danger-bg)',
+                border: '1px solid rgba(239,68,68,0.35)',
                 fontSize: '0.8125rem',
-                color: '#DC2626',
+                color: 'var(--danger)',
               }}
             >
               {addError}
@@ -447,9 +447,9 @@ export function CustomerSelector() {
               style={{
                 padding: '9px 20px',
                 borderRadius: '8px',
-                border: '1px solid #D1D5DB',
-                background: '#fff',
-                color: '#374151',
+                border: '1px solid var(--border-strong)',
+                background: 'var(--bg-card)',
+                color: 'var(--text-secondary)',
                 fontSize: '0.875rem',
                 fontWeight: 500,
                 cursor: isAdding ? 'not-allowed' : 'pointer',
@@ -465,7 +465,7 @@ export function CustomerSelector() {
                 padding: '9px 20px',
                 borderRadius: '8px',
                 border: 'none',
-                background: '#1E3A5F',
+                background: 'var(--blue-600)',
                 color: '#fff',
                 fontSize: '0.875rem',
                 fontWeight: 600,
@@ -493,17 +493,17 @@ const modalLabelStyle: React.CSSProperties = {
   marginBottom: '6px',
   fontSize: '0.8125rem',
   fontWeight: 600,
-  color: '#374151',
+  color: 'var(--text-secondary)',
 };
 
 const modalInputStyle: React.CSSProperties = {
   width: '100%',
   padding: '9px 12px',
   borderRadius: '8px',
-  border: '1px solid #D1D5DB',
+  border: '1px solid var(--border-strong)',
   fontSize: '0.875rem',
-  color: '#111827',
+  color: 'var(--text-primary)',
   outline: 'none',
   boxSizing: 'border-box',
-  background: '#fff',
+  background: 'var(--bg-card)',
 };

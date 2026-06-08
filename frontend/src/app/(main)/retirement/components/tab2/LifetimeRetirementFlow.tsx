@@ -116,8 +116,8 @@ function excelFV(rate: number, nper: number, pmt: number, pv: number): number {
 /* ------------------------------------------------------------------ */
 
 const cardStyle: React.CSSProperties = {
-  backgroundColor: '#ffffff',
-  border: '1px solid #E5E7EB',
+  backgroundColor: 'var(--bg-card)',
+  border: '1px solid var(--border)',
   borderRadius: '12px',
   padding: '24px',
 };
@@ -125,7 +125,7 @@ const cardStyle: React.CSSProperties = {
 const sectionTitleStyle: React.CSSProperties = {
   fontSize: '15px',
   fontWeight: 600,
-  color: '#1E3A5F',
+  color: 'var(--blue-400)',
   marginBottom: '20px',
   marginTop: 0,
 };
@@ -135,24 +135,24 @@ const itemStyle: React.CSSProperties = {
   justifyContent: 'space-between',
   alignItems: 'center',
   padding: '8px 0',
-  borderBottom: '1px solid #F3F4F6',
+  borderBottom: '1px solid var(--border)',
 };
 
-const lbl: React.CSSProperties = { fontSize: 13, color: '#6B7280' };
+const lbl: React.CSSProperties = { fontSize: 13, color: 'var(--text-muted)' };
 const val: React.CSSProperties = {
   fontSize: 14,
   fontWeight: 700,
-  color: '#111827',
+  color: 'var(--text-primary)',
   fontVariantNumeric: 'tabular-nums',
 };
-const accent: React.CSSProperties = { ...val, color: '#1E3A5F' };
+const accent: React.CSSProperties = { ...val, color: 'var(--blue-400)' };
 const groupTitle: React.CSSProperties = {
   fontSize: 12,
   fontWeight: 600,
-  color: '#1E3A5F',
+  color: 'var(--blue-400)',
   marginBottom: 8,
   paddingBottom: 6,
-  borderBottom: '2px solid #1E3A5F',
+  borderBottom: '2px solid var(--blue-500)',
   letterSpacing: '0.02em',
 };
 
@@ -186,7 +186,7 @@ function BasicInfoCard({
 }) {
   if (!data) {
     return (
-      <div style={{ padding: '24px', backgroundColor: '#F9FAFB', borderRadius: '8px', textAlign: 'center', color: '#9CA3AF', fontSize: '13px' }}>
+      <div style={{ padding: '24px', backgroundColor: 'var(--bg-surface)', borderRadius: '8px', textAlign: 'center', color: 'var(--text-muted)', fontSize: '13px' }}>
         1번탭(은퇴플랜 설계)에서 먼저 저장해주세요.
       </div>
     );
@@ -242,16 +242,16 @@ function BasicInfoCard({
   return (
     <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 20 }}>
       {/* 그룹1: 기간 설정 */}
-      <div style={{ padding: '16px 20px', backgroundColor: '#FAFBFC', borderRadius: 10, border: '1px solid #E5E7EB' }}>
+      <div style={{ padding: '16px 20px', backgroundColor: 'var(--bg-surface)', borderRadius: 10, border: '1px solid var(--border)' }}>
         <div style={groupTitle}>기간 설정</div>
         <div style={itemStyle}><span style={lbl}>플랜 시작</span><span style={accent}>{planStartAge != null ? `${planStartYear}년 (${planStartAge}세)` : '-'}</span></div>
         <div style={itemStyle}><span style={lbl}>희망 은퇴</span><span style={accent}>{retirementAge != null && retirementYear != null ? `${retirementYear}년 (${retirementAge}세)` : retirementAge != null ? `${retirementAge}세` : '-'}</span></div>
         <div style={itemStyle}><span style={lbl}>총 투자기간</span><span style={val}>{totalPeriod != null ? `${totalPeriod}년` : '-'}</span></div>
-        <div style={{ ...itemStyle, borderBottom: 'none' }}><span style={lbl}>구성</span><span style={{ fontSize: 13, color: '#374151' }}>적립 {savingsPeriod ?? '-'}년 + 거치 {holdingPeriod ?? '-'}년</span></div>
+        <div style={{ ...itemStyle, borderBottom: 'none' }}><span style={lbl}>구성</span><span style={{ fontSize: 13, color: 'var(--text-secondary)' }}>적립 {savingsPeriod ?? '-'}년 + 거치 {holdingPeriod ?? '-'}년</span></div>
       </div>
 
       {/* 그룹2: 투자 계획 */}
-      <div style={{ padding: '16px 20px', backgroundColor: '#FAFBFC', borderRadius: 10, border: '1px solid #E5E7EB' }}>
+      <div style={{ padding: '16px 20px', backgroundColor: 'var(--bg-surface)', borderRadius: 10, border: '1px solid var(--border)' }}>
         <div style={groupTitle}>투자 계획</div>
         <div style={itemStyle}><span style={lbl}>연적립금액 (평균)</span><span style={val}>{avgAnnualSavings > 0 ? fmtOk(avgAnnualSavings) : '-'}</span></div>
         <div style={itemStyle}><span style={lbl}>총거치금액</span><span style={val}>{totalHolding > 0 ? fmtOk(totalHolding) : '-'}</span></div>
@@ -261,8 +261,8 @@ function BasicInfoCard({
       {/* 그룹3: 목표 */}
       <div style={{ padding: '16px 20px', backgroundColor: '#F0F4FA', borderRadius: 10, border: '1px solid #D0DAE8' }}>
         <div style={groupTitle}>목표</div>
-        <div style={itemStyle}><span style={lbl}>예상 투자수익률</span><span style={{ ...val, color: '#16A34A' }}>{investRate != null ? `${(investRate * 100).toFixed(1)}%` : '-'}</span></div>
-        <div style={itemStyle}><span style={lbl}>예상 연금수익률</span><span style={{ ...val, color: '#16A34A' }}>{pensionRate != null ? `${(pensionRate * 100).toFixed(1)}%` : '-'}</span></div>
+        <div style={itemStyle}><span style={lbl}>예상 투자수익률</span><span style={{ ...val, color: 'var(--success)' }}>{investRate != null ? `${(investRate * 100).toFixed(1)}%` : '-'}</span></div>
+        <div style={itemStyle}><span style={lbl}>예상 연금수익률</span><span style={{ ...val, color: 'var(--success)' }}>{pensionRate != null ? `${(pensionRate * 100).toFixed(1)}%` : '-'}</span></div>
         <div style={itemStyle}>
           <span style={lbl}>은퇴당시 연금액</span>
           <span style={{ display: 'flex', alignItems: 'center' }}>
@@ -273,7 +273,7 @@ function BasicInfoCard({
         <div style={itemStyle}>
           <span style={lbl}>은퇴자금</span>
           <span style={{ display: 'flex', alignItems: 'center' }}>
-            <span style={{ fontSize: 16, fontWeight: 800, color: '#1E3A5F' }}>{retireFund > 0 ? fmtOk(retireFund) : '-'}</span>
+            <span style={{ fontSize: 16, fontWeight: 800, color: 'var(--blue-400)' }}>{retireFund > 0 ? fmtOk(retireFund) : '-'}</span>
             <span style={{ ...bdg, backgroundColor: useInflCalc ? '#DBEAFE' : '#F3F4F6', color: useInflCalc ? '#1D4ED8' : '#6B7280' }}>물가{useInflCalc ? 'O' : 'X'}</span>
           </span>
         </div>
@@ -527,10 +527,10 @@ function EditableCell({
           textAlign: 'right',
           fontSize: 12,
           padding: '3px 4px',
-          border: '1.5px solid #3B82F6',
+          border: '1.5px solid var(--blue-400)',
           borderRadius: 3,
           outline: 'none',
-          backgroundColor: '#EFF6FF',
+          backgroundColor: 'rgba(56,189,248,0.12)',
           fontVariantNumeric: 'tabular-nums',
         }}
       />
@@ -582,10 +582,10 @@ function LifetimeTable({
     textAlign: 'right',
     fontSize: '11px',
     fontWeight: 600,
-    color: '#6B7280',
-    borderBottom: '2px solid #E5E7EB',
+    color: 'var(--text-muted)',
+    borderBottom: '2px solid var(--border)',
     whiteSpace: 'nowrap',
-    backgroundColor: '#F9FAFB',
+    backgroundColor: 'var(--bg-surface)',
     position: 'sticky',
     top: 0,
     zIndex: 1,
@@ -613,14 +613,14 @@ function LifetimeTable({
             <th style={thCenter}>구분</th>
             <th style={thStyle}>누적원금</th>
             <th style={thStyle}>총 평가액</th>
-            <th style={{ ...thStyle, color: '#2563EB' }}>연적립금액 ✎</th>
-            <th style={{ ...thStyle, color: '#2563EB' }}>일시납금액 ✎</th>
-            <th style={{ ...thCenter, color: '#2563EB' }}>예상수익률 ✎</th>
+            <th style={{ ...thStyle, color: 'var(--blue-500)' }}>연적립금액 ✎</th>
+            <th style={{ ...thStyle, color: 'var(--blue-500)' }}>일시납금액 ✎</th>
+            <th style={{ ...thCenter, color: 'var(--blue-500)' }}>예상수익률 ✎</th>
             <th style={thStyle}>보정평가금액</th>
             <th style={thStyle}>누적 입금액</th>
-            <th style={{ ...thStyle, color: '#DC2626' }}>중도인출 ✎</th>
-            <th style={{ ...thStyle, color: '#DC2626' }}>중도인출누적</th>
-            <th style={{ ...thStyle, color: '#1E3A5F' }}>보정후순자산</th>
+            <th style={{ ...thStyle, color: 'var(--danger)' }}>중도인출 ✎</th>
+            <th style={{ ...thStyle, color: 'var(--danger)' }}>중도인출누적</th>
+            <th style={{ ...thStyle, color: 'var(--blue-400)' }}>보정후순자산</th>
             <th style={thCenter}>순자산수익률</th>
           </tr>
         </thead>
@@ -641,7 +641,7 @@ function LifetimeTable({
               textAlign: 'right',
               whiteSpace: 'nowrap',
               backgroundColor: bg,
-              borderBottom: '1px solid #F3F4F6',
+              borderBottom: '1px solid var(--border)',
               fontVariantNumeric: 'tabular-nums',
               fontWeight: row.isAdjusted ? 600 : undefined,
             };
@@ -786,7 +786,7 @@ function LifetimeTable({
           })}
         </tbody>
       </table>
-      <div style={{ textAlign: 'right', fontSize: 11, color: '#9CA3AF', marginTop: 4 }}>
+      <div style={{ textAlign: 'right', fontSize: 11, color: 'var(--text-muted)', marginTop: 4 }}>
         (단위: 만원) &nbsp;|&nbsp; ✎ 표시 열은 셀 클릭 시 직접 편집 가능 (연간투자흐름표 적용행 제외)
       </div>
     </div>
@@ -813,7 +813,7 @@ function AccordionSection({
   return (
     <div
       style={{
-        border: '1px solid #E5E7EB',
+        border: '1px solid var(--border)',
         borderRadius: '10px',
         overflow: 'hidden',
       }}
@@ -834,7 +834,7 @@ function AccordionSection({
         }}
       >
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-          <span style={{ fontSize: 14, fontWeight: 600, color: '#1E3A5F' }}>{title}</span>
+          <span style={{ fontSize: 14, fontWeight: 600, color: 'var(--blue-400)' }}>{title}</span>
           {badge && (
             <span
               style={{
@@ -842,8 +842,8 @@ function AccordionSection({
                 fontWeight: 600,
                 padding: '2px 8px',
                 borderRadius: 10,
-                backgroundColor: '#DBEAFE',
-                color: '#1D4ED8',
+                backgroundColor: 'rgba(56,189,248,0.16)',
+                color: 'var(--blue-600)',
               }}
             >
               {badge}
@@ -853,7 +853,7 @@ function AccordionSection({
         <span
           style={{
             fontSize: 18,
-            color: '#6B7280',
+            color: 'var(--text-muted)',
             transform: open ? 'rotate(180deg)' : 'none',
             transition: 'transform 0.2s',
             display: 'inline-block',
@@ -971,7 +971,7 @@ export function LifetimeRetirementFlow({
 
   if (loading) {
     return (
-      <div style={{ padding: 40, textAlign: 'center', color: '#9CA3AF', fontSize: 14 }}>
+      <div style={{ padding: 40, textAlign: 'center', color: 'var(--text-muted)', fontSize: 14 }}>
         데이터 로딩 중...
       </div>
     );
@@ -982,10 +982,10 @@ export function LifetimeRetirementFlow({
       <div
         style={{
           padding: '24px',
-          backgroundColor: '#F9FAFB',
+          backgroundColor: 'var(--bg-surface)',
           borderRadius: '8px',
           textAlign: 'center',
-          color: '#9CA3AF',
+          color: 'var(--text-muted)',
           fontSize: '14px',
         }}
       >
@@ -1009,7 +1009,7 @@ export function LifetimeRetirementFlow({
         badge={rows.length > 0 ? `${rows.length}행` : undefined}
       >
         {rows.length === 0 ? (
-          <div style={{ padding: 24, textAlign: 'center', color: '#9CA3AF', fontSize: 14 }}>
+          <div style={{ padding: 24, textAlign: 'center', color: 'var(--text-muted)', fontSize: 14 }}>
             현재나이 또는 은퇴플랜 데이터가 없습니다.
           </div>
         ) : (
@@ -1019,10 +1019,10 @@ export function LifetimeRetirementFlow({
               {/* 범례 */}
               <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap' }}>
                 {[
-                  { color: '#EFF6FF', border: '#BFDBFE', label: '적립기간', textColor: '#2563EB' },
-                  { color: '#FFFBEB', border: '#FDE68A', label: '거치기간', textColor: '#D97706' },
-                  { color: '#F0FDF4', border: '#BBF7D0', label: '은퇴 후', textColor: '#16A34A' },
-                  { color: '#DBEAFE', border: '#3B82F6', label: '보정된 행', textColor: '#1D4ED8', leftBar: true },
+                  { color: '#EFF6FF', border: 'rgba(56,189,248,0.35)', label: '적립기간', textColor: '#2563EB' },
+                  { color: '#FFFBEB', border: 'rgba(245,158,11,0.35)', label: '거치기간', textColor: '#D97706' },
+                  { color: '#F0FDF4', border: 'rgba(16,185,129,0.3)', label: '은퇴 후', textColor: '#16A34A' },
+                  { color: '#DBEAFE', border: 'var(--blue-400)', label: '보정된 행', textColor: '#1D4ED8', leftBar: true },
                 ].map(({ color, border, label, textColor, leftBar }) => (
                   <div
                     key={label}
@@ -1031,7 +1031,7 @@ export function LifetimeRetirementFlow({
                       alignItems: 'center',
                       gap: 6,
                       fontSize: 12,
-                      color: '#6B7280',
+                      color: 'var(--text-muted)',
                     }}
                   >
                     <div
@@ -1084,7 +1084,7 @@ export function LifetimeRetirementFlow({
       {/* C. 그래프 (아코디언) */}
       <AccordionSection title="100세 은퇴플로우 그래프" defaultOpen={true}>
         {chartData.length === 0 ? (
-          <div style={{ padding: 24, textAlign: 'center', color: '#9CA3AF', fontSize: 14 }}>
+          <div style={{ padding: 24, textAlign: 'center', color: 'var(--text-muted)', fontSize: 14 }}>
             데이터가 없습니다.
           </div>
         ) : (

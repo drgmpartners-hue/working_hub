@@ -70,13 +70,13 @@ export default function CoverPromoPage() {
               margin: 0,
               fontSize: '24px',
               fontWeight: 800,
-              color: '#1A1A2E',
+              color: 'var(--text-primary)',
               letterSpacing: '-0.5px',
             }}
           >
             표지 / 홍보페이지 디자인
           </h1>
-          <p style={{ margin: '6px 0 0', fontSize: '14px', color: '#6B7280' }}>
+          <p style={{ margin: '6px 0 0', fontSize: '14px', color: 'var(--text-muted)' }}>
             AI로 표지와 홍보 디자인을 자동 생성합니다
           </p>
         </div>

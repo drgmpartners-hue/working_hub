@@ -187,19 +187,19 @@ export function SuggestionEditor({ holdings, snapshotId, accountId, totalEvaluat
     padding: '10px 12px',
     fontSize: '0.75rem',
     fontWeight: 600,
-    color: '#6B7280',
+    color: 'var(--text-muted)',
     textAlign: 'right',
-    backgroundColor: '#F5F7FA',
-    borderBottom: '1px solid #E1E5EB',
+    backgroundColor: 'var(--bg-surface)',
+    borderBottom: '1px solid var(--border)',
     whiteSpace: 'nowrap',
   };
 
   const tdStyle: React.CSSProperties = {
     padding: '9px 12px',
     fontSize: '0.8125rem',
-    color: '#374151',
+    color: 'var(--text-secondary)',
     textAlign: 'right',
-    borderBottom: '1px solid #F3F4F6',
+    borderBottom: '1px solid var(--border)',
     whiteSpace: 'nowrap',
   };
 
@@ -207,9 +207,9 @@ export function SuggestionEditor({ holdings, snapshotId, accountId, totalEvaluat
     padding: '10px 12px',
     fontSize: '0.8125rem',
     fontWeight: 700,
-    color: '#1A1A2E',
+    color: 'var(--text-primary)',
     textAlign: 'right',
-    backgroundColor: '#F5F7FA',
+    backgroundColor: 'var(--bg-surface)',
     whiteSpace: 'nowrap',
   };
 
@@ -222,10 +222,10 @@ export function SuggestionEditor({ holdings, snapshotId, accountId, totalEvaluat
   return (
     <div
       style={{
-        border: '1px solid #E1E5EB',
+        border: '1px solid var(--border)',
         borderRadius: 12,
         overflow: 'hidden',
-        backgroundColor: '#FFFFFF',
+        backgroundColor: 'var(--bg-card)',
         marginTop: 16,
       }}
     >
@@ -233,21 +233,21 @@ export function SuggestionEditor({ holdings, snapshotId, accountId, totalEvaluat
       <div
         style={{
           padding: '14px 20px',
-          borderBottom: '1px solid #E1E5EB',
+          borderBottom: '1px solid var(--border)',
           display: 'flex',
           alignItems: 'center',
           gap: 10,
-          backgroundColor: '#FFFFFF',
+          backgroundColor: 'var(--bg-card)',
         }}
       >
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#1E3A5F" strokeWidth="2">
           <polyline points="23 6 13.5 15.5 8.5 10.5 1 18" />
           <polyline points="17 6 23 6 23 12" />
         </svg>
-        <span style={{ fontSize: '0.9375rem', fontWeight: 700, color: '#1A1A2E' }}>
+        <span style={{ fontSize: '0.9375rem', fontWeight: 700, color: 'var(--text-primary)' }}>
           리밸런싱 제안
         </span>
-        <span style={{ fontSize: '0.8125rem', color: '#6B7280' }}>
+        <span style={{ fontSize: '0.8125rem', color: 'var(--text-muted)' }}>
           수정비중을 입력하면 변경 후 평가금액이 자동 계산됩니다.
         </span>
         <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 6 }}>
@@ -299,18 +299,18 @@ export function SuggestionEditor({ holdings, snapshotId, accountId, totalEvaluat
                   }}
                   style={{ transition: 'background-color 0.1s ease', backgroundColor: isNewItem ? '#F0F7FF' : 'transparent' }}
                 >
-                  <td style={{ ...tdStyle, textAlign: 'center', color: '#9CA3AF' }}>
+                  <td style={{ ...tdStyle, textAlign: 'center', color: 'var(--text-muted)' }}>
                     {h.seq ?? idx + 1}
                   </td>
                   <td style={{ ...tdStyle, textAlign: 'left' }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                      <span style={{ fontWeight: 500, color: '#1A1A2E' }}>{h.product_name}</span>
+                      <span style={{ fontWeight: 500, color: 'var(--text-primary)' }}>{h.product_name}</span>
                       {isNewItem && !isRow1Product && (
-                        <span style={{ fontSize: '0.625rem', fontWeight: 700, color: '#1D4ED8', backgroundColor: '#DBEAFE', border: '1px solid #93C5FD', padding: '1px 6px', borderRadius: 4, flexShrink: 0 }}>신규</span>
+                        <span style={{ fontSize: '0.625rem', fontWeight: 700, color: 'var(--blue-600)', backgroundColor: 'rgba(56,189,248,0.16)', border: '1px solid rgba(56,189,248,0.35)', padding: '1px 6px', borderRadius: 4, flexShrink: 0 }}>신규</span>
                       )}
                     </div>
                     {h.product_type && (
-                      <div style={{ fontSize: '0.6875rem', color: '#9CA3AF', marginTop: 1 }}>
+                      <div style={{ fontSize: '0.6875rem', color: 'var(--text-muted)', marginTop: 1 }}>
                         {h.product_type}
                       </div>
                     )}
@@ -358,12 +358,12 @@ export function SuggestionEditor({ holdings, snapshotId, accountId, totalEvaluat
                           borderRadius: 6,
                           outline: 'none',
                           textAlign: 'right',
-                          color: '#1A1A2E',
-                          backgroundColor: '#fff',
+                          color: 'var(--text-primary)',
+                          backgroundColor: 'var(--bg-card)',
                           transition: 'border-color 0.15s',
                         }}
                       />
-                      <span style={{ fontSize: '0.75rem', color: '#6B7280' }}>%</span>
+                      <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>%</span>
                     </div>
                   </td>
 
@@ -406,17 +406,17 @@ export function SuggestionEditor({ holdings, snapshotId, accountId, totalEvaluat
       <div
         style={{
           padding: '14px 20px',
-          borderTop: '1px solid #E1E5EB',
+          borderTop: '1px solid var(--border)',
           display: 'flex',
           alignItems: 'center',
           gap: 10,
           flexWrap: 'wrap',
-          backgroundColor: '#F9FAFB',
+          backgroundColor: 'var(--bg-surface)',
         }}
       >
         {/* Weight hint */}
         {!isValid && (
-          <span style={{ fontSize: '0.8125rem', color: '#EF4444', fontWeight: 500 }}>
+          <span style={{ fontSize: '0.8125rem', color: 'var(--danger)', fontWeight: 500 }}>
             수정비중 합계가 100%가 되어야 제안을 발송할 수 있습니다. (현재: {totalWeight.toFixed(1)}%)
           </span>
         )}
@@ -434,8 +434,8 @@ export function SuggestionEditor({ holdings, snapshotId, accountId, totalEvaluat
                   padding: '8px 16px',
                   fontSize: '0.8125rem',
                   fontWeight: 600,
-                  color: '#1E3A5F',
-                  backgroundColor: '#EEF2F7',
+                  color: 'var(--blue-400)',
+                  backgroundColor: 'var(--bg-card-2)',
                   border: '1px solid #C7D2E2',
                   borderRadius: 8,
                   cursor: 'pointer',
@@ -465,8 +465,8 @@ export function SuggestionEditor({ holdings, snapshotId, accountId, totalEvaluat
                   fontSize: '0.8125rem',
                   fontWeight: 600,
                   color: '#fff',
-                  backgroundColor: '#1E3A5F',
-                  border: '1px solid #1E3A5F',
+                  backgroundColor: 'var(--blue-600)',
+                  border: '1px solid var(--blue-500)',
                   borderRadius: 8,
                   cursor: 'pointer',
                   transition: 'background-color 0.15s',

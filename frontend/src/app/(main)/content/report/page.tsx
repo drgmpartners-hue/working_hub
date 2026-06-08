@@ -70,13 +70,13 @@ export default function ReportPage() {
               margin: 0,
               fontSize: '24px',
               fontWeight: 800,
-              color: '#1A1A2E',
+              color: 'var(--text-primary)',
               letterSpacing: '-0.5px',
             }}
           >
             보고서 제작
           </h1>
-          <p style={{ margin: '6px 0 0', fontSize: '14px', color: '#6B7280' }}>
+          <p style={{ margin: '6px 0 0', fontSize: '14px', color: 'var(--text-muted)' }}>
             AI로 브랜드 보고서를 자동 생성합니다
           </p>
         </div>

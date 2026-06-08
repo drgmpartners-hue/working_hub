@@ -42,7 +42,7 @@ const tooltipFmt = (value: unknown, name: unknown) => {
   return [`${v.toLocaleString()}원`, n];
 };
 
-const tooltipStyle = { fontSize: 12, borderRadius: 8, border: '1px solid #E5E7EB' };
+const tooltipStyle = { fontSize: 12, borderRadius: 8, border: '1px solid var(--border)' };
 
 /* ---- 1. 투자흐름 그래프 ---- */
 
@@ -71,7 +71,7 @@ export function AnnualFlowChart({ data, visibility, noAnimation }: FlowChartProp
   return (
     <ResponsiveContainer width="100%" height={320}>
       <ComposedChart data={chartData} margin={{ top: 10, right: 40, left: 10, bottom: 5 }}>
-        <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#F3F4F6" />
+        <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#243049" />
         <XAxis dataKey="year" fontSize={12} tickLine={false} axisLine={{ stroke: '#E5E7EB' }} />
         <YAxis yAxisId="left" fontSize={11} tickLine={false} axisLine={false} tickFormatter={formatAmount} width={60} />
         <YAxis yAxisId="right" orientation="right" fontSize={11} tickLine={false} axisLine={false} tickFormatter={(v: number) => `${v.toFixed(1)}%`} width={50} />
@@ -127,7 +127,7 @@ export function NetAssetChart({ data, visibility, noAnimation }: NetAssetChartPr
   return (
     <ResponsiveContainer width="100%" height={320}>
       <ComposedChart data={chartData} margin={{ top: 10, right: 40, left: 10, bottom: 5 }}>
-        <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#F3F4F6" />
+        <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#243049" />
         <XAxis dataKey="year" fontSize={12} tickLine={false} axisLine={{ stroke: '#E5E7EB' }} />
         <YAxis yAxisId="left" fontSize={11} tickLine={false} axisLine={false} tickFormatter={formatAmount} width={60} />
         <YAxis yAxisId="right" orientation="right" fontSize={11} tickLine={false} axisLine={false} tickFormatter={(v: number) => `${v.toFixed(1)}%`} width={50} />
@@ -136,7 +136,7 @@ export function NetAssetChart({ data, visibility, noAnimation }: NetAssetChartPr
           <Bar yAxisId="left" dataKey="누적입금액" fill="#4A90D9" opacity={0.5} barSize={28} radius={[3, 3, 0, 0]} isAnimationActive={!noAnimation} />
         )}
         {visibility.netAsset && (
-          <Bar yAxisId="left" dataKey="순자산" fill="#1E3A5F" opacity={0.85} barSize={28} radius={[3, 3, 0, 0]} isAnimationActive={!noAnimation} />
+          <Bar yAxisId="left" dataKey="순자산" fill="#3B82F6" opacity={0.85} barSize={28} radius={[3, 3, 0, 0]} isAnimationActive={!noAnimation} />
         )}
         {visibility.cumulativeProfit && (
           <Bar yAxisId="left" dataKey="순이익" fill="#10B981" opacity={0.7} barSize={28} radius={[3, 3, 0, 0]} isAnimationActive={!noAnimation} />

@@ -231,10 +231,10 @@ function Btn({
     whiteSpace: 'nowrap',
   };
   const variants: Record<string, React.CSSProperties> = {
-    primary: { backgroundColor: '#1E3A5F', color: '#fff', borderColor: '#1E3A5F' },
-    secondary: { backgroundColor: '#EFF6FF', color: '#1D4ED8', borderColor: '#BFDBFE' },
-    ghost: { backgroundColor: 'transparent', color: '#374151', borderColor: '#E1E5EB' },
-    danger: { backgroundColor: '#FEF2F2', color: '#DC2626', borderColor: '#FCA5A5' },
+    primary: { backgroundColor: 'var(--blue-600)', color: '#fff', borderColor: 'var(--blue-500)' },
+    secondary: { backgroundColor: 'rgba(56,189,248,0.12)', color: 'var(--blue-600)', borderColor: 'rgba(56,189,248,0.35)' },
+    ghost: { backgroundColor: 'transparent', color: 'var(--text-secondary)', borderColor: 'var(--border)' },
+    danger: { backgroundColor: 'var(--danger-bg)', color: 'var(--danger)', borderColor: 'rgba(239,68,68,0.35)' },
   };
   return (
     <button
@@ -249,11 +249,11 @@ function Btn({
 
 function Badge({ children, color }: { children: React.ReactNode; color: 'blue' | 'red' | 'green' | 'gray' | 'navy' }) {
   const colors: Record<string, React.CSSProperties> = {
-    blue: { backgroundColor: '#EFF6FF', color: '#1D4ED8', border: '1px solid #BFDBFE' },
-    red: { backgroundColor: '#FEF2F2', color: '#DC2626', border: '1px solid #FECACA' },
-    green: { backgroundColor: '#ECFDF5', color: '#059669', border: '1px solid #A7F3D0' },
-    gray: { backgroundColor: '#F3F4F6', color: '#6B7280', border: '1px solid #E5E7EB' },
-    navy: { backgroundColor: '#EFF6FF', color: '#1E3A5F', border: '1px solid #BFDBFE' },
+    blue: { backgroundColor: 'rgba(56,189,248,0.12)', color: 'var(--blue-600)', border: '1px solid rgba(56,189,248,0.35)' },
+    red: { backgroundColor: 'var(--danger-bg)', color: 'var(--danger)', border: '1px solid rgba(239,68,68,0.35)' },
+    green: { backgroundColor: 'var(--success-bg)', color: 'var(--success)', border: '1px solid rgba(16,185,129,0.35)' },
+    gray: { backgroundColor: 'var(--bg-surface)', color: 'var(--text-muted)', border: '1px solid var(--border)' },
+    navy: { backgroundColor: 'rgba(56,189,248,0.12)', color: 'var(--blue-400)', border: '1px solid rgba(56,189,248,0.35)' },
   };
   return (
     <span
@@ -331,7 +331,7 @@ function SelectWithAdd({ value, onChange, options, placeholder, onAddOption, sty
             flex: 1,
             padding: '4px 8px',
             fontSize: '0.8125rem',
-            border: '1px solid #3B82F6',
+            border: '1px solid var(--blue-400)',
             borderRadius: 5,
             outline: 'none',
           }}
@@ -339,13 +339,13 @@ function SelectWithAdd({ value, onChange, options, placeholder, onAddOption, sty
         <button
           onClick={handleAdd}
           disabled={saving}
-          style={{ padding: '4px 8px', fontSize: '0.75rem', backgroundColor: '#1E3A5F', color: '#fff', border: 'none', borderRadius: 5, cursor: 'pointer' }}
+          style={{ padding: '4px 8px', fontSize: '0.75rem', backgroundColor: 'var(--blue-600)', color: '#fff', border: 'none', borderRadius: 5, cursor: 'pointer' }}
         >
           {saving ? '...' : '추가'}
         </button>
         <button
           onClick={() => setAdding(false)}
-          style={{ padding: '4px 8px', fontSize: '0.75rem', backgroundColor: '#F3F4F6', color: '#374151', border: '1px solid #E5E7EB', borderRadius: 5, cursor: 'pointer' }}
+          style={{ padding: '4px 8px', fontSize: '0.75rem', backgroundColor: 'var(--bg-surface)', color: 'var(--text-secondary)', border: '1px solid var(--border)', borderRadius: 5, cursor: 'pointer' }}
         >
           취소
         </button>
@@ -361,11 +361,11 @@ function SelectWithAdd({ value, onChange, options, placeholder, onAddOption, sty
         width: '100%',
         padding: '5px 8px',
         fontSize: '0.8125rem',
-        border: '1px solid #E1E5EB',
+        border: '1px solid var(--border)',
         borderRadius: 6,
         outline: 'none',
-        color: value ? '#1A1A2E' : '#9CA3AF',
-        backgroundColor: '#FFFFFF',
+        color: value ? 'var(--text-primary)' : '#9CA3AF',
+        backgroundColor: 'var(--bg-card)',
         cursor: 'pointer',
         ...style,
       }}
@@ -1124,8 +1124,8 @@ export default function WrapAccountsPage() {
   const cellStyle: React.CSSProperties = {
     padding: '6px 8px',
     fontSize: '0.78rem',
-    color: '#374151',
-    borderBottom: '1px solid #E5E7EB',
+    color: 'var(--text-secondary)',
+    borderBottom: '1px solid var(--border)',
     verticalAlign: 'middle',
     whiteSpace: 'nowrap',
   };
@@ -1134,8 +1134,8 @@ export default function WrapAccountsPage() {
     padding: '8px 8px',
     fontSize: '0.7rem',
     fontWeight: 700,
-    color: '#E2E8F0',
-    backgroundColor: '#1E3A5F',
+    color: 'var(--text-muted)',
+    backgroundColor: 'var(--bg-surface)',
     whiteSpace: 'nowrap',
     position: 'sticky',
     top: 0,
@@ -1148,7 +1148,7 @@ export default function WrapAccountsPage() {
     width: '100%',
     padding: '3px 6px',
     fontSize: '0.78rem',
-    border: '1px solid #3B82F6',
+    border: '1px solid var(--blue-400)',
     borderRadius: 4,
     outline: 'none',
     minWidth: 0,
@@ -1171,14 +1171,14 @@ export default function WrapAccountsPage() {
         return <Badge color={p.is_active ? 'green' : 'gray'}>{p.is_active ? '활성' : '비활성'}</Badge>;
       case 'total_expected_return':
         return p.total_expected_return != null
-          ? <span style={{ color: '#059669', fontWeight: 600 }}>{Number(p.total_expected_return).toFixed(1)}%</span>
+          ? <span style={{ color: 'var(--success)', fontWeight: 600 }}>{Number(p.total_expected_return).toFixed(1)}%</span>
           : dash;
       case 'annual_expected_return':
         return p.annual_expected_return != null
-          ? <span style={{ color: '#059669', fontWeight: 600 }}>{Number(p.annual_expected_return).toFixed(1)}%</span>
+          ? <span style={{ color: 'var(--success)', fontWeight: 600 }}>{Number(p.annual_expected_return).toFixed(1)}%</span>
           : dash;
       case 'product_name':
-        return <span style={{ fontWeight: 600, color: '#1E3A5F' }}>{p.product_name}</span>;
+        return <span style={{ fontWeight: 600, color: 'var(--blue-400)' }}>{p.product_name}</span>;
       default: {
         const v = (p as unknown as Record<string, unknown>)[col];
         return v ? <span>{String(v)}</span> : dash;
@@ -1256,14 +1256,14 @@ export default function WrapAccountsPage() {
       display: 'block',
       fontSize: '0.75rem',
       fontWeight: 600,
-      color: '#6B7280',
+      color: 'var(--text-muted)',
       marginBottom: 3,
     };
     const iStyle: React.CSSProperties = {
       width: '100%',
       padding: '6px 10px',
       fontSize: '0.875rem',
-      border: '1px solid #E1E5EB',
+      border: '1px solid var(--border)',
       borderRadius: 6,
       outline: 'none',
       boxSizing: 'border-box',
@@ -1323,7 +1323,7 @@ export default function WrapAccountsPage() {
 
     return (
       <div>
-        <label style={lStyle}>{label}{required && <span style={{ color: '#EF4444', marginLeft: 2 }}>*</span>}</label>
+        <label style={lStyle}>{label}{required && <span style={{ color: 'var(--danger)', marginLeft: 2 }}>*</span>}</label>
         {renderInput()}
       </div>
     );
@@ -1380,7 +1380,7 @@ export default function WrapAccountsPage() {
           href="/dashboard"
           style={{
             display: 'inline-flex', alignItems: 'center', gap: 5,
-            marginBottom: 10, color: '#6B7280', fontSize: '0.8125rem',
+            marginBottom: 10, color: 'var(--text-muted)', fontSize: '0.8125rem',
             textDecoration: 'none',
           }}
         >
@@ -1390,14 +1390,14 @@ export default function WrapAccountsPage() {
           대시보드로 돌아가기
         </Link>
 
-        <div style={{ width: 32, height: 4, borderRadius: 2, background: 'linear-gradient(90deg,#3B82F6 0%,#1E3A5F 100%)', marginBottom: 10 }} />
+        <div style={{ width: 32, height: 4, borderRadius: 2, background: 'linear-gradient(90deg,var(--blue-400) 0%,var(--blue-600) 100%)', marginBottom: 10 }} />
 
         <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', flexWrap: 'wrap', gap: 10 }}>
           <div>
-            <h1 style={{ margin: 0, fontSize: '1.375rem', fontWeight: 700, color: '#1E3A5F', letterSpacing: '-0.02em' }}>
+            <h1 style={{ margin: 0, fontSize: '1.375rem', fontWeight: 700, color: 'var(--blue-400)', letterSpacing: '-0.02em' }}>
               투자상품 관리
             </h1>
-            <p style={{ margin: '4px 0 0', fontSize: '0.875rem', color: '#6B7280' }}>
+            <p style={{ margin: '4px 0 0', fontSize: '0.875rem', color: 'var(--text-muted)' }}>
               투자 상품을 등록하고 관리합니다.
             </p>
           </div>
@@ -1416,7 +1416,7 @@ export default function WrapAccountsPage() {
               📝 Notion
             </Btn>
             <Btn variant="ghost" onClick={handleNotionSync} disabled={syncLoading}
-              style={{ fontSize: 11, background: syncLoading ? '#F3F4F6' : '#EFF6FF', color: '#1D4ED8', borderColor: '#93C5FD' }}>
+              style={{ fontSize: 11, background: syncLoading ? '#F3F4F6' : '#EFF6FF', color: 'var(--blue-600)', borderColor: 'rgba(56,189,248,0.35)' }}>
               {syncLoading ? '🔄 동기화 중...' : '🔄 Notion 동기화'}
             </Btn>
             <Btn variant="primary" onClick={openAdd}>
@@ -1428,65 +1428,65 @@ export default function WrapAccountsPage() {
 
       {/* Sync Result */}
       {syncResult && (
-        <div style={{ marginBottom: 14, padding: '10px 16px', backgroundColor: '#F0FDF4', border: '1px solid #86EFAC', borderRadius: 8, fontSize: 13, color: '#166534', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+        <div style={{ marginBottom: 14, padding: '10px 16px', backgroundColor: 'var(--success-bg)', border: '1px solid rgba(16,185,129,0.35)', borderRadius: 8, fontSize: 13, color: '#166534', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
           <span>
             동기화 완료 — 전체 {syncResult.total}건 중{' '}
-            <strong style={{ color: '#1D4ED8' }}>추가 {syncResult.added}건</strong>,{' '}
-            <strong style={{ color: '#D97706' }}>업데이트 {syncResult.updated}건</strong>,{' '}
-            <span style={{ color: '#9CA3AF' }}>스킵 {syncResult.skipped}건</span> (상품명 없음)
+            <strong style={{ color: 'var(--blue-600)' }}>추가 {syncResult.added}건</strong>,{' '}
+            <strong style={{ color: 'var(--warning)' }}>업데이트 {syncResult.updated}건</strong>,{' '}
+            <span style={{ color: 'var(--text-muted)' }}>스킵 {syncResult.skipped}건</span> (상품명 없음)
           </span>
-          <button onClick={() => setSyncResult(null)} style={{ background: 'none', border: 'none', color: '#6B7280', cursor: 'pointer', fontSize: 16 }}>×</button>
+          <button onClick={() => setSyncResult(null)} style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', fontSize: 16 }}>×</button>
         </div>
       )}
 
       {/* Toolbar */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 14, padding: '10px 14px', backgroundColor: '#fff', borderRadius: 10, border: '1px solid #E1E5EB' }}>
-        <span style={{ fontSize: 11, fontWeight: 500, color: '#6B7280' }}>상태</span>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 14, padding: '10px 14px', backgroundColor: 'var(--bg-card)', borderRadius: 10, border: '1px solid var(--border)' }}>
+        <span style={{ fontSize: 11, fontWeight: 500, color: 'var(--text-muted)' }}>상태</span>
         <select value={filterStatus} onChange={e => setFilterStatus(e.target.value as typeof filterStatus)}
-          style={{ padding: '3px 8px', fontSize: 12, border: '1px solid #E1E5EB', borderRadius: 5, outline: 'none', cursor: 'pointer' }}>
+          style={{ padding: '3px 8px', fontSize: 12, border: '1px solid var(--border)', borderRadius: 5, outline: 'none', cursor: 'pointer' }}>
           <option value="all">전체</option><option value="active">활성</option><option value="inactive">비활성</option>
         </select>
-        <span style={{ fontSize: 11, fontWeight: 500, color: '#6B7280' }}>카테고리</span>
+        <span style={{ fontSize: 11, fontWeight: 500, color: 'var(--text-muted)' }}>카테고리</span>
         <select value={filterCategory} onChange={e => setFilterCategory(e.target.value)}
-          style={{ padding: '3px 8px', fontSize: 12, border: '1px solid #E1E5EB', borderRadius: 5, outline: 'none', cursor: 'pointer', maxWidth: 120 }}>
+          style={{ padding: '3px 8px', fontSize: 12, border: '1px solid var(--border)', borderRadius: 5, outline: 'none', cursor: 'pointer', maxWidth: 120 }}>
           <option value="">전체</option>{uniqueCategories.map(c => <option key={c} value={c!}>{c}</option>)}
         </select>
-        <span style={{ fontSize: 11, fontWeight: 500, color: '#6B7280' }}>자산(1)</span>
+        <span style={{ fontSize: 11, fontWeight: 500, color: 'var(--text-muted)' }}>자산(1)</span>
         <select value={filterAsset1} onChange={e => setFilterAsset1(e.target.value)}
-          style={{ padding: '3px 8px', fontSize: 12, border: '1px solid #E1E5EB', borderRadius: 5, outline: 'none', cursor: 'pointer', maxWidth: 120 }}>
+          style={{ padding: '3px 8px', fontSize: 12, border: '1px solid var(--border)', borderRadius: 5, outline: 'none', cursor: 'pointer', maxWidth: 120 }}>
           <option value="">전체</option>{uniqueAsset1.map(c => <option key={c} value={c!}>{c}</option>)}
         </select>
-        <span style={{ fontSize: 11, fontWeight: 500, color: '#6B7280' }}>자산(2)</span>
+        <span style={{ fontSize: 11, fontWeight: 500, color: 'var(--text-muted)' }}>자산(2)</span>
         <select value={filterAsset2} onChange={e => setFilterAsset2(e.target.value)}
-          style={{ padding: '3px 8px', fontSize: 12, border: '1px solid #E1E5EB', borderRadius: 5, outline: 'none', cursor: 'pointer', maxWidth: 120 }}>
+          style={{ padding: '3px 8px', fontSize: 12, border: '1px solid var(--border)', borderRadius: 5, outline: 'none', cursor: 'pointer', maxWidth: 120 }}>
           <option value="">전체</option>{uniqueAsset2.map(c => <option key={c} value={c!}>{c}</option>)}
         </select>
         <button onClick={() => setFreezeCols(f => !f)}
-          style={{ padding: '4px 10px', borderRadius: 5, border: '1px solid #D1D5DB', background: freezeCols ? '#EFF6FF' : '#fff', color: freezeCols ? '#1D4ED8' : '#6B7280', fontSize: 11, fontWeight: 500, cursor: 'pointer' }}>
+          style={{ padding: '4px 10px', borderRadius: 5, border: '1px solid var(--border-strong)', background: freezeCols ? '#EFF6FF' : '#fff', color: freezeCols ? '#1D4ED8' : '#6B7280', fontSize: 11, fontWeight: 500, cursor: 'pointer' }}>
           {freezeCols ? '🔒 열 고정' : '🔓 고정 해제'}
         </button>
         {selectedIds.size > 0 && (
           <button onClick={bulkDelete} disabled={bulkDeleting}
-            style={{ marginLeft: 8, padding: '5px 14px', borderRadius: 6, border: 'none', background: '#EF4444', color: '#fff', fontSize: 12, fontWeight: 600, cursor: bulkDeleting ? 'wait' : 'pointer', opacity: bulkDeleting ? 0.6 : 1 }}>
+            style={{ marginLeft: 8, padding: '5px 14px', borderRadius: 6, border: 'none', background: 'var(--danger)', color: '#fff', fontSize: 12, fontWeight: 600, cursor: bulkDeleting ? 'wait' : 'pointer', opacity: bulkDeleting ? 0.6 : 1 }}>
             {bulkDeleting ? '삭제 중...' : `선택 ${selectedIds.size}건 삭제`}
           </button>
         )}
-        <span style={{ marginLeft: 'auto', fontSize: '0.8125rem', color: '#6B7280' }}>
+        <span style={{ marginLeft: 'auto', fontSize: '0.8125rem', color: 'var(--text-muted)' }}>
           총 {filtered.length}개
         </span>
       </div>
 
       {/* Error */}
       {error && (
-        <div style={{ marginBottom: 14, padding: '10px 14px', backgroundColor: '#FEF2F2', border: '1px solid #FCA5A5', borderRadius: 8, color: '#DC2626', fontSize: '0.875rem' }}>
+        <div style={{ marginBottom: 14, padding: '10px 14px', backgroundColor: 'var(--danger-bg)', border: '1px solid rgba(239,68,68,0.35)', borderRadius: 8, color: 'var(--danger)', fontSize: '0.875rem' }}>
           {error}
         </div>
       )}
 
       {/* Horizontal scrollable table */}
       <div style={{
-        backgroundColor: '#fff',
-        border: '1px solid #E1E5EB',
+        backgroundColor: 'var(--bg-card)',
+        border: '1px solid var(--border)',
         borderRadius: 10,
         overflow: 'hidden',
         boxShadow: '0 1px 4px rgba(0,0,0,0.06)',
@@ -1542,13 +1542,13 @@ export default function WrapAccountsPage() {
             <tbody>
               {loading ? (
                 <tr>
-                  <td colSpan={columns.length} style={{ ...cellStyle, textAlign: 'center', padding: 40, color: '#9CA3AF' }}>
+                  <td colSpan={columns.length} style={{ ...cellStyle, textAlign: 'center', padding: 40, color: 'var(--text-muted)' }}>
                     불러오는 중...
                   </td>
                 </tr>
               ) : filtered.length === 0 ? (
                 <tr>
-                  <td colSpan={columns.length} style={{ ...cellStyle, textAlign: 'center', padding: 40, color: '#9CA3AF' }}>
+                  <td colSpan={columns.length} style={{ ...cellStyle, textAlign: 'center', padding: 40, color: 'var(--text-muted)' }}>
                     등록된 투자 상품이 없습니다.
                   </td>
                 </tr>
@@ -1575,7 +1575,7 @@ export default function WrapAccountsPage() {
 
                         if (col.key === 'no') {
                           return (
-                            <td key="no" style={{ ...cellStyle, textAlign: 'center', width: col.width, color: '#9CA3AF', ...stickyStyle }}>
+                            <td key="no" style={{ ...cellStyle, textAlign: 'center', width: col.width, color: 'var(--text-muted)', ...stickyStyle }}>
                               {(p as typeof p & { _origNo: number })._origNo}
                             </td>
                           );
@@ -1634,7 +1634,7 @@ export default function WrapAccountsPage() {
             <button
               onClick={nOpenSelector}
               disabled={nLoading}
-              style={{ width: '100%', padding: 9, borderRadius: 8, border: '1px dashed #CBD5E1', background: '#F8FAFC', color: '#374151', fontSize: 13, fontWeight: 500, cursor: nLoading ? 'wait' : 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}
+              style={{ width: '100%', padding: 9, borderRadius: 8, border: '1px dashed var(--border-strong)', background: 'var(--bg-surface)', color: 'var(--text-secondary)', fontSize: 13, fontWeight: 500, cursor: nLoading ? 'wait' : 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}
             >
               {nLoading ? '연결 중...' : (
                 <>
@@ -1649,30 +1649,30 @@ export default function WrapAccountsPage() {
           )}
 
           {nError && (
-            <div style={{ marginTop: 6, padding: '6px 10px', borderRadius: 6, background: '#FEF2F2', border: '1px solid #FECACA', fontSize: 12, color: '#DC2626', display: 'flex', justifyContent: 'space-between' }}>
+            <div style={{ marginTop: 6, padding: '6px 10px', borderRadius: 6, background: 'var(--danger-bg)', border: '1px solid rgba(239,68,68,0.35)', fontSize: 12, color: 'var(--danger)', display: 'flex', justifyContent: 'space-between' }}>
               <span>{nError}</span>
-              <button onClick={nReset} style={{ background: 'none', border: 'none', color: '#DC2626', textDecoration: 'underline', cursor: 'pointer', fontSize: 12 }}>닫기</button>
+              <button onClick={nReset} style={{ background: 'none', border: 'none', color: 'var(--danger)', textDecoration: 'underline', cursor: 'pointer', fontSize: 12 }}>닫기</button>
             </div>
           )}
 
           {nStep === 'selectDb' && (
-            <div style={{ border: '1px solid #E5E7EB', borderRadius: 8, overflow: 'hidden' }}>
-              <div style={{ padding: '7px 10px', background: '#F0F4FA', fontSize: 12, fontWeight: 600, color: '#1E3A5F', display: 'flex', justifyContent: 'space-between' }}>
+            <div style={{ border: '1px solid var(--border)', borderRadius: 8, overflow: 'hidden' }}>
+              <div style={{ padding: '7px 10px', background: '#F0F4FA', fontSize: 12, fontWeight: 600, color: 'var(--blue-400)', display: 'flex', justifyContent: 'space-between' }}>
                 <span>데이터베이스 선택</span>
-                <button onClick={nReset} style={{ background: 'none', border: 'none', color: '#9CA3AF', cursor: 'pointer', fontSize: 12 }}>취소</button>
+                <button onClick={nReset} style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', fontSize: 12 }}>취소</button>
               </div>
-              <div style={{ padding: '6px 8px', borderBottom: '1px solid #E5E7EB' }}>
+              <div style={{ padding: '6px 8px', borderBottom: '1px solid var(--border)' }}>
                 <input type="text" placeholder="검색..." value={nDbSearch} onChange={e => setNDbSearch(e.target.value)}
-                  style={{ width: '100%', padding: '5px 8px', borderRadius: 6, border: '1px solid #D1D5DB', fontSize: 12, outline: 'none', boxSizing: 'border-box' }} />
+                  style={{ width: '100%', padding: '5px 8px', borderRadius: 6, border: '1px solid var(--border-strong)', fontSize: 12, outline: 'none', boxSizing: 'border-box' }} />
               </div>
               {nLoading ? (
-                <div style={{ padding: 20, textAlign: 'center', color: '#6B7280', fontSize: 13 }}>불러오는 중...</div>
+                <div style={{ padding: 20, textAlign: 'center', color: 'var(--text-muted)', fontSize: 13 }}>불러오는 중...</div>
               ) : (
                 <div style={{ maxHeight: 180, overflowY: 'auto' }}>
                   {nDbs.filter(d => !nDbSearch || d.title.toLowerCase().includes(nDbSearch.toLowerCase())).map(d => (
                     <button key={d.id}
                       onClick={() => { setNDbSearch(''); setNSelectedDbTitle(d.title); nLoadRows(d.id); }}
-                      style={{ width: '100%', padding: '9px 10px', border: 'none', borderBottom: '1px solid #F3F4F6', background: '#fff', textAlign: 'left', cursor: 'pointer', fontSize: 13, display: 'flex', alignItems: 'center', gap: 8 }}
+                      style={{ width: '100%', padding: '9px 10px', border: 'none', borderBottom: '1px solid var(--border)', background: 'var(--bg-card)', textAlign: 'left', cursor: 'pointer', fontSize: 13, display: 'flex', alignItems: 'center', gap: 8 }}
                       onMouseOver={e => (e.currentTarget.style.background = '#F9FAFB')}
                       onMouseOut={e => (e.currentTarget.style.background = '#fff')}
                     >
@@ -1686,25 +1686,25 @@ export default function WrapAccountsPage() {
           )}
 
           {nStep === 'mapping' && (
-            <div style={{ border: '1px solid #E5E7EB', borderRadius: 8, overflow: 'hidden' }}>
-              <div style={{ padding: '7px 10px', background: '#F0F4FA', fontSize: 12, fontWeight: 600, color: '#1E3A5F', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <div style={{ border: '1px solid var(--border)', borderRadius: 8, overflow: 'hidden' }}>
+              <div style={{ padding: '7px 10px', background: '#F0F4FA', fontSize: 12, fontWeight: 600, color: 'var(--blue-400)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <span>필드 매핑 + 상품 선택 {nSelectedDbTitle ? `(${nSelectedDbTitle})` : ''}</span>
                 <div style={{ display: 'flex', gap: 8 }}>
                   <button onClick={() => { clearNotionConfig(); setNRows([]); setNCols([]); nFetchDbList(); }}
-                    style={{ background: 'none', border: 'none', color: '#3B82F6', cursor: 'pointer', fontSize: 11 }}>DB 변경</button>
-                  <button onClick={nReset} style={{ background: 'none', border: 'none', color: '#9CA3AF', cursor: 'pointer', fontSize: 12 }}>취소</button>
+                    style={{ background: 'none', border: 'none', color: 'var(--blue-400)', cursor: 'pointer', fontSize: 11 }}>DB 변경</button>
+                  <button onClick={nReset} style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', fontSize: 12 }}>취소</button>
                 </div>
               </div>
               {nLoading ? (
-                <div style={{ padding: 20, textAlign: 'center', color: '#6B7280', fontSize: 13 }}>데이터 불러오는 중...</div>
+                <div style={{ padding: 20, textAlign: 'center', color: 'var(--text-muted)', fontSize: 13 }}>데이터 불러오는 중...</div>
               ) : (
                 <>
-                  <div style={{ padding: '8px 10px', background: '#FAFBFC', borderBottom: '1px solid #E5E7EB' }}>
-                    <div style={{ fontSize: 11, color: '#6B7280', marginBottom: 6 }}>Notion 컬럼 → 상품 필드 매핑</div>
+                  <div style={{ padding: '8px 10px', background: 'var(--bg-surface)', borderBottom: '1px solid var(--border)' }}>
+                    <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 6 }}>Notion 컬럼 → 상품 필드 매핑</div>
                     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 5 }}>
                       {NOTION_MAP_FIELDS.map(f => (
                         <div key={f.k} style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 11 }}>
-                          <span style={{ width: 70, color: '#374151', fontWeight: 500, flexShrink: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{f.l}</span>
+                          <span style={{ width: 70, color: 'var(--text-secondary)', fontWeight: 500, flexShrink: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{f.l}</span>
                           <select
                             value={nMap[f.k] ?? ''}
                             onChange={e => {
@@ -1712,7 +1712,7 @@ export default function WrapAccountsPage() {
                               setNMap(updated);
                               if (nSelectedDbId) saveNotionConfig(nSelectedDbId, nSelectedDbTitle, updated);
                             }}
-                            style={{ flex: 1, padding: '2px 4px', borderRadius: 4, border: '1px solid #D1D5DB', fontSize: 11, background: nMap[f.k] ? '#ECFDF5' : '#fff' }}
+                            style={{ flex: 1, padding: '2px 4px', borderRadius: 4, border: '1px solid var(--border-strong)', fontSize: 11, background: nMap[f.k] ? '#ECFDF5' : '#fff' }}
                           >
                             <option value="">--</option>
                             {nCols.map(c => <option key={c} value={c}>{c}</option>)}
@@ -1721,22 +1721,22 @@ export default function WrapAccountsPage() {
                       ))}
                     </div>
                   </div>
-                  <div style={{ padding: '6px 8px', borderBottom: '1px solid #E5E7EB' }}>
+                  <div style={{ padding: '6px 8px', borderBottom: '1px solid var(--border)' }}>
                     <input type="text" placeholder="상품 검색..." value={nRowSearch} onChange={e => setNRowSearch(e.target.value)}
-                      style={{ width: '100%', padding: '5px 8px', borderRadius: 6, border: '1px solid #D1D5DB', fontSize: 12, outline: 'none', boxSizing: 'border-box' }} />
+                      style={{ width: '100%', padding: '5px 8px', borderRadius: 6, border: '1px solid var(--border-strong)', fontSize: 12, outline: 'none', boxSizing: 'border-box' }} />
                   </div>
-                  <div style={{ maxHeight: '240px', overflowY: 'scroll', border: '1px solid #E5E7EB', borderRadius: '0 0 4px 4px' }}>
+                  <div style={{ maxHeight: '240px', overflowY: 'scroll', border: '1px solid var(--border)', borderRadius: '0 0 4px 4px' }}>
                     {(() => {
                       const q = nRowSearch.toLowerCase().trim();
                       const fil = q ? nRows.filter(r => Object.values(r.properties).some(v => v?.toLowerCase().includes(q))) : nRows;
-                      if (!fil.length) return <div style={{ padding: 14, textAlign: 'center', color: '#9CA3AF', fontSize: 13 }}>{q ? '검색 결과 없음' : '데이터 없음'}</div>;
+                      if (!fil.length) return <div style={{ padding: 14, textAlign: 'center', color: 'var(--text-muted)', fontSize: 13 }}>{q ? '검색 결과 없음' : '데이터 없음'}</div>;
                       const allChecked = fil.length > 0 && fil.every(r => nSelectedRows.has(r.id));
                       return (<>
                         {/* 전체선택 헤더 */}
-                        <div style={{ padding: '6px 10px', borderBottom: '1px solid #E5E7EB', background: '#F9FAFB', display: 'flex', alignItems: 'center', gap: 8, position: 'sticky', top: 0, zIndex: 1 }}>
+                        <div style={{ padding: '6px 10px', borderBottom: '1px solid var(--border)', background: 'var(--bg-surface)', display: 'flex', alignItems: 'center', gap: 8, position: 'sticky', top: 0, zIndex: 1 }}>
                           <input type="checkbox" checked={allChecked} onChange={() => nToggleAll(fil)}
                             style={{ width: 15, height: 15, cursor: 'pointer', accentColor: '#1E3A5F' }} />
-                          <span style={{ fontSize: 11, color: '#6B7280', fontWeight: 600 }}>전체 선택 ({nSelectedRows.size}/{fil.length})</span>
+                          <span style={{ fontSize: 11, color: 'var(--text-muted)', fontWeight: 600 }}>전체 선택 ({nSelectedRows.size}/{fil.length})</span>
                         </div>
                         {fil.map(r => {
                           const nameCol = nMap['product_name'];
@@ -1746,7 +1746,7 @@ export default function WrapAccountsPage() {
                           const checked = nSelectedRows.has(r.id);
                           return (
                             <div key={r.id}
-                              style={{ width: '100%', padding: '7px 10px', borderBottom: '1px solid #F3F4F6', background: checked ? '#F0FDF4' : '#fff', display: 'flex', gap: 8, alignItems: 'center', fontSize: 12, cursor: 'pointer' }}
+                              style={{ width: '100%', padding: '7px 10px', borderBottom: '1px solid var(--border)', background: checked ? '#F0FDF4' : '#fff', display: 'flex', gap: 8, alignItems: 'center', fontSize: 12, cursor: 'pointer' }}
                               onClick={() => nToggleRow(r.id)}
                               onMouseOver={e => { if (!checked) e.currentTarget.style.background = '#FAFBFC'; }}
                               onMouseOut={e => { e.currentTarget.style.background = checked ? '#F0FDF4' : '#fff'; }}
@@ -1754,10 +1754,10 @@ export default function WrapAccountsPage() {
                               <input type="checkbox" checked={checked} onChange={() => nToggleRow(r.id)}
                                 onClick={e => e.stopPropagation()}
                                 style={{ width: 14, height: 14, cursor: 'pointer', accentColor: '#1E3A5F', flexShrink: 0 }} />
-                              <span style={{ fontWeight: 600, color: '#111827' }}>{dn}</span>
-                              {di && <span style={{ color: '#6B7280', fontSize: 11 }}>{di}</span>}
+                              <span style={{ fontWeight: 600, color: 'var(--text-primary)' }}>{dn}</span>
+                              {di && <span style={{ color: 'var(--text-muted)', fontSize: 11 }}>{di}</span>}
                               <button onClick={(e) => { e.stopPropagation(); nApply(r); }}
-                                style={{ marginLeft: 'auto', padding: '2px 8px', borderRadius: 4, border: '1px solid #D1D5DB', background: '#fff', fontSize: 10, color: '#374151', cursor: 'pointer', flexShrink: 0 }}
+                                style={{ marginLeft: 'auto', padding: '2px 8px', borderRadius: 4, border: '1px solid var(--border-strong)', background: 'var(--bg-card)', fontSize: 10, color: 'var(--text-secondary)', cursor: 'pointer', flexShrink: 0 }}
                               >1건 입력</button>
                             </div>
                           );
@@ -1765,11 +1765,11 @@ export default function WrapAccountsPage() {
                       </>);
                     })()}
                   </div>
-                  <div style={{ padding: '6px 10px', background: '#F0F4FA', borderTop: '1px solid #E5E7EB', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                    <span style={{ fontSize: 11, color: '#6B7280' }}>총 {nRows.length}건{nSelectedRows.size > 0 && ` · ${nSelectedRows.size}건 선택`}</span>
+                  <div style={{ padding: '6px 10px', background: '#F0F4FA', borderTop: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                    <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>총 {nRows.length}건{nSelectedRows.size > 0 && ` · ${nSelectedRows.size}건 선택`}</span>
                     {nSelectedRows.size > 0 && (
                       <button onClick={nBulkImport} disabled={nBulkLoading}
-                        style={{ padding: '5px 14px', borderRadius: 6, border: 'none', background: '#1E3A5F', color: '#fff', fontSize: 12, fontWeight: 600, cursor: nBulkLoading ? 'wait' : 'pointer', opacity: nBulkLoading ? 0.6 : 1 }}>
+                        style={{ padding: '5px 14px', borderRadius: 6, border: 'none', background: 'var(--blue-600)', color: '#fff', fontSize: 12, fontWeight: 600, cursor: nBulkLoading ? 'wait' : 'pointer', opacity: nBulkLoading ? 0.6 : 1 }}>
                         {nBulkLoading ? '등록 중...' : `선택 ${nSelectedRows.size}건 일괄 등록`}
                       </button>
                     )}
@@ -1782,7 +1782,7 @@ export default function WrapAccountsPage() {
 
         {/* Form fields */}
         {addError && (
-          <div style={{ marginBottom: 12, padding: '8px 12px', backgroundColor: '#FEF2F2', border: '1px solid #FCA5A5', borderRadius: 6, color: '#DC2626', fontSize: '0.8125rem' }}>
+          <div style={{ marginBottom: 12, padding: '8px 12px', backgroundColor: 'var(--danger-bg)', border: '1px solid rgba(239,68,68,0.35)', borderRadius: 6, color: 'var(--danger)', fontSize: '0.8125rem' }}>
             {addError}
           </div>
         )}
@@ -1805,7 +1805,7 @@ export default function WrapAccountsPage() {
         </div>
 
         <div style={{ marginBottom: 12 }}>
-          <p style={{ margin: '0 0 8px', fontSize: '0.75rem', fontWeight: 600, color: '#6B7280' }}>포트폴리오 구성 (포트1~10)</p>
+          <p style={{ margin: '0 0 8px', fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-muted)' }}>포트폴리오 구성 (포트1~10)</p>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: '8px 12px' }}>
             {(['port_1', 'port_2', 'port_3', 'port_4', 'port_5', 'port_6', 'port_7', 'port_8', 'port_9', 'port_10'] as const).map((pk, i) => (
               <AddFormField key={pk} fieldKey={pk} label={`포트(${i + 1})`} />
@@ -1813,7 +1813,7 @@ export default function WrapAccountsPage() {
           </div>
         </div>
 
-        <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', paddingTop: 4, borderTop: '1px solid #E5E7EB' }}>
+        <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', paddingTop: 4, borderTop: '1px solid var(--border)' }}>
           <Btn variant="ghost" onClick={() => setAddOpen(false)} disabled={addLoading}>취소</Btn>
           <Btn variant="primary" onClick={handleAdd} loading={addLoading}>저장</Btn>
         </div>
@@ -1822,10 +1822,10 @@ export default function WrapAccountsPage() {
       {/* ---- Delete Confirm Modal ---- */}
       <Modal open={!!deleteTarget} onClose={() => setDeleteTarget(null)} title="상품 삭제 확인" maxWidth={400}>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
-          <p style={{ margin: 0, fontSize: '0.9375rem', color: '#374151', lineHeight: 1.6 }}>
-            <strong style={{ color: '#1A1A2E' }}>{deleteTarget?.product_name}</strong> 상품을 삭제하시겠습니까?
+          <p style={{ margin: 0, fontSize: '0.9375rem', color: 'var(--text-secondary)', lineHeight: 1.6 }}>
+            <strong style={{ color: 'var(--text-primary)' }}>{deleteTarget?.product_name}</strong> 상품을 삭제하시겠습니까?
             <br />
-            <span style={{ fontSize: '0.8125rem', color: '#EF4444' }}>이 작업은 되돌릴 수 없습니다.</span>
+            <span style={{ fontSize: '0.8125rem', color: 'var(--danger)' }}>이 작업은 되돌릴 수 없습니다.</span>
           </p>
           <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
             <Btn variant="ghost" onClick={() => setDeleteTarget(null)} disabled={deleteLoading}>취소</Btn>

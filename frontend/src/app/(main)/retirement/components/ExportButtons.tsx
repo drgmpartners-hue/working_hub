@@ -131,7 +131,7 @@ export function ExportButtons({ sectionGroups, filename, activeTab, customerInfo
         });
         document.body.appendChild(wrapper);
 
-        const canvas = await html2canvas(wrapper, { scale: 2, useCORS: true, backgroundColor: '#ffffff', logging: false, allowTaint: true });
+        const canvas = await html2canvas(wrapper, { scale: 2, useCORS: true, backgroundColor: 'var(--bg-card)', logging: false, allowTaint: true });
         images.push(canvas.toDataURL('image/png'));
         document.body.removeChild(wrapper);
       }
@@ -172,13 +172,13 @@ export function ExportButtons({ sectionGroups, filename, activeTab, customerInfo
       <button
         onClick={handlePdf}
         disabled={exporting}
-        style={{ ...btnBase, backgroundColor: '#1E3A5F', color: '#fff', opacity: exporting ? 0.6 : 1 }}
+        style={{ ...btnBase, backgroundColor: 'var(--blue-600)', color: '#fff', opacity: exporting ? 0.6 : 1 }}
       >
         {exporting ? '생성 중...' : 'PDF 다운로드'}
       </button>
       <button
         onClick={handlePrint}
-        style={{ ...btnBase, backgroundColor: '#F3F4F6', color: '#374151', border: '1px solid #D1D5DB' }}
+        style={{ ...btnBase, backgroundColor: 'var(--bg-surface)', color: 'var(--text-secondary)', border: '1px solid var(--border-strong)' }}
       >
         프린트
       </button>

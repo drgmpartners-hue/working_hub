@@ -54,7 +54,7 @@ function RetirementContent() {
   return (
     <div
       style={{
-        backgroundColor: '#ffffff',
+        backgroundColor: 'var(--bg-card)',
         borderRadius: '8px',
         boxShadow: '0 1px 4px rgba(0,0,0,0.08)',
         overflow: 'hidden',
@@ -87,7 +87,7 @@ export default function RetirementPage() {
             background: 'none',
             border: 'none',
             cursor: 'pointer',
-            color: '#6B7280',
+            color: 'var(--text-muted)',
             fontSize: '0.8125rem',
             textDecoration: 'none',
             padding: 0,
@@ -104,7 +104,7 @@ export default function RetirementPage() {
             width: 32,
             height: 4,
             borderRadius: 2,
-            background: 'linear-gradient(90deg,#3B82F6 0%,#1E3A5F 100%)',
+            background: 'linear-gradient(90deg,var(--blue-400) 0%,var(--blue-600) 100%)',
             marginBottom: 10,
           }}
         />
@@ -113,13 +113,13 @@ export default function RetirementPage() {
             margin: 0,
             fontSize: '1.375rem',
             fontWeight: 800,
-            color: '#1A1A2E',
+            color: 'var(--text-primary)',
             letterSpacing: '-0.4px',
           }}
         >
           Wrap 은퇴설계
         </h1>
-        <p style={{ margin: '5px 0 0', fontSize: '0.875rem', color: '#6B7280' }}>
+        <p style={{ margin: '5px 0 0', fontSize: '0.875rem', color: 'var(--text-muted)' }}>
           고객별 은퇴설계 플랜을 관리합니다.
         </p>
       </div>
@@ -129,13 +129,13 @@ export default function RetirementPage() {
         fallback={
           <div
             style={{
-              backgroundColor: '#ffffff',
+              backgroundColor: 'var(--bg-card)',
               borderRadius: '8px',
               height: '400px',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
-              color: '#9CA3AF',
+              color: 'var(--text-muted)',
             }}
           >
             로딩 중...

@@ -76,8 +76,8 @@ function Toast({ message, type }: { message: string; type: 'success' | 'error' }
 /* ------------------------------------------------------------------ */
 
 const cardStyle: React.CSSProperties = {
-  backgroundColor: '#ffffff',
-  border: '1px solid #E5E7EB',
+  backgroundColor: 'var(--bg-card)',
+  border: '1px solid var(--border)',
   borderRadius: '12px',
   padding: '24px',
 };
@@ -86,7 +86,7 @@ const labelStyle: React.CSSProperties = {
   display: 'block',
   fontSize: '13px',
   fontWeight: 500,
-  color: '#374151',
+  color: 'var(--text-secondary)',
   marginBottom: '6px',
 };
 
@@ -95,9 +95,9 @@ const inputStyle: React.CSSProperties = {
   height: '40px',
   padding: '0 48px 0 12px',
   fontSize: '14px',
-  color: '#1A1A2E',
-  backgroundColor: '#ffffff',
-  border: '1px solid #D1D5DB',
+  color: 'var(--text-primary)',
+  backgroundColor: 'var(--bg-card)',
+  border: '1px solid var(--border-strong)',
   borderRadius: '8px',
   outline: 'none',
   boxSizing: 'border-box',
@@ -110,14 +110,14 @@ const unitStyle: React.CSSProperties = {
   top: '50%',
   transform: 'translateY(-50%)',
   fontSize: '12px',
-  color: '#6B7280',
+  color: 'var(--text-muted)',
   pointerEvents: 'none',
 };
 
 const sectionTitleStyle: React.CSSProperties = {
   fontSize: '15px',
   fontWeight: 600,
-  color: '#1E3A5F',
+  color: 'var(--blue-400)',
   marginBottom: '20px',
   marginTop: 0,
 };
@@ -199,7 +199,7 @@ function BasicInfoCard({
 }) {
   if (!data) {
     return (
-      <div style={{ padding: '24px', backgroundColor: '#F9FAFB', borderRadius: '8px', textAlign: 'center', color: '#9CA3AF', fontSize: '13px' }}>
+      <div style={{ padding: '24px', backgroundColor: 'var(--bg-surface)', borderRadius: '8px', textAlign: 'center', color: 'var(--text-muted)', fontSize: '13px' }}>
         1번탭(은퇴플랜 설계)에서 먼저 저장해주세요.
       </div>
     );
@@ -252,26 +252,26 @@ function BasicInfoCard({
     return `${v.toLocaleString('ko-KR')}원`;
   };
 
-  const itemStyle: React.CSSProperties = { display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 0', borderBottom: '1px solid #F3F4F6' };
-  const lbl: React.CSSProperties = { fontSize: 13, color: '#6B7280' };
-  const val: React.CSSProperties = { fontSize: 14, fontWeight: 700, color: '#111827', fontVariantNumeric: 'tabular-nums' };
-  const accent: React.CSSProperties = { ...val, color: '#1E3A5F' };
-  const groupTitle: React.CSSProperties = { fontSize: 12, fontWeight: 600, color: '#1E3A5F', marginBottom: 8, paddingBottom: 6, borderBottom: '2px solid #1E3A5F', letterSpacing: '0.02em' };
+  const itemStyle: React.CSSProperties = { display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 0', borderBottom: '1px solid var(--border)' };
+  const lbl: React.CSSProperties = { fontSize: 13, color: 'var(--text-muted)' };
+  const val: React.CSSProperties = { fontSize: 14, fontWeight: 700, color: 'var(--text-primary)', fontVariantNumeric: 'tabular-nums' };
+  const accent: React.CSSProperties = { ...val, color: 'var(--blue-400)' };
+  const groupTitle: React.CSSProperties = { fontSize: 12, fontWeight: 600, color: 'var(--blue-400)', marginBottom: 8, paddingBottom: 6, borderBottom: '2px solid var(--blue-500)', letterSpacing: '0.02em' };
   const badge: React.CSSProperties = { fontSize: 10, padding: '1px 6px', borderRadius: 4, fontWeight: 600, marginLeft: 6 };
 
   return (
     <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 20 }}>
       {/* 그룹1: 기간 설정 */}
-      <div style={{ padding: '16px 20px', backgroundColor: '#FAFBFC', borderRadius: 10, border: '1px solid #E5E7EB' }}>
+      <div style={{ padding: '16px 20px', backgroundColor: 'var(--bg-surface)', borderRadius: 10, border: '1px solid var(--border)' }}>
         <div style={groupTitle}>기간 설정</div>
         <div style={itemStyle}><span style={lbl}>플랜 시작</span><span style={accent}>{planStartAge != null ? `${planStartYear}년 (${planStartAge}세)` : '-'}</span></div>
         <div style={itemStyle}><span style={lbl}>희망 은퇴</span><span style={accent}>{retirementAge != null && retirementYear != null ? `${retirementYear}년 (${retirementAge}세)` : retirementAge != null ? `${retirementAge}세` : '-'}</span></div>
         <div style={itemStyle}><span style={lbl}>총 투자기간</span><span style={val}>{totalPeriod != null ? `${totalPeriod}년` : '-'}</span></div>
-        <div style={{ ...itemStyle, borderBottom: 'none' }}><span style={lbl}>구성</span><span style={{ fontSize: 13, color: '#374151' }}>적립 {savingsPeriod ?? '-'}년 + 거치 {holdingPeriod ?? '-'}년</span></div>
+        <div style={{ ...itemStyle, borderBottom: 'none' }}><span style={lbl}>구성</span><span style={{ fontSize: 13, color: 'var(--text-secondary)' }}>적립 {savingsPeriod ?? '-'}년 + 거치 {holdingPeriod ?? '-'}년</span></div>
       </div>
 
       {/* 그룹2: 투자 계획 */}
-      <div style={{ padding: '16px 20px', backgroundColor: '#FAFBFC', borderRadius: 10, border: '1px solid #E5E7EB' }}>
+      <div style={{ padding: '16px 20px', backgroundColor: 'var(--bg-surface)', borderRadius: 10, border: '1px solid var(--border)' }}>
         <div style={groupTitle}>투자 계획</div>
         <div style={itemStyle}><span style={lbl}>연적립금액 (평균)</span><span style={val}>{avgAnnualSavings > 0 ? fmtOk(avgAnnualSavings) : '-'}</span></div>
         <div style={itemStyle}><span style={lbl}>총거치금액</span><span style={val}>{totalHolding > 0 ? fmtOk(totalHolding) : '-'}</span></div>
@@ -281,8 +281,8 @@ function BasicInfoCard({
       {/* 그룹3: 목표 */}
       <div style={{ padding: '16px 20px', backgroundColor: '#F0F4FA', borderRadius: 10, border: '1px solid #D0DAE8' }}>
         <div style={groupTitle}>목표</div>
-        <div style={itemStyle}><span style={lbl}>예상 투자수익률</span><span style={{ ...val, color: '#16A34A' }}>{investRate != null ? `${(investRate * 100).toFixed(1)}%` : '-'}</span></div>
-        <div style={itemStyle}><span style={lbl}>예상 연금수익률</span><span style={{ ...val, color: '#16A34A' }}>{pensionRate != null ? `${(pensionRate * 100).toFixed(1)}%` : '-'}</span></div>
+        <div style={itemStyle}><span style={lbl}>예상 투자수익률</span><span style={{ ...val, color: 'var(--success)' }}>{investRate != null ? `${(investRate * 100).toFixed(1)}%` : '-'}</span></div>
+        <div style={itemStyle}><span style={lbl}>예상 연금수익률</span><span style={{ ...val, color: 'var(--success)' }}>{pensionRate != null ? `${(pensionRate * 100).toFixed(1)}%` : '-'}</span></div>
         <div style={itemStyle}>
           <span style={lbl}>은퇴당시 연금액</span>
           <span style={{ display: 'flex', alignItems: 'center' }}>
@@ -295,7 +295,7 @@ function BasicInfoCard({
         <div style={itemStyle}>
           <span style={lbl}>은퇴자금</span>
           <span style={{ display: 'flex', alignItems: 'center' }}>
-            <span style={{ fontSize: 16, fontWeight: 800, color: '#1E3A5F' }}>{retireFund > 0 ? fmtOk(retireFund) : '-'}</span>
+            <span style={{ fontSize: 16, fontWeight: 800, color: 'var(--blue-400)' }}>{retireFund > 0 ? fmtOk(retireFund) : '-'}</span>
             <span style={{ ...badge, backgroundColor: useInflCalc ? '#DBEAFE' : '#F3F4F6', color: useInflCalc ? '#1D4ED8' : '#6B7280' }}>
               물가{useInflCalc ? 'O' : 'X'}
             </span>
@@ -711,7 +711,7 @@ export function RetirementPlanTab() {
               alert(`PDF 생성 실패: ${msg}`);
             }
           }}
-          style={{ padding: '8px 16px', fontSize: '13px', fontWeight: 600, borderRadius: '8px', cursor: 'pointer', border: 'none', backgroundColor: '#1E3A5F', color: '#fff', display: 'flex', alignItems: 'center', gap: '6px' }}
+          style={{ padding: '8px 16px', fontSize: '13px', fontWeight: 600, borderRadius: '8px', cursor: 'pointer', border: 'none', backgroundColor: 'var(--blue-600)', color: '#fff', display: 'flex', alignItems: 'center', gap: '6px' }}
         >
           📄 PDF 다운로드
         </button>
@@ -721,7 +721,7 @@ export function RetirementPlanTab() {
       <div id="pdf-tab2-info" style={cardStyle}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '16px' }}>
           <h3 style={{ ...sectionTitleStyle, marginBottom: 0 }}>기본정보</h3>
-          <span style={{ fontSize: '12px', color: '#9CA3AF' }}>
+          <span style={{ fontSize: '12px', color: 'var(--text-muted)' }}>
             수정은 1번탭(희망은퇴플랜)에서 가능합니다.
           </span>
         </div>
@@ -738,9 +738,9 @@ export function RetirementPlanTab() {
           <div style={{ overflowX: 'auto' }}>
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px' }}>
               <thead>
-                <tr style={{ backgroundColor: '#F9FAFB' }}>
+                <tr style={{ backgroundColor: 'var(--bg-surface)' }}>
                   {['연도', '연차', '나이', '구분', '월적립(만)', '거치금(만)', '누적원금', '운용수익', '연금인출', '누적인출', '총평가'].map(col => (
-                    <th key={col} style={{ padding: '10px 12px', textAlign: ['연도', '연차', '나이', '구분'].includes(col) ? 'center' : 'right', fontSize: '12px', fontWeight: 600, color: col === '연금인출' || col === '누적인출' ? '#DC2626' : '#6B7280', borderBottom: '1px solid #E5E7EB', whiteSpace: 'nowrap' }}>{col}</th>
+                    <th key={col} style={{ padding: '10px 12px', textAlign: ['연도', '연차', '나이', '구분'].includes(col) ? 'center' : 'right', fontSize: '12px', fontWeight: 600, color: col === '연금인출' || col === '누적인출' ? '#DC2626' : '#6B7280', borderBottom: '1px solid var(--border)', whiteSpace: 'nowrap' }}>{col}</th>
                   ))}
                 </tr>
               </thead>
@@ -766,29 +766,29 @@ export function RetirementPlanTab() {
                   const calYear = planStartYear + year - 1;
                   const bgColor = isRetAge ? 'rgba(30,58,95,0.06)' : isRetirement ? '#F0FDF4' : idx % 2 === 0 ? '#fff' : '#FAFAFA';
                   return (
-                    <tr key={year} style={{ backgroundColor: bgColor, borderBottom: '1px solid #F3F4F6' }}>
-                      <td style={{ padding: '8px 10px', textAlign: 'center', fontSize: 11, color: '#9CA3AF' }}>{calYear}</td>
+                    <tr key={year} style={{ backgroundColor: bgColor, borderBottom: '1px solid var(--border)' }}>
+                      <td style={{ padding: '8px 10px', textAlign: 'center', fontSize: 11, color: 'var(--text-muted)' }}>{calYear}</td>
                       <td style={{ padding: '8px 10px', textAlign: 'center' }}>{year}</td>
                       <td style={{ padding: '8px 10px', textAlign: 'center', fontWeight: isRetAge ? 700 : 400, color: isRetAge ? '#1E3A5F' : '#374151' }}>
-                        {age}세{isRetAge && <span style={{ marginLeft: 4, fontSize: 10, color: '#1E3A5F' }}>★</span>}
+                        {age}세{isRetAge && <span style={{ marginLeft: 4, fontSize: 10, color: 'var(--blue-400)' }}>★</span>}
                       </td>
                       <td style={{ padding: '8px 10px', textAlign: 'center', color: phaseColor, fontWeight: 600, fontSize: 12 }}>{phaseLabel}</td>
                       <td style={{ padding: '8px 10px', textAlign: 'right' }}>{mp > 0 ? formatCurrency(Math.round(mp / 1e4)) : '-'}</td>
                       <td style={{ padding: '8px 10px', textAlign: 'right' }}>{ad > 0 ? formatCurrency(Math.round(ad / 1e4)) : '-'}</td>
                       <td style={{ padding: '8px 10px', textAlign: 'right' }}>{formatCurrency(Math.round(principal / 1e4))}</td>
                       <td style={{ padding: '8px 10px', textAlign: 'right', color: profit >= 0 ? '#16A34A' : '#DC2626' }}>{formatCurrency(Math.round(profit / 1e4))}</td>
-                      <td style={{ padding: '8px 10px', textAlign: 'right', color: '#DC2626' }}>{pension > 0 ? formatCurrency(Math.round(pension / 1e4)) : '-'}</td>
-                      <td style={{ padding: '8px 10px', textAlign: 'right', color: '#DC2626' }}>{cumPension > 0 ? formatCurrency(Math.round(cumPension / 1e4)) : '-'}</td>
+                      <td style={{ padding: '8px 10px', textAlign: 'right', color: 'var(--danger)' }}>{pension > 0 ? formatCurrency(Math.round(pension / 1e4)) : '-'}</td>
+                      <td style={{ padding: '8px 10px', textAlign: 'right', color: 'var(--danger)' }}>{cumPension > 0 ? formatCurrency(Math.round(cumPension / 1e4)) : '-'}</td>
                       <td style={{ padding: '8px 10px', textAlign: 'right', fontWeight: 700 }}>{formatCurrency(Math.round(evaluation / 1e4))}</td>
                     </tr>
                   );
                 }); })()}
               </tbody>
             </table>
-            <div style={{ textAlign: 'right', fontSize: 11, color: '#9CA3AF', marginTop: 4 }}>(단위: 만원)</div>
+            <div style={{ textAlign: 'right', fontSize: 11, color: 'var(--text-muted)', marginTop: 4 }}>(단위: 만원)</div>
           </div>
         ) : (
-          <div style={{ padding: 40, textAlign: 'center', color: '#9CA3AF', fontSize: 14 }}>
+          <div style={{ padding: 40, textAlign: 'center', color: 'var(--text-muted)', fontSize: 14 }}>
             1번탭에서 복리 성장 시뮬레이션을 계산하고 저장해주세요.
           </div>
         )}
@@ -837,7 +837,7 @@ function AmountCell({
       style={{
         padding: '8px 12px',
         textAlign: 'right',
-        color: highlight ? '#1E3A5F' : '#1A1A2E',
+        color: highlight ? '#1E3A5F' : 'var(--text-primary)',
         fontWeight: bold || highlight ? 600 : 400,
         fontVariantNumeric: 'tabular-nums',
         whiteSpace: 'nowrap',

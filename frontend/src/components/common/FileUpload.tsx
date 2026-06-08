@@ -77,13 +77,13 @@ export function FileUpload({
     }
   };
 
-  const borderColor = error ? '#EF4444' : dragging ? '#4A90D9' : '#E1E5EB';
-  const bgColor = dragging ? 'rgba(74,144,217,0.05)' : '#F5F7FA';
+  const borderColor = error ? '#EF4444' : dragging ? '#4A90D9' : 'var(--border-strong)';
+  const bgColor = dragging ? 'rgba(74,144,217,0.05)' : 'var(--bg-surface)';
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
       {label && (
-        <span style={{ fontSize: '0.8125rem', fontWeight: 500, color: '#1A1A2E' }}>{label}</span>
+        <span style={{ fontSize: '0.8125rem', fontWeight: 500, color: 'var(--text-primary)' }}>{label}</span>
       )}
 
       {/* Dropzone */}
@@ -121,7 +121,7 @@ export function FileUpload({
             width: 48,
             height: 48,
             borderRadius: '50%',
-            backgroundColor: dragging ? 'rgba(74,144,217,0.15)' : '#E1E5EB',
+            backgroundColor: dragging ? 'rgba(74,144,217,0.15)' : 'var(--border-strong)',
             transition: 'background-color 0.15s ease',
           }}
         >
@@ -130,7 +130,7 @@ export function FileUpload({
             height="22"
             viewBox="0 0 24 24"
             fill="none"
-            stroke={dragging ? '#4A90D9' : '#6B7280'}
+            stroke={dragging ? '#4A90D9' : 'var(--text-muted)'}
             strokeWidth="2"
             strokeLinecap="round"
             strokeLinejoin="round"
@@ -142,10 +142,10 @@ export function FileUpload({
         </span>
 
         <div style={{ textAlign: 'center' }}>
-          <p style={{ margin: 0, fontSize: '0.875rem', fontWeight: 500, color: '#1A1A2E' }}>
+          <p style={{ margin: 0, fontSize: '0.875rem', fontWeight: 500, color: 'var(--text-primary)' }}>
             {dragging ? 'Drop your file here' : 'Drag & drop or click to upload'}
           </p>
-          <p style={{ margin: '4px 0 0', fontSize: '0.75rem', color: '#6B7280' }}>
+          <p style={{ margin: '4px 0 0', fontSize: '0.75rem', color: 'var(--text-muted)' }}>
             Supported formats: {accept.join(', ')}
           </p>
         </div>
@@ -163,7 +163,7 @@ export function FileUpload({
 
       {/* Error */}
       {error && (
-        <span style={{ fontSize: '0.75rem', color: '#EF4444', display: 'flex', alignItems: 'center', gap: 4 }}>
+        <span style={{ fontSize: '0.75rem', color: 'var(--danger)', display: 'flex', alignItems: 'center', gap: 4 }}>
           <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
             <circle cx="12" cy="12" r="10" />
             <line x1="12" y1="8" x2="12" y2="12" />
@@ -185,8 +185,8 @@ export function FileUpload({
                 gap: 8,
                 padding: '6px 10px',
                 borderRadius: 8,
-                backgroundColor: '#F5F7FA',
-                border: '1px solid #E1E5EB',
+                backgroundColor: 'var(--bg-surface)',
+                border: '1px solid var(--border)',
               }}
             >
               {/* File icon */}
@@ -194,10 +194,10 @@ export function FileUpload({
                 <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
                 <polyline points="14 2 14 8 20 8" />
               </svg>
-              <span style={{ fontSize: '0.8125rem', color: '#1A1A2E', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+              <span style={{ fontSize: '0.8125rem', color: 'var(--text-primary)', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                 {file.name}
               </span>
-              <span style={{ fontSize: '0.75rem', color: '#6B7280', flexShrink: 0 }}>
+              <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', flexShrink: 0 }}>
                 {(file.size / 1024).toFixed(1)} KB
               </span>
             </li>
@@ -212,7 +212,7 @@ export function FileUpload({
             style={{
               height: 6,
               borderRadius: 3,
-              backgroundColor: '#E1E5EB',
+              backgroundColor: 'var(--border-strong)',
               overflow: 'hidden',
             }}
           >
@@ -226,7 +226,7 @@ export function FileUpload({
               }}
             />
           </div>
-          <span style={{ fontSize: '0.75rem', color: '#6B7280', textAlign: 'right' }}>
+          <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', textAlign: 'right' }}>
             {progress >= 100 ? 'Upload complete' : `${Math.round(progress)}%`}
           </span>
         </div>

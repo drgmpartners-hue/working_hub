@@ -256,17 +256,20 @@ async function getClientAccountId(row: ClientRowData): Promise<string> {
 /* ------------------------------------------------------------------ */
 
 function StepDot({ step, active, done }: { step: number; active: boolean; done: boolean }) {
+  const filled = done || active;
   return (
     <div
       style={{
         width: 28,
         height: 28,
         borderRadius: '50%',
+        boxSizing: 'border-box',
+        border: `2px solid ${filled ? '#3B82F6' : 'var(--border-strong)'}`,
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
-        backgroundColor: done ? '#1E3A5F' : active ? '#3B82F6' : '#E1E5EB',
-        color: done || active ? '#fff' : '#9CA3AF',
+        backgroundColor: filled ? '#3B82F6' : 'transparent',
+        color: filled ? '#fff' : 'var(--text-muted)',
         fontSize: '0.75rem',
         fontWeight: 700,
         flexShrink: 0,
@@ -291,7 +294,7 @@ function StepDot({ step, active, done }: { step: number; active: boolean; done: 
 function StatusIcon({ status }: { status: ProcessResult['status'] }) {
   if (status === 'done')
     return (
-      <span style={{ color: '#10B981', fontWeight: 700, fontSize: '1.1rem' }}>✓</span>
+      <span style={{ color: 'var(--success)', fontWeight: 700, fontSize: '1.1rem' }}>✓</span>
     );
   if (status === 'processing')
     return (
@@ -300,7 +303,7 @@ function StatusIcon({ status }: { status: ProcessResult['status'] }) {
           display: 'inline-block',
           width: 14,
           height: 14,
-          border: '2px solid #1E3A5F',
+          border: '2px solid var(--blue-500)',
           borderTopColor: 'transparent',
           borderRadius: '50%',
           animation: 'spin 0.7s linear infinite',
@@ -308,8 +311,8 @@ function StatusIcon({ status }: { status: ProcessResult['status'] }) {
       />
     );
   if (status === 'error')
-    return <span style={{ color: '#EF4444', fontWeight: 700, fontSize: '1.1rem' }}>✗</span>;
-  return <span style={{ color: '#9CA3AF' }}>–</span>;
+    return <span style={{ color: 'var(--danger)', fontWeight: 700, fontSize: '1.1rem' }}>✗</span>;
+  return <span style={{ color: 'var(--text-muted)' }}>–</span>;
 }
 
 /* ------------------------------------------------------------------ */
@@ -1651,43 +1654,43 @@ function Tab2Section({
 
   /* ---- Styles ---- */
   const cardStyle: React.CSSProperties = {
-    border: '1px solid #E1E5EB',
+    border: '1px solid var(--border)',
     borderRadius: 12,
     padding: 20,
-    backgroundColor: '#fff',
+    backgroundColor: 'var(--bg-card)',
   };
   const sectionTitleStyle: React.CSSProperties = {
     fontSize: '0.9375rem',
     fontWeight: 700,
-    color: '#1A1A2E',
+    color: 'var(--text-primary)',
   };
   const thStyle: React.CSSProperties = {
     padding: '9px 10px',
     fontSize: '0.75rem',
     fontWeight: 600,
-    color: '#6B7280',
+    color: 'var(--text-muted)',
     textAlign: 'right',
     verticalAlign: 'middle',
-    backgroundColor: '#F5F7FA',
-    borderBottom: '1px solid #E1E5EB',
+    backgroundColor: 'var(--bg-surface)',
+    borderBottom: '1px solid var(--border)',
     whiteSpace: 'nowrap',
   };
   const tdStyle: React.CSSProperties = {
     padding: '8px 10px',
     fontSize: '0.8125rem',
-    color: '#374151',
+    color: 'var(--text-secondary)',
     textAlign: 'right',
     verticalAlign: 'middle',
-    borderBottom: '1px solid #F3F4F6',
+    borderBottom: '1px solid var(--border)',
     whiteSpace: 'nowrap',
   };
   const totalRowStyle: React.CSSProperties = {
     padding: '9px 10px',
     fontSize: '0.8125rem',
     fontWeight: 700,
-    color: '#1A1A2E',
+    color: 'var(--text-primary)',
     textAlign: 'right',
-    backgroundColor: '#F5F7FA',
+    backgroundColor: 'var(--bg-surface)',
     borderBottom: 'none',
     whiteSpace: 'nowrap',
   };
@@ -1743,8 +1746,8 @@ function Tab2Section({
       {/* Area 1: 고객 이력 조회                                        */}
       {/* ============================================================ */}
       <div style={cardStyle}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 16, paddingBottom: 12, borderBottom: '1px solid #E1E5EB' }}>
-          <div style={{ width: 3, height: 18, borderRadius: 2, backgroundColor: '#1E3A5F', flexShrink: 0 }} />
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 16, paddingBottom: 12, borderBottom: '1px solid var(--border)' }}>
+          <div style={{ width: 3, height: 18, borderRadius: 2, backgroundColor: 'var(--blue-600)', flexShrink: 0 }} />
           <span style={sectionTitleStyle}>고객 이력 조회</span>
         </div>
 
@@ -1752,7 +1755,7 @@ function Tab2Section({
         <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'flex-end', marginBottom: 12 }}>
           {/* 고객 검색 */}
           <div style={{ display: 'flex', flexDirection: 'column', gap: 5, width: 120, minWidth: 120, flex: '0 0 auto' }}>
-            <label style={{ fontSize: '0.8125rem', fontWeight: 600, color: '#374151' }}>고객 검색</label>
+            <label style={{ fontSize: '0.8125rem', fontWeight: 600, color: 'var(--text-secondary)' }}>고객 검색</label>
             <div style={{ position: 'relative' }}>
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#9CA3AF" strokeWidth="2"
                 style={{ position: 'absolute', left: 8, top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none' }}>
@@ -1763,7 +1766,7 @@ function Tab2Section({
                 placeholder="이름/고유번호"
                 value={t2ClientSearch}
                 onChange={(e) => setT2ClientSearch(e.target.value)}
-                style={{ width: '100%', padding: '8px 10px 8px 28px', fontSize: '0.8125rem', border: '1px solid #E1E5EB', borderRadius: 8, outline: 'none', color: '#1A1A2E', boxSizing: 'border-box' }}
+                style={{ width: '100%', padding: '8px 10px 8px 28px', fontSize: '0.8125rem', border: '1px solid var(--border)', borderRadius: 8, outline: 'none', color: 'var(--text-primary)', boxSizing: 'border-box' }}
               />
             </div>
           </div>
@@ -1771,11 +1774,11 @@ function Tab2Section({
           {/* 고객 선택 */}
           <div style={{ display: 'flex', flexDirection: 'column', gap: 5, minWidth: 220, flex: 1 }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-              <label style={{ fontSize: '0.8125rem', fontWeight: 600, color: '#374151' }}>고객 선택</label>
+              <label style={{ fontSize: '0.8125rem', fontWeight: 600, color: 'var(--text-secondary)' }}>고객 선택</label>
               <button
                 onClick={() => setClientSortByDate(!clientSortByDate)}
                 title={clientSortByDate ? '이름순으로 전환' : '저장일순으로 전환 (저장일 = 데이터 입력 최신일)'}
-                style={{ padding: '2px 6px', fontSize: '0.6875rem', fontWeight: 600, color: clientSortByDate ? '#fff' : '#6B7280', backgroundColor: clientSortByDate ? '#1E3A5F' : '#F3F4F6', border: '1px solid #D1D5DB', borderRadius: 4, cursor: 'pointer' }}
+                style={{ padding: '2px 6px', fontSize: '0.6875rem', fontWeight: 600, color: clientSortByDate ? '#fff' : '#6B7280', backgroundColor: clientSortByDate ? '#3B82F6' : '#243049', border: '1px solid var(--border-strong)', borderRadius: 4, cursor: 'pointer' }}
               >
                 {clientSortByDate ? '저장일순' : '이름순'}
               </button>
@@ -1783,7 +1786,7 @@ function Tab2Section({
             <select
               value={histClientId}
               onChange={(e) => { handleT2ClientChange(e.target.value); setT2ClientSearch(''); }}
-              style={{ padding: '8px 10px', fontSize: '0.8125rem', border: '1px solid #E1E5EB', borderRadius: 8, outline: 'none', color: histClientId ? '#1A1A2E' : '#9CA3AF', backgroundColor: '#fff', cursor: 'pointer' }}
+              style={{ padding: '8px 10px', fontSize: '0.8125rem', border: '1px solid var(--border)', borderRadius: 8, outline: 'none', color: histClientId ? 'var(--text-primary)' : '#9CA3AF', backgroundColor: 'var(--bg-card)', cursor: 'pointer' }}
             >
               <option value="">-- 고객 선택 --</option>
               {uniqueClients
@@ -1800,12 +1803,12 @@ function Tab2Section({
 
           {/* 계좌 유형 */}
           <div style={{ display: 'flex', flexDirection: 'column', gap: 5, minWidth: 120 }}>
-            <label style={{ fontSize: '0.8125rem', fontWeight: 600, color: '#374151' }}>계좌 유형</label>
+            <label style={{ fontSize: '0.8125rem', fontWeight: 600, color: 'var(--text-secondary)' }}>계좌 유형</label>
             <select
               value={histAccountId}
               onChange={(e) => handleT2AccountChange(e.target.value)}
               disabled={!histClientId}
-              style={{ padding: '8px 10px', fontSize: '0.8125rem', border: '1px solid #E1E5EB', borderRadius: 8, outline: 'none', color: histAccountId ? '#1A1A2E' : '#9CA3AF', backgroundColor: histClientId ? '#fff' : '#F9FAFB', cursor: histClientId ? 'pointer' : 'not-allowed', opacity: histClientId ? 1 : 0.6 }}
+              style={{ padding: '8px 10px', fontSize: '0.8125rem', border: '1px solid var(--border)', borderRadius: 8, outline: 'none', color: histAccountId ? 'var(--text-primary)' : '#9CA3AF', backgroundColor: histClientId ? 'var(--bg-card)' : 'var(--bg-surface)', cursor: histClientId ? 'pointer' : 'not-allowed', opacity: histClientId ? 1 : 0.6 }}
             >
               <option value="">-- 유형 선택 --</option>
               {t2ClientAccounts.map((a) => (
@@ -1820,20 +1823,20 @@ function Tab2Section({
           {t2SelectedAccount && (
             <>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 5, minWidth: 100 }}>
-                <label style={{ fontSize: '0.8125rem', fontWeight: 600, color: '#374151' }}>투권인</label>
-                <div style={{ padding: '8px 10px', fontSize: '0.8125rem', border: '1px solid #E1E5EB', borderRadius: 8, backgroundColor: '#F9FAFB', color: '#374151', minWidth: 90 }}>
+                <label style={{ fontSize: '0.8125rem', fontWeight: 600, color: 'var(--text-secondary)' }}>투권인</label>
+                <div style={{ padding: '8px 10px', fontSize: '0.8125rem', border: '1px solid var(--border)', borderRadius: 8, backgroundColor: 'var(--bg-surface)', color: 'var(--text-secondary)', minWidth: 90 }}>
                   {t2SelectedAccount.representative || '-'}
                 </div>
               </div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 5, minWidth: 120 }}>
-                <label style={{ fontSize: '0.8125rem', fontWeight: 600, color: '#374151' }}>증권사</label>
-                <div style={{ padding: '8px 10px', fontSize: '0.8125rem', border: '1px solid #E1E5EB', borderRadius: 8, backgroundColor: '#F9FAFB', color: '#374151', minWidth: 100 }}>
+                <label style={{ fontSize: '0.8125rem', fontWeight: 600, color: 'var(--text-secondary)' }}>증권사</label>
+                <div style={{ padding: '8px 10px', fontSize: '0.8125rem', border: '1px solid var(--border)', borderRadius: 8, backgroundColor: 'var(--bg-surface)', color: 'var(--text-secondary)', minWidth: 100 }}>
                   {t2SelectedAccount.securities_company || '-'}
                 </div>
               </div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 5, minWidth: 140 }}>
-                <label style={{ fontSize: '0.8125rem', fontWeight: 600, color: '#374151' }}>계좌번호</label>
-                <div style={{ padding: '8px 10px', fontSize: '0.8125rem', border: '1px solid #E1E5EB', borderRadius: 8, backgroundColor: '#F9FAFB', color: '#374151', minWidth: 120 }}>
+                <label style={{ fontSize: '0.8125rem', fontWeight: 600, color: 'var(--text-secondary)' }}>계좌번호</label>
+                <div style={{ padding: '8px 10px', fontSize: '0.8125rem', border: '1px solid var(--border)', borderRadius: 8, backgroundColor: 'var(--bg-surface)', color: 'var(--text-secondary)', minWidth: 120 }}>
                   {t2SelectedAccount.account_number || '-'}
                 </div>
               </div>
@@ -1845,16 +1848,16 @@ function Tab2Section({
         {histAccountId && (
           <div style={{ marginTop: 8 }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
-              <span style={{ fontSize: '0.8125rem', fontWeight: 600, color: '#374151' }}>조회 날짜 선택</span>
+              <span style={{ fontSize: '0.8125rem', fontWeight: 600, color: 'var(--text-secondary)' }}>조회 날짜 선택</span>
               {historyLoading && (
-                <span style={{ display: 'inline-block', width: 12, height: 12, border: '2px solid #1E3A5F', borderTopColor: 'transparent', borderRadius: '50%', animation: 'spin 0.7s linear infinite' }} />
+                <span style={{ display: 'inline-block', width: 12, height: 12, border: '2px solid var(--blue-500)', borderTopColor: 'transparent', borderRadius: '50%', animation: 'spin 0.7s linear infinite' }} />
               )}
               {/* 편집 버튼 */}
               {historyList.length > 0 && (
                 <button
                   onClick={() => { setT2DateEditOpen(true); setT2DateEditSearch(''); setT2DateDeleteConfirmId(null); }}
                   data-tooltip="날짜 편집/삭제"
-                  style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '3px 8px', fontSize: '0.75rem', fontWeight: 600, color: '#6B7280', backgroundColor: '#F9FAFB', border: '1px solid #E1E5EB', borderRadius: 6, cursor: 'pointer' }}
+                  style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '3px 8px', fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-muted)', backgroundColor: 'var(--bg-surface)', border: '1px solid var(--border)', borderRadius: 6, cursor: 'pointer' }}
                 >
                   <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                     <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
@@ -1863,13 +1866,13 @@ function Tab2Section({
                   편집
                 </button>
               )}
-              <span style={{ fontSize: '0.75rem', color: '#9CA3AF', marginLeft: 'auto' }}>
+              <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginLeft: 'auto' }}>
                 총 {historyList.length}개 · {t2DatePage + 1}/{Math.max(t2TotalPages, 1)} 페이지
               </span>
             </div>
 
             {!historyLoading && historyList.length === 0 ? (
-              <div style={{ padding: '14px', textAlign: 'center', color: '#9CA3AF', fontSize: '0.875rem', backgroundColor: '#F9FAFB', borderRadius: 8, border: '1px solid #E1E5EB' }}>
+              <div style={{ padding: '14px', textAlign: 'center', color: 'var(--text-muted)', fontSize: '0.875rem', backgroundColor: 'var(--bg-surface)', borderRadius: 8, border: '1px solid var(--border)' }}>
                 저장된 스냅샷이 없습니다.
               </div>
             ) : (
@@ -1886,14 +1889,14 @@ function Tab2Section({
                         style={{
                           display: 'flex', alignItems: 'center', gap: 8,
                           padding: '8px 14px', borderRadius: 8,
-                          border: `1px solid ${isActive ? '#1E3A5F' : (item as any).has_suggestion ? '#3B82F6' : '#E1E5EB'}`,
-                          backgroundColor: isActive ? '#EEF2F7' : (item as any).has_suggestion ? '#EFF6FF' : '#fff',
+                          border: `1px solid ${isActive ? 'var(--blue-400)' : (item as any).has_suggestion ? 'var(--blue-400)' : 'var(--border-strong)'}`,
+                          backgroundColor: isActive ? 'rgba(37,99,235,0.18)' : (item as any).has_suggestion ? 'rgba(56,189,248,0.10)' : 'var(--bg-card)',
                           cursor: 'pointer', transition: 'all 0.15s ease',
-                          fontWeight: isActive ? 700 : 500, fontSize: '0.8125rem', color: '#1A1A2E',
+                          fontWeight: isActive ? 700 : 500, fontSize: '0.8125rem', color: 'var(--text-primary)',
                         }}
                       >
                         {(item as any).has_suggestion && (
-                          <span style={{ width: 6, height: 6, borderRadius: '50%', backgroundColor: '#3B82F6', flexShrink: 0 }} />
+                          <span style={{ width: 6, height: 6, borderRadius: '50%', backgroundColor: 'var(--blue-400)', flexShrink: 0 }} />
                         )}
                         {item.snapshot_date}
                         {rate != null && (
@@ -1912,17 +1915,17 @@ function Tab2Section({
                     <button
                       onClick={() => setT2DatePage((p) => Math.max(0, p - 1))}
                       disabled={t2DatePage === 0}
-                      style={{ padding: '5px 12px', fontSize: '0.8125rem', fontWeight: 600, color: t2DatePage === 0 ? '#D1D5DB' : '#1E3A5F', backgroundColor: '#fff', border: `1px solid ${t2DatePage === 0 ? '#E5E7EB' : '#C7D2E2'}`, borderRadius: 7, cursor: t2DatePage === 0 ? 'not-allowed' : 'pointer' }}
+                      style={{ padding: '5px 12px', fontSize: '0.8125rem', fontWeight: 600, color: t2DatePage === 0 ? '#D1D5DB' : '#3B82F6', backgroundColor: 'var(--bg-card)', border: `1px solid ${t2DatePage === 0 ? '#E5E7EB' : '#C7D2E2'}`, borderRadius: 7, cursor: t2DatePage === 0 ? 'not-allowed' : 'pointer' }}
                     >
                       이전
                     </button>
-                    <span style={{ fontSize: '0.8125rem', color: '#6B7280' }}>
+                    <span style={{ fontSize: '0.8125rem', color: 'var(--text-muted)' }}>
                       {t2DatePage + 1} / {t2TotalPages}
                     </span>
                     <button
                       onClick={() => setT2DatePage((p) => Math.min(t2TotalPages - 1, p + 1))}
                       disabled={t2DatePage >= t2TotalPages - 1}
-                      style={{ padding: '5px 12px', fontSize: '0.8125rem', fontWeight: 600, color: t2DatePage >= t2TotalPages - 1 ? '#D1D5DB' : '#1E3A5F', backgroundColor: '#fff', border: `1px solid ${t2DatePage >= t2TotalPages - 1 ? '#E5E7EB' : '#C7D2E2'}`, borderRadius: 7, cursor: t2DatePage >= t2TotalPages - 1 ? 'not-allowed' : 'pointer' }}
+                      style={{ padding: '5px 12px', fontSize: '0.8125rem', fontWeight: 600, color: t2DatePage >= t2TotalPages - 1 ? '#D1D5DB' : '#3B82F6', backgroundColor: 'var(--bg-card)', border: `1px solid ${t2DatePage >= t2TotalPages - 1 ? '#E5E7EB' : '#C7D2E2'}`, borderRadius: 7, cursor: t2DatePage >= t2TotalPages - 1 ? 'not-allowed' : 'pointer' }}
                     >
                       다음
                     </button>
@@ -1933,12 +1936,12 @@ function Tab2Section({
 
             {/* 요약정보 카드 */}
             {activeSnapshotLoading && (
-              <div style={{ marginTop: 14, padding: '14px', textAlign: 'center', color: '#9CA3AF', fontSize: '0.875rem' }}>
+              <div style={{ marginTop: 14, padding: '14px', textAlign: 'center', color: 'var(--text-muted)', fontSize: '0.875rem' }}>
                 로딩 중...
               </div>
             )}
             {!activeSnapshotLoading && t2Summary && (
-              <div style={{ marginTop: 14, padding: '14px 16px', backgroundColor: '#EEF2F7', borderRadius: 10, border: '1px solid #C7D2E2' }}>
+              <div style={{ marginTop: 14, padding: '14px 16px', backgroundColor: 'var(--bg-card-2)', borderRadius: 10, border: '1px solid #C7D2E2' }}>
                 {!t2SelectedAccount?.account_type?.startsWith('pension') ? (
                   /* IRP: 5개 항목 */
                   <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 10 }}>
@@ -1950,8 +1953,8 @@ function Tab2Section({
                       { label: '상품 갯수', value: `${t2Summary.holdings.length}개` },
                     ].map(({ label, value, color }) => (
                       <div key={label} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 3 }}>
-                        <span style={{ fontSize: '0.6875rem', color: '#6B7280', fontWeight: 500 }}>{label}</span>
-                        <span style={{ fontSize: '0.8125rem', fontWeight: 700, color: color ?? '#1A1A2E' }}>{value}</span>
+                        <span style={{ fontSize: '0.6875rem', color: 'var(--text-muted)', fontWeight: 500 }}>{label}</span>
+                        <span style={{ fontSize: '0.8125rem', fontWeight: 700, color: color ?? 'var(--text-primary)' }}>{value}</span>
                       </div>
                     ))}
                   </div>
@@ -1969,8 +1972,8 @@ function Tab2Section({
                       { label: '상품 갯수', value: `${t2Summary.holdings.length}개` },
                     ].map(({ label, value, color }) => (
                       <div key={label} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 3 }}>
-                        <span style={{ fontSize: '0.6875rem', color: '#6B7280', fontWeight: 500 }}>{label}</span>
-                        <span style={{ fontSize: '0.8125rem', fontWeight: 700, color: color ?? '#1A1A2E' }}>{value}</span>
+                        <span style={{ fontSize: '0.6875rem', color: 'var(--text-muted)', fontWeight: 500 }}>{label}</span>
+                        <span style={{ fontSize: '0.8125rem', fontWeight: 700, color: color ?? 'var(--text-primary)' }}>{value}</span>
                       </div>
                     ))}
                   </div>
@@ -1981,7 +1984,7 @@ function Tab2Section({
         )}
 
         {!histClientId && (
-          <div style={{ marginTop: 8, padding: '14px', backgroundColor: '#F9FAFB', borderRadius: 8, fontSize: '0.8125rem', color: '#9CA3AF', textAlign: 'center' }}>
+          <div style={{ marginTop: 8, padding: '14px', backgroundColor: 'var(--bg-surface)', borderRadius: 8, fontSize: '0.8125rem', color: 'var(--text-muted)', textAlign: 'center' }}>
             고객과 계좌를 선택하면 스냅샷 이력을 조회합니다.
           </div>
         )}
@@ -1992,18 +1995,18 @@ function Tab2Section({
       {/* ============================================================ */}
       {histAccountId && activeSnapshotId && (
         <div style={cardStyle}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 16, paddingBottom: 12, borderBottom: '1px solid #E1E5EB' }}>
-            <div style={{ width: 3, height: 18, borderRadius: 2, backgroundColor: '#1E3A5F', flexShrink: 0 }} />
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 16, paddingBottom: 12, borderBottom: '1px solid var(--border)' }}>
+            <div style={{ width: 3, height: 18, borderRadius: 2, backgroundColor: 'var(--blue-600)', flexShrink: 0 }} />
             <span style={sectionTitleStyle}>포트폴리오 상세</span>
             {t2Summary && (
-              <span style={{ fontSize: '0.8125rem', color: '#6B7280' }}>— {t2Summary.snapshot_date}</span>
+              <span style={{ fontSize: '0.8125rem', color: 'var(--text-muted)' }}>— {t2Summary.snapshot_date}</span>
             )}
             <div style={{ marginLeft: 'auto' }}>
               <button
                 onClick={handleT2LoadDetail}
                 disabled={t2DetailLoading}
                 data-tooltip="선택한 날짜의 포트폴리오 상세 데이터, 차트, 수정 포트폴리오를 불러옵니다."
-                style={{ padding: '8px 18px', fontSize: '0.8125rem', fontWeight: 700, color: '#fff', backgroundColor: t2DetailLoading ? '#9CA3AF' : '#1E3A5F', border: 'none', borderRadius: 8, cursor: t2DetailLoading ? 'not-allowed' : 'pointer', display: 'inline-flex', alignItems: 'center', gap: 6, transition: 'background-color 0.15s' }}
+                style={{ padding: '8px 18px', fontSize: '0.8125rem', fontWeight: 700, color: '#fff', backgroundColor: t2DetailLoading ? '#9CA3AF' : '#3B82F6', border: 'none', borderRadius: 8, cursor: t2DetailLoading ? 'not-allowed' : 'pointer', display: 'inline-flex', alignItems: 'center', gap: 6, transition: 'background-color 0.15s' }}
               >
                 {t2DetailLoading ? (
                   <span style={{ display: 'inline-block', width: 12, height: 12, border: '2px solid #fff', borderTopColor: 'transparent', borderRadius: '50%', animation: 'spin 0.7s linear infinite' }} />
@@ -2023,7 +2026,7 @@ function Tab2Section({
             <>
               {/* ---- 연금저축: Summary bar ---- */}
               {t2SelectedAccount?.account_type !== 'irp' && (
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 8, padding: '12px 16px', backgroundColor: '#EEF2F7', borderRadius: 10, marginBottom: 16, border: '1px solid #C7D2E2' }}>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 8, padding: '12px 16px', backgroundColor: 'var(--bg-card-2)', borderRadius: 10, marginBottom: 16, border: '1px solid #C7D2E2' }}>
                   {[
                     { label: '예수금', value: fmtNum(activeSnapshot.deposit_amount) },
                     { label: '외화예수금', value: fmtNum(activeSnapshot.foreign_deposit_amount) },
@@ -2034,21 +2037,21 @@ function Tab2Section({
                     { label: '총수익률', value: activeSnapshot.total_return_rate != null ? `${activeSnapshot.total_return_rate > 0 ? '+' : ''}${activeSnapshot.total_return_rate.toFixed(2)}%` : '-', color: rateColor(activeSnapshot.total_return_rate) },
                   ].map(({ label, value, color }) => (
                     <div key={label} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2 }}>
-                      <span style={{ fontSize: '0.6875rem', color: '#6B7280', fontWeight: 500 }}>{label}</span>
-                      <span style={{ fontSize: '0.8125rem', fontWeight: 700, color: color ?? '#1A1A2E' }}>{value}</span>
+                      <span style={{ fontSize: '0.6875rem', color: 'var(--text-muted)', fontWeight: 500 }}>{label}</span>
+                      <span style={{ fontSize: '0.8125rem', fontWeight: 700, color: color ?? 'var(--text-primary)' }}>{value}</span>
                     </div>
                   ))}
                 </div>
               )}
 
               {/* ---- Holdings table ---- */}
-              <div style={{ overflowX: 'scroll', border: '1px solid #E1E5EB', borderRadius: 8 }}>
+              <div style={{ overflowX: 'scroll', border: '1px solid var(--border)', borderRadius: 8 }}>
                 <table style={{ borderCollapse: 'collapse', fontSize: '0.8125rem', minWidth: !t2SelectedAccount?.account_type?.startsWith('pension') ? 1000 : 1100 }}>
                   <thead>
-                    <tr style={{ backgroundColor: '#F5F7FA' }}>
-                      <th style={{ ...thStyle, position: 'sticky', left: 0, zIndex: 2, background: '#F5F7FA', textAlign: 'center', minWidth: 36 }}>No.</th>
-                      <th style={{ ...thStyle, position: 'sticky', left: 36, zIndex: 2, background: '#F5F7FA', textAlign: 'center', minWidth: 68, borderRight: '2px solid #E1E5EB' }}>상품유형</th>
-                      <th style={{ ...thStyle, position: 'sticky', left: 104, zIndex: 2, background: '#F5F7FA', textAlign: 'left', minWidth: 300, borderRight: '2px solid #E1E5EB' }}>상품명</th>
+                    <tr style={{ backgroundColor: 'var(--bg-surface)' }}>
+                      <th style={{ ...thStyle, position: 'sticky', left: 0, zIndex: 2, background: 'var(--bg-surface)', textAlign: 'center', minWidth: 36 }}>No.</th>
+                      <th style={{ ...thStyle, position: 'sticky', left: 36, zIndex: 2, background: 'var(--bg-surface)', textAlign: 'center', minWidth: 68, borderRight: '2px solid var(--border)' }}>상품유형</th>
+                      <th style={{ ...thStyle, position: 'sticky', left: 104, zIndex: 2, background: 'var(--bg-surface)', textAlign: 'left', minWidth: 300, borderRight: '2px solid var(--border)' }}>상품명</th>
                       {!t2SelectedAccount?.account_type?.startsWith('pension') ? (
                         <>
                           <th style={thStyle}>수량</th>
@@ -2097,12 +2100,12 @@ function Tab2Section({
                         : null;
                       return (
                         <tr key={h.id}
-                          onMouseEnter={(e) => { (e.currentTarget as HTMLTableRowElement).style.backgroundColor = '#F9FAFB'; }}
+                          onMouseEnter={(e) => { (e.currentTarget as HTMLTableRowElement).style.backgroundColor = 'var(--bg-surface)'; }}
                           onMouseLeave={(e) => { (e.currentTarget as HTMLTableRowElement).style.backgroundColor = 'transparent'; }}
                         >
-                          <td style={{ ...tdStyle, position: 'sticky', left: 0, zIndex: 1, background: '#fff', textAlign: 'center', color: '#9CA3AF' }}>{idx + 1}</td>
-                          <td style={{ ...tdStyle, position: 'sticky', left: 36, zIndex: 1, background: '#fff', textAlign: 'center', fontSize: '0.6875rem', color: '#6B7280', borderRight: '2px solid #E1E5EB' }}>{h.product_type || '-'}</td>
-                          <td style={{ ...tdStyle, position: 'sticky', left: 104, zIndex: 1, background: '#fff', textAlign: 'left', fontWeight: 500, color: '#1A1A2E', whiteSpace: 'normal', wordBreak: 'keep-all', minWidth: 300, borderRight: '2px solid #E1E5EB' }}>{h.product_name}</td>
+                          <td style={{ ...tdStyle, position: 'sticky', left: 0, zIndex: 1, background: 'var(--bg-card)', textAlign: 'center', color: 'var(--text-muted)' }}>{idx + 1}</td>
+                          <td style={{ ...tdStyle, position: 'sticky', left: 36, zIndex: 1, background: 'var(--bg-card)', textAlign: 'center', fontSize: '0.6875rem', color: 'var(--text-muted)', borderRight: '2px solid var(--border)' }}>{h.product_type || '-'}</td>
+                          <td style={{ ...tdStyle, position: 'sticky', left: 104, zIndex: 1, background: 'var(--bg-card)', textAlign: 'left', fontWeight: 500, color: 'var(--text-primary)', whiteSpace: 'normal', wordBreak: 'keep-all', minWidth: 300, borderRight: '2px solid var(--border)' }}>{h.product_name}</td>
                           {!t2SelectedAccount?.account_type?.startsWith('pension') ? (
                             <>
                               <td style={tdStyle}>{fmtNum(h.quantity)}</td>
@@ -2123,14 +2126,14 @@ function Tab2Section({
                               <td style={{ ...tdStyle, textAlign: 'center', fontFamily: 'monospace', fontSize: '0.75rem' }}>{h.product_code || '-'}</td>
                               <td style={{ ...tdStyle, textAlign: 'center' }}>
                                 {h.risk_level ? (
-                                  <span style={{ fontSize: '0.6875rem', fontWeight: 600, padding: '2px 5px', borderRadius: 4, backgroundColor: h.risk_level === '절대성장형' ? '#FEF2F2' : h.risk_level === '성장형' ? '#FFFBEB' : h.risk_level === '안정형' ? '#ECFDF5' : '#EFF6FF', color: h.risk_level === '절대성장형' ? '#DC2626' : h.risk_level === '성장형' ? '#D97706' : h.risk_level === '안정형' ? '#059669' : '#2563EB' }}>
+                                  <span style={{ fontSize: '0.6875rem', fontWeight: 600, padding: '2px 5px', borderRadius: 4, backgroundColor: h.risk_level === '절대성장형' ? 'rgba(239,68,68,0.12)' : h.risk_level === '성장형' ? 'rgba(245,158,11,0.12)' : h.risk_level === '안정형' ? 'rgba(16,185,129,0.12)' : 'rgba(56,189,248,0.12)', color: h.risk_level === '절대성장형' ? '#DC2626' : h.risk_level === '성장형' ? '#D97706' : h.risk_level === '안정형' ? '#059669' : '#2563EB' }}>
                                     {h.risk_level}
                                   </span>
                                 ) : '-'}
                               </td>
                               <td style={{ ...tdStyle, textAlign: 'center' }}>
                                 {h.region ? (
-                                  <span style={{ fontSize: '0.75rem', fontWeight: 500, color: '#1E3A5F', backgroundColor: '#EEF2F7', padding: '2px 5px', borderRadius: 4 }}>{h.region}</span>
+                                  <span style={{ fontSize: '0.75rem', fontWeight: 500, color: 'var(--blue-400)', backgroundColor: 'var(--bg-card-2)', padding: '2px 5px', borderRadius: 4 }}>{h.region}</span>
                                 ) : '-'}
                               </td>
                               <td style={tdStyle}>{fmtNum(h.quantity)}</td>
@@ -2151,10 +2154,10 @@ function Tab2Section({
                     })}
                   </tbody>
                   <tfoot>
-                    <tr style={{ backgroundColor: '#F5F7FA' }}>
-                      <td style={{ ...totalRowStyle, position: 'sticky', left: 0, zIndex: 1, background: '#F5F7FA' }} />
-                      <td style={{ ...totalRowStyle, position: 'sticky', left: 36, zIndex: 1, background: '#F5F7FA', borderRight: '2px solid #E1E5EB' }} />
-                      <td style={{ ...totalRowStyle, position: 'sticky', left: 104, zIndex: 1, background: '#F5F7FA', textAlign: 'left', borderRight: '2px solid #E1E5EB' }}>합계</td>
+                    <tr style={{ backgroundColor: 'var(--bg-surface)' }}>
+                      <td style={{ ...totalRowStyle, position: 'sticky', left: 0, zIndex: 1, background: 'var(--bg-surface)' }} />
+                      <td style={{ ...totalRowStyle, position: 'sticky', left: 36, zIndex: 1, background: 'var(--bg-surface)', borderRight: '2px solid var(--border)' }} />
+                      <td style={{ ...totalRowStyle, position: 'sticky', left: 104, zIndex: 1, background: 'var(--bg-surface)', textAlign: 'left', borderRight: '2px solid var(--border)' }}>합계</td>
                       {!t2SelectedAccount?.account_type?.startsWith('pension') ? (
                         <>
                           <td style={totalRowStyle} />
@@ -2196,7 +2199,7 @@ function Tab2Section({
           )}
 
           {!t2ShowDetail && !t2DetailLoading && (
-            <div style={{ padding: '20px', textAlign: 'center', color: '#9CA3AF', fontSize: '0.875rem' }}>
+            <div style={{ padding: '20px', textAlign: 'center', color: 'var(--text-muted)', fontSize: '0.875rem' }}>
               [불러오기] 버튼을 클릭하면 포트폴리오 상세 데이터를 조회합니다.
             </div>
           )}
@@ -2235,51 +2238,51 @@ function Tab2Section({
       {t2ShowDetail && (
         <div style={cardStyle} ref={drGmRef}>
           {/* 헤더 1열: 제목 + 토글 */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8, paddingBottom: 8, borderBottom: '1px solid #E1E5EB' }}>
-            <div style={{ width: 3, height: 18, borderRadius: 2, backgroundColor: '#F59E0B', flexShrink: 0 }} />
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8, paddingBottom: 8, borderBottom: '1px solid var(--border)' }}>
+            <div style={{ width: 3, height: 18, borderRadius: 2, backgroundColor: 'var(--warning)', flexShrink: 0 }} />
             <span style={sectionTitleStyle}>Dr.GM 추천 포트폴리오</span>
             {/* 연금저축/IRP 토글 */}
-            <div style={{ marginLeft: 'auto', display: 'flex', borderRadius: 6, overflow: 'hidden', border: '1px solid #E1E5EB' }}>
+            <div style={{ marginLeft: 'auto', display: 'flex', borderRadius: 6, overflow: 'hidden', border: '1px solid var(--border)' }}>
               <button onClick={() => setDrGmAccountType('pension')}
                 style={{ padding: '5px 14px', fontSize: '0.75rem', fontWeight: 600, border: 'none', cursor: 'pointer',
-                  backgroundColor: drGmAccountType === 'pension' ? '#F59E0B' : '#fff',
+                  backgroundColor: drGmAccountType === 'pension' ? '#F59E0B' : 'var(--bg-card)',
                   color: drGmAccountType === 'pension' ? '#fff' : '#6B7280' }}>
                 연금저축
               </button>
               <button onClick={() => setDrGmAccountType('irp')}
                 style={{ padding: '5px 14px', fontSize: '0.75rem', fontWeight: 600, border: 'none', cursor: 'pointer',
-                  backgroundColor: drGmAccountType === 'irp' ? '#1E3A5F' : '#fff',
+                  backgroundColor: drGmAccountType === 'irp' ? '#3B82F6' : 'var(--bg-card)',
                   color: drGmAccountType === 'irp' ? '#fff' : '#6B7280' }}>
                 IRP
               </button>
             </div>
             {/* 월적립금액 */}
             <div style={{ display: 'flex', alignItems: 'center', gap: 4, marginLeft: 16 }}>
-              <span style={{ fontSize: '0.75rem', fontWeight: 600, color: '#374151', whiteSpace: 'nowrap' }}>월적립</span>
+              <span style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-secondary)', whiteSpace: 'nowrap' }}>월적립</span>
               <input type="number" value={drGmMonthlyAmount || ''} onChange={(e) => setDrGmMonthlyAmount(parseInt(e.target.value) || 0)}
-                placeholder="0" style={{ width: 90, padding: '4px 6px', fontSize: '0.8125rem', textAlign: 'right', border: '1px solid #E1E5EB', borderRadius: 5, outline: 'none' }} />
-              <span style={{ fontSize: '0.7rem', color: '#9CA3AF' }}>원</span>
+                placeholder="0" style={{ width: 90, padding: '4px 6px', fontSize: '0.8125rem', textAlign: 'right', border: '1px solid var(--border)', borderRadius: 5, outline: 'none' }} />
+              <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>원</span>
             </div>
             {/* 거치금액 */}
             <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-              <span style={{ fontSize: '0.75rem', fontWeight: 600, color: '#374151', whiteSpace: 'nowrap' }}>거치</span>
+              <span style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-secondary)', whiteSpace: 'nowrap' }}>거치</span>
               <input type="number" value={drGmLumpSumAmount || ''} onChange={(e) => setDrGmLumpSumAmount(parseInt(e.target.value) || 0)}
-                placeholder="0" style={{ width: 100, padding: '4px 6px', fontSize: '0.8125rem', textAlign: 'right', border: '1px solid #E1E5EB', borderRadius: 5, outline: 'none' }} />
-              <span style={{ fontSize: '0.7rem', color: '#9CA3AF' }}>원</span>
+                placeholder="0" style={{ width: 100, padding: '4px 6px', fontSize: '0.8125rem', textAlign: 'right', border: '1px solid var(--border)', borderRadius: 5, outline: 'none' }} />
+              <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>원</span>
             </div>
           </div>
           {/* 헤더 2열: 버튼들 */}
           <div style={{ display: 'flex', gap: 8, marginBottom: 12, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
             <button onClick={refreshDrGmPrices} disabled={drGmRefreshing}
-              style={{ padding: '6px 14px', fontSize: '0.8125rem', fontWeight: 600, color: '#374151', backgroundColor: '#FEF3C7', border: '1px solid #FCD34D', borderRadius: 7, cursor: drGmRefreshing ? 'not-allowed' : 'pointer', opacity: drGmRefreshing ? 0.6 : 1 }}>
+              style={{ padding: '6px 14px', fontSize: '0.8125rem', fontWeight: 600, color: 'var(--text-secondary)', backgroundColor: 'var(--warning-bg)', border: '1px solid rgba(245,158,11,0.35)', borderRadius: 7, cursor: drGmRefreshing ? 'not-allowed' : 'pointer', opacity: drGmRefreshing ? 0.6 : 1 }}>
               {drGmRefreshing ? '갱신 중...' : '현재가 갱신'}
             </button>
             <button onClick={addDrGmRow}
-              style={{ padding: '6px 14px', fontSize: '0.8125rem', fontWeight: 600, color: '#1E3A5F', backgroundColor: '#EEF2F7', border: '1px solid #C7D2E2', borderRadius: 7, cursor: 'pointer' }}>
+              style={{ padding: '6px 14px', fontSize: '0.8125rem', fontWeight: 600, color: 'var(--blue-400)', backgroundColor: 'var(--bg-card-2)', border: '1px solid #C7D2E2', borderRadius: 7, cursor: 'pointer' }}>
               + 행추가
             </button>
             <button onClick={deleteCheckedDrGmRows} disabled={drGmChecked.size === 0}
-              style={{ padding: '6px 14px', fontSize: '0.8125rem', fontWeight: 600, color: drGmChecked.size > 0 ? '#EF4444' : '#9CA3AF', backgroundColor: '#fff', border: `1px solid ${drGmChecked.size > 0 ? '#FECACA' : '#E1E5EB'}`, borderRadius: 7, cursor: drGmChecked.size > 0 ? 'pointer' : 'not-allowed' }}>
+              style={{ padding: '6px 14px', fontSize: '0.8125rem', fontWeight: 600, color: drGmChecked.size > 0 ? '#EF4444' : '#9CA3AF', backgroundColor: 'var(--bg-card)', border: `1px solid ${drGmChecked.size > 0 ? 'rgba(239,68,68,0.30)' : '#E1E5EB'}`, borderRadius: 7, cursor: drGmChecked.size > 0 ? 'pointer' : 'not-allowed' }}>
               삭제 ({drGmChecked.size})
             </button>
             <button onClick={saveDrGmPortfolio} disabled={drGmSaving}
@@ -2287,7 +2290,7 @@ function Tab2Section({
               {drGmSaving ? '저장 중...' : '저장'}
             </button>
             <button onClick={applyDrGmToRebal}
-              style={{ padding: '6px 14px', fontSize: '0.8125rem', fontWeight: 700, color: '#fff', backgroundColor: '#1E3A5F', border: 'none', borderRadius: 7, cursor: 'pointer' }}>
+              style={{ padding: '6px 14px', fontSize: '0.8125rem', fontWeight: 700, color: '#fff', backgroundColor: 'var(--blue-600)', border: 'none', borderRadius: 7, cursor: 'pointer' }}>
               수정 포트폴리오 적용 ↓
             </button>
             <button onClick={async () => {
@@ -2334,33 +2337,33 @@ function Tab2Section({
               link.href = canvas.toDataURL('image/png');
               link.click();
             }}
-              style={{ padding: '6px 14px', fontSize: '0.8125rem', fontWeight: 600, color: '#059669', backgroundColor: '#ECFDF5', border: '1px solid #A7F3D0', borderRadius: 7, cursor: 'pointer' }}>
+              style={{ padding: '6px 14px', fontSize: '0.8125rem', fontWeight: 600, color: 'var(--success)', backgroundColor: 'var(--success-bg)', border: '1px solid rgba(16,185,129,0.35)', borderRadius: 7, cursor: 'pointer' }}>
               이미지 다운로드
             </button>
           </div>
 
           {drGmLoading ? (
-            <div style={{ padding: 20, textAlign: 'center', color: '#9CA3AF' }}>불러오는 중...</div>
+            <div style={{ padding: 20, textAlign: 'center', color: 'var(--text-muted)' }}>불러오는 중...</div>
           ) : (
-            <div style={{ overflowX: 'auto', border: '1px solid #E1E5EB', borderRadius: 8 }}>
+            <div style={{ overflowX: 'auto', border: '1px solid var(--border)', borderRadius: 8 }}>
               <table style={{ borderCollapse: 'collapse', fontSize: '0.8125rem', minWidth: 1100, width: '100%' }} className="drgm-table">
                 <style>{`
                   .drgm-table td, .drgm-table th { vertical-align: middle !important; height: 48px; box-sizing: border-box; }
                   .drgm-table tbody td { padding-top: 0 !important; padding-bottom: 0 !important; }
                 `}</style>
                 <thead>
-                  <tr style={{ backgroundColor: '#FFFBEB' }}>
-                    <th style={{ ...thStyle, backgroundColor: '#FFFBEB', textAlign: 'center', minWidth: 36, position: 'sticky', left: 0, zIndex: 2 }}>No.</th>
-                    <th style={{ ...thStyle, backgroundColor: '#FFFBEB', textAlign: 'left', minWidth: 220, position: 'sticky', left: 36, zIndex: 2, borderRight: '2px solid #E1E5EB' }}>상품명</th>
-                    <th style={{ ...thStyle, backgroundColor: '#FFFBEB', minWidth: 80 }}>종목코드</th>
-                    <th style={{ ...thStyle, backgroundColor: '#FFFBEB', minWidth: 80 }}>현재가</th>
-                    <th style={{ ...thStyle, backgroundColor: '#F59E0B', color: '#fff', minWidth: 90 }}>비중(연금저축)</th>
-                    <th style={{ ...thStyle, backgroundColor: '#1E3A5F', color: '#fff', minWidth: 100 }}>비중(IRP/퇴직연금)</th>
-                    <th style={{ ...thStyle, backgroundColor: '#ECFDF5', minWidth: 90 }}>월적립투자</th>
-                    <th style={{ ...thStyle, backgroundColor: '#DBEAFE', minWidth: 80 }}>거치투자</th>
-                    <th style={{ ...thStyle, backgroundColor: '#DBEAFE', minWidth: 80 }}>구매좌수(거치)</th>
-                    <th style={{ ...thStyle, backgroundColor: '#FFFBEB', textAlign: 'left', minWidth: 90 }}>비고</th>
-                    <th style={{ ...thStyle, backgroundColor: '#FFFBEB', textAlign: 'center', minWidth: 36 }}>
+                  <tr style={{ backgroundColor: 'var(--warning-bg)' }}>
+                    <th style={{ ...thStyle, backgroundColor: 'var(--warning-bg)', textAlign: 'center', minWidth: 36, position: 'sticky', left: 0, zIndex: 2 }}>No.</th>
+                    <th style={{ ...thStyle, backgroundColor: 'var(--warning-bg)', textAlign: 'left', minWidth: 220, position: 'sticky', left: 36, zIndex: 2, borderRight: '2px solid var(--border)' }}>상품명</th>
+                    <th style={{ ...thStyle, backgroundColor: 'var(--warning-bg)', minWidth: 80 }}>종목코드</th>
+                    <th style={{ ...thStyle, backgroundColor: 'var(--warning-bg)', minWidth: 80 }}>현재가</th>
+                    <th style={{ ...thStyle, backgroundColor: 'var(--warning)', color: '#fff', minWidth: 90 }}>비중(연금저축)</th>
+                    <th style={{ ...thStyle, backgroundColor: 'var(--blue-600)', color: '#fff', minWidth: 100 }}>비중(IRP/퇴직연금)</th>
+                    <th style={{ ...thStyle, backgroundColor: 'var(--success-bg)', minWidth: 90 }}>월적립투자</th>
+                    <th style={{ ...thStyle, backgroundColor: 'rgba(56,189,248,0.16)', minWidth: 80 }}>거치투자</th>
+                    <th style={{ ...thStyle, backgroundColor: 'rgba(56,189,248,0.16)', minWidth: 80 }}>구매좌수(거치)</th>
+                    <th style={{ ...thStyle, backgroundColor: 'var(--warning-bg)', textAlign: 'left', minWidth: 90 }}>비고</th>
+                    <th style={{ ...thStyle, backgroundColor: 'var(--warning-bg)', textAlign: 'center', minWidth: 36 }}>
                       <input type="checkbox" checked={drGmRows.length > 0 && drGmChecked.size === drGmRows.length}
                         onChange={(e) => { if (e.target.checked) setDrGmChecked(new Set(drGmRows.map((r) => r.id))); else setDrGmChecked(new Set()); }}
                         style={{ width: 14, height: 14, cursor: 'pointer' }} />
@@ -2369,7 +2372,7 @@ function Tab2Section({
                 </thead>
                 <tbody>
                   {drGmRows.length === 0 && (
-                    <tr><td colSpan={12} style={{ padding: 20, textAlign: 'center', color: '#9CA3AF' }}>등록된 추천 상품이 없습니다. [+ 행추가] 버튼으로 추가하세요.</td></tr>
+                    <tr><td colSpan={12} style={{ padding: 20, textAlign: 'center', color: 'var(--text-muted)' }}>등록된 추천 상품이 없습니다. [+ 행추가] 버튼으로 추가하세요.</td></tr>
                   )}
                   {drGmRows.map((r, idx) => {
                     const weight = drGmAccountType === 'pension' ? r.weight_pension : r.weight_irp;
@@ -2378,10 +2381,10 @@ function Tab2Section({
                     const lumpShares = lumpInv > 0 && r.current_price > 0 ? Math.floor(lumpInv / r.current_price) : 0;
                     return (
                     <tr key={r.id} style={{ transition: 'background-color 0.1s' }}
-                      onMouseEnter={(e) => { (e.currentTarget as HTMLTableRowElement).style.backgroundColor = '#FFFBEB'; }}
+                      onMouseEnter={(e) => { (e.currentTarget as HTMLTableRowElement).style.backgroundColor = 'rgba(245,158,11,0.12)'; }}
                       onMouseLeave={(e) => { (e.currentTarget as HTMLTableRowElement).style.backgroundColor = 'transparent'; }}>
-                      <td style={{ ...tdStyle, textAlign: 'center', color: '#9CA3AF', position: 'sticky', left: 0, backgroundColor: '#fff', zIndex: 1 }}>{idx + 1}</td>
-                      <td style={{ ...tdStyle, textAlign: 'left', padding: '5px 8px', whiteSpace: 'normal', wordBreak: 'keep-all', position: 'sticky', left: 36, backgroundColor: '#fff', zIndex: 1, borderRight: '2px solid #E1E5EB' }}>
+                      <td style={{ ...tdStyle, textAlign: 'center', color: 'var(--text-muted)', position: 'sticky', left: 0, backgroundColor: 'var(--bg-card)', zIndex: 1 }}>{idx + 1}</td>
+                      <td style={{ ...tdStyle, textAlign: 'left', padding: '5px 8px', whiteSpace: 'normal', wordBreak: 'keep-all', position: 'sticky', left: 36, backgroundColor: 'var(--bg-card)', zIndex: 1, borderRight: '2px solid var(--border)' }}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
                           <div style={{ display: 'flex', flexDirection: 'column', gap: 0, flexShrink: 0 }}>
                             <button type="button" onClick={() => moveDrGmRow(r.id, -1)} disabled={idx === 0}
@@ -2392,9 +2395,9 @@ function Tab2Section({
                           <div style={{ flex: 1 }}>
                             {r.product_name ? (
                               <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-                                <span style={{ fontWeight: 500, color: '#1A1A2E' }}>{r.product_name}</span>
+                                <span style={{ fontWeight: 500, color: 'var(--text-primary)' }}>{r.product_name}</span>
                                 <button type="button" onClick={() => { setDrGmEditRowId(r.id); setDrGmProductSearch(''); setDrGmProductOpen(true); }}
-                                  style={{ padding: '2px 4px', border: '1px solid #C7D2E2', borderRadius: 4, backgroundColor: '#EEF2F7', cursor: 'pointer', color: '#1E3A5F', flexShrink: 0 }}>
+                                  style={{ padding: '2px 4px', border: '1px solid #C7D2E2', borderRadius: 4, backgroundColor: 'var(--bg-card-2)', cursor: 'pointer', color: 'var(--blue-400)', flexShrink: 0 }}>
                                   <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
                                     <path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38"/>
                                   </svg>
@@ -2402,43 +2405,43 @@ function Tab2Section({
                               </div>
                             ) : (
                               <button type="button" onClick={() => { setDrGmEditRowId(r.id); setDrGmProductSearch(''); setDrGmProductOpen(true); }}
-                                style={{ padding: '4px 10px', fontSize: '0.75rem', color: '#6B7280', backgroundColor: '#F3F4F6', border: '1px dashed #D1D5DB', borderRadius: 5, cursor: 'pointer' }}>
+                                style={{ padding: '4px 10px', fontSize: '0.75rem', color: 'var(--text-muted)', backgroundColor: 'var(--bg-surface)', border: '1px dashed var(--border-strong)', borderRadius: 5, cursor: 'pointer' }}>
                                 상품 선택...
                               </button>
                             )}
                           </div>
                         </div>
                       </td>
-                      <td style={{ ...tdStyle, fontFamily: 'monospace', fontSize: '0.75rem', color: '#6B7280' }}>{r.product_code || '-'}</td>
+                      <td style={{ ...tdStyle, fontFamily: 'monospace', fontSize: '0.75rem', color: 'var(--text-muted)' }}>{r.product_code || '-'}</td>
                       <td style={tdStyle}>{r.current_price > 0 ? r.current_price.toLocaleString('ko-KR') : '-'}</td>
-                      <td style={{ ...tdStyle, padding: '5px 8px', backgroundColor: drGmAccountType === 'pension' ? '#FEF9C3' : undefined }}>
+                      <td style={{ ...tdStyle, padding: '5px 8px', backgroundColor: drGmAccountType === 'pension' ? 'rgba(245,158,11,0.18)' : undefined }}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: 2 }}>
                           <input type="number" step="0.01" min="0" max="100" value={r.weight_pension || ''}
                             onChange={(e) => { const v = parseFloat(e.target.value); setDrGmRows((prev) => prev.map((rr) => rr.id !== r.id ? rr : { ...rr, weight_pension: isNaN(v) ? 0 : v })); }}
-                            style={{ width: 55, padding: '4px 6px', fontSize: '0.8125rem', textAlign: 'right', border: '1px solid #FCD34D', borderRadius: 5, outline: 'none' }} />
-                          <span style={{ fontSize: '0.75rem', color: '#6B7280' }}>%</span>
+                            style={{ width: 55, padding: '4px 6px', fontSize: '0.8125rem', textAlign: 'right', border: '1px solid rgba(245,158,11,0.35)', borderRadius: 5, outline: 'none' }} />
+                          <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>%</span>
                         </div>
                       </td>
                       <td style={{ ...tdStyle, padding: '5px 8px', backgroundColor: drGmAccountType === 'irp' ? '#DBEAFE' : undefined }}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: 2 }}>
                           <input type="number" step="0.01" min="0" max="100" value={r.weight_irp || ''}
                             onChange={(e) => { const v = parseFloat(e.target.value); setDrGmRows((prev) => prev.map((rr) => rr.id !== r.id ? rr : { ...rr, weight_irp: isNaN(v) ? 0 : v })); }}
-                            style={{ width: 55, padding: '4px 6px', fontSize: '0.8125rem', textAlign: 'right', border: '1px solid #93C5FD', borderRadius: 5, outline: 'none' }} />
-                          <span style={{ fontSize: '0.75rem', color: '#6B7280' }}>%</span>
+                            style={{ width: 55, padding: '4px 6px', fontSize: '0.8125rem', textAlign: 'right', border: '1px solid rgba(56,189,248,0.35)', borderRadius: 5, outline: 'none' }} />
+                          <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>%</span>
                         </div>
                       </td>
-                      <td style={{ ...tdStyle, textAlign: 'right', color: monthlyInv > 0 ? '#059669' : '#9CA3AF', backgroundColor: '#F0FDF4' }}>
+                      <td style={{ ...tdStyle, textAlign: 'right', color: monthlyInv > 0 ? '#059669' : '#9CA3AF', backgroundColor: 'var(--success-bg)' }}>
                         {monthlyInv > 0 ? monthlyInv.toLocaleString('ko-KR') : '-'}
                       </td>
-                      <td style={{ ...tdStyle, textAlign: 'right', color: lumpInv > 0 ? '#2563EB' : '#9CA3AF', backgroundColor: '#EFF6FF' }}>
+                      <td style={{ ...tdStyle, textAlign: 'right', color: lumpInv > 0 ? '#2563EB' : '#9CA3AF', backgroundColor: 'rgba(56,189,248,0.12)' }}>
                         {lumpInv > 0 ? lumpInv.toLocaleString('ko-KR') : '-'}
                       </td>
-                      <td style={{ ...tdStyle, textAlign: 'right', color: lumpShares > 0 ? '#2563EB' : '#9CA3AF', backgroundColor: '#EFF6FF' }}>
+                      <td style={{ ...tdStyle, textAlign: 'right', color: lumpShares > 0 ? '#2563EB' : '#9CA3AF', backgroundColor: 'rgba(56,189,248,0.12)' }}>
                         {lumpShares > 0 ? lumpShares.toLocaleString('ko-KR') : '-'}
                       </td>
                       <td style={{ ...tdStyle, padding: '5px 8px', textAlign: 'left' }}>
                         <input type="text" value={r.memo} onChange={(e) => setDrGmRows((prev) => prev.map((rr) => rr.id !== r.id ? rr : { ...rr, memo: e.target.value }))}
-                          style={{ width: '100%', minWidth: 70, padding: '4px 6px', fontSize: '0.8125rem', border: '1px solid #E1E5EB', borderRadius: 5, outline: 'none' }} />
+                          style={{ width: '100%', minWidth: 70, padding: '4px 6px', fontSize: '0.8125rem', border: '1px solid var(--border)', borderRadius: 5, outline: 'none' }} />
                       </td>
                       <td style={{ ...tdStyle, textAlign: 'center' }}>
                         <input type="checkbox" checked={drGmChecked.has(r.id)}
@@ -2463,21 +2466,21 @@ function Tab2Section({
                   }, 0);
                   return (
                   <tfoot>
-                    <tr style={{ backgroundColor: '#FFFBEB' }}>
-                      <td style={{ ...totalRowStyle, position: 'sticky', left: 0, backgroundColor: '#FFFBEB', zIndex: 1 }} />
-                      <td style={{ ...totalRowStyle, textAlign: 'left', position: 'sticky', left: 36, backgroundColor: '#FFFBEB', zIndex: 1, borderRight: '2px solid #E1E5EB' }}>합계</td>
+                    <tr style={{ backgroundColor: 'var(--warning-bg)' }}>
+                      <td style={{ ...totalRowStyle, position: 'sticky', left: 0, backgroundColor: 'var(--warning-bg)', zIndex: 1 }} />
+                      <td style={{ ...totalRowStyle, textAlign: 'left', position: 'sticky', left: 36, backgroundColor: 'var(--warning-bg)', zIndex: 1, borderRight: '2px solid var(--border)' }}>합계</td>
                       <td style={totalRowStyle} />
                       <td style={totalRowStyle} />
-                      <td style={{ ...totalRowStyle, backgroundColor: '#FDE68A' }}>
+                      <td style={{ ...totalRowStyle, backgroundColor: 'rgba(245,158,11,0.22)' }}>
                         {totalPension.toFixed(2)}%
                       </td>
-                      <td style={{ ...totalRowStyle, backgroundColor: '#93C5FD' }}>
+                      <td style={{ ...totalRowStyle, backgroundColor: 'rgba(56,189,248,0.20)' }}>
                         {totalIrp.toFixed(2)}%
                       </td>
-                      <td style={{ ...totalRowStyle, color: '#059669', backgroundColor: '#D1FAE5' }}>
+                      <td style={{ ...totalRowStyle, color: 'var(--success)', backgroundColor: 'var(--success-bg)' }}>
                         {totalMonthly > 0 ? totalMonthly.toLocaleString('ko-KR') : '-'}
                       </td>
-                      <td style={{ ...totalRowStyle, color: '#2563EB', backgroundColor: '#BFDBFE' }}>
+                      <td style={{ ...totalRowStyle, color: 'var(--blue-500)', backgroundColor: 'rgba(56,189,248,0.18)' }}>
                         {totalLump > 0 ? totalLump.toLocaleString('ko-KR') : '-'}
                       </td>
                       <td style={totalRowStyle} />
@@ -2492,7 +2495,7 @@ function Tab2Section({
           )}
 
           {drGmToast && (
-            <div style={{ marginTop: 10, padding: '10px 14px', backgroundColor: drGmToast.includes('실패') || drGmToast.includes('오류') ? '#FEF2F2' : '#FFFBEB', border: `1px solid ${drGmToast.includes('실패') || drGmToast.includes('오류') ? '#FECACA' : '#FCD34D'}`, borderRadius: 8, fontSize: '0.8125rem', fontWeight: 500, color: drGmToast.includes('실패') || drGmToast.includes('오류') ? '#DC2626' : '#92400E' }}>
+            <div style={{ marginTop: 10, padding: '10px 14px', backgroundColor: drGmToast.includes('실패') || drGmToast.includes('오류') ? 'rgba(239,68,68,0.12)' : 'rgba(245,158,11,0.12)', border: `1px solid ${drGmToast.includes('실패') || drGmToast.includes('오류') ? 'rgba(239,68,68,0.30)' : 'rgba(245,158,11,0.40)'}`, borderRadius: 8, fontSize: '0.8125rem', fontWeight: 500, color: drGmToast.includes('실패') || drGmToast.includes('오류') ? '#DC2626' : '#92400E' }}>
               {drGmToast}
             </div>
           )}
@@ -2503,45 +2506,45 @@ function Tab2Section({
       {drGmProductOpen && (
         <div style={{ position: 'fixed', inset: 0, zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(0,0,0,0.45)' }}
           onClick={(e) => { if (e.target === e.currentTarget) { setDrGmProductOpen(false); setDrGmEditRowId(null); } }}>
-          <div style={{ backgroundColor: '#fff', borderRadius: 14, padding: 24, width: '100%', maxWidth: 560, maxHeight: '75vh', display: 'flex', flexDirection: 'column', boxShadow: '0 20px 60px rgba(0,0,0,0.2)' }}>
+          <div style={{ backgroundColor: 'var(--bg-card)', borderRadius: 14, padding: 24, width: '100%', maxWidth: 560, maxHeight: '75vh', display: 'flex', flexDirection: 'column', boxShadow: '0 20px 60px rgba(0,0,0,0.2)' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
-              <h3 style={{ margin: 0, fontSize: '1rem', fontWeight: 700, color: '#1A1A2E' }}>상품 선택</h3>
+              <h3 style={{ margin: 0, fontSize: '1rem', fontWeight: 700, color: 'var(--text-primary)' }}>상품 선택</h3>
               <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
                 <button
                   onClick={() => setT2NewMasterOpen(true)}
-                  style={{ padding: '5px 10px', fontSize: '0.75rem', fontWeight: 600, color: '#92400E', backgroundColor: '#FEF3C7', border: '1px solid #FCD34D', borderRadius: 6, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 4 }}
+                  style={{ padding: '5px 10px', fontSize: '0.75rem', fontWeight: 600, color: 'var(--warning)', backgroundColor: 'var(--warning-bg)', border: '1px solid rgba(245,158,11,0.35)', borderRadius: 6, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 4 }}
                 >
                   <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
                   새 상품 등록
                 </button>
-                <button onClick={() => { setDrGmProductOpen(false); setDrGmEditRowId(null); }} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#9CA3AF', padding: 4 }}>
+                <button onClick={() => { setDrGmProductOpen(false); setDrGmEditRowId(null); }} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', padding: 4 }}>
                   <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
                 </button>
               </div>
             </div>
             <input type="text" placeholder="상품명 또는 종목코드 검색..." value={drGmProductSearch}
               onChange={(e) => setDrGmProductSearch(e.target.value)}
-              style={{ width: '100%', padding: '8px 10px', fontSize: '0.8125rem', border: '1px solid #E1E5EB', borderRadius: 8, outline: 'none', marginBottom: 10, boxSizing: 'border-box' }}
+              style={{ width: '100%', padding: '8px 10px', fontSize: '0.8125rem', border: '1px solid var(--border)', borderRadius: 8, outline: 'none', marginBottom: 10, boxSizing: 'border-box' }}
               autoFocus />
-            <div style={{ flex: 1, overflowY: 'auto', border: '1px solid #E1E5EB', borderRadius: 8 }}>
+            <div style={{ flex: 1, overflowY: 'auto', border: '1px solid var(--border)', borderRadius: 8 }}>
               {productMasters
                 .filter((m) => !drGmProductSearch || m.product_name.toLowerCase().includes(drGmProductSearch.toLowerCase()) || (m.product_code ?? '').toLowerCase().includes(drGmProductSearch.toLowerCase()))
                 .map((m) => (
                   <button key={m.id} type="button"
                     onClick={() => selectDrGmProduct(m)}
-                    style={{ width: '100%', padding: '8px 12px', textAlign: 'left', border: 'none', borderBottom: '1px solid #F3F4F6', cursor: 'pointer', backgroundColor: 'transparent', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, transition: 'background-color 0.1s' }}
-                    onMouseEnter={(e) => { (e.currentTarget).style.backgroundColor = '#FFFBEB'; }}
+                    style={{ width: '100%', padding: '8px 12px', textAlign: 'left', border: 'none', borderBottom: '1px solid var(--border)', cursor: 'pointer', backgroundColor: 'transparent', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, transition: 'background-color 0.1s' }}
+                    onMouseEnter={(e) => { (e.currentTarget).style.backgroundColor = 'rgba(245,158,11,0.12)'; }}
                     onMouseLeave={(e) => { (e.currentTarget).style.backgroundColor = 'transparent'; }}>
                     <div>
-                      <div style={{ fontSize: '0.8125rem', fontWeight: 500, color: '#1A1A2E' }}>{m.product_name}</div>
-                      <div style={{ fontSize: '0.6875rem', color: '#9CA3AF', marginTop: 2 }}>
-                        <span style={{ fontWeight: 600, color: '#92400E', backgroundColor: '#FEF3C7', padding: '1px 6px', borderRadius: 3, marginRight: 4 }}>{m.product_type || '-'}</span>{m.product_code || '-'} | {m.risk_level || '-'} | {m.region || '-'}
+                      <div style={{ fontSize: '0.8125rem', fontWeight: 500, color: 'var(--text-primary)' }}>{m.product_name}</div>
+                      <div style={{ fontSize: '0.6875rem', color: 'var(--text-muted)', marginTop: 2 }}>
+                        <span style={{ fontWeight: 600, color: 'var(--warning)', backgroundColor: 'var(--warning-bg)', padding: '1px 6px', borderRadius: 3, marginRight: 4 }}>{m.product_type || '-'}</span>{m.product_code || '-'} | {m.risk_level || '-'} | {m.region || '-'}
                       </div>
                     </div>
                   </button>
                 ))}
               {productMasters.filter((m) => !drGmProductSearch || m.product_name.toLowerCase().includes(drGmProductSearch.toLowerCase()) || (m.product_code ?? '').toLowerCase().includes(drGmProductSearch.toLowerCase())).length === 0 && (
-                <div style={{ padding: 20, textAlign: 'center', color: '#9CA3AF', fontSize: '0.8125rem' }}>검색 결과 없음</div>
+                <div style={{ padding: 20, textAlign: 'center', color: 'var(--text-muted)', fontSize: '0.8125rem' }}>검색 결과 없음</div>
               )}
             </div>
           </div>
@@ -2553,43 +2556,43 @@ function Tab2Section({
       {/* ============================================================ */}
       {t2ShowDetail && t2RebalRows.length > 0 && (
         <div style={cardStyle}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 16, paddingBottom: 12, borderBottom: '1px solid #E1E5EB' }}>
-            <div style={{ width: 3, height: 18, borderRadius: 2, backgroundColor: '#1E3A5F', flexShrink: 0 }} />
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 16, paddingBottom: 12, borderBottom: '1px solid var(--border)' }}>
+            <div style={{ width: 3, height: 18, borderRadius: 2, backgroundColor: 'var(--blue-600)', flexShrink: 0 }} />
             <span style={sectionTitleStyle}>수정 포트폴리오</span>
             {ratioOverflow && (
-              <span style={{ fontSize: '0.8125rem', color: '#EF4444', fontWeight: 600, marginLeft: 8 }}>
+              <span style={{ fontSize: '0.8125rem', color: 'var(--danger)', fontWeight: 600, marginLeft: 8 }}>
                 경고: 재조정 비율 합계가 100% 초과 ({rebalOtherRatioSum.toFixed(2)}%)
               </span>
             )}
             <div style={{ marginLeft: 'auto', display: 'flex', gap: 8, flexWrap: 'wrap' }}>
               <button onClick={refreshRebalPrices} disabled={t2PriceRefreshing}
                 data-tooltip="ETF/주식 종목의 현재가를 갱신합니다."
-                style={{ padding: '6px 14px', fontSize: '0.8125rem', fontWeight: 600, color: '#374151', backgroundColor: '#FEF3C7', border: '1px solid #FCD34D', borderRadius: 7, cursor: t2PriceRefreshing ? 'not-allowed' : 'pointer', opacity: t2PriceRefreshing ? 0.6 : 1 }}>
+                style={{ padding: '6px 14px', fontSize: '0.8125rem', fontWeight: 600, color: 'var(--text-secondary)', backgroundColor: 'var(--warning-bg)', border: '1px solid rgba(245,158,11,0.35)', borderRadius: 7, cursor: t2PriceRefreshing ? 'not-allowed' : 'pointer', opacity: t2PriceRefreshing ? 0.6 : 1 }}>
                 {t2PriceRefreshing ? '갱신 중...' : '현재가 갱신'}
               </button>
               <button
                 onClick={() => { setT2NewMasterAutoAdd(true); setT2NewMasterOpen(true); }}
                 data-tooltip="새 상품을 등록하고 바로 추가합니다."
-                style={{ padding: '6px 14px', fontSize: '0.8125rem', fontWeight: 600, color: '#fff', backgroundColor: '#059669', border: 'none', borderRadius: 7, cursor: 'pointer' }}
+                style={{ padding: '6px 14px', fontSize: '0.8125rem', fontWeight: 600, color: '#fff', backgroundColor: 'var(--success)', border: 'none', borderRadius: 7, cursor: 'pointer' }}
               >
                 + 상품추가 & 반영
               </button>
               <button
                 onClick={() => setT2AddProductOpen(true)}
                 data-tooltip="상품 마스터에서 상품을 선택하여 행을 추가합니다."
-                style={{ padding: '6px 14px', fontSize: '0.8125rem', fontWeight: 600, color: '#1E3A5F', backgroundColor: '#EEF2F7', border: '1px solid #C7D2E2', borderRadius: 7, cursor: 'pointer' }}
+                style={{ padding: '6px 14px', fontSize: '0.8125rem', fontWeight: 600, color: 'var(--blue-400)', backgroundColor: 'var(--bg-card-2)', border: '1px solid #C7D2E2', borderRadius: 7, cursor: 'pointer' }}
               >
                 + 행추가
               </button>
               <button onClick={deleteCheckedRebalRows} disabled={t2RebalChecked.size === 0}
                 data-tooltip="체크된 행을 삭제합니다."
-                style={{ padding: '6px 14px', fontSize: '0.8125rem', fontWeight: 600, color: t2RebalChecked.size > 0 ? '#EF4444' : '#9CA3AF', backgroundColor: '#fff', border: `1px solid ${t2RebalChecked.size > 0 ? '#FECACA' : '#E1E5EB'}`, borderRadius: 7, cursor: t2RebalChecked.size > 0 ? 'pointer' : 'not-allowed' }}>
+                style={{ padding: '6px 14px', fontSize: '0.8125rem', fontWeight: 600, color: t2RebalChecked.size > 0 ? '#EF4444' : '#9CA3AF', backgroundColor: 'var(--bg-card)', border: `1px solid ${t2RebalChecked.size > 0 ? 'rgba(239,68,68,0.30)' : '#E1E5EB'}`, borderRadius: 7, cursor: t2RebalChecked.size > 0 ? 'pointer' : 'not-allowed' }}>
                 삭제 ({t2RebalChecked.size})
               </button>
               <button
                 onClick={handleT2Recalc}
                 data-tooltip="재조정 비율과 금액을 다시 계산합니다."
-                style={{ padding: '6px 14px', fontSize: '0.8125rem', fontWeight: 600, color: '#374151', backgroundColor: '#F3F4F6', border: '1px solid #E1E5EB', borderRadius: 7, cursor: 'pointer' }}
+                style={{ padding: '6px 14px', fontSize: '0.8125rem', fontWeight: 600, color: 'var(--text-secondary)', backgroundColor: 'var(--bg-surface)', border: '1px solid var(--border)', borderRadius: 7, cursor: 'pointer' }}
               >
                 재계산
               </button>
@@ -2597,7 +2600,7 @@ function Tab2Section({
                 onClick={handleT2SaveRebal}
                 disabled={t2RebalSaving}
                 data-tooltip="수정 포트폴리오 리밸런싱 제안을 저장합니다."
-                style={{ padding: '6px 14px', fontSize: '0.8125rem', fontWeight: 700, color: '#fff', backgroundColor: t2RebalSaving ? '#9CA3AF' : '#1E3A5F', border: 'none', borderRadius: 7, cursor: t2RebalSaving ? 'not-allowed' : 'pointer', display: 'inline-flex', alignItems: 'center', gap: 5 }}
+                style={{ padding: '6px 14px', fontSize: '0.8125rem', fontWeight: 700, color: '#fff', backgroundColor: t2RebalSaving ? '#9CA3AF' : '#3B82F6', border: 'none', borderRadius: 7, cursor: t2RebalSaving ? 'not-allowed' : 'pointer', display: 'inline-flex', alignItems: 'center', gap: 5 }}
               >
                 {t2RebalSaving ? (
                   <span style={{ display: 'inline-block', width: 11, height: 11, border: '2px solid #fff', borderTopColor: 'transparent', borderRadius: '50%', animation: 'spin 0.7s linear infinite' }} />
@@ -2608,12 +2611,12 @@ function Tab2Section({
           </div>
 
           {/* Single table with sticky No./상품명 columns, rest scrollable */}
-          <div style={{ overflowX: 'scroll', border: '1px solid #E1E5EB', borderRadius: 8 }}>
+          <div style={{ overflowX: 'scroll', border: '1px solid var(--border)', borderRadius: 8 }}>
             <table style={{ borderCollapse: 'collapse', fontSize: '0.8125rem', minWidth: 1200 }}>
               <thead>
-                <tr style={{ backgroundColor: '#F5F7FA' }}>
-                  <th style={{ ...thStyle, position: 'sticky', left: 0, zIndex: 2, background: '#F5F7FA', textAlign: 'center', minWidth: 36 }}>No.</th>
-                  <th style={{ ...thStyle, position: 'sticky', left: 36, zIndex: 2, background: '#F5F7FA', textAlign: 'left', minWidth: 280, borderRight: '2px solid #E1E5EB' }}>상품명</th>
+                <tr style={{ backgroundColor: 'var(--bg-surface)' }}>
+                  <th style={{ ...thStyle, position: 'sticky', left: 0, zIndex: 2, background: 'var(--bg-surface)', textAlign: 'center', minWidth: 36 }}>No.</th>
+                  <th style={{ ...thStyle, position: 'sticky', left: 36, zIndex: 2, background: 'var(--bg-surface)', textAlign: 'left', minWidth: 280, borderRight: '2px solid var(--border)' }}>상품명</th>
                   {!t2SelectedAccount?.account_type?.startsWith('pension') && <th style={thStyle}>상품코드</th>}
                   <th style={thStyle}>잔고수량</th>
                   <th style={{ ...thStyle, minWidth: 90 }}>기준가</th>
@@ -2622,7 +2625,7 @@ function Tab2Section({
                   <th style={thStyle}>평가손익</th>
                   <th style={thStyle}>수익률</th>
                   <th style={thStyle}>평가비율</th>
-                  <th style={{ ...thStyle, minWidth: 100, backgroundColor: '#059669', color: '#fff' }}>
+                  <th style={{ ...thStyle, minWidth: 100, backgroundColor: 'var(--success)', color: '#fff' }}>
                     <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, justifyContent: 'center' }}>
                       <input
                         type="checkbox"
@@ -2634,11 +2637,11 @@ function Tab2Section({
                       재조정 비율
                     </span>
                   </th>
-                  <th style={{ ...thStyle, minWidth: 110, backgroundColor: '#059669', color: '#fff' }}>재조정 잔액</th>
-                  <th style={{ ...thStyle, minWidth: 100, backgroundColor: '#059669', color: '#fff' }}>
+                  <th style={{ ...thStyle, minWidth: 110, backgroundColor: 'var(--success)', color: '#fff' }}>재조정 잔액</th>
+                  <th style={{ ...thStyle, minWidth: 100, backgroundColor: 'var(--success)', color: '#fff' }}>
                     <span data-tooltip="±10,000원 이하인 경우 0원으로 자동 처리됩니다." style={{ cursor: 'help', borderBottom: '1px dashed rgba(255,255,255,0.5)' }}>Sell/Buy</span>
                   </th>
-                  <th style={{ ...thStyle, backgroundColor: '#059669', color: '#fff' }}>좌수</th>
+                  <th style={{ ...thStyle, backgroundColor: 'var(--success)', color: '#fff' }}>좌수</th>
                   <th style={{ ...thStyle, textAlign: 'center', minWidth: 36 }}>
                     <input type="checkbox" checked={t2RebalRows.filter((r) => !r.isRow1).length > 0 && t2RebalChecked.size === t2RebalRows.filter((r) => !r.isRow1).length}
                       onChange={(e) => { if (e.target.checked) setT2RebalChecked(new Set(t2RebalRows.filter((r) => !r.isRow1).map((r) => r.id))); else setT2RebalChecked(new Set()); }}
@@ -2649,20 +2652,20 @@ function Tab2Section({
               <tbody>
                 {t2RebalRows.map((r, idx) => {
                   const isRow1 = r.isRow1;
-                  const rowBg = isRow1 ? '#EEF2F7' : 'transparent';
-                  const stickyBg = isRow1 ? '#EEF2F7' : '#fff';
+                  const rowBg = isRow1 ? 'var(--bg-card-2)' : 'transparent';
+                  const stickyBg = isRow1 ? 'var(--bg-card-2)' : 'var(--bg-card)';
                   const isAdded = r.id.startsWith('__new__');
-                  const addedBg = isAdded && !isRow1 ? '#F0F7FF' : rowBg;
-                  const addedStickyBg = isAdded && !isRow1 ? '#F0F7FF' : stickyBg;
+                  const addedBg = isAdded && !isRow1 ? 'rgba(56,189,248,0.10)' : rowBg;
+                  const addedStickyBg = isAdded && !isRow1 ? 'rgba(56,189,248,0.10)' : stickyBg;
                   return (
                     <tr
                       key={r.id}
                       style={{ backgroundColor: addedBg, transition: 'background-color 0.1s' }}
-                      onMouseEnter={(e) => { if (!isRow1) (e.currentTarget as HTMLTableRowElement).style.backgroundColor = isAdded ? '#EFF6FF' : '#F9FAFB'; }}
+                      onMouseEnter={(e) => { if (!isRow1) (e.currentTarget as HTMLTableRowElement).style.backgroundColor = isAdded ? 'rgba(56,189,248,0.12)' : 'var(--bg-surface)'; }}
                       onMouseLeave={(e) => { (e.currentTarget as HTMLTableRowElement).style.backgroundColor = addedBg; }}
                     >
-                      <td style={{ ...tdStyle, position: 'sticky', left: 0, zIndex: 1, background: addedStickyBg, textAlign: 'center', color: '#9CA3AF' }}>{idx + 1}</td>
-                      <td style={{ ...tdStyle, position: 'sticky', left: 36, zIndex: 1, background: addedStickyBg, textAlign: 'left', borderRight: '2px solid #E1E5EB', whiteSpace: 'normal', wordBreak: 'keep-all' }}>
+                      <td style={{ ...tdStyle, position: 'sticky', left: 0, zIndex: 1, background: addedStickyBg, textAlign: 'center', color: 'var(--text-muted)' }}>{idx + 1}</td>
+                      <td style={{ ...tdStyle, position: 'sticky', left: 36, zIndex: 1, background: addedStickyBg, textAlign: 'left', borderRight: '2px solid var(--border)', whiteSpace: 'normal', wordBreak: 'keep-all' }}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
                           {/* 순서 이동 화살표 */}
                           {!isRow1 && (
@@ -2674,18 +2677,18 @@ function Tab2Section({
                             </div>
                           )}
                           <div>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: 5, fontWeight: isRow1 ? 700 : 500, color: '#1A1A2E', fontSize: '0.8125rem' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 5, fontWeight: isRow1 ? 700 : 500, color: 'var(--text-primary)', fontSize: '0.8125rem' }}>
                               {r.productName}
-                              {isAdded && !isRow1 && <span style={{ fontSize: '0.625rem', fontWeight: 700, color: '#1D4ED8', backgroundColor: '#DBEAFE', border: '1px solid #93C5FD', padding: '1px 6px', borderRadius: 4, flexShrink: 0 }}>신규</span>}
+                              {isAdded && !isRow1 && <span style={{ fontSize: '0.625rem', fontWeight: 700, color: 'var(--blue-600)', backgroundColor: 'rgba(56,189,248,0.16)', border: '1px solid rgba(56,189,248,0.35)', padding: '1px 6px', borderRadius: 4, flexShrink: 0 }}>신규</span>}
                             </div>
-                            {(r.productType || r.riskLevel) && <div style={{ fontSize: '0.6875rem', color: '#9CA3AF' }}>{[r.productType, r.riskLevel, r.region].filter(Boolean).join(' | ')}</div>}
+                            {(r.productType || r.riskLevel) && <div style={{ fontSize: '0.6875rem', color: 'var(--text-muted)' }}>{[r.productType, r.riskLevel, r.region].filter(Boolean).join(' | ')}</div>}
                           </div>
                           {isAdded && (
                             <button
                               type="button"
                               data-tooltip="상품 교체"
                               onClick={() => { setT2ReplaceRowId(r.id); setT2ProductSearch(''); setT2AddProductOpen(true); }}
-                              style={{ marginLeft: 2, padding: '2px 4px', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', border: '1px solid #C7D2E2', borderRadius: 4, backgroundColor: '#EEF2F7', cursor: 'pointer', color: '#1E3A5F', flexShrink: 0 }}
+                              style={{ marginLeft: 2, padding: '2px 4px', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', border: '1px solid #C7D2E2', borderRadius: 4, backgroundColor: 'var(--bg-card-2)', cursor: 'pointer', color: 'var(--blue-400)', flexShrink: 0 }}
                             >
                               <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
                                 <path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38"/>
@@ -2695,7 +2698,7 @@ function Tab2Section({
                         </div>
                       </td>
                       {!t2SelectedAccount?.account_type?.startsWith('pension') && (
-                        <td style={{ ...tdStyle, backgroundColor: rowBg, fontFamily: 'monospace', fontSize: '0.75rem', color: '#6B7280' }}>{r.productCode || '-'}</td>
+                        <td style={{ ...tdStyle, backgroundColor: rowBg, fontFamily: 'monospace', fontSize: '0.75rem', color: 'var(--text-muted)' }}>{r.productCode || '-'}</td>
                       )}
                       <td style={{ ...tdStyle, backgroundColor: rowBg }}>{r.quantity > 0 ? r.quantity.toLocaleString('ko-KR') : '-'}</td>
                       {/* 기준가 - editable */}
@@ -2707,7 +2710,7 @@ function Tab2Section({
                             type="text"
                             value={r.currentPrice > 0 ? r.currentPrice.toLocaleString('ko-KR') : ''}
                             onChange={(e) => handleT2CurrentPriceChange(r.id, e.target.value)}
-                            style={{ width: 80, padding: '4px 6px', fontSize: '0.8125rem', textAlign: 'right', border: '1px solid #E1E5EB', borderRadius: 5, outline: 'none', color: '#1A1A2E' }}
+                            style={{ width: 80, padding: '4px 6px', fontSize: '0.8125rem', textAlign: 'right', border: '1px solid var(--border)', borderRadius: 5, outline: 'none', color: 'var(--text-primary)' }}
                           />
                         )}
                       </td>
@@ -2720,7 +2723,7 @@ function Tab2Section({
                             value={r.purchaseAmount > 0 ? r.purchaseAmount.toLocaleString('ko-KR') : ''}
                             onChange={(e) => handleT2PurchaseAmountChange(r.id, e.target.value)}
                             placeholder="0"
-                            style={{ width: 90, padding: '4px 6px', fontSize: '0.8125rem', textAlign: 'right', border: '1px solid #E1E5EB', borderRadius: 5, outline: 'none', color: '#1A1A2E' }}
+                            style={{ width: 90, padding: '4px 6px', fontSize: '0.8125rem', textAlign: 'right', border: '1px solid var(--border)', borderRadius: 5, outline: 'none', color: 'var(--text-primary)' }}
                           />
                         )}
                       </td>
@@ -2733,7 +2736,7 @@ function Tab2Section({
                             value={r.evaluationAmount > 0 ? r.evaluationAmount.toLocaleString('ko-KR') : ''}
                             onChange={(e) => handleT2EvaluationAmountChange(r.id, e.target.value)}
                             placeholder="0"
-                            style={{ width: 90, padding: '4px 6px', fontSize: '0.8125rem', textAlign: 'right', border: '1px solid #E1E5EB', borderRadius: 5, outline: 'none', color: '#1A1A2E', fontWeight: 500 }}
+                            style={{ width: 90, padding: '4px 6px', fontSize: '0.8125rem', textAlign: 'right', border: '1px solid var(--border)', borderRadius: 5, outline: 'none', color: 'var(--text-primary)', fontWeight: 500 }}
                           />
                         )}
                       </td>
@@ -2746,9 +2749,9 @@ function Tab2Section({
                       <td style={{ ...tdStyle, backgroundColor: rowBg }}>{r.evalRatio.toFixed(2)}%</td>
 
                       {/* 재조정 비율 + 전액매도 체크 */}
-                      <td style={{ ...tdStyle, padding: '5px 8px', backgroundColor: isRow1 ? '#D1FAE5' : '#F0FDF4' }}>
+                      <td style={{ ...tdStyle, padding: '5px 8px', backgroundColor: isRow1 ? 'rgba(16,185,129,0.20)' : 'rgba(16,185,129,0.12)' }}>
                         {isRow1 ? (
-                          <span style={{ color: ratioOverflow ? '#EF4444' : '#1E3A5F', fontWeight: 700 }}>
+                          <span style={{ color: ratioOverflow ? '#EF4444' : '#3B82F6', fontWeight: 700 }}>
                             {rebalRow1RatioCalc.toFixed(2)}%
                           </span>
                         ) : (
@@ -2761,7 +2764,7 @@ function Tab2Section({
                               style={{ width: 14, height: 14, cursor: 'pointer', accentColor: '#EF4444', flexShrink: 0 }}
                             />
                             {r.fullSell ? (
-                              <span style={{ fontSize: '0.75rem', fontWeight: 600, color: '#EF4444' }}>매도</span>
+                              <span style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--danger)' }}>매도</span>
                             ) : (
                               <>
                                 <input
@@ -2771,9 +2774,9 @@ function Tab2Section({
                                   max="100"
                                   value={r.rebalRatio}
                                   onChange={(e) => handleT2RebalRatioChange(r.id, e.target.value)}
-                                  style={{ width: 55, padding: '4px 6px', fontSize: '0.8125rem', textAlign: 'right', border: '1px solid #C7D2E2', borderRadius: 5, outline: 'none', color: '#1A1A2E', backgroundColor: '#fff' }}
+                                  style={{ width: 55, padding: '4px 6px', fontSize: '0.8125rem', textAlign: 'right', border: '1px solid #C7D2E2', borderRadius: 5, outline: 'none', color: 'var(--text-primary)', backgroundColor: 'var(--bg-card)' }}
                                 />
-                                <span style={{ fontSize: '0.75rem', color: '#6B7280' }}>%</span>
+                                <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>%</span>
                               </>
                             )}
                           </div>
@@ -2781,9 +2784,9 @@ function Tab2Section({
                       </td>
 
                       {/* 재조정 잔액 */}
-                      <td style={{ ...tdStyle, padding: '5px 8px', backgroundColor: isRow1 ? '#D1FAE5' : '#F0FDF4' }}>
+                      <td style={{ ...tdStyle, padding: '5px 8px', backgroundColor: isRow1 ? 'rgba(16,185,129,0.20)' : 'rgba(16,185,129,0.12)' }}>
                         {isRow1 ? (
-                          <span style={{ fontWeight: 600, color: '#1A1A2E' }}>
+                          <span style={{ fontWeight: 600, color: 'var(--text-primary)' }}>
                             {(rebalTotalEval - t2RebalRows.filter((rr) => !rr.isRow1).reduce((s, rr) => s + rr.rebalAmount, 0)).toLocaleString('ko-KR')}
                           </span>
                         ) : (
@@ -2791,18 +2794,18 @@ function Tab2Section({
                             type="text"
                             value={r.rebalAmount > 0 ? r.rebalAmount.toLocaleString('ko-KR') : ''}
                             onChange={(e) => handleT2RebalAmtChange(r.id, e.target.value)}
-                            style={{ width: 90, padding: '4px 6px', fontSize: '0.8125rem', textAlign: 'right', border: '1px solid #C7D2E2', borderRadius: 5, outline: 'none', color: '#1A1A2E' }}
+                            style={{ width: 90, padding: '4px 6px', fontSize: '0.8125rem', textAlign: 'right', border: '1px solid #C7D2E2', borderRadius: 5, outline: 'none', color: 'var(--text-primary)' }}
                           />
                         )}
                       </td>
 
                       {/* Sell/Buy */}
-                      <td style={{ ...tdStyle, color: rateColor(r.sellBuy), fontWeight: 600, backgroundColor: isRow1 ? '#D1FAE5' : '#F0FDF4' }}>
+                      <td style={{ ...tdStyle, color: rateColor(r.sellBuy), fontWeight: 600, backgroundColor: isRow1 ? 'rgba(16,185,129,0.20)' : 'rgba(16,185,129,0.12)' }}>
                         {r.sellBuy !== 0 ? `${r.sellBuy > 0 ? '+' : ''}${r.sellBuy.toLocaleString('ko-KR')}` : '0'}
                       </td>
 
                       {/* 좌수 */}
-                      <td style={{ ...tdStyle, backgroundColor: isRow1 ? '#D1FAE5' : '#F0FDF4', color: r.shares < 0 ? '#EF4444' : undefined }}>{r.shares !== 0 ? r.shares.toLocaleString('ko-KR') : '-'}</td>
+                      <td style={{ ...tdStyle, backgroundColor: isRow1 ? 'rgba(16,185,129,0.20)' : 'rgba(16,185,129,0.12)', color: r.shares < 0 ? '#EF4444' : undefined }}>{r.shares !== 0 ? r.shares.toLocaleString('ko-KR') : '-'}</td>
                       <td style={{ ...tdStyle, textAlign: 'center' }}>
                         {!isRow1 && (
                           <input type="checkbox" checked={t2RebalChecked.has(r.id)}
@@ -2815,9 +2818,9 @@ function Tab2Section({
                 })}
               </tbody>
               <tfoot>
-                <tr style={{ backgroundColor: '#F5F7FA' }}>
-                  <td style={{ ...totalRowStyle, position: 'sticky', left: 0, zIndex: 1, background: '#F5F7FA' }} />
-                  <td style={{ ...totalRowStyle, position: 'sticky', left: 36, zIndex: 1, background: '#F5F7FA', textAlign: 'left', borderRight: '2px solid #E1E5EB' }}>합계</td>
+                <tr style={{ backgroundColor: 'var(--bg-surface)' }}>
+                  <td style={{ ...totalRowStyle, position: 'sticky', left: 0, zIndex: 1, background: 'var(--bg-surface)' }} />
+                  <td style={{ ...totalRowStyle, position: 'sticky', left: 36, zIndex: 1, background: 'var(--bg-surface)', textAlign: 'left', borderRight: '2px solid var(--border)' }}>합계</td>
                   {!t2SelectedAccount?.account_type?.startsWith('pension') && <td style={totalRowStyle} />}
                   <td style={totalRowStyle} />
                   <td style={totalRowStyle} />
@@ -2830,14 +2833,14 @@ function Tab2Section({
                     {rebalTotalReturnRate > 0 ? '+' : ''}{rebalTotalReturnRate.toFixed(2)}%
                   </td>
                   <td style={totalRowStyle}>100%</td>
-                  <td style={{ ...totalRowStyle, backgroundColor: '#BBF7D0', color: ratioOverflow ? '#EF4444' : '#374151' }}>
+                  <td style={{ ...totalRowStyle, backgroundColor: 'rgba(16,185,129,0.18)', color: ratioOverflow ? '#EF4444' : 'var(--text-primary)' }}>
                     {(rebalOtherRatioSum + rebalRow1RatioCalc).toFixed(2)}%
                   </td>
-                  <td style={{ ...totalRowStyle, backgroundColor: '#BBF7D0' }}>{fmtNum(rebalTotalRebalAmt)}</td>
-                  <td style={{ ...totalRowStyle, backgroundColor: '#BBF7D0', color: rateColor(rebalTotalSellBuy) }}>
+                  <td style={{ ...totalRowStyle, backgroundColor: 'rgba(16,185,129,0.18)' }}>{fmtNum(rebalTotalRebalAmt)}</td>
+                  <td style={{ ...totalRowStyle, backgroundColor: 'rgba(16,185,129,0.18)', color: rateColor(rebalTotalSellBuy) }}>
                     {rebalTotalSellBuy !== 0 ? `${rebalTotalSellBuy > 0 ? '+' : ''}${rebalTotalSellBuy.toLocaleString('ko-KR')}` : '0'}
                   </td>
-                  <td style={{ ...totalRowStyle, backgroundColor: '#BBF7D0' }} />
+                  <td style={{ ...totalRowStyle, backgroundColor: 'rgba(16,185,129,0.18)' }} />
                   <td style={totalRowStyle} />
                 </tr>
               </tfoot>
@@ -2846,7 +2849,7 @@ function Tab2Section({
 
           {/* Toast */}
           {t2Toast && (
-            <div style={{ marginTop: 10, padding: '10px 14px', backgroundColor: t2Toast.includes('실패') || t2Toast.includes('오류') ? '#FEF2F2' : '#ECFDF5', border: `1px solid ${t2Toast.includes('실패') || t2Toast.includes('오류') ? '#FECACA' : '#A7F3D0'}`, borderRadius: 8, fontSize: '0.8125rem', fontWeight: 500, color: t2Toast.includes('실패') || t2Toast.includes('오류') ? '#DC2626' : '#059669' }}>
+            <div style={{ marginTop: 10, padding: '10px 14px', backgroundColor: t2Toast.includes('실패') || t2Toast.includes('오류') ? 'rgba(239,68,68,0.12)' : 'rgba(16,185,129,0.12)', border: `1px solid ${t2Toast.includes('실패') || t2Toast.includes('오류') ? 'rgba(239,68,68,0.30)' : 'rgba(16,185,129,0.35)'}`, borderRadius: 8, fontSize: '0.8125rem', fontWeight: 500, color: t2Toast.includes('실패') || t2Toast.includes('오류') ? '#DC2626' : '#059669' }}>
               {t2Toast}
             </div>
           )}
@@ -2857,45 +2860,45 @@ function Tab2Section({
       {t2AddProductOpen && (
         <div style={{ position: 'fixed', inset: 0, zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(0,0,0,0.45)' }}
           onClick={(e) => { if (e.target === e.currentTarget) { setT2AddProductOpen(false); setT2ReplaceRowId(null); } }}>
-          <div style={{ backgroundColor: '#fff', borderRadius: 14, padding: 24, width: '100%', maxWidth: 560, maxHeight: '75vh', display: 'flex', flexDirection: 'column', boxShadow: '0 20px 60px rgba(0,0,0,0.2)' }}>
+          <div style={{ backgroundColor: 'var(--bg-card)', borderRadius: 14, padding: 24, width: '100%', maxWidth: 560, maxHeight: '75vh', display: 'flex', flexDirection: 'column', boxShadow: '0 20px 60px rgba(0,0,0,0.2)' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
-              <h3 style={{ margin: 0, fontSize: '1rem', fontWeight: 700, color: '#1A1A2E' }}>{t2ReplaceRowId ? '상품 교체' : '상품 추가'}</h3>
+              <h3 style={{ margin: 0, fontSize: '1rem', fontWeight: 700, color: 'var(--text-primary)' }}>{t2ReplaceRowId ? '상품 교체' : '상품 추가'}</h3>
               <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
                 <button
                   onClick={() => setT2NewMasterOpen(true)}
-                  style={{ padding: '5px 10px', fontSize: '0.75rem', fontWeight: 600, color: '#1E3A5F', backgroundColor: '#EEF2F7', border: '1px solid #C7D2E2', borderRadius: 6, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 4 }}
+                  style={{ padding: '5px 10px', fontSize: '0.75rem', fontWeight: 600, color: 'var(--blue-400)', backgroundColor: 'var(--bg-card-2)', border: '1px solid #C7D2E2', borderRadius: 6, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 4 }}
                 >
                   <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
                   새 상품 등록
                 </button>
-                <button onClick={() => { setT2AddProductOpen(false); setT2ReplaceRowId(null); }} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#9CA3AF', padding: 4 }}>
+                <button onClick={() => { setT2AddProductOpen(false); setT2ReplaceRowId(null); }} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', padding: 4 }}>
                   <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
                 </button>
               </div>
             </div>
             <input type="text" placeholder="상품명 또는 종목코드 검색..." value={t2ProductSearch}
               onChange={(e) => setT2ProductSearch(e.target.value)}
-              style={{ width: '100%', padding: '8px 10px', fontSize: '0.8125rem', border: '1px solid #E1E5EB', borderRadius: 8, outline: 'none', marginBottom: 10, boxSizing: 'border-box' }}
+              style={{ width: '100%', padding: '8px 10px', fontSize: '0.8125rem', border: '1px solid var(--border)', borderRadius: 8, outline: 'none', marginBottom: 10, boxSizing: 'border-box' }}
               autoFocus />
-            <div style={{ flex: 1, overflowY: 'auto', border: '1px solid #E1E5EB', borderRadius: 8 }}>
+            <div style={{ flex: 1, overflowY: 'auto', border: '1px solid var(--border)', borderRadius: 8 }}>
               {productMasters
                 .filter((m) => !t2ProductSearch || m.product_name.toLowerCase().includes(t2ProductSearch.toLowerCase()) || (m.product_code ?? '').toLowerCase().includes(t2ProductSearch.toLowerCase()))
                 .map((m) => (
                   <button key={m.id} type="button"
                     onClick={() => t2ReplaceRowId ? handleT2ReplaceProductFromMaster(m) : handleT2AddProductFromMaster(m)}
-                    style={{ width: '100%', padding: '8px 12px', textAlign: 'left', border: 'none', borderBottom: '1px solid #F3F4F6', cursor: 'pointer', backgroundColor: 'transparent', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, transition: 'background-color 0.1s' }}
-                    onMouseEnter={(e) => { (e.currentTarget).style.backgroundColor = '#EEF2F7'; }}
+                    style={{ width: '100%', padding: '8px 12px', textAlign: 'left', border: 'none', borderBottom: '1px solid var(--border)', cursor: 'pointer', backgroundColor: 'transparent', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, transition: 'background-color 0.1s' }}
+                    onMouseEnter={(e) => { (e.currentTarget).style.backgroundColor = 'var(--bg-card-2)'; }}
                     onMouseLeave={(e) => { (e.currentTarget).style.backgroundColor = 'transparent'; }}>
                     <div>
-                      <div style={{ fontSize: '0.8125rem', fontWeight: 500, color: '#1A1A2E' }}>{m.product_name}</div>
-                      <div style={{ fontSize: '0.6875rem', color: '#9CA3AF', marginTop: 2 }}>
-                        <span style={{ fontWeight: 600, color: '#1E3A5F', backgroundColor: '#EEF2F7', padding: '1px 6px', borderRadius: 3, marginRight: 4 }}>{m.product_type || '-'}</span>{m.product_code || '-'} | {m.risk_level || '-'} | {m.region || '-'}
+                      <div style={{ fontSize: '0.8125rem', fontWeight: 500, color: 'var(--text-primary)' }}>{m.product_name}</div>
+                      <div style={{ fontSize: '0.6875rem', color: 'var(--text-muted)', marginTop: 2 }}>
+                        <span style={{ fontWeight: 600, color: 'var(--blue-400)', backgroundColor: 'var(--bg-card-2)', padding: '1px 6px', borderRadius: 3, marginRight: 4 }}>{m.product_type || '-'}</span>{m.product_code || '-'} | {m.risk_level || '-'} | {m.region || '-'}
                       </div>
                     </div>
                   </button>
                 ))}
               {productMasters.filter((m) => !t2ProductSearch || m.product_name.toLowerCase().includes(t2ProductSearch.toLowerCase()) || (m.product_code ?? '').toLowerCase().includes(t2ProductSearch.toLowerCase())).length === 0 && (
-                <div style={{ padding: 20, textAlign: 'center', color: '#9CA3AF', fontSize: '0.8125rem' }}>검색 결과 없음</div>
+                <div style={{ padding: 20, textAlign: 'center', color: 'var(--text-muted)', fontSize: '0.8125rem' }}>검색 결과 없음</div>
               )}
             </div>
           </div>
@@ -2906,20 +2909,20 @@ function Tab2Section({
       {t2NewMasterOpen && (
         <div style={{ position: 'fixed', inset: 0, zIndex: 1100, display: 'flex', alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(0,0,0,0.5)' }}
           onClick={(e) => { if (e.target === e.currentTarget) { setT2NewMasterOpen(false); setT2NewMasterAutoAdd(false); setT2MasterStockQuery(''); setT2MasterStockResults([]); } }}>
-          <div style={{ backgroundColor: '#fff', borderRadius: 14, padding: 24, width: '100%', maxWidth: 440, boxShadow: '0 20px 60px rgba(0,0,0,0.25)' }}>
+          <div style={{ backgroundColor: 'var(--bg-card)', borderRadius: 14, padding: 24, width: '100%', maxWidth: 440, boxShadow: '0 20px 60px rgba(0,0,0,0.25)' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
-              <h3 style={{ margin: 0, fontSize: '1rem', fontWeight: 700, color: '#1A1A2E' }}>{t2NewMasterAutoAdd ? '상품추가 & 반영' : '새 상품 등록'}</h3>
-              <button onClick={() => { setT2NewMasterOpen(false); setT2NewMasterAutoAdd(false); setT2MasterStockQuery(''); setT2MasterStockResults([]); }} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#9CA3AF', padding: 4 }}>
+              <h3 style={{ margin: 0, fontSize: '1rem', fontWeight: 700, color: 'var(--text-primary)' }}>{t2NewMasterAutoAdd ? '상품추가 & 반영' : '새 상품 등록'}</h3>
+              <button onClick={() => { setT2NewMasterOpen(false); setT2NewMasterAutoAdd(false); setT2MasterStockQuery(''); setT2MasterStockResults([]); }} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', padding: 4 }}>
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
               </button>
             </div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
               {/* 1. 상품유형 먼저 */}
               <div>
-                <label style={{ fontSize: '0.8125rem', fontWeight: 600, color: '#374151', display: 'block', marginBottom: 4 }}>상품유형 <span style={{ color: '#EF4444' }}>*</span></label>
+                <label style={{ fontSize: '0.8125rem', fontWeight: 600, color: 'var(--text-secondary)', display: 'block', marginBottom: 4 }}>상품유형 <span style={{ color: 'var(--danger)' }}>*</span></label>
                 <select value={t2NewMasterForm.product_type}
                   onChange={(e) => { setT2NewMasterForm((prev) => ({ ...prev, product_type: e.target.value, product_name: '', product_code: '' })); setT2MasterStockQuery(''); setT2MasterStockResults([]); }}
-                  style={{ width: '100%', padding: '7px 10px', fontSize: '0.8125rem', border: '1px solid #E1E5EB', borderRadius: 7, outline: 'none', backgroundColor: '#fff', boxSizing: 'border-box', cursor: 'pointer' }}>
+                  style={{ width: '100%', padding: '7px 10px', fontSize: '0.8125rem', border: '1px solid var(--border)', borderRadius: 7, outline: 'none', backgroundColor: 'var(--bg-card)', boxSizing: 'border-box', cursor: 'pointer' }}>
                   <option value="">상품유형을 먼저 선택하세요</option>
                   {PRODUCT_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}
                 </select>
@@ -2928,14 +2931,14 @@ function Tab2Section({
               {/* 2. 상품명 — ETF/MMF: 자동검색, 그 외: 직접입력 */}
               {t2NewMasterForm.product_type && (
                 <div style={{ position: 'relative' }}>
-                  <label style={{ fontSize: '0.8125rem', fontWeight: 600, color: '#374151', display: 'block', marginBottom: 4 }}>
-                    상품명 <span style={{ color: '#EF4444' }}>*</span>
+                  <label style={{ fontSize: '0.8125rem', fontWeight: 600, color: 'var(--text-secondary)', display: 'block', marginBottom: 4 }}>
+                    상품명 <span style={{ color: 'var(--danger)' }}>*</span>
                     {(t2NewMasterForm.product_type === 'ETF' || t2NewMasterForm.product_type === 'MMF') ? (
-                      <span style={{ fontWeight: 400, marginLeft: 8, color: '#9CA3AF', fontSize: '0.6875rem' }}>2글자 이상 입력 시 자동 검색</span>
+                      <span style={{ fontWeight: 400, marginLeft: 8, color: 'var(--text-muted)', fontSize: '0.6875rem' }}>2글자 이상 입력 시 자동 검색</span>
                     ) : (
-                      <span style={{ fontWeight: 400, marginLeft: 8, color: '#9CA3AF', fontSize: '0.6875rem' }}>
+                      <span style={{ fontWeight: 400, marginLeft: 8, color: 'var(--text-muted)', fontSize: '0.6875rem' }}>
                         직접 입력 |{' '}
-                        <a href="https://www.nhsec.com/index.jsp" target="_blank" rel="noopener noreferrer" data-tooltip="NH투자증권 > 금융상품 > 펀드 > 펀드검색" style={{ color: '#2563EB', textDecoration: 'underline' }}>펀드 검색</a>
+                        <a href="https://www.nhsec.com/index.jsp" target="_blank" rel="noopener noreferrer" data-tooltip="NH투자증권 > 금융상품 > 펀드 > 펀드검색" style={{ color: 'var(--blue-500)', textDecoration: 'underline' }}>펀드 검색</a>
                       </span>
                     )}
                   </label>
@@ -2944,26 +2947,26 @@ function Tab2Section({
                       <input type="text" placeholder={t2NewMasterForm.product_type.includes('주식') || t2NewMasterForm.product_type === '해외ETF' ? '종목명 또는 티커를 입력하세요 (예: AAPL, 삼성전자...)' : '상품명을 입력하세요 (예: KODEX, TIGER...)'}
                         value={t2MasterStockQuery || t2NewMasterForm.product_name}
                         onChange={(e) => handleT2MasterStockSearch(e.target.value)}
-                        style={{ width: '100%', padding: '7px 10px', fontSize: '0.8125rem', border: '1px solid #E1E5EB', borderRadius: 7, outline: 'none', boxSizing: 'border-box' }} autoFocus />
-                      {t2MasterStockSearching && <div style={{ position: 'absolute', right: 10, top: 28, color: '#9CA3AF', fontSize: '0.6875rem' }}>검색 중...</div>}
+                        style={{ width: '100%', padding: '7px 10px', fontSize: '0.8125rem', border: '1px solid var(--border)', borderRadius: 7, outline: 'none', boxSizing: 'border-box' }} autoFocus />
+                      {t2MasterStockSearching && <div style={{ position: 'absolute', right: 10, top: 28, color: 'var(--text-muted)', fontSize: '0.6875rem' }}>검색 중...</div>}
                       {t2MasterStockResults.length > 0 && (
-                        <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 100, backgroundColor: '#fff', border: '1px solid #E1E5EB', borderRadius: 8, boxShadow: '0 8px 24px rgba(0,0,0,0.12)', maxHeight: 200, overflowY: 'auto', marginTop: 4 }}>
+                        <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 100, backgroundColor: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 8, boxShadow: '0 8px 24px rgba(0,0,0,0.12)', maxHeight: 200, overflowY: 'auto', marginTop: 4 }}>
                           {t2MasterStockResults.map((item) => (
                             <button key={item.code} type="button" onClick={() => handleT2MasterStockSelect(item)}
-                              style={{ width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '7px 10px', border: 'none', background: 'none', cursor: 'pointer', textAlign: 'left', borderBottom: '1px solid #F3F4F6', fontSize: '0.8125rem' }}
+                              style={{ width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '7px 10px', border: 'none', background: 'none', cursor: 'pointer', textAlign: 'left', borderBottom: '1px solid var(--border)', fontSize: '0.8125rem' }}
                               onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = '#F5F7FA'; }}
                               onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = 'transparent'; }}>
                               <div style={{ flex: 1, minWidth: 0 }}>
-                                <div style={{ fontWeight: 600, color: '#1A1A2E' }}>{item.name}</div>
-                                <div style={{ fontSize: '0.6875rem', color: '#6B7280' }}>
+                                <div style={{ fontWeight: 600, color: 'var(--text-primary)' }}>{item.name}</div>
+                                <div style={{ fontSize: '0.6875rem', color: 'var(--text-muted)' }}>
                                   {item.code}
-                                  {item.type && <span style={{ marginLeft: 6, padding: '1px 4px', borderRadius: 3, backgroundColor: item.type === 'ETF' ? '#EFF6FF' : item.type === '해외ETF' ? '#FDF2F8' : item.type === '국내주식' ? '#ECFDF5' : '#FEF3C7', color: item.type === 'ETF' ? '#2563EB' : item.type === '해외ETF' ? '#DB2777' : item.type === '국내주식' ? '#059669' : '#D97706', fontSize: '0.625rem', fontWeight: 600 }}>{item.type}</span>}
-                                  {item.exchange && <span style={{ marginLeft: 4, fontSize: '0.625rem', color: '#9CA3AF' }}>{item.exchange}</span>}
+                                  {item.type && <span style={{ marginLeft: 6, padding: '1px 4px', borderRadius: 3, backgroundColor: item.type === 'ETF' ? 'rgba(56,189,248,0.12)' : item.type === '해외ETF' ? 'rgba(236,72,153,0.14)' : item.type === '국내주식' ? 'rgba(16,185,129,0.12)' : 'rgba(245,158,11,0.16)', color: item.type === 'ETF' ? '#2563EB' : item.type === '해외ETF' ? '#DB2777' : item.type === '국내주식' ? '#059669' : '#D97706', fontSize: '0.625rem', fontWeight: 600 }}>{item.type}</span>}
+                                  {item.exchange && <span style={{ marginLeft: 4, fontSize: '0.625rem', color: 'var(--text-muted)' }}>{item.exchange}</span>}
                                 </div>
                               </div>
                               <div style={{ textAlign: 'right', flexShrink: 0 }}>
-                                {item.price != null && <div style={{ fontWeight: 600, color: '#1E3A5F', fontSize: '0.8125rem' }}>{item.currency === 'USD' ? `$${item.price}` : item.price?.toLocaleString('ko-KR')}</div>}
-                                {item.nav != null && <div style={{ fontSize: '0.6875rem', color: '#9CA3AF' }}>NAV {item.nav?.toLocaleString('ko-KR')}</div>}
+                                {item.price != null && <div style={{ fontWeight: 600, color: 'var(--blue-400)', fontSize: '0.8125rem' }}>{item.currency === 'USD' ? `$${item.price}` : item.price?.toLocaleString('ko-KR')}</div>}
+                                {item.nav != null && <div style={{ fontSize: '0.6875rem', color: 'var(--text-muted)' }}>NAV {item.nav?.toLocaleString('ko-KR')}</div>}
                               </div>
                             </button>
                           ))}
@@ -2974,7 +2977,7 @@ function Tab2Section({
                     <input type="text" placeholder="상품명을 직접 입력하세요"
                       value={t2NewMasterForm.product_name}
                       onChange={(e) => setT2NewMasterForm((prev) => ({ ...prev, product_name: e.target.value }))}
-                      style={{ width: '100%', padding: '7px 10px', fontSize: '0.8125rem', border: '1px solid #E1E5EB', borderRadius: 7, outline: 'none', boxSizing: 'border-box' }} autoFocus />
+                      style={{ width: '100%', padding: '7px 10px', fontSize: '0.8125rem', border: '1px solid var(--border)', borderRadius: 7, outline: 'none', boxSizing: 'border-box' }} autoFocus />
                   )}
                 </div>
               )}
@@ -2982,12 +2985,12 @@ function Tab2Section({
               {/* 3. 종목코드 */}
               {t2NewMasterForm.product_type && (
                 <div>
-                  <label style={{ fontSize: '0.8125rem', fontWeight: 600, color: '#374151', display: 'block', marginBottom: 4 }}>종목코드</label>
+                  <label style={{ fontSize: '0.8125rem', fontWeight: 600, color: 'var(--text-secondary)', display: 'block', marginBottom: 4 }}>종목코드</label>
                   <input type="text" placeholder="종목코드"
                     value={t2NewMasterForm.product_code}
                     onChange={(e) => setT2NewMasterForm((prev) => ({ ...prev, product_code: e.target.value }))}
                     readOnly={t2NewMasterForm.product_type === 'ETF' || t2NewMasterForm.product_type === 'MMF'}
-                    style={{ width: '100%', padding: '7px 10px', fontSize: '0.8125rem', border: '1px solid #E1E5EB', borderRadius: 7, outline: 'none', boxSizing: 'border-box', fontFamily: 'monospace', backgroundColor: (t2NewMasterForm.product_type === 'ETF' || t2NewMasterForm.product_type === 'MMF') ? '#F9FAFB' : '#fff' }}
+                    style={{ width: '100%', padding: '7px 10px', fontSize: '0.8125rem', border: '1px solid var(--border)', borderRadius: 7, outline: 'none', boxSizing: 'border-box', fontFamily: 'monospace', backgroundColor: (t2NewMasterForm.product_type === 'ETF' || t2NewMasterForm.product_type === 'MMF') ? 'var(--bg-surface)' : 'var(--bg-card)' }}
                   />
                 </div>
               )}
@@ -2996,17 +2999,17 @@ function Tab2Section({
               {t2NewMasterForm.product_type && (
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
                   <div>
-                    <label style={{ fontSize: '0.8125rem', fontWeight: 600, color: '#374151', display: 'block', marginBottom: 4 }}>위험도</label>
+                    <label style={{ fontSize: '0.8125rem', fontWeight: 600, color: 'var(--text-secondary)', display: 'block', marginBottom: 4 }}>위험도</label>
                     <select value={t2NewMasterForm.risk_level} onChange={(e) => setT2NewMasterForm((prev) => ({ ...prev, risk_level: e.target.value }))}
-                      style={{ width: '100%', padding: '7px 10px', fontSize: '0.8125rem', border: '1px solid #E1E5EB', borderRadius: 7, outline: 'none', backgroundColor: '#fff', boxSizing: 'border-box', cursor: 'pointer' }}>
+                      style={{ width: '100%', padding: '7px 10px', fontSize: '0.8125rem', border: '1px solid var(--border)', borderRadius: 7, outline: 'none', backgroundColor: 'var(--bg-card)', boxSizing: 'border-box', cursor: 'pointer' }}>
                       <option value="">선택</option>
                       {RISK_LEVELS.map((rl) => <option key={rl} value={rl}>{rl}</option>)}
                     </select>
                   </div>
                   <div>
-                    <label style={{ fontSize: '0.8125rem', fontWeight: 600, color: '#374151', display: 'block', marginBottom: 4 }}>지역</label>
+                    <label style={{ fontSize: '0.8125rem', fontWeight: 600, color: 'var(--text-secondary)', display: 'block', marginBottom: 4 }}>지역</label>
                     <select value={t2NewMasterForm.region} onChange={(e) => setT2NewMasterForm((prev) => ({ ...prev, region: e.target.value }))}
-                      style={{ width: '100%', padding: '7px 10px', fontSize: '0.8125rem', border: '1px solid #E1E5EB', borderRadius: 7, outline: 'none', backgroundColor: '#fff', boxSizing: 'border-box', cursor: 'pointer' }}>
+                      style={{ width: '100%', padding: '7px 10px', fontSize: '0.8125rem', border: '1px solid var(--border)', borderRadius: 7, outline: 'none', backgroundColor: 'var(--bg-card)', boxSizing: 'border-box', cursor: 'pointer' }}>
                       <option value="">선택</option>
                       {REGIONS.map((rg) => <option key={rg} value={rg}>{rg}</option>)}
                     </select>
@@ -3015,9 +3018,9 @@ function Tab2Section({
               )}
             </div>
             <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 16 }}>
-              <button onClick={() => { setT2NewMasterOpen(false); setT2NewMasterAutoAdd(false); setT2MasterStockQuery(''); setT2MasterStockResults([]); }} style={{ padding: '7px 16px', fontSize: '0.8125rem', fontWeight: 600, color: '#6B7280', backgroundColor: '#F3F4F6', border: '1px solid #E1E5EB', borderRadius: 7, cursor: 'pointer' }}>취소</button>
+              <button onClick={() => { setT2NewMasterOpen(false); setT2NewMasterAutoAdd(false); setT2MasterStockQuery(''); setT2MasterStockResults([]); }} style={{ padding: '7px 16px', fontSize: '0.8125rem', fontWeight: 600, color: 'var(--text-muted)', backgroundColor: 'var(--bg-surface)', border: '1px solid var(--border)', borderRadius: 7, cursor: 'pointer' }}>취소</button>
               <button onClick={handleT2CreateNewMaster} disabled={t2NewMasterSaving || !t2NewMasterForm.product_name.trim()}
-                style={{ padding: '7px 16px', fontSize: '0.8125rem', fontWeight: 700, color: '#fff', backgroundColor: t2NewMasterSaving || !t2NewMasterForm.product_name.trim() ? '#9CA3AF' : (t2NewMasterAutoAdd ? '#059669' : '#1E3A5F'), border: 'none', borderRadius: 7, cursor: t2NewMasterSaving || !t2NewMasterForm.product_name.trim() ? 'not-allowed' : 'pointer' }}>
+                style={{ padding: '7px 16px', fontSize: '0.8125rem', fontWeight: 700, color: '#fff', backgroundColor: t2NewMasterSaving || !t2NewMasterForm.product_name.trim() ? '#9CA3AF' : (t2NewMasterAutoAdd ? '#059669' : '#3B82F6'), border: 'none', borderRadius: 7, cursor: t2NewMasterSaving || !t2NewMasterForm.product_name.trim() ? 'not-allowed' : 'pointer' }}>
                 {t2NewMasterSaving ? '등록 중...' : (t2NewMasterAutoAdd ? '등록 & 반영' : '등록')}
               </button>
             </div>
@@ -3029,18 +3032,18 @@ function Tab2Section({
       {t2DateEditOpen && (
         <div style={{ position: 'fixed', inset: 0, zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(0,0,0,0.45)' }}
           onClick={(e) => { if (e.target === e.currentTarget) setT2DateEditOpen(false); }}>
-          <div style={{ backgroundColor: '#fff', borderRadius: 14, padding: 24, width: '100%', maxWidth: 480, maxHeight: '70vh', display: 'flex', flexDirection: 'column', boxShadow: '0 20px 60px rgba(0,0,0,0.2)' }}>
+          <div style={{ backgroundColor: 'var(--bg-card)', borderRadius: 14, padding: 24, width: '100%', maxWidth: 480, maxHeight: '70vh', display: 'flex', flexDirection: 'column', boxShadow: '0 20px 60px rgba(0,0,0,0.2)' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
-              <h3 style={{ margin: 0, fontSize: '1rem', fontWeight: 700, color: '#1A1A2E' }}>날짜 편집 / 삭제</h3>
-              <button onClick={() => setT2DateEditOpen(false)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#9CA3AF', padding: 4 }}>
+              <h3 style={{ margin: 0, fontSize: '1rem', fontWeight: 700, color: 'var(--text-primary)' }}>날짜 편집 / 삭제</h3>
+              <button onClick={() => setT2DateEditOpen(false)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', padding: 4 }}>
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
               </button>
             </div>
             <input type="text" placeholder="날짜 검색 (예: 2026-01)..." value={t2DateEditSearch}
               onChange={(e) => setT2DateEditSearch(e.target.value)}
-              style={{ width: '100%', padding: '8px 10px', fontSize: '0.8125rem', border: '1px solid #E1E5EB', borderRadius: 8, outline: 'none', marginBottom: 10, boxSizing: 'border-box' }}
+              style={{ width: '100%', padding: '8px 10px', fontSize: '0.8125rem', border: '1px solid var(--border)', borderRadius: 8, outline: 'none', marginBottom: 10, boxSizing: 'border-box' }}
               autoFocus />
-            <div style={{ flex: 1, overflowY: 'auto', border: '1px solid #E1E5EB', borderRadius: 8 }}>
+            <div style={{ flex: 1, overflowY: 'auto', border: '1px solid var(--border)', borderRadius: 8 }}>
               {historyList
                 .filter((item) => !t2DateEditSearch || item.snapshot_date.includes(t2DateEditSearch))
                 .map((item) => {
@@ -3048,24 +3051,24 @@ function Tab2Section({
                   const rc = rate == null ? '#6B7280' : rate > 0 ? '#10B981' : rate < 0 ? '#EF4444' : '#6B7280';
                   const isConfirming = t2DateDeleteConfirmId === item.id;
                   return (
-                    <div key={item.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 12px', borderBottom: '1px solid #F3F4F6' }}>
-                      <span style={{ fontSize: '0.8125rem', fontWeight: 500, color: '#1A1A2E', flex: 1 }}>{item.snapshot_date}</span>
+                    <div key={item.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 12px', borderBottom: '1px solid var(--border)' }}>
+                      <span style={{ fontSize: '0.8125rem', fontWeight: 500, color: 'var(--text-primary)', flex: 1 }}>{item.snapshot_date}</span>
                       {rate != null && (
                         <span style={{ fontSize: '0.75rem', fontWeight: 600, color: rc }}>{rate > 0 ? '+' : ''}{rate.toFixed(2)}%</span>
                       )}
                       {isConfirming ? (
                         <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                          <span style={{ fontSize: '0.75rem', color: '#EF4444', fontWeight: 600 }}>이 날짜의 데이터를 삭제하시겠습니까?</span>
+                          <span style={{ fontSize: '0.75rem', color: 'var(--danger)', fontWeight: 600 }}>이 날짜의 데이터를 삭제하시겠습니까?</span>
                           <button
                             onClick={() => handleT2DeleteSnapshot(item.id)}
                             disabled={t2DateDeleting}
-                            style={{ padding: '3px 8px', fontSize: '0.75rem', fontWeight: 700, color: '#fff', backgroundColor: '#EF4444', border: 'none', borderRadius: 5, cursor: 'pointer' }}
+                            style={{ padding: '3px 8px', fontSize: '0.75rem', fontWeight: 700, color: '#fff', backgroundColor: 'var(--danger)', border: 'none', borderRadius: 5, cursor: 'pointer' }}
                           >
                             {t2DateDeleting ? '삭제 중...' : '확인'}
                           </button>
                           <button
                             onClick={() => setT2DateDeleteConfirmId(null)}
-                            style={{ padding: '3px 8px', fontSize: '0.75rem', fontWeight: 600, color: '#6B7280', backgroundColor: '#F3F4F6', border: '1px solid #E1E5EB', borderRadius: 5, cursor: 'pointer' }}
+                            style={{ padding: '3px 8px', fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-muted)', backgroundColor: 'var(--bg-surface)', border: '1px solid var(--border)', borderRadius: 5, cursor: 'pointer' }}
                           >
                             취소
                           </button>
@@ -3074,7 +3077,7 @@ function Tab2Section({
                         <button
                           onClick={() => setT2DateDeleteConfirmId(item.id)}
                           data-tooltip="삭제"
-                          style={{ padding: '4px 6px', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', border: '1px solid #FECACA', borderRadius: 5, backgroundColor: '#FEF2F2', cursor: 'pointer', color: '#EF4444' }}
+                          style={{ padding: '4px 6px', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', border: '1px solid rgba(239,68,68,0.35)', borderRadius: 5, backgroundColor: 'var(--danger-bg)', cursor: 'pointer', color: 'var(--danger)' }}
                         >
                           <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                             <polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/>
@@ -3085,7 +3088,7 @@ function Tab2Section({
                   );
                 })}
               {historyList.filter((item) => !t2DateEditSearch || item.snapshot_date.includes(t2DateEditSearch)).length === 0 && (
-                <div style={{ padding: 20, textAlign: 'center', color: '#9CA3AF', fontSize: '0.8125rem' }}>검색 결과 없음</div>
+                <div style={{ padding: 20, textAlign: 'center', color: 'var(--text-muted)', fontSize: '0.8125rem' }}>검색 결과 없음</div>
               )}
             </div>
           </div>
@@ -4599,7 +4602,7 @@ export default function IRPPage() {
       // html2canvas로 캡처 (한국어 깨짐 없음)
       const html2canvas = (await import('html2canvas')).default;
       const { default: jsPDF } = await import('jspdf');
-      const canvas = await html2canvas(tab4PdfRef.current, { scale: 2, backgroundColor: '#fff', useCORS: true });
+      const canvas = await html2canvas(tab4PdfRef.current, { scale: 2, backgroundColor: 'var(--bg-card)', useCORS: true });
       const pdf = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
       const pageW = pdf.internal.pageSize.getWidth();
       const pageH = pdf.internal.pageSize.getHeight();
@@ -5421,7 +5424,7 @@ export default function IRPPage() {
   /* ================================================================ */
 
   return (
-    <div style={{ maxWidth: '960px', margin: '0 auto' }}>
+    <div style={{ width: '100%' }}>
       {/* ===== 페이지 헤더 ===== */}
       <div style={{ marginBottom: 24 }}>
         <button
@@ -5434,11 +5437,11 @@ export default function IRPPage() {
             background: 'none',
             border: 'none',
             cursor: 'pointer',
-            color: '#6B7280',
+            color: 'var(--text-muted)',
             fontSize: '0.8125rem',
             padding: 0,
           }}
-          onMouseEnter={(e) => ((e.currentTarget as HTMLButtonElement).style.color = '#1A1A2E')}
+          onMouseEnter={(e) => ((e.currentTarget as HTMLButtonElement).style.color = 'var(--text-primary)')}
           onMouseLeave={(e) => ((e.currentTarget as HTMLButtonElement).style.color = '#6B7280')}
         >
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -5454,7 +5457,7 @@ export default function IRPPage() {
                 width: 32,
                 height: 4,
                 borderRadius: 2,
-                background: 'linear-gradient(90deg,#3B82F6 0%,#1E3A5F 100%)',
+                background: 'linear-gradient(90deg,var(--blue-400) 0%,var(--blue-600) 100%)',
                 marginBottom: 10,
               }}
             />
@@ -5463,13 +5466,13 @@ export default function IRPPage() {
                 margin: 0,
                 fontSize: '1.375rem',
                 fontWeight: 800,
-                color: '#1A1A2E',
+                color: 'var(--text-primary)',
                 letterSpacing: '-0.4px',
               }}
             >
               증권사 투자 상품 관리기
             </h1>
-            <p style={{ margin: '5px 0 0', fontSize: '0.875rem', color: '#6B7280' }}>
+            <p style={{ margin: '5px 0 0', fontSize: '0.875rem', color: 'var(--text-muted)' }}>
               증권사 화면을 캡처해 붙여넣으면 AI가 데이터를 인식해 보고서를 생성합니다.
             </p>
           </div>
@@ -5480,7 +5483,7 @@ export default function IRPPage() {
               <div key={tab.key} style={{ display: 'flex', alignItems: 'center' }}>
                 <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4 }}>
                   <StepDot step={i + 1} active={activeTab === tab.key} done={i < stepIndex} />
-                  <span style={{ fontSize: '0.625rem', color: i < stepIndex ? '#1E3A5F' : activeTab === tab.key ? '#3B82F6' : '#9CA3AF', fontWeight: 600, whiteSpace: 'nowrap' }}>
+                  <span style={{ fontSize: '0.625rem', color: i < stepIndex ? '#3B82F6' : activeTab === tab.key ? '#3B82F6' : '#9CA3AF', fontWeight: 600, whiteSpace: 'nowrap' }}>
                     {typeof tab.label === 'string' ? tab.label.replace(/^\d+\.\s/, '') : tab.label}
                   </span>
                 </div>
@@ -5489,7 +5492,7 @@ export default function IRPPage() {
                     style={{
                       width: 32,
                       height: 2,
-                      backgroundColor: i < stepIndex ? '#1E3A5F' : '#E1E5EB',
+                      backgroundColor: i < stepIndex ? '#3B82F6' : 'var(--border-strong)',
                       marginBottom: 18,
                       transition: 'background-color 0.2s ease',
                     }}
@@ -5524,9 +5527,9 @@ export default function IRPPage() {
                     padding: '6px 14px',
                     fontSize: '0.8125rem',
                     fontWeight: 600,
-                    color: '#1E3A5F',
-                    backgroundColor: '#fff',
-                    border: '1px solid #1E3A5F',
+                    color: 'var(--blue-400)',
+                    backgroundColor: 'var(--bg-card)',
+                    border: '1px solid var(--blue-500)',
                     borderRadius: 7,
                     cursor: 'pointer',
                   }}
@@ -5548,9 +5551,9 @@ export default function IRPPage() {
                     padding: '6px 14px',
                     fontSize: '0.8125rem',
                     fontWeight: 600,
-                    color: '#1E3A5F',
-                    backgroundColor: '#fff',
-                    border: '1px solid #1E3A5F',
+                    color: 'var(--blue-400)',
+                    backgroundColor: 'var(--bg-card)',
+                    border: '1px solid var(--blue-500)',
                     borderRadius: 7,
                     cursor: 'pointer',
                   }}
@@ -5568,7 +5571,7 @@ export default function IRPPage() {
 
           {/* 로딩 중 */}
           {clientsLoading && (
-            <div style={{ textAlign: 'center', color: '#9CA3AF', fontSize: '0.875rem', padding: '12px 0' }}>
+            <div style={{ textAlign: 'center', color: 'var(--text-muted)', fontSize: '0.875rem', padding: '12px 0' }}>
               고객 목록 로딩 중...
             </div>
           )}
@@ -5590,9 +5593,9 @@ export default function IRPPage() {
               style={{
                 padding: '40px 20px',
                 textAlign: 'center',
-                color: '#9CA3AF',
+                color: 'var(--text-muted)',
                 fontSize: '0.875rem',
-                border: '2px dashed #E1E5EB',
+                border: '2px dashed var(--border)',
                 borderRadius: 12,
               }}
             >
@@ -5627,17 +5630,17 @@ export default function IRPPage() {
                   alignItems: 'center',
                   gap: 8,
                   paddingBottom: 4,
-                  borderBottom: '2px solid #1E3A5F',
+                  borderBottom: '2px solid var(--blue-500)',
                 }}
               >
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#1E3A5F" strokeWidth="2">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#3B82F6" strokeWidth="2">
                   <polyline points="9 11 12 14 22 4" />
                   <path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11" />
                 </svg>
-                <span style={{ fontSize: '0.9375rem', fontWeight: 700, color: '#1A1A2E' }}>
+                <span style={{ fontSize: '0.9375rem', fontWeight: 700, color: 'var(--text-primary)' }}>
                   AI 추출 결과 확인
                 </span>
-                <span style={{ fontSize: '0.8125rem', color: '#6B7280' }}>
+                <span style={{ fontSize: '0.8125rem', color: 'var(--text-muted)' }}>
                   위험도·지역을 확인하고 필요시 수정 후 저장하세요.
                 </span>
               </div>
@@ -5651,31 +5654,31 @@ export default function IRPPage() {
                       alignItems: 'center',
                       gap: 10,
                       padding: '12px 16px',
-                      backgroundColor: '#F5F7FA',
-                      borderBottom: '1px solid #E1E5EB',
+                      backgroundColor: 'var(--bg-surface)',
+                      borderBottom: '1px solid var(--border)',
                     }}
                   >
-                    <span style={{ fontWeight: 700, color: '#1A1A2E', fontSize: '0.9375rem' }}>
+                    <span style={{ fontWeight: 700, color: 'var(--text-primary)', fontSize: '0.9375rem' }}>
                       {er.clientName}
                     </span>
                     <span
                       style={{
                         fontSize: '0.75rem',
                         fontWeight: 600,
-                        color: '#1E3A5F',
-                        backgroundColor: '#EEF2F7',
+                        color: 'var(--blue-400)',
+                        backgroundColor: 'var(--bg-card-2)',
                         padding: '2px 8px',
                         borderRadius: 5,
                       }}
                     >
                       {accountTypeLabel(er.accountType)}
                     </span>
-                    <span style={{ fontSize: '0.75rem', color: '#9CA3AF' }}>
+                    <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
                       {er.holdings.length}개 종목
                     </span>
                     {/* Extracted snapshot date (editable) */}
                     <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 6 }}>
-                      <span style={{ fontSize: '0.75rem', color: '#6B7280', fontWeight: 500, whiteSpace: 'nowrap' }}>
+                      <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', fontWeight: 500, whiteSpace: 'nowrap' }}>
                         조회일
                       </span>
                       <input
@@ -5690,12 +5693,12 @@ export default function IRPPage() {
                         style={{
                           padding: '4px 8px',
                           fontSize: '0.75rem',
-                          border: '1px solid #CBD5E1',
+                          border: '1px solid var(--border-strong)',
                           borderRadius: 6,
                           outline: 'none',
-                          color: '#1A1A2E',
+                          color: 'var(--text-primary)',
                           cursor: 'pointer',
-                          backgroundColor: '#fff',
+                          backgroundColor: 'var(--bg-card)',
                         }}
                       />
                     </div>
@@ -5707,8 +5710,8 @@ export default function IRPPage() {
                         padding: '5px 12px',
                         fontSize: '0.75rem',
                         fontWeight: 600,
-                        color: '#1E3A5F',
-                        backgroundColor: er.applyingMaster ? '#E1E5EB' : '#EEF2F7',
+                        color: 'var(--blue-400)',
+                        backgroundColor: er.applyingMaster ? '#E1E5EB' : 'var(--bg-card-2)',
                         border: '1px solid #C7D2E2',
                         borderRadius: 6,
                         cursor: er.applyingMaster ? 'not-allowed' : 'pointer',
@@ -5724,7 +5727,7 @@ export default function IRPPage() {
                             display: 'inline-block',
                             width: 11,
                             height: 11,
-                            border: '2px solid #1E3A5F',
+                            border: '2px solid var(--blue-500)',
                             borderTopColor: 'transparent',
                             borderRadius: '50%',
                             animation: 'spin 0.7s linear infinite',
@@ -5744,7 +5747,7 @@ export default function IRPPage() {
                     <div
                       style={{
                         padding: '10px 16px',
-                        backgroundColor: '#EEF2F7',
+                        backgroundColor: 'var(--bg-card-2)',
                         borderBottom: '1px solid #D1D9E6',
                         display: 'grid',
                         gridTemplateColumns: 'repeat(7, 1fr)',
@@ -5768,7 +5771,7 @@ export default function IRPPage() {
                             : `${signed && value > 0 ? '+' : ''}${value.toLocaleString('ko-KR')}`;
                         return (
                           <div key={label} style={{ display: 'flex', flexDirection: 'column', gap: 2, alignItems: 'center' }}>
-                            <span style={{ fontSize: '0.6875rem', color: '#6B7280', fontWeight: 500 }}>{label}</span>
+                            <span style={{ fontSize: '0.6875rem', color: 'var(--text-muted)', fontWeight: 500 }}>{label}</span>
                             <span style={{ fontSize: '0.8125rem', fontWeight: 700, color }}>{formatted}</span>
                           </div>
                         );
@@ -5781,10 +5784,10 @@ export default function IRPPage() {
                     <div
                       style={{
                         padding: '8px 16px',
-                        backgroundColor: '#ECFDF5',
-                        borderBottom: '1px solid #6EE7B7',
+                        backgroundColor: 'var(--success-bg)',
+                        borderBottom: '1px solid rgba(16,185,129,0.35)',
                         fontSize: '0.8125rem',
-                        color: '#059669',
+                        color: 'var(--success)',
                         fontWeight: 600,
                         display: 'flex',
                         alignItems: 'center',
@@ -5803,10 +5806,10 @@ export default function IRPPage() {
                     <div
                       style={{
                         padding: '8px 16px',
-                        backgroundColor: '#FFFBEB',
-                        borderBottom: '1px solid #FDE68A',
+                        backgroundColor: 'var(--warning-bg)',
+                        borderBottom: '1px solid rgba(245,158,11,0.35)',
                         fontSize: '0.8125rem',
-                        color: '#92400E',
+                        color: 'var(--warning)',
                         display: 'flex',
                         alignItems: 'center',
                         gap: 6,
@@ -5822,44 +5825,44 @@ export default function IRPPage() {
                   )}
 
                   {/* Holdings table — 상품명 고정 + 오른쪽 스크롤 */}
-                  <div style={{ display: 'flex', border: '1px solid #E1E5EB', borderRadius: 8, overflow: 'hidden' }}>
+                  <div style={{ display: 'flex', border: '1px solid var(--border)', borderRadius: 8, overflow: 'hidden' }}>
                     {/* 고정 영역: NO + 상품명 + 액션 */}
-                    <div style={{ flexShrink: 0, borderRight: '2px solid #E1E5EB' }}>
+                    <div style={{ flexShrink: 0, borderRight: '2px solid var(--border)' }}>
                       <table style={{ borderCollapse: 'collapse', fontSize: '0.8125rem' }}>
                         <thead>
-                          <tr style={{ backgroundColor: '#F5F7FA' }}>
-                            <th style={{ padding: '9px 8px', textAlign: 'center', fontSize: '0.75rem', fontWeight: 600, color: '#6B7280', borderBottom: '1px solid #E1E5EB', width: 32 }}>NO</th>
-                            <th style={{ padding: '9px 8px', textAlign: 'left', fontSize: '0.75rem', fontWeight: 600, color: '#6B7280', borderBottom: '1px solid #E1E5EB', width: 220 }}>상품명</th>
-                            <th style={{ padding: '9px 4px', textAlign: 'center', fontSize: '0.75rem', fontWeight: 600, color: '#6B7280', borderBottom: '1px solid #E1E5EB', width: 50 }}></th>
+                          <tr style={{ backgroundColor: 'var(--bg-surface)' }}>
+                            <th style={{ padding: '9px 8px', textAlign: 'center', fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-muted)', borderBottom: '1px solid var(--border)', width: 32 }}>NO</th>
+                            <th style={{ padding: '9px 8px', textAlign: 'left', fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-muted)', borderBottom: '1px solid var(--border)', width: 220 }}>상품명</th>
+                            <th style={{ padding: '9px 4px', textAlign: 'center', fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-muted)', borderBottom: '1px solid var(--border)', width: 50 }}></th>
                           </tr>
                         </thead>
                         <tbody>
                           {er.holdings.map((h, idx) => {
-                            const rowBg = h.unmapped ? '#FEF9C3' : 'transparent';
+                            const rowBg = h.unmapped ? 'rgba(245,158,11,0.18)' : 'transparent';
                             return (
                               <tr key={h.holdingId} style={{ backgroundColor: rowBg }}>
-                                <td style={{ padding: '8px 8px', textAlign: 'center', color: '#9CA3AF', borderBottom: '1px solid #F3F4F6', fontSize: '0.75rem' }}>
+                                <td style={{ padding: '8px 8px', textAlign: 'center', color: 'var(--text-muted)', borderBottom: '1px solid var(--border)', fontSize: '0.75rem' }}>
                                   {idx + 1}
                                 </td>
-                                <td style={{ padding: '6px 8px', borderBottom: '1px solid #F3F4F6' }}>
+                                <td style={{ padding: '6px 8px', borderBottom: '1px solid var(--border)' }}>
                                   <input type="text" value={h.productName}
                                     onChange={(e) => updateHoldingField(er.snapshotId, h.holdingId, { productName: e.target.value })}
                                     data-tooltip={h.productName}
                                     style={{
-                                      width: 210, fontSize: '0.75rem', fontWeight: 500, color: '#1A1A2E',
+                                      width: 210, fontSize: '0.75rem', fontWeight: 500, color: 'var(--text-primary)',
                                       border: '1px solid transparent', borderRadius: 4, padding: '2px 4px',
                                       background: 'transparent', outline: 'none', whiteSpace: 'nowrap',
                                     }}
-                                    onFocus={(e) => { e.currentTarget.style.border = '1px solid #3B82F6'; e.currentTarget.style.background = '#fff'; }}
+                                    onFocus={(e) => { e.currentTarget.style.border = '1px solid #3B82F6'; e.currentTarget.style.background = 'var(--bg-card)'; }}
                                     onBlur={(e) => { e.currentTarget.style.border = '1px solid transparent'; e.currentTarget.style.background = 'transparent'; }}
                                   />
                                 </td>
-                                <td style={{ padding: '4px 4px', borderBottom: '1px solid #F3F4F6', whiteSpace: 'nowrap' }}>
+                                <td style={{ padding: '4px 4px', borderBottom: '1px solid var(--border)', whiteSpace: 'nowrap' }}>
                                   <div style={{ display: 'flex', gap: 2 }}>
                                     {/* 등록 아이콘 */}
                                     <button type="button" data-tooltip="상품 마스터에 등록"
                                       onClick={() => openRegisterModal(h.productName)}
-                                      style={{ width: 22, height: 22, display: 'flex', alignItems: 'center', justifyContent: 'center', border: '1px solid #FCD34D', borderRadius: 4, backgroundColor: '#FEF3C7', cursor: 'pointer', color: '#D97706', fontSize: '0.6rem' }}>
+                                      style={{ width: 22, height: 22, display: 'flex', alignItems: 'center', justifyContent: 'center', border: '1px solid rgba(245,158,11,0.35)', borderRadius: 4, backgroundColor: 'var(--warning-bg)', cursor: 'pointer', color: 'var(--warning)', fontSize: '0.6rem' }}>
                                       <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
                                     </button>
                                     {/* 불러오기 아이콘 */}
@@ -5868,26 +5871,26 @@ export default function IRPPage() {
                                         setLoadMasterTarget({ snapshotId: er.snapshotId, holdingId: h.holdingId, productName: h.productName, accountType: er.accountType });
                                         setLoadMasterSearch(h.productName);
                                       }}
-                                      style={{ width: 22, height: 22, display: 'flex', alignItems: 'center', justifyContent: 'center', border: '1px solid #93C5FD', borderRadius: 4, backgroundColor: '#EFF6FF', cursor: 'pointer', color: '#2563EB', fontSize: '0.6rem' }}>
+                                      style={{ width: 22, height: 22, display: 'flex', alignItems: 'center', justifyContent: 'center', border: '1px solid rgba(56,189,248,0.35)', borderRadius: 4, backgroundColor: 'rgba(56,189,248,0.12)', cursor: 'pointer', color: 'var(--blue-500)', fontSize: '0.6rem' }}>
                                       <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
                                     </button>
                                     {/* 위에 행 추가 */}
                                     <button type="button" data-tooltip="위에 행 추가"
                                       onClick={() => addHoldingRow(er.snapshotId, idx, 'above')}
-                                      style={{ width: 22, height: 22, display: 'flex', alignItems: 'center', justifyContent: 'center', border: '1px solid #D1D5DB', borderRadius: 4, backgroundColor: '#F9FAFB', cursor: 'pointer', color: '#6B7280' }}>
+                                      style={{ width: 22, height: 22, display: 'flex', alignItems: 'center', justifyContent: 'center', border: '1px solid var(--border-strong)', borderRadius: 4, backgroundColor: 'var(--bg-surface)', cursor: 'pointer', color: 'var(--text-muted)' }}>
                                       <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><polyline points="18 15 12 9 6 15"/></svg>
                                     </button>
                                     {/* 아래에 행 추가 */}
                                     <button type="button" data-tooltip="아래에 행 추가"
                                       onClick={() => addHoldingRow(er.snapshotId, idx, 'below')}
-                                      style={{ width: 22, height: 22, display: 'flex', alignItems: 'center', justifyContent: 'center', border: '1px solid #D1D5DB', borderRadius: 4, backgroundColor: '#F9FAFB', cursor: 'pointer', color: '#6B7280' }}>
+                                      style={{ width: 22, height: 22, display: 'flex', alignItems: 'center', justifyContent: 'center', border: '1px solid var(--border-strong)', borderRadius: 4, backgroundColor: 'var(--bg-surface)', cursor: 'pointer', color: 'var(--text-muted)' }}>
                                       <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><polyline points="6 9 12 15 18 9"/></svg>
                                     </button>
                                     {/* 수동 추가 행 삭제 */}
                                     {h.holdingId.startsWith('__manual__') && (
                                       <button type="button" data-tooltip="행 삭제"
                                         onClick={() => removeHoldingRow(er.snapshotId, h.holdingId)}
-                                        style={{ width: 22, height: 22, display: 'flex', alignItems: 'center', justifyContent: 'center', border: '1px solid #FECACA', borderRadius: 4, backgroundColor: '#FEF2F2', cursor: 'pointer', color: '#EF4444' }}>
+                                        style={{ width: 22, height: 22, display: 'flex', alignItems: 'center', justifyContent: 'center', border: '1px solid rgba(239,68,68,0.35)', borderRadius: 4, backgroundColor: 'var(--danger-bg)', cursor: 'pointer', color: 'var(--danger)' }}>
                                         <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
                                       </button>
                                     )}
@@ -5904,28 +5907,28 @@ export default function IRPPage() {
                     <div style={{ overflowX: 'auto', flex: 1 }}>
                       <table style={{ borderCollapse: 'collapse', fontSize: '0.8125rem', minWidth: 900 }}>
                         <thead>
-                          <tr style={{ backgroundColor: '#F5F7FA' }}>
-                            <th style={{ padding: '9px 10px', textAlign: 'center', fontSize: '0.75rem', fontWeight: 600, color: '#6B7280', borderBottom: '1px solid #E1E5EB', whiteSpace: 'nowrap', minWidth: 80 }}>종목코드</th>
-                            <th style={{ padding: '9px 10px', textAlign: 'center', fontSize: '0.75rem', fontWeight: 600, color: '#6B7280', borderBottom: '1px solid #E1E5EB', whiteSpace: 'nowrap', minWidth: 110 }}>위험도</th>
-                            <th style={{ padding: '9px 10px', textAlign: 'center', fontSize: '0.75rem', fontWeight: 600, color: '#6B7280', borderBottom: '1px solid #E1E5EB', whiteSpace: 'nowrap', minWidth: 80 }}>지역</th>
-                            <th style={{ padding: '9px 10px', textAlign: 'right', fontSize: '0.75rem', fontWeight: 600, color: '#6B7280', borderBottom: '1px solid #E1E5EB', whiteSpace: 'nowrap', minWidth: 70 }}>잔고수량</th>
-                            <th style={{ padding: '9px 10px', textAlign: 'right', fontSize: '0.75rem', fontWeight: 600, color: '#6B7280', borderBottom: '1px solid #E1E5EB', whiteSpace: 'nowrap', minWidth: 80 }}>매입가</th>
-                            <th style={{ padding: '9px 10px', textAlign: 'right', fontSize: '0.75rem', fontWeight: 600, color: '#6B7280', borderBottom: '1px solid #E1E5EB', whiteSpace: 'nowrap', minWidth: 80 }}>현재가</th>
-                            <th style={{ padding: '9px 10px', textAlign: 'right', fontSize: '0.75rem', fontWeight: 600, color: '#6B7280', borderBottom: '1px solid #E1E5EB', whiteSpace: 'nowrap', minWidth: 90 }}>매입금액</th>
+                          <tr style={{ backgroundColor: 'var(--bg-surface)' }}>
+                            <th style={{ padding: '9px 10px', textAlign: 'center', fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-muted)', borderBottom: '1px solid var(--border)', whiteSpace: 'nowrap', minWidth: 80 }}>종목코드</th>
+                            <th style={{ padding: '9px 10px', textAlign: 'center', fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-muted)', borderBottom: '1px solid var(--border)', whiteSpace: 'nowrap', minWidth: 110 }}>위험도</th>
+                            <th style={{ padding: '9px 10px', textAlign: 'center', fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-muted)', borderBottom: '1px solid var(--border)', whiteSpace: 'nowrap', minWidth: 80 }}>지역</th>
+                            <th style={{ padding: '9px 10px', textAlign: 'right', fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-muted)', borderBottom: '1px solid var(--border)', whiteSpace: 'nowrap', minWidth: 70 }}>잔고수량</th>
+                            <th style={{ padding: '9px 10px', textAlign: 'right', fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-muted)', borderBottom: '1px solid var(--border)', whiteSpace: 'nowrap', minWidth: 80 }}>매입가</th>
+                            <th style={{ padding: '9px 10px', textAlign: 'right', fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-muted)', borderBottom: '1px solid var(--border)', whiteSpace: 'nowrap', minWidth: 80 }}>현재가</th>
+                            <th style={{ padding: '9px 10px', textAlign: 'right', fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-muted)', borderBottom: '1px solid var(--border)', whiteSpace: 'nowrap', minWidth: 90 }}>매입금액</th>
                             {!er.accountType?.startsWith('pension') && (
                               <>
-                                <th style={{ padding: '9px 10px', textAlign: 'right', fontSize: '0.75rem', fontWeight: 600, color: '#6B7280', borderBottom: '1px solid #E1E5EB', whiteSpace: 'nowrap', minWidth: 90 }}>총입금액</th>
-                                <th style={{ padding: '9px 10px', textAlign: 'right', fontSize: '0.75rem', fontWeight: 600, color: '#6B7280', borderBottom: '1px solid #E1E5EB', whiteSpace: 'nowrap', minWidth: 90 }}>총출금액</th>
+                                <th style={{ padding: '9px 10px', textAlign: 'right', fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-muted)', borderBottom: '1px solid var(--border)', whiteSpace: 'nowrap', minWidth: 90 }}>총입금액</th>
+                                <th style={{ padding: '9px 10px', textAlign: 'right', fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-muted)', borderBottom: '1px solid var(--border)', whiteSpace: 'nowrap', minWidth: 90 }}>총출금액</th>
                               </>
                             )}
-                            <th style={{ padding: '9px 10px', textAlign: 'right', fontSize: '0.75rem', fontWeight: 600, color: '#6B7280', borderBottom: '1px solid #E1E5EB', whiteSpace: 'nowrap', minWidth: 90 }}>평가금액</th>
-                            <th style={{ padding: '9px 10px', textAlign: 'right', fontSize: '0.75rem', fontWeight: 600, color: '#6B7280', borderBottom: '1px solid #E1E5EB', whiteSpace: 'nowrap', minWidth: 90 }}>평가손익</th>
-                            <th style={{ padding: '9px 10px', textAlign: 'right', fontSize: '0.75rem', fontWeight: 600, color: '#6B7280', borderBottom: '1px solid #E1E5EB', whiteSpace: 'nowrap', minWidth: 70 }}>수익률</th>
+                            <th style={{ padding: '9px 10px', textAlign: 'right', fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-muted)', borderBottom: '1px solid var(--border)', whiteSpace: 'nowrap', minWidth: 90 }}>평가금액</th>
+                            <th style={{ padding: '9px 10px', textAlign: 'right', fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-muted)', borderBottom: '1px solid var(--border)', whiteSpace: 'nowrap', minWidth: 90 }}>평가손익</th>
+                            <th style={{ padding: '9px 10px', textAlign: 'right', fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-muted)', borderBottom: '1px solid var(--border)', whiteSpace: 'nowrap', minWidth: 70 }}>수익률</th>
                           </tr>
                         </thead>
                         <tbody>
                           {er.holdings.map((h) => {
-                            const rowBg = h.unmapped ? '#FEF9C3' : 'transparent';
+                            const rowBg = h.unmapped ? 'rgba(245,158,11,0.18)' : 'transparent';
                             const calcReturnAmt = (h.evaluationAmount != null && h.purchaseAmount != null)
                               ? h.evaluationAmount - h.purchaseAmount
                               : h.returnAmount ?? null;
@@ -5936,21 +5939,21 @@ export default function IRPPage() {
                             const rateColor = calcReturnRate == null ? '#374151' : calcReturnRate > 0 ? '#10B981' : calcReturnRate < 0 ? '#EF4444' : '#374151';
                             return (
                               <tr key={h.holdingId} style={{ backgroundColor: rowBg }}>
-                                <td style={{ padding: '8px 10px', textAlign: 'center', color: '#6B7280', borderBottom: '1px solid #F3F4F6', fontSize: '0.75rem', fontFamily: 'monospace', whiteSpace: 'nowrap' }}>
+                                <td style={{ padding: '8px 10px', textAlign: 'center', color: 'var(--text-muted)', borderBottom: '1px solid var(--border)', fontSize: '0.75rem', fontFamily: 'monospace', whiteSpace: 'nowrap' }}>
                                   {h.productCode || '-'}
                                 </td>
-                                <td style={{ padding: '6px 6px', textAlign: 'center', borderBottom: '1px solid #F3F4F6' }}>
+                                <td style={{ padding: '6px 6px', textAlign: 'center', borderBottom: '1px solid var(--border)' }}>
                                   <select value={h.riskLevel}
                                     onChange={(e) => updateHoldingField(er.snapshotId, h.holdingId, { riskLevel: e.target.value })}
-                                    style={{ width: '100%', padding: '4px 4px', fontSize: '0.7rem', border: `1px solid ${h.unmapped && !h.riskLevel ? '#F59E0B' : '#E1E5EB'}`, borderRadius: 5, outline: 'none', backgroundColor: '#fff', cursor: 'pointer', color: '#1A1A2E' }}>
+                                    style={{ width: '100%', padding: '4px 4px', fontSize: '0.7rem', border: `1px solid ${h.unmapped && !h.riskLevel ? '#F59E0B' : '#E1E5EB'}`, borderRadius: 5, outline: 'none', backgroundColor: 'var(--bg-card)', cursor: 'pointer', color: 'var(--text-primary)' }}>
                                     <option value="">선택</option>
                                     {RISK_LEVELS.map((rl) => (<option key={rl} value={rl}>{rl}</option>))}
                                   </select>
                                 </td>
-                                <td style={{ padding: '6px 6px', textAlign: 'center', borderBottom: '1px solid #F3F4F6' }}>
+                                <td style={{ padding: '6px 6px', textAlign: 'center', borderBottom: '1px solid var(--border)' }}>
                                   <select value={h.region}
                                     onChange={(e) => updateHoldingField(er.snapshotId, h.holdingId, { region: e.target.value })}
-                                    style={{ width: '100%', padding: '4px 4px', fontSize: '0.7rem', border: `1px solid ${h.unmapped && !h.region ? '#F59E0B' : '#E1E5EB'}`, borderRadius: 5, outline: 'none', backgroundColor: '#fff', cursor: 'pointer', color: '#1A1A2E' }}>
+                                    style={{ width: '100%', padding: '4px 4px', fontSize: '0.7rem', border: `1px solid ${h.unmapped && !h.region ? '#F59E0B' : '#E1E5EB'}`, borderRadius: 5, outline: 'none', backgroundColor: 'var(--bg-card)', cursor: 'pointer', color: 'var(--text-primary)' }}>
                                     <option value="">선택</option>
                                     {REGIONS.map((rg) => (<option key={rg} value={rg}>{rg}</option>))}
                                   </select>
@@ -5966,7 +5969,7 @@ export default function IRPPage() {
                                   ] : []),
                                   { key: 'evaluationAmount', val: h.evaluationAmount },
                                 ] as { key: string; val?: number }[]).map(({ key, val }) => (
-                                  <td key={key} style={{ padding: '4px 6px', textAlign: 'right', borderBottom: '1px solid #F3F4F6' }}>
+                                  <td key={key} style={{ padding: '4px 6px', textAlign: 'right', borderBottom: '1px solid var(--border)' }}>
                                     <input type="text"
                                       value={val != null ? val.toLocaleString('ko-KR') : ''}
                                       onChange={(e) => {
@@ -5981,19 +5984,19 @@ export default function IRPPage() {
                                         color: key === 'returnAmount' ? ((val ?? 0) >= 0 ? '#10B981' : '#EF4444') : '#374151',
                                         fontWeight: key === 'evaluationAmount' ? 500 : 400,
                                       }}
-                                      onFocus={(e) => { e.currentTarget.style.border = '1px solid #3B82F6'; e.currentTarget.style.background = '#fff'; }}
+                                      onFocus={(e) => { e.currentTarget.style.border = '1px solid #3B82F6'; e.currentTarget.style.background = 'var(--bg-card)'; }}
                                       onBlur={(e) => { e.currentTarget.style.border = '1px solid transparent'; e.currentTarget.style.background = 'transparent'; }}
                                     />
                                   </td>
                                 ))}
                                 {/* 평가손익 (자동계산: 평가금액 - 매입금액) */}
-                                <td style={{ padding: '8px 10px', textAlign: 'right', color: returnColor, fontWeight: 500, borderBottom: '1px solid #F3F4F6', whiteSpace: 'nowrap' }}>
+                                <td style={{ padding: '8px 10px', textAlign: 'right', color: returnColor, fontWeight: 500, borderBottom: '1px solid var(--border)', whiteSpace: 'nowrap' }}>
                                   {calcReturnAmt != null
                                     ? `${calcReturnAmt > 0 ? '+' : ''}${calcReturnAmt.toLocaleString('ko-KR')}`
                                     : '-'}
                                 </td>
                                 {/* 수익률 (자동계산: 평가손익 / 매입금액) */}
-                                <td style={{ padding: '8px 10px', textAlign: 'right', color: rateColor, fontWeight: 600, borderBottom: '1px solid #F3F4F6', whiteSpace: 'nowrap' }}>
+                                <td style={{ padding: '8px 10px', textAlign: 'right', color: rateColor, fontWeight: 600, borderBottom: '1px solid var(--border)', whiteSpace: 'nowrap' }}>
                                   {calcReturnRate != null
                                     ? `${calcReturnRate > 0 ? '+' : ''}${parseFloat(calcReturnRate.toFixed(2))}%`
                                     : '-'}
@@ -6010,8 +6013,8 @@ export default function IRPPage() {
                   <div
                     style={{
                       padding: '12px 16px',
-                      backgroundColor: '#F5F7FA',
-                      borderTop: '1px solid #E1E5EB',
+                      backgroundColor: 'var(--bg-surface)',
+                      borderTop: '1px solid var(--border)',
                       display: 'flex',
                       justifyContent: 'flex-end',
                     }}
@@ -6024,7 +6027,7 @@ export default function IRPPage() {
                         fontSize: '0.875rem',
                         fontWeight: 700,
                         color: '#fff',
-                        backgroundColor: savingAll === er.snapshotId ? '#9CA3AF' : '#1E3A5F',
+                        backgroundColor: savingAll === er.snapshotId ? '#9CA3AF' : '#3B82F6',
                         border: 'none',
                         borderRadius: 8,
                         cursor: savingAll === er.snapshotId ? 'not-allowed' : 'pointer',
@@ -6034,7 +6037,7 @@ export default function IRPPage() {
                         transition: 'background-color 0.15s',
                       }}
                       onMouseEnter={(e) => { if (savingAll !== er.snapshotId) (e.currentTarget as HTMLButtonElement).style.backgroundColor = '#162D4A'; }}
-                      onMouseLeave={(e) => { if (savingAll !== er.snapshotId) (e.currentTarget as HTMLButtonElement).style.backgroundColor = '#1E3A5F'; }}
+                      onMouseLeave={(e) => { if (savingAll !== er.snapshotId) (e.currentTarget as HTMLButtonElement).style.backgroundColor = '#3B82F6'; }}
                     >
                       {savingAll === er.snapshotId ? (
                         <span style={{ display: 'inline-block', width: 14, height: 14, border: '2px solid #fff', borderTopColor: 'transparent', borderRadius: '50%', animation: 'spin 0.7s linear infinite' }} />
@@ -6102,7 +6105,7 @@ export default function IRPPage() {
             <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'flex-end' }}>
               {/* 고객 검색 */}
               <div style={{ display: 'flex', flexDirection: 'column', gap: 5, width: 120, minWidth: 120, flex: '0 0 auto' }}>
-                <label style={{ fontSize: '0.8125rem', fontWeight: 600, color: '#374151' }}>고객 검색</label>
+                <label style={{ fontSize: '0.8125rem', fontWeight: 600, color: 'var(--text-secondary)' }}>고객 검색</label>
                 <div style={{ position: 'relative' }}>
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#9CA3AF" strokeWidth="2"
                     style={{ position: 'absolute', left: 8, top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none' }}>
@@ -6113,7 +6116,7 @@ export default function IRPPage() {
                     placeholder="이름/고유번호"
                     value={tab3ClientSearch}
                     onChange={(e) => setTab3ClientSearch(e.target.value)}
-                    style={{ width: '100%', padding: '8px 10px 8px 28px', fontSize: '0.8125rem', border: '1px solid #E1E5EB', borderRadius: 8, outline: 'none', color: '#1A1A2E', boxSizing: 'border-box' }}
+                    style={{ width: '100%', padding: '8px 10px 8px 28px', fontSize: '0.8125rem', border: '1px solid var(--border)', borderRadius: 8, outline: 'none', color: 'var(--text-primary)', boxSizing: 'border-box' }}
                   />
                 </div>
               </div>
@@ -6121,11 +6124,11 @@ export default function IRPPage() {
               {/* 고객 선택 */}
               <div style={{ display: 'flex', flexDirection: 'column', gap: 5, minWidth: 220, flex: 1 }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                  <label style={{ fontSize: '0.8125rem', fontWeight: 600, color: '#374151' }}>고객 선택</label>
+                  <label style={{ fontSize: '0.8125rem', fontWeight: 600, color: 'var(--text-secondary)' }}>고객 선택</label>
                   <button
                     onClick={() => setClientSortByDate(!clientSortByDate)}
                     title={clientSortByDate ? '이름순으로 전환' : '저장일순으로 전환 (저장일 = 수정 포트폴리오 최신 저장일)'}
-                    style={{ padding: '2px 6px', fontSize: '0.6875rem', fontWeight: 600, color: clientSortByDate ? '#fff' : '#6B7280', backgroundColor: clientSortByDate ? '#1E3A5F' : '#F3F4F6', border: '1px solid #D1D5DB', borderRadius: 4, cursor: 'pointer' }}
+                    style={{ padding: '2px 6px', fontSize: '0.6875rem', fontWeight: 600, color: clientSortByDate ? '#fff' : '#6B7280', backgroundColor: clientSortByDate ? '#3B82F6' : '#243049', border: '1px solid var(--border-strong)', borderRadius: 4, cursor: 'pointer' }}
                   >
                     {clientSortByDate ? '저장일순' : '이름순'}
                   </button>
@@ -6133,7 +6136,7 @@ export default function IRPPage() {
                 <select
                   value={tab3ClientId}
                   onChange={(e) => { handleTab3ClientChange(e.target.value); setTab3ClientSearch(''); }}
-                  style={{ padding: '8px 10px', fontSize: '0.8125rem', border: '1px solid #E1E5EB', borderRadius: 8, outline: 'none', color: tab3ClientId ? '#1A1A2E' : '#9CA3AF', backgroundColor: '#fff', cursor: 'pointer' }}
+                  style={{ padding: '8px 10px', fontSize: '0.8125rem', border: '1px solid var(--border)', borderRadius: 8, outline: 'none', color: tab3ClientId ? 'var(--text-primary)' : '#9CA3AF', backgroundColor: 'var(--bg-card)', cursor: 'pointer' }}
                 >
                   <option value="">-- 고객 선택 --</option>
                   {mainUniqueClients
@@ -6150,12 +6153,12 @@ export default function IRPPage() {
 
               {/* 계좌 유형 */}
               <div style={{ display: 'flex', flexDirection: 'column', gap: 5, minWidth: 120 }}>
-                <label style={{ fontSize: '0.8125rem', fontWeight: 600, color: '#374151' }}>계좌 유형</label>
+                <label style={{ fontSize: '0.8125rem', fontWeight: 600, color: 'var(--text-secondary)' }}>계좌 유형</label>
                 <select
                   value={selectedAccountId}
                   onChange={(e) => handleTab3AccountChange(e.target.value)}
                   disabled={!tab3ClientId}
-                  style={{ padding: '8px 10px', fontSize: '0.8125rem', border: '1px solid #E1E5EB', borderRadius: 8, outline: 'none', color: selectedAccountId ? '#1A1A2E' : '#9CA3AF', backgroundColor: tab3ClientId ? '#fff' : '#F9FAFB', cursor: tab3ClientId ? 'pointer' : 'not-allowed', opacity: tab3ClientId ? 1 : 0.6 }}
+                  style={{ padding: '8px 10px', fontSize: '0.8125rem', border: '1px solid var(--border)', borderRadius: 8, outline: 'none', color: selectedAccountId ? 'var(--text-primary)' : '#9CA3AF', backgroundColor: tab3ClientId ? 'var(--bg-card)' : 'var(--bg-surface)', cursor: tab3ClientId ? 'pointer' : 'not-allowed', opacity: tab3ClientId ? 1 : 0.6 }}
                 >
                   <option value="">-- 유형 선택 --</option>
                   {tab3ClientAccounts.map((a) => (
@@ -6170,20 +6173,20 @@ export default function IRPPage() {
               {tab3SelectedAccount && (
                 <>
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 5, minWidth: 90 }}>
-                    <label style={{ fontSize: '0.8125rem', fontWeight: 600, color: '#374151' }}>투권인</label>
-                    <div style={{ padding: '8px 10px', fontSize: '0.8125rem', border: '1px solid #E1E5EB', borderRadius: 8, backgroundColor: '#F9FAFB', color: '#374151' }}>
+                    <label style={{ fontSize: '0.8125rem', fontWeight: 600, color: 'var(--text-secondary)' }}>투권인</label>
+                    <div style={{ padding: '8px 10px', fontSize: '0.8125rem', border: '1px solid var(--border)', borderRadius: 8, backgroundColor: 'var(--bg-surface)', color: 'var(--text-secondary)' }}>
                       {tab3SelectedAccount.representative || '-'}
                     </div>
                   </div>
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 5, minWidth: 100 }}>
-                    <label style={{ fontSize: '0.8125rem', fontWeight: 600, color: '#374151' }}>증권사</label>
-                    <div style={{ padding: '8px 10px', fontSize: '0.8125rem', border: '1px solid #E1E5EB', borderRadius: 8, backgroundColor: '#F9FAFB', color: '#374151' }}>
+                    <label style={{ fontSize: '0.8125rem', fontWeight: 600, color: 'var(--text-secondary)' }}>증권사</label>
+                    <div style={{ padding: '8px 10px', fontSize: '0.8125rem', border: '1px solid var(--border)', borderRadius: 8, backgroundColor: 'var(--bg-surface)', color: 'var(--text-secondary)' }}>
                       {tab3SelectedAccount.securities_company || '-'}
                     </div>
                   </div>
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 5, minWidth: 120 }}>
-                    <label style={{ fontSize: '0.8125rem', fontWeight: 600, color: '#374151' }}>계좌번호</label>
-                    <div style={{ padding: '8px 10px', fontSize: '0.8125rem', border: '1px solid #E1E5EB', borderRadius: 8, backgroundColor: '#F9FAFB', color: '#374151' }}>
+                    <label style={{ fontSize: '0.8125rem', fontWeight: 600, color: 'var(--text-secondary)' }}>계좌번호</label>
+                    <div style={{ padding: '8px 10px', fontSize: '0.8125rem', border: '1px solid var(--border)', borderRadius: 8, backgroundColor: 'var(--bg-surface)', color: 'var(--text-secondary)' }}>
                       {tab3SelectedAccount.account_number || '-'}
                     </div>
                   </div>
@@ -6193,8 +6196,8 @@ export default function IRPPage() {
 
             {/* Row 2: 기준일 + 보고서 생성 */}
             {selectedAccountId && (
-              <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginTop: 12, paddingTop: 12, borderTop: '1px solid #F3F4F6' }}>
-                <label style={{ fontSize: '0.8125rem', fontWeight: 600, color: '#374151', whiteSpace: 'nowrap' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginTop: 12, paddingTop: 12, borderTop: '1px solid var(--border)' }}>
+                <label style={{ fontSize: '0.8125rem', fontWeight: 600, color: 'var(--text-secondary)', whiteSpace: 'nowrap' }}>
                   기준일
                 </label>
                 <select
@@ -6204,10 +6207,10 @@ export default function IRPPage() {
                   style={{
                     padding: '7px 10px',
                     fontSize: '0.8125rem',
-                    border: '1px solid #E1E5EB',
+                    border: '1px solid var(--border)',
                     borderRadius: 8,
                     outline: 'none',
-                    color: '#1A1A2E',
+                    color: 'var(--text-primary)',
                     cursor: 'pointer',
                     minWidth: 140,
                   }}
@@ -6253,19 +6256,19 @@ export default function IRPPage() {
                 {/* 상시 링크 */}
                 <div style={{ backgroundColor: '#F0F4FF', border: '1px solid #C7D7F9', borderRadius: 10, padding: '14px 16px', display: 'flex', flexDirection: 'column', minWidth: 0 }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 8 }}>
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#1E3A5F" strokeWidth="2">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#3B82F6" strokeWidth="2">
                       <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71" />
                       <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71" />
                     </svg>
-                    <span style={{ fontSize: '0.8125rem', fontWeight: 700, color: '#1E3A5F' }}>상시 조회 링크</span>
+                    <span style={{ fontSize: '0.8125rem', fontWeight: 700, color: 'var(--blue-400)' }}>상시 조회 링크</span>
                   </div>
-                  <div style={{ fontSize: '0.6875rem', color: '#6B7280', marginBottom: 6 }}>계좌정보 · 포트폴리오 · 분석표 · AI 보고서</div>
-                  <div style={{ padding: '6px 10px', backgroundColor: '#fff', border: '1px solid #D1D5DB', borderRadius: 6, fontSize: '0.6875rem', color: portalToken ? '#374151' : '#9CA3AF', fontFamily: 'monospace', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', marginBottom: 8 }}>
+                  <div style={{ fontSize: '0.6875rem', color: 'var(--text-muted)', marginBottom: 6 }}>계좌정보 · 포트폴리오 · 분석표 · AI 보고서</div>
+                  <div style={{ padding: '6px 10px', backgroundColor: 'var(--bg-card)', border: '1px solid var(--border-strong)', borderRadius: 6, fontSize: '0.6875rem', color: portalToken ? '#374151' : '#9CA3AF', fontFamily: 'monospace', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', marginBottom: 8 }}>
                     {permanentLink ?? '포털 토큰 없음'}
                   </div>
                   <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
                     <button onClick={handleCopyPortalLink}
-                      style={{ ...btnBase, color: '#374151', backgroundColor: '#fff', border: '1px solid #D1D5DB' }}>
+                      style={{ ...btnBase, color: 'var(--text-secondary)', backgroundColor: 'var(--bg-card)', border: '1px solid var(--border-strong)' }}>
                       링크 복사
                     </button>
                     <button disabled={smsSending} onClick={() => openSmsModal('portal')}
@@ -6273,20 +6276,20 @@ export default function IRPPage() {
                       {smsSending ? '발송 중...' : '문자 발송'}
                     </button>
                     <button disabled={alimtalkSending} onClick={() => openAlimtalkModal('portal')}
-                      style={{ ...btnBase, color: '#92400E', backgroundColor: alimtalkSending ? '#E5E7EB' : '#FEF3C7', border: '1px solid #FCD34D' }}>
+                      style={{ ...btnBase, color: 'var(--warning)', backgroundColor: alimtalkSending ? '#E5E7EB' : 'rgba(245,158,11,0.16)', border: '1px solid rgba(245,158,11,0.35)' }}>
                       {alimtalkSending ? '발송 중...' : '알림톡 발송'}
                     </button>
                   </div>
                 </div>
 
                 {/* 변경 제안 링크 */}
-                <div style={{ backgroundColor: '#FFFBEB', border: '1px solid #FCD34D', borderRadius: 10, padding: '14px 16px', display: 'flex', flexDirection: 'column', minWidth: 0 }}>
+                <div style={{ backgroundColor: 'var(--warning-bg)', border: '1px solid rgba(245,158,11,0.35)', borderRadius: 10, padding: '14px 16px', display: 'flex', flexDirection: 'column', minWidth: 0 }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 8 }}>
                     <span style={{ fontSize: 12 }}>✨</span>
-                    <span style={{ fontSize: '0.8125rem', fontWeight: 700, color: '#92400E' }}>변경 제안 링크</span>
+                    <span style={{ fontSize: '0.8125rem', fontWeight: 700, color: 'var(--warning)' }}>변경 제안 링크</span>
                   </div>
-                  <div style={{ fontSize: '0.6875rem', color: '#6B7280', marginBottom: 6 }}>위 항목 + 수정 포트폴리오 · AI 변경 분석</div>
-                  <div style={{ padding: '6px 10px', backgroundColor: '#fff', border: '1px solid #FCD34D', borderRadius: 6, fontSize: '0.6875rem', color: suggestLink ? '#92400E' : '#9CA3AF', fontFamily: 'monospace', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', marginBottom: 4 }}>
+                  <div style={{ fontSize: '0.6875rem', color: 'var(--text-muted)', marginBottom: 6 }}>위 항목 + 수정 포트폴리오 · AI 변경 분석</div>
+                  <div style={{ padding: '6px 10px', backgroundColor: 'var(--bg-card)', border: '1px solid rgba(245,158,11,0.35)', borderRadius: 6, fontSize: '0.6875rem', color: suggestLink ? '#92400E' : '#9CA3AF', fontFamily: 'monospace', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', marginBottom: 4 }}>
                     {suggestLink ?? (reportSaved ? '생성 중...' : '보고서를 저장하면 링크가 생성됩니다')}
                   </div>
                   <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
@@ -6298,7 +6301,7 @@ export default function IRPPage() {
                         () => showToast('복사에 실패했습니다.')
                       );
                     }}
-                      style={{ ...btnBase, color: '#374151', backgroundColor: '#fff', border: '1px solid #D1D5DB', opacity: reportSaved ? 1 : 0.5 }}>
+                      style={{ ...btnBase, color: 'var(--text-secondary)', backgroundColor: 'var(--bg-card)', border: '1px solid var(--border-strong)', opacity: reportSaved ? 1 : 0.5 }}>
                       링크 복사
                     </button>
                     <button
@@ -6314,10 +6317,10 @@ export default function IRPPage() {
                         if (!reportSaved) { alert('보고서를 먼저 저장해 주세요.'); return; }
                         openAlimtalkModal('suggestion');
                       }}
-                      style={{ ...btnBase, color: '#92400E', backgroundColor: (alimtalkSending || !reportSaved) ? '#E5E7EB' : '#FEF3C7', border: '1px solid #FCD34D' }}>
+                      style={{ ...btnBase, color: 'var(--warning)', backgroundColor: (alimtalkSending || !reportSaved) ? '#E5E7EB' : 'rgba(245,158,11,0.16)', border: '1px solid rgba(245,158,11,0.35)' }}>
                       {alimtalkSending ? '발송 중...' : '알림톡 발송'}
                     </button>
-                    {reportSaved && <span style={{ fontSize: '0.5625rem', color: '#9CA3AF' }}>* 유효 1개월</span>}
+                    {reportSaved && <span style={{ fontSize: '0.5625rem', color: 'var(--text-muted)' }}>* 유효 1개월</span>}
                   </div>
                 </div>
 
@@ -6325,8 +6328,8 @@ export default function IRPPage() {
                 {portalLinkToast && (
                   <div style={{
                     padding: '8px 12px',
-                    backgroundColor: portalLinkToast.includes('실패') || portalLinkToast.includes('오류') ? '#FEF2F2' : '#ECFDF5',
-                    border: `1px solid ${portalLinkToast.includes('실패') || portalLinkToast.includes('오류') ? '#FECACA' : '#A7F3D0'}`,
+                    backgroundColor: portalLinkToast.includes('실패') || portalLinkToast.includes('오류') ? 'rgba(239,68,68,0.12)' : 'rgba(16,185,129,0.12)',
+                    border: `1px solid ${portalLinkToast.includes('실패') || portalLinkToast.includes('오류') ? 'rgba(239,68,68,0.30)' : 'rgba(16,185,129,0.35)'}`,
                     borderRadius: 6, fontSize: '0.8125rem', fontWeight: 500,
                     color: portalLinkToast.includes('실패') || portalLinkToast.includes('오류') ? '#DC2626' : '#059669',
                   }}>
@@ -6342,30 +6345,30 @@ export default function IRPPage() {
           {smsModalOpen && (
             <div style={{ position: 'fixed', inset: 0, zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(0,0,0,0.45)' }}
               onClick={(e) => { if (e.target === e.currentTarget) setSmsModalOpen(false); }}>
-              <div style={{ backgroundColor: '#fff', borderRadius: 14, padding: 24, width: '100%', maxWidth: 480, maxHeight: '85vh', overflowY: 'auto', boxShadow: '0 20px 60px rgba(0,0,0,0.2)' }}>
+              <div style={{ backgroundColor: 'var(--bg-card)', borderRadius: 14, padding: 24, width: '100%', maxWidth: 480, maxHeight: '85vh', overflowY: 'auto', boxShadow: '0 20px 60px rgba(0,0,0,0.2)' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
-                  <h3 style={{ margin: 0, fontSize: '1rem', fontWeight: 700, color: '#1A1A2E' }}>
+                  <h3 style={{ margin: 0, fontSize: '1rem', fontWeight: 700, color: 'var(--text-primary)' }}>
                     문자 발송 {smsModalType === 'suggestion' ? '(변경 제안)' : '(포트폴리오 조회)'}
                   </h3>
-                  <button onClick={() => setSmsModalOpen(false)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#9CA3AF', padding: 4 }}>
+                  <button onClick={() => setSmsModalOpen(false)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', padding: 4 }}>
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
                   </button>
                 </div>
 
                 {/* 수신자 정보 */}
-                <div style={{ backgroundColor: '#F9FAFB', borderRadius: 8, padding: '10px 14px', marginBottom: 14, fontSize: '0.8125rem', color: '#374151' }}>
+                <div style={{ backgroundColor: 'var(--bg-surface)', borderRadius: 8, padding: '10px 14px', marginBottom: 14, fontSize: '0.8125rem', color: 'var(--text-secondary)' }}>
                   <span style={{ fontWeight: 600 }}>수신자:</span> {(() => { const c = getReportClient(); return c ? `${c.name} (${c.phone || '전화번호 없음'})` : '-'; })()}
                 </div>
 
                 {/* 저장된 템플릿 선택 */}
                 {smsTemplates.length > 0 && (
                   <div style={{ marginBottom: 12 }}>
-                    <label style={{ fontSize: '0.75rem', fontWeight: 600, color: '#6B7280', display: 'block', marginBottom: 4 }}>저장된 템플릿</label>
+                    <label style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-muted)', display: 'block', marginBottom: 4 }}>저장된 템플릿</label>
                     <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
                       {smsTemplates.map((t) => (
                         <div key={t.name} style={{ display: 'flex', alignItems: 'center', gap: 2 }}>
                           <button onClick={() => setSmsMessage(t.text)}
-                            style={{ padding: '4px 10px', fontSize: '0.75rem', fontWeight: 500, color: '#1E3A5F', backgroundColor: '#EEF2F7', border: '1px solid #C7D2E2', borderRadius: 6, cursor: 'pointer' }}>
+                            style={{ padding: '4px 10px', fontSize: '0.75rem', fontWeight: 500, color: 'var(--blue-400)', backgroundColor: 'var(--bg-card-2)', border: '1px solid #C7D2E2', borderRadius: 6, cursor: 'pointer' }}>
                             {t.name}
                           </button>
                           <button onClick={() => deleteSmsTemplate(t.id)}
@@ -6378,14 +6381,14 @@ export default function IRPPage() {
 
                 {/* 메시지 편집 */}
                 <div style={{ marginBottom: 12 }}>
-                  <label style={{ fontSize: '0.75rem', fontWeight: 600, color: '#6B7280', display: 'block', marginBottom: 4 }}>메시지 내용</label>
+                  <label style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-muted)', display: 'block', marginBottom: 4 }}>메시지 내용</label>
                   <textarea
                     value={smsMessage}
                     onChange={(e) => setSmsMessage(e.target.value)}
                     rows={6}
-                    style={{ width: '100%', padding: '10px 12px', fontSize: '0.8125rem', border: '1px solid #E1E5EB', borderRadius: 8, outline: 'none', resize: 'vertical', lineHeight: 1.6, boxSizing: 'border-box', color: '#1A1A2E' }}
+                    style={{ width: '100%', padding: '10px 12px', fontSize: '0.8125rem', border: '1px solid var(--border)', borderRadius: 8, outline: 'none', resize: 'vertical', lineHeight: 1.6, boxSizing: 'border-box', color: 'var(--text-primary)' }}
                   />
-                  <span style={{ fontSize: '0.6875rem', color: '#9CA3AF' }}>
+                  <span style={{ fontSize: '0.6875rem', color: 'var(--text-muted)' }}>
                     {new TextEncoder().encode(smsMessage).length > 90 ? 'LMS (장문)' : 'SMS (단문)'} · {smsMessage.length}자
                   </span>
                 </div>
@@ -6394,9 +6397,9 @@ export default function IRPPage() {
                 <div style={{ display: 'flex', gap: 6, marginBottom: 16 }}>
                   <input type="text" placeholder="템플릿 이름 입력 후 저장" value={smsTemplateName}
                     onChange={(e) => setSmsTemplateName(e.target.value)}
-                    style={{ flex: 1, padding: '6px 10px', fontSize: '0.8125rem', border: '1px solid #E1E5EB', borderRadius: 6, outline: 'none' }} />
+                    style={{ flex: 1, padding: '6px 10px', fontSize: '0.8125rem', border: '1px solid var(--border)', borderRadius: 6, outline: 'none' }} />
                   <button onClick={saveSmsTemplate}
-                    style={{ padding: '6px 14px', fontSize: '0.8125rem', fontWeight: 600, color: '#6B7280', backgroundColor: '#F3F4F6', border: '1px solid #E1E5EB', borderRadius: 6, cursor: 'pointer', whiteSpace: 'nowrap' }}>
+                    style={{ padding: '6px 14px', fontSize: '0.8125rem', fontWeight: 600, color: 'var(--text-muted)', backgroundColor: 'var(--bg-surface)', border: '1px solid var(--border)', borderRadius: 6, cursor: 'pointer', whiteSpace: 'nowrap' }}>
                     템플릿 저장
                   </button>
                 </div>
@@ -6404,7 +6407,7 @@ export default function IRPPage() {
                 {/* 발송/취소 */}
                 <div style={{ display: 'flex', gap: 8 }}>
                   <button onClick={() => setSmsModalOpen(false)}
-                    style={{ flex: 1, padding: '10px', fontSize: '0.875rem', fontWeight: 600, color: '#6B7280', backgroundColor: '#F3F4F6', border: 'none', borderRadius: 8, cursor: 'pointer' }}>
+                    style={{ flex: 1, padding: '10px', fontSize: '0.875rem', fontWeight: 600, color: 'var(--text-muted)', backgroundColor: 'var(--bg-surface)', border: 'none', borderRadius: 8, cursor: 'pointer' }}>
                     취소
                   </button>
                   <button onClick={handleSendSmsConfirm} disabled={smsSending || !smsMessage.trim()}
@@ -6419,7 +6422,7 @@ export default function IRPPage() {
           {/* 저장 버튼들 */}
           {reportData && (
             <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', alignItems: 'center' }}>
-              {reportSaved && <span style={{ fontSize: '0.75rem', color: '#059669', fontWeight: 600, marginRight: 'auto' }}>✓ 보고서 저장 완료</span>}
+              {reportSaved && <span style={{ fontSize: '0.75rem', color: 'var(--success)', fontWeight: 600, marginRight: 'auto' }}>✓ 보고서 저장 완료</span>}
               <Button variant="secondary" size="sm" loading={saving} onClick={handleSaveImage}>
                 <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                   <rect x="3" y="3" width="18" height="18" rx="2" />
@@ -6441,7 +6444,7 @@ export default function IRPPage() {
                 size="sm"
                 loading={reportSaving}
                 onClick={handleSaveReport}
-                style={reportSaved ? {} : { backgroundColor: '#D97706', borderColor: '#D97706' }}
+                style={reportSaved ? {} : { backgroundColor: 'var(--warning)', borderColor: 'var(--warning)' }}
               >
                 <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                   <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z" />
@@ -6486,7 +6489,7 @@ export default function IRPPage() {
             <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'flex-end' }}>
               {/* 고객 검색 */}
               <div style={{ display: 'flex', flexDirection: 'column', gap: 5, minWidth: 140 }}>
-                <label style={{ fontSize: '0.8125rem', fontWeight: 600, color: '#374151' }}>고객 검색</label>
+                <label style={{ fontSize: '0.8125rem', fontWeight: 600, color: 'var(--text-secondary)' }}>고객 검색</label>
                 <div style={{ position: 'relative' }}>
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#9CA3AF" strokeWidth="2"
                     style={{ position: 'absolute', left: 8, top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none' }}>
@@ -6496,18 +6499,18 @@ export default function IRPPage() {
                     type="text" placeholder="이름/고유번호"
                     value={tab4ClientSearch}
                     onChange={(e) => setTab4ClientSearch(e.target.value)}
-                    style={{ width: '100%', padding: '8px 10px 8px 28px', fontSize: '0.8125rem', border: '1px solid #E1E5EB', borderRadius: 8, outline: 'none', color: '#1A1A2E', boxSizing: 'border-box' }}
+                    style={{ width: '100%', padding: '8px 10px 8px 28px', fontSize: '0.8125rem', border: '1px solid var(--border)', borderRadius: 8, outline: 'none', color: 'var(--text-primary)', boxSizing: 'border-box' }}
                   />
                 </div>
               </div>
 
               {/* 고객 선택 */}
               <div style={{ display: 'flex', flexDirection: 'column', gap: 5, minWidth: 160, flex: 1 }}>
-                <label style={{ fontSize: '0.8125rem', fontWeight: 600, color: '#374151' }}>고객 선택</label>
+                <label style={{ fontSize: '0.8125rem', fontWeight: 600, color: 'var(--text-secondary)' }}>고객 선택</label>
                 <select
                   value={tab4ClientId}
                   onChange={(e) => { handleTab4ClientChange(e.target.value); setTab4ClientSearch(''); }}
-                  style={{ padding: '8px 10px', fontSize: '0.8125rem', border: '1px solid #E1E5EB', borderRadius: 8, outline: 'none', color: tab4ClientId ? '#1A1A2E' : '#9CA3AF', backgroundColor: '#fff', cursor: 'pointer' }}
+                  style={{ padding: '8px 10px', fontSize: '0.8125rem', border: '1px solid var(--border)', borderRadius: 8, outline: 'none', color: tab4ClientId ? 'var(--text-primary)' : '#9CA3AF', backgroundColor: 'var(--bg-card)', cursor: 'pointer' }}
                 >
                   <option value="">-- 고객 선택 --</option>
                   {mainUniqueClients
@@ -6524,7 +6527,7 @@ export default function IRPPage() {
 
               {/* 증권사 필터 */}
               <div style={{ display: 'flex', flexDirection: 'column', gap: 5, minWidth: 110 }}>
-                <label style={{ fontSize: '0.8125rem', fontWeight: 600, color: '#374151' }}>증권사</label>
+                <label style={{ fontSize: '0.8125rem', fontWeight: 600, color: 'var(--text-secondary)' }}>증권사</label>
                 <select
                   value={tab4FilterCompany}
                   onChange={(e) => {
@@ -6533,7 +6536,7 @@ export default function IRPPage() {
                     loadTab4Logs(tab4ClientId, tab4FilterAccount, v, tab4FilterPeriod);
                   }}
                   disabled={!tab4ClientId}
-                  style={{ padding: '8px 10px', fontSize: '0.8125rem', border: '1px solid #E1E5EB', borderRadius: 8, outline: 'none', color: tab4FilterCompany ? '#1A1A2E' : '#9CA3AF', backgroundColor: tab4ClientId ? '#fff' : '#F9FAFB', cursor: tab4ClientId ? 'pointer' : 'not-allowed' }}
+                  style={{ padding: '8px 10px', fontSize: '0.8125rem', border: '1px solid var(--border)', borderRadius: 8, outline: 'none', color: tab4FilterCompany ? 'var(--text-primary)' : '#9CA3AF', backgroundColor: tab4ClientId ? 'var(--bg-card)' : 'var(--bg-surface)', cursor: tab4ClientId ? 'pointer' : 'not-allowed' }}
                 >
                   <option value="">전체</option>
                   {tab4SecuritiesCompanies.map((c) => (
@@ -6544,7 +6547,7 @@ export default function IRPPage() {
 
               {/* 계좌 필터 */}
               <div style={{ display: 'flex', flexDirection: 'column', gap: 5, minWidth: 120 }}>
-                <label style={{ fontSize: '0.8125rem', fontWeight: 600, color: '#374151' }}>계좌</label>
+                <label style={{ fontSize: '0.8125rem', fontWeight: 600, color: 'var(--text-secondary)' }}>계좌</label>
                 <select
                   value={tab4FilterAccount}
                   onChange={(e) => {
@@ -6553,7 +6556,7 @@ export default function IRPPage() {
                     loadTab4Logs(tab4ClientId, v, tab4FilterCompany, tab4FilterPeriod);
                   }}
                   disabled={!tab4ClientId}
-                  style={{ padding: '8px 10px', fontSize: '0.8125rem', border: '1px solid #E1E5EB', borderRadius: 8, outline: 'none', color: tab4FilterAccount ? '#1A1A2E' : '#9CA3AF', backgroundColor: tab4ClientId ? '#fff' : '#F9FAFB', cursor: tab4ClientId ? 'pointer' : 'not-allowed' }}
+                  style={{ padding: '8px 10px', fontSize: '0.8125rem', border: '1px solid var(--border)', borderRadius: 8, outline: 'none', color: tab4FilterAccount ? 'var(--text-primary)' : '#9CA3AF', backgroundColor: tab4ClientId ? 'var(--bg-card)' : 'var(--bg-surface)', cursor: tab4ClientId ? 'pointer' : 'not-allowed' }}
                 >
                   <option value="">전체</option>
                   {tab4ClientAccounts.map((a) => (
@@ -6566,7 +6569,7 @@ export default function IRPPage() {
 
               {/* 기간 필터 */}
               <div style={{ display: 'flex', flexDirection: 'column', gap: 5, minWidth: 100 }}>
-                <label style={{ fontSize: '0.8125rem', fontWeight: 600, color: '#374151' }}>기간</label>
+                <label style={{ fontSize: '0.8125rem', fontWeight: 600, color: 'var(--text-secondary)' }}>기간</label>
                 <select
                   value={tab4FilterPeriod}
                   onChange={(e) => {
@@ -6575,7 +6578,7 @@ export default function IRPPage() {
                     loadTab4Logs(tab4ClientId, tab4FilterAccount, tab4FilterCompany, v);
                   }}
                   disabled={!tab4ClientId}
-                  style={{ padding: '8px 10px', fontSize: '0.8125rem', border: '1px solid #E1E5EB', borderRadius: 8, outline: 'none', color: '#1A1A2E', backgroundColor: tab4ClientId ? '#fff' : '#F9FAFB', cursor: tab4ClientId ? 'pointer' : 'not-allowed' }}
+                  style={{ padding: '8px 10px', fontSize: '0.8125rem', border: '1px solid var(--border)', borderRadius: 8, outline: 'none', color: 'var(--text-primary)', backgroundColor: tab4ClientId ? 'var(--bg-card)' : 'var(--bg-surface)', cursor: tab4ClientId ? 'pointer' : 'not-allowed' }}
                 >
                   <option value="6m">6개월</option>
                   <option value="1y">1년</option>
@@ -6589,22 +6592,22 @@ export default function IRPPage() {
           {tab4ClientId && tab4ClientAccounts.length > 0 && (
             <Card padding={16}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
-                <div style={{ width: 3, height: 18, borderRadius: 2, backgroundColor: '#1E3A5F', flexShrink: 0 }} />
-                <span style={{ fontSize: '0.9375rem', fontWeight: 700, color: '#1A1A2E' }}>
+                <div style={{ width: 3, height: 18, borderRadius: 2, backgroundColor: 'var(--blue-600)', flexShrink: 0 }} />
+                <span style={{ fontSize: '0.9375rem', fontWeight: 700, color: 'var(--text-primary)' }}>
                   {clients.find((c) => c.id === tab4ClientId)?.name ?? ''} 고객 정보
                 </span>
               </div>
               <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
                 {tab4ClientAccounts.map((a) => (
                   <div key={a.id} style={{
-                    display: 'flex', gap: 12, padding: '10px 16px', backgroundColor: '#F5F7FA',
-                    borderRadius: 10, border: '1px solid #E1E5EB', fontSize: '0.8125rem',
+                    display: 'flex', gap: 12, padding: '10px 16px', backgroundColor: 'var(--bg-surface)',
+                    borderRadius: 10, border: '1px solid var(--border)', fontSize: '0.8125rem',
                   }}>
-                    <span style={{ fontWeight: 600, color: '#1E3A5F' }}>{a.securities_company || '-'}</span>
-                    <span style={{ color: '#6B7280' }}>|</span>
-                    <span style={{ color: '#374151' }}>{accountTypeLabel(a.account_type)}</span>
-                    <span style={{ color: '#6B7280' }}>|</span>
-                    <span style={{ fontFamily: 'monospace', color: '#374151' }}>{a.account_number || '-'}</span>
+                    <span style={{ fontWeight: 600, color: 'var(--blue-400)' }}>{a.securities_company || '-'}</span>
+                    <span style={{ color: 'var(--text-muted)' }}>|</span>
+                    <span style={{ color: 'var(--text-secondary)' }}>{accountTypeLabel(a.account_type)}</span>
+                    <span style={{ color: 'var(--text-muted)' }}>|</span>
+                    <span style={{ fontFamily: 'monospace', color: 'var(--text-secondary)' }}>{a.account_number || '-'}</span>
                   </div>
                 ))}
               </div>
@@ -6615,14 +6618,14 @@ export default function IRPPage() {
           {tab4ClientId && (
             <Card padding={0}>
               {/* 헤더: 제목 + 추가 버튼 */}
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '14px 16px', borderBottom: '1px solid #E1E5EB' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '14px 16px', borderBottom: '1px solid var(--border)' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                  <div style={{ width: 3, height: 18, borderRadius: 2, backgroundColor: '#1E3A5F', flexShrink: 0 }} />
-                  <span style={{ fontSize: '0.9375rem', fontWeight: 700, color: '#1A1A2E' }}>
+                  <div style={{ width: 3, height: 18, borderRadius: 2, backgroundColor: 'var(--blue-600)', flexShrink: 0 }} />
+                  <span style={{ fontSize: '0.9375rem', fontWeight: 700, color: 'var(--text-primary)' }}>
                     발송 기록 ({tab4LogsTotal}건)
                   </span>
                   {tab4LogsLoading && (
-                    <span style={{ display: 'inline-block', width: 14, height: 14, border: '2px solid #1E3A5F', borderTopColor: 'transparent', borderRadius: '50%', animation: 'spin 0.7s linear infinite' }} />
+                    <span style={{ display: 'inline-block', width: 14, height: 14, border: '2px solid var(--blue-500)', borderTopColor: 'transparent', borderRadius: '50%', animation: 'spin 0.7s linear infinite' }} />
                   )}
                 </div>
                 <button
@@ -6633,7 +6636,7 @@ export default function IRPPage() {
                   style={{
                     display: 'inline-flex', alignItems: 'center', gap: 5,
                     padding: '6px 14px', fontSize: '0.8125rem', fontWeight: 600,
-                    color: '#1E3A5F', backgroundColor: '#EEF2F7',
+                    color: 'var(--blue-400)', backgroundColor: 'var(--bg-card-2)',
                     border: '1px solid #D1D9E6', borderRadius: 8, cursor: 'pointer',
                   }}
                 >
@@ -6643,20 +6646,20 @@ export default function IRPPage() {
               </div>
 
               {/* PDF 날짜 범위 */}
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '10px 16px', backgroundColor: '#F9FAFB', borderBottom: '1px solid #F3F4F6', flexWrap: 'wrap' }}>
-                <span style={{ fontSize: '0.8125rem', color: '#6B7280', fontWeight: 500 }}>PDF 기간:</span>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '10px 16px', backgroundColor: 'var(--bg-surface)', borderBottom: '1px solid var(--border)', flexWrap: 'wrap' }}>
+                <span style={{ fontSize: '0.8125rem', color: 'var(--text-muted)', fontWeight: 500 }}>PDF 기간:</span>
                 <input
                   type="date"
                   value={tab4PdfDateFrom}
                   onChange={(e) => setTab4PdfDateFrom(e.target.value)}
-                  style={{ padding: '5px 8px', fontSize: '0.8125rem', border: '1px solid #E1E5EB', borderRadius: 6, outline: 'none', color: '#1A1A2E' }}
+                  style={{ padding: '5px 8px', fontSize: '0.8125rem', border: '1px solid var(--border)', borderRadius: 6, outline: 'none', color: 'var(--text-primary)' }}
                 />
-                <span style={{ fontSize: '0.8125rem', color: '#9CA3AF' }}>~</span>
+                <span style={{ fontSize: '0.8125rem', color: 'var(--text-muted)' }}>~</span>
                 <input
                   type="date"
                   value={tab4PdfDateTo}
                   onChange={(e) => setTab4PdfDateTo(e.target.value)}
-                  style={{ padding: '5px 8px', fontSize: '0.8125rem', border: '1px solid #E1E5EB', borderRadius: 6, outline: 'none', color: '#1A1A2E' }}
+                  style={{ padding: '5px 8px', fontSize: '0.8125rem', border: '1px solid var(--border)', borderRadius: 6, outline: 'none', color: 'var(--text-primary)' }}
                 />
                 <button
                   onClick={handleTab4DownloadPDF}
@@ -6664,9 +6667,9 @@ export default function IRPPage() {
                   style={{
                     display: 'inline-flex', alignItems: 'center', gap: 5,
                     padding: '5px 12px', fontSize: '0.8125rem', fontWeight: 600,
-                    color: tab4Logs.length > 0 ? '#1E3A5F' : '#9CA3AF',
-                    backgroundColor: tab4Logs.length > 0 ? '#EEF2F7' : '#F9FAFB',
-                    border: '1px solid #E1E5EB', borderRadius: 7, cursor: tab4Logs.length > 0 ? 'pointer' : 'not-allowed',
+                    color: tab4Logs.length > 0 ? '#3B82F6' : '#9CA3AF',
+                    backgroundColor: tab4Logs.length > 0 ? 'var(--bg-card-2)' : 'var(--bg-surface)',
+                    border: '1px solid var(--border)', borderRadius: 7, cursor: tab4Logs.length > 0 ? 'pointer' : 'not-allowed',
                   }}
                 >
                   <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
@@ -6681,30 +6684,30 @@ export default function IRPPage() {
 
               <div ref={tab4HistoryRef}>
                 {tab4Logs.length === 0 ? (
-                  <div style={{ padding: 40, textAlign: 'center', color: '#9CA3AF', fontSize: '0.875rem' }}>
+                  <div style={{ padding: 40, textAlign: 'center', color: 'var(--text-muted)', fontSize: '0.875rem' }}>
                     {tab4LogsLoading ? '로딩 중...' : '발송 기록이 없습니다.'}
                   </div>
                 ) : (
                   <div style={{ overflowX: 'auto' }}>
                     <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.8125rem' }}>
                       <thead>
-                        <tr style={{ backgroundColor: '#F5F7FA', borderBottom: '2px solid #E1E5EB' }}>
-                          <th style={{ padding: '10px 12px', textAlign: 'center', fontWeight: 700, color: '#374151', whiteSpace: 'nowrap', width: 50 }}>No</th>
-                          <th style={{ padding: '10px 12px', textAlign: 'center', fontWeight: 700, color: '#374151', whiteSpace: 'nowrap', width: 110 }}>발송일</th>
-                          <th style={{ padding: '10px 12px', textAlign: 'center', fontWeight: 700, color: '#374151', whiteSpace: 'nowrap', width: 80 }}>유형</th>
-                          <th style={{ padding: '10px 12px', textAlign: 'center', fontWeight: 700, color: '#374151', whiteSpace: 'nowrap', width: 100 }}>계좌</th>
-                          <th style={{ padding: '10px 12px', textAlign: 'left', fontWeight: 700, color: '#374151' }}>발송 내용 요약</th>
-                          <th style={{ padding: '10px 12px', textAlign: 'center', fontWeight: 700, color: '#374151', whiteSpace: 'nowrap', width: 80 }}>보고서</th>
-                          <th style={{ padding: '10px 12px', textAlign: 'center', fontWeight: 700, color: '#374151', whiteSpace: 'nowrap', width: 90 }}>관리</th>
+                        <tr style={{ backgroundColor: 'var(--bg-surface)', borderBottom: '2px solid var(--border)' }}>
+                          <th style={{ padding: '10px 12px', textAlign: 'center', fontWeight: 700, color: 'var(--text-secondary)', whiteSpace: 'nowrap', width: 50 }}>No</th>
+                          <th style={{ padding: '10px 12px', textAlign: 'center', fontWeight: 700, color: 'var(--text-secondary)', whiteSpace: 'nowrap', width: 110 }}>발송일</th>
+                          <th style={{ padding: '10px 12px', textAlign: 'center', fontWeight: 700, color: 'var(--text-secondary)', whiteSpace: 'nowrap', width: 80 }}>유형</th>
+                          <th style={{ padding: '10px 12px', textAlign: 'center', fontWeight: 700, color: 'var(--text-secondary)', whiteSpace: 'nowrap', width: 100 }}>계좌</th>
+                          <th style={{ padding: '10px 12px', textAlign: 'left', fontWeight: 700, color: 'var(--text-secondary)' }}>발송 내용 요약</th>
+                          <th style={{ padding: '10px 12px', textAlign: 'center', fontWeight: 700, color: 'var(--text-secondary)', whiteSpace: 'nowrap', width: 80 }}>보고서</th>
+                          <th style={{ padding: '10px 12px', textAlign: 'center', fontWeight: 700, color: 'var(--text-secondary)', whiteSpace: 'nowrap', width: 90 }}>관리</th>
                         </tr>
                       </thead>
                       <tbody>
                         {tab4Logs.map((log, idx) => (
-                          <tr key={log.id} style={{ borderBottom: '1px solid #F3F4F6' }}
+                          <tr key={log.id} style={{ borderBottom: '1px solid var(--border)' }}
                             onMouseEnter={(e) => { (e.currentTarget).style.backgroundColor = '#FAFBFC'; }}
                             onMouseLeave={(e) => { (e.currentTarget).style.backgroundColor = 'transparent'; }}>
-                            <td style={{ padding: '10px 12px', textAlign: 'center', color: '#6B7280' }}>{idx + 1}</td>
-                            <td style={{ padding: '10px 12px', textAlign: 'center', color: '#1A1A2E', whiteSpace: 'nowrap' }}>
+                            <td style={{ padding: '10px 12px', textAlign: 'center', color: 'var(--text-muted)' }}>{idx + 1}</td>
+                            <td style={{ padding: '10px 12px', textAlign: 'center', color: 'var(--text-primary)', whiteSpace: 'nowrap' }}>
                               {new Date(log.sent_at).toLocaleDateString('ko-KR')}
                             </td>
                             <td style={{ padding: '10px 12px', textAlign: 'center' }}>
@@ -6712,9 +6715,9 @@ export default function IRPPage() {
                                 display: 'inline-block', padding: '2px 8px', borderRadius: 4, fontSize: '0.75rem', fontWeight: 600,
                                 backgroundColor:
                                   log.message_type === 'portfolio_save' ? '#EDE9FE'
-                                  : log.message_type.includes('suggestion') ? '#FFFBEB'
-                                  : log.message_type.includes('alimtalk') ? '#FEF3C7'
-                                  : '#ECFDF5',
+                                  : log.message_type.includes('suggestion') ? 'rgba(245,158,11,0.12)'
+                                  : log.message_type.includes('alimtalk') ? 'rgba(245,158,11,0.16)'
+                                  : 'rgba(16,185,129,0.12)',
                                 color:
                                   log.message_type === 'portfolio_save' ? '#6D28D9'
                                   : log.message_type.includes('suggestion') ? '#92400E'
@@ -6728,10 +6731,10 @@ export default function IRPPage() {
                                   : '상시조회(SMS)'}
                               </span>
                             </td>
-                            <td style={{ padding: '10px 12px', textAlign: 'center', fontSize: '0.75rem', color: '#6B7280' }}>
+                            <td style={{ padding: '10px 12px', textAlign: 'center', fontSize: '0.75rem', color: 'var(--text-muted)' }}>
                               {log.account_type ? accountTypeLabel(log.account_type) : '-'}
                             </td>
-                            <td style={{ padding: '10px 12px', textAlign: 'left', color: '#374151', maxWidth: 300, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                            <td style={{ padding: '10px 12px', textAlign: 'left', color: 'var(--text-secondary)', maxWidth: 300, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                               {log.message_summary}
                             </td>
                             <td style={{ padding: '10px 12px', textAlign: 'center' }}>
@@ -6741,7 +6744,7 @@ export default function IRPPage() {
                                   style={{
                                     display: 'inline-flex', alignItems: 'center', gap: 4,
                                     padding: '4px 10px', fontSize: '0.75rem', fontWeight: 600,
-                                    color: '#1E3A5F', backgroundColor: '#EEF2F7',
+                                    color: 'var(--blue-400)', backgroundColor: 'var(--bg-card-2)',
                                     border: '1px solid #D1D9E6', borderRadius: 6, cursor: 'pointer',
                                   }}
                                 >
@@ -6761,14 +6764,14 @@ export default function IRPPage() {
                                 <button
                                   onClick={() => handleTab4EditOpen(log)}
                                   title="수정"
-                                  style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 28, height: 28, borderRadius: 6, border: '1px solid #E1E5EB', backgroundColor: '#F5F7FA', cursor: 'pointer', color: '#374151' }}
+                                  style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 28, height: 28, borderRadius: 6, border: '1px solid var(--border)', backgroundColor: 'var(--bg-surface)', cursor: 'pointer', color: 'var(--text-secondary)' }}
                                 >
                                   <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
                                 </button>
                                 <button
                                   onClick={() => handleTab4DeleteLog(log.id)}
                                   title="삭제"
-                                  style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 28, height: 28, borderRadius: 6, border: '1px solid #FCA5A5', backgroundColor: '#FEF2F2', cursor: 'pointer', color: '#DC2626' }}
+                                  style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 28, height: 28, borderRadius: 6, border: '1px solid rgba(239,68,68,0.35)', backgroundColor: 'var(--danger-bg)', cursor: 'pointer', color: 'var(--danger)' }}
                                 >
                                   <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4h6v2"/></svg>
                                 </button>
@@ -6787,8 +6790,8 @@ export default function IRPPage() {
           {/* 안내 */}
           {!tab4ClientId && (
             <div style={{
-              padding: 48, textAlign: 'center', backgroundColor: '#F9FAFB',
-              borderRadius: 14, border: '1px solid #E5E7EB', color: '#9CA3AF', fontSize: '0.875rem',
+              padding: 48, textAlign: 'center', backgroundColor: 'var(--bg-surface)',
+              borderRadius: 14, border: '1px solid var(--border)', color: 'var(--text-muted)', fontSize: '0.875rem',
             }}>
               고객을 선택하면 발송 내역을 확인할 수 있습니다.
             </div>
@@ -6804,14 +6807,14 @@ export default function IRPPage() {
         const msgTypeLabelPdf = (t: string) => t === 'portfolio_save' ? '수정저장' : t === 'suggestion_link' ? '변경제안(SMS)' : t === 'alimtalk_suggestion' ? '변경제안(톡)' : t === 'alimtalk_portal' ? '상시조회(톡)' : '상시조회(SMS)';
         const clientNamePdf = clients.find((c) => c.id === tab4ClientId)?.name ?? '';
         return (
-          <div ref={tab4PdfRef} style={{ position: 'fixed', left: '-9999px', top: 0, width: 794, backgroundColor: '#fff', padding: '24px 28px', fontFamily: 'Pretendard, -apple-system, sans-serif' }}>
+          <div ref={tab4PdfRef} style={{ position: 'fixed', left: '-9999px', top: 0, width: 794, backgroundColor: 'var(--bg-card)', padding: '24px 28px', fontFamily: 'Pretendard, -apple-system, sans-serif' }}>
             <div style={{ marginBottom: 14 }}>
-              <div style={{ fontSize: 18, fontWeight: 700, color: '#1A1A2E', marginBottom: 4 }}>발송 기록 - {clientNamePdf}</div>
-              <div style={{ fontSize: 12, color: '#6B7280' }}>기간: {tab4PdfDateFrom} ~ {tab4PdfDateTo} &nbsp;|&nbsp; 총 {pdfLogs.length}건</div>
+              <div style={{ fontSize: 18, fontWeight: 700, color: 'var(--text-primary)', marginBottom: 4 }}>발송 기록 - {clientNamePdf}</div>
+              <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>기간: {tab4PdfDateFrom} ~ {tab4PdfDateTo} &nbsp;|&nbsp; 총 {pdfLogs.length}건</div>
             </div>
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
               <thead>
-                <tr style={{ backgroundColor: '#1E3A5F' }}>
+                <tr style={{ backgroundColor: 'var(--blue-600)' }}>
                   {['No', '발송일', '유형', '계좌', '발송 내용 요약'].map((h) => (
                     <th key={h} style={{ padding: '8px 10px', textAlign: h === '발송 내용 요약' ? 'left' : 'center', color: '#fff', fontWeight: 700, whiteSpace: 'nowrap' }}>{h}</th>
                   ))}
@@ -6819,16 +6822,16 @@ export default function IRPPage() {
               </thead>
               <tbody>
                 {pdfLogs.map((log, idx) => (
-                  <tr key={log.id} style={{ backgroundColor: idx % 2 === 0 ? '#fff' : '#F9FAFB', borderBottom: '1px solid #E5E7EB' }}>
-                    <td style={{ padding: '7px 10px', textAlign: 'center', color: '#6B7280', width: 36 }}>{idx + 1}</td>
-                    <td style={{ padding: '7px 10px', textAlign: 'center', color: '#1A1A2E', whiteSpace: 'nowrap', width: 100 }}>{new Date(log.sent_at).toLocaleDateString('ko-KR')}</td>
+                  <tr key={log.id} style={{ backgroundColor: idx % 2 === 0 ? 'var(--bg-card)' : 'var(--bg-surface)', borderBottom: '1px solid var(--border)' }}>
+                    <td style={{ padding: '7px 10px', textAlign: 'center', color: 'var(--text-muted)', width: 36 }}>{idx + 1}</td>
+                    <td style={{ padding: '7px 10px', textAlign: 'center', color: 'var(--text-primary)', whiteSpace: 'nowrap', width: 100 }}>{new Date(log.sent_at).toLocaleDateString('ko-KR')}</td>
                     <td style={{ padding: '7px 10px', textAlign: 'center', width: 90 }}>
-                      <span style={{ display: 'inline-block', padding: '2px 7px', borderRadius: 4, fontSize: 11, fontWeight: 600, backgroundColor: log.message_type === 'portfolio_save' ? '#EDE9FE' : log.message_type.includes('suggestion') ? '#FFFBEB' : log.message_type.includes('alimtalk') ? '#FEF3C7' : '#ECFDF5', color: log.message_type === 'portfolio_save' ? '#6D28D9' : log.message_type.includes('suggestion') ? '#92400E' : log.message_type.includes('alimtalk') ? '#92400E' : '#059669' }}>
+                      <span style={{ display: 'inline-block', padding: '2px 7px', borderRadius: 4, fontSize: 11, fontWeight: 600, backgroundColor: log.message_type === 'portfolio_save' ? '#EDE9FE' : log.message_type.includes('suggestion') ? 'rgba(245,158,11,0.12)' : log.message_type.includes('alimtalk') ? 'rgba(245,158,11,0.16)' : 'rgba(16,185,129,0.12)', color: log.message_type === 'portfolio_save' ? '#6D28D9' : log.message_type.includes('suggestion') ? '#92400E' : log.message_type.includes('alimtalk') ? '#92400E' : '#059669' }}>
                         {msgTypeLabelPdf(log.message_type)}
                       </span>
                     </td>
-                    <td style={{ padding: '7px 10px', textAlign: 'center', fontSize: 11, color: '#6B7280', width: 80 }}>{log.account_type ? accountTypeLabel(log.account_type) : '-'}</td>
-                    <td style={{ padding: '7px 10px', textAlign: 'left', color: '#374151' }}>{log.message_summary}</td>
+                    <td style={{ padding: '7px 10px', textAlign: 'center', fontSize: 11, color: 'var(--text-muted)', width: 80 }}>{log.account_type ? accountTypeLabel(log.account_type) : '-'}</td>
+                    <td style={{ padding: '7px 10px', textAlign: 'left', color: 'var(--text-secondary)' }}>{log.message_summary}</td>
                   </tr>
                 ))}
               </tbody>
@@ -6841,37 +6844,37 @@ export default function IRPPage() {
       {alimtalkModalOpen && (
         <div style={{ position: 'fixed', inset: 0, zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(0,0,0,0.45)' }}
           onClick={(e) => { if (e.target === e.currentTarget) setAlimtalkModalOpen(false); }}>
-          <div style={{ backgroundColor: '#fff', borderRadius: 14, padding: 24, width: '100%', maxWidth: 480, maxHeight: '85vh', overflowY: 'auto', boxShadow: '0 20px 60px rgba(0,0,0,0.2)' }}>
+          <div style={{ backgroundColor: 'var(--bg-card)', borderRadius: 14, padding: 24, width: '100%', maxWidth: 480, maxHeight: '85vh', overflowY: 'auto', boxShadow: '0 20px 60px rgba(0,0,0,0.2)' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
-              <h3 style={{ margin: 0, fontSize: '1rem', fontWeight: 700, color: '#1A1A2E' }}>
+              <h3 style={{ margin: 0, fontSize: '1rem', fontWeight: 700, color: 'var(--text-primary)' }}>
                 알림톡 발송 {alimtalkModalType === 'suggestion' ? '(변경 제안)' : '(포트폴리오 조회)'}
               </h3>
-              <button onClick={() => setAlimtalkModalOpen(false)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#9CA3AF', padding: 4 }}>
+              <button onClick={() => setAlimtalkModalOpen(false)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', padding: 4 }}>
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
               </button>
             </div>
 
             {/* 수신자 정보 */}
-            <div style={{ padding: '10px 14px', backgroundColor: '#F5F7FA', borderRadius: 8, marginBottom: 16, fontSize: '0.8125rem' }}>
-              <span style={{ color: '#6B7280' }}>수신: </span>
-              <span style={{ fontWeight: 600, color: '#1A1A2E' }}>{getReportClient()?.name}</span>
-              <span style={{ color: '#9CA3AF', marginLeft: 8 }}>{getReportClient()?.phone}</span>
+            <div style={{ padding: '10px 14px', backgroundColor: 'var(--bg-surface)', borderRadius: 8, marginBottom: 16, fontSize: '0.8125rem' }}>
+              <span style={{ color: 'var(--text-muted)' }}>수신: </span>
+              <span style={{ fontWeight: 600, color: 'var(--text-primary)' }}>{getReportClient()?.name}</span>
+              <span style={{ color: 'var(--text-muted)', marginLeft: 8 }}>{getReportClient()?.phone}</span>
             </div>
 
             {/* 템플릿 목록 */}
             <div style={{ marginBottom: 16 }}>
-              <label style={{ display: 'block', fontSize: '0.8125rem', fontWeight: 600, color: '#374151', marginBottom: 8 }}>
+              <label style={{ display: 'block', fontSize: '0.8125rem', fontWeight: 600, color: 'var(--text-secondary)', marginBottom: 8 }}>
                 알림톡 템플릿 선택
               </label>
               {kakaoTemplatesLoading ? (
-                <div style={{ padding: 20, textAlign: 'center', color: '#9CA3AF', fontSize: '0.8125rem' }}>
-                  <span style={{ display: 'inline-block', width: 14, height: 14, border: '2px solid #1E3A5F', borderTopColor: 'transparent', borderRadius: '50%', animation: 'spin 0.7s linear infinite', marginRight: 6 }} />
+                <div style={{ padding: 20, textAlign: 'center', color: 'var(--text-muted)', fontSize: '0.8125rem' }}>
+                  <span style={{ display: 'inline-block', width: 14, height: 14, border: '2px solid var(--blue-500)', borderTopColor: 'transparent', borderRadius: '50%', animation: 'spin 0.7s linear infinite', marginRight: 6 }} />
                   템플릿 로딩 중...
                 </div>
               ) : kakaoTemplates.length === 0 ? (
-                <div style={{ padding: 20, textAlign: 'center', backgroundColor: '#FEF2F2', borderRadius: 8, fontSize: '0.8125rem', color: '#DC2626' }}>
+                <div style={{ padding: 20, textAlign: 'center', backgroundColor: 'var(--danger-bg)', borderRadius: 8, fontSize: '0.8125rem', color: 'var(--danger)' }}>
                   등록된 알림톡 템플릿이 없습니다.<br />
-                  <span style={{ fontSize: '0.75rem', color: '#9CA3AF' }}>솔라피 콘솔에서 카카오 채널 연결 및 템플릿을 등록해주세요.</span>
+                  <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>솔라피 콘솔에서 카카오 채널 연결 및 템플릿을 등록해주세요.</span>
                 </div>
               ) : (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
@@ -6883,20 +6886,20 @@ export default function IRPPage() {
                         display: 'block', width: '100%', textAlign: 'left',
                         padding: '12px 14px', borderRadius: 10, cursor: 'pointer',
                         border: selectedTemplateId === t.templateId ? '2px solid #F7C948' : '1px solid #E1E5EB',
-                        backgroundColor: selectedTemplateId === t.templateId ? '#FFFBEB' : '#fff',
+                        backgroundColor: selectedTemplateId === t.templateId ? 'rgba(245,158,11,0.12)' : 'var(--bg-card)',
                         transition: 'all 0.15s',
                       }}
                     >
-                      <div style={{ fontSize: '0.8125rem', fontWeight: 600, color: '#1A1A2E', marginBottom: 4 }}>
+                      <div style={{ fontSize: '0.8125rem', fontWeight: 600, color: 'var(--text-primary)', marginBottom: 4 }}>
                         {t.name}
                       </div>
-                      <div style={{ fontSize: '0.75rem', color: '#6B7280', lineHeight: 1.5, whiteSpace: 'pre-wrap' }}>
+                      <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', lineHeight: 1.5, whiteSpace: 'pre-wrap' }}>
                         {t.content.length > 120 ? t.content.slice(0, 120) + '...' : t.content}
                       </div>
                       {t.buttons && t.buttons.length > 0 && (
                         <div style={{ display: 'flex', gap: 4, marginTop: 6 }}>
                           {t.buttons.map((b, i) => (
-                            <span key={i} style={{ display: 'inline-block', padding: '2px 8px', fontSize: '0.6875rem', fontWeight: 600, backgroundColor: '#EEF2F7', color: '#1E3A5F', borderRadius: 4 }}>
+                            <span key={i} style={{ display: 'inline-block', padding: '2px 8px', fontSize: '0.6875rem', fontWeight: 600, backgroundColor: 'var(--bg-card-2)', color: 'var(--blue-400)', borderRadius: 4 }}>
                               {b.buttonName}
                             </span>
                           ))}
@@ -6913,16 +6916,16 @@ export default function IRPPage() {
               const { content } = getAlimtalkPreview();
               return (
                 <div style={{ marginBottom: 16 }}>
-                  <label style={{ display: 'block', fontSize: '0.8125rem', fontWeight: 600, color: '#374151', marginBottom: 6 }}>
+                  <label style={{ display: 'block', fontSize: '0.8125rem', fontWeight: 600, color: 'var(--text-secondary)', marginBottom: 6 }}>
                     발송 미리보기
                   </label>
                   <div style={{
-                    padding: '14px 16px', backgroundColor: '#FEF9E7', border: '1px solid #FCD34D',
-                    borderRadius: 10, fontSize: '0.8125rem', color: '#374151', lineHeight: 1.6, whiteSpace: 'pre-wrap',
+                    padding: '14px 16px', backgroundColor: '#FEF9E7', border: '1px solid rgba(245,158,11,0.35)',
+                    borderRadius: 10, fontSize: '0.8125rem', color: 'var(--text-secondary)', lineHeight: 1.6, whiteSpace: 'pre-wrap',
                   }}>
                     {content}
                   </div>
-                  <p style={{ fontSize: '0.6875rem', color: '#9CA3AF', marginTop: 4 }}>
+                  <p style={{ fontSize: '0.6875rem', color: 'var(--text-muted)', marginTop: 4 }}>
                     * 알림톡 발송 실패 시 SMS로 자동 대체 발송됩니다.
                   </p>
                 </div>
@@ -6953,20 +6956,20 @@ export default function IRPPage() {
       {tab4LogEditOpen && tab4LogEditData && (
         <div style={{ position: 'fixed', inset: 0, zIndex: 1100, display: 'flex', alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(0,0,0,0.45)' }}
           onClick={(e) => { if (e.target === e.currentTarget) setTab4LogEditOpen(false); }}>
-          <div style={{ backgroundColor: '#fff', borderRadius: 14, padding: 24, width: '100%', maxWidth: 480, boxShadow: '0 20px 60px rgba(0,0,0,0.2)' }}>
+          <div style={{ backgroundColor: 'var(--bg-card)', borderRadius: 14, padding: 24, width: '100%', maxWidth: 480, boxShadow: '0 20px 60px rgba(0,0,0,0.2)' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 18 }}>
-              <h3 style={{ margin: 0, fontSize: '1rem', fontWeight: 700, color: '#1A1A2E' }}>발송 기록 수정</h3>
-              <button onClick={() => setTab4LogEditOpen(false)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#9CA3AF', padding: 4 }}>
+              <h3 style={{ margin: 0, fontSize: '1rem', fontWeight: 700, color: 'var(--text-primary)' }}>발송 기록 수정</h3>
+              <button onClick={() => setTab4LogEditOpen(false)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', padding: 4 }}>
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
               </button>
             </div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
               <div>
-                <label style={{ display: 'block', fontSize: '0.8125rem', fontWeight: 600, color: '#374151', marginBottom: 5 }}>유형</label>
+                <label style={{ display: 'block', fontSize: '0.8125rem', fontWeight: 600, color: 'var(--text-secondary)', marginBottom: 5 }}>유형</label>
                 <select
                   value={tab4LogEditData.message_type}
                   onChange={(e) => setTab4LogEditData({ ...tab4LogEditData, message_type: e.target.value })}
-                  style={{ width: '100%', padding: '8px 10px', fontSize: '0.8125rem', border: '1px solid #E1E5EB', borderRadius: 8, outline: 'none', color: '#1A1A2E' }}
+                  style={{ width: '100%', padding: '8px 10px', fontSize: '0.8125rem', border: '1px solid var(--border)', borderRadius: 8, outline: 'none', color: 'var(--text-primary)' }}
                 >
                   <option value="portfolio_save">수정저장</option>
                   <option value="alimtalk_suggestion">변경제안(톡)</option>
@@ -6976,29 +6979,29 @@ export default function IRPPage() {
                 </select>
               </div>
               <div>
-                <label style={{ display: 'block', fontSize: '0.8125rem', fontWeight: 600, color: '#374151', marginBottom: 5 }}>발송일</label>
+                <label style={{ display: 'block', fontSize: '0.8125rem', fontWeight: 600, color: 'var(--text-secondary)', marginBottom: 5 }}>발송일</label>
                 <input
                   type="datetime-local"
                   value={tab4LogEditData.sent_at}
                   onChange={(e) => setTab4LogEditData({ ...tab4LogEditData, sent_at: e.target.value })}
-                  style={{ width: '100%', padding: '8px 10px', fontSize: '0.8125rem', border: '1px solid #E1E5EB', borderRadius: 8, outline: 'none', color: '#1A1A2E' }}
+                  style={{ width: '100%', padding: '8px 10px', fontSize: '0.8125rem', border: '1px solid var(--border)', borderRadius: 8, outline: 'none', color: 'var(--text-primary)' }}
                 />
               </div>
               <div>
-                <label style={{ display: 'block', fontSize: '0.8125rem', fontWeight: 600, color: '#374151', marginBottom: 5 }}>발송 내용 요약</label>
+                <label style={{ display: 'block', fontSize: '0.8125rem', fontWeight: 600, color: 'var(--text-secondary)', marginBottom: 5 }}>발송 내용 요약</label>
                 <input
                   type="text"
                   value={tab4LogEditData.message_summary}
                   onChange={(e) => setTab4LogEditData({ ...tab4LogEditData, message_summary: e.target.value })}
                   maxLength={200}
-                  style={{ width: '100%', padding: '8px 10px', fontSize: '0.8125rem', border: '1px solid #E1E5EB', borderRadius: 8, outline: 'none', color: '#1A1A2E' }}
+                  style={{ width: '100%', padding: '8px 10px', fontSize: '0.8125rem', border: '1px solid var(--border)', borderRadius: 8, outline: 'none', color: 'var(--text-primary)' }}
                 />
               </div>
               <div style={{ display: 'flex', gap: 8, marginTop: 4 }}>
-                <button onClick={() => setTab4LogEditOpen(false)} style={{ flex: 1, padding: '10px 0', fontSize: '0.875rem', fontWeight: 600, color: '#6B7280', backgroundColor: '#F3F4F6', border: 'none', borderRadius: 8, cursor: 'pointer' }}>
+                <button onClick={() => setTab4LogEditOpen(false)} style={{ flex: 1, padding: '10px 0', fontSize: '0.875rem', fontWeight: 600, color: 'var(--text-muted)', backgroundColor: 'var(--bg-surface)', border: 'none', borderRadius: 8, cursor: 'pointer' }}>
                   취소
                 </button>
-                <button onClick={handleTab4EditSave} style={{ flex: 1, padding: '10px 0', fontSize: '0.875rem', fontWeight: 600, color: '#fff', backgroundColor: '#1E3A5F', border: 'none', borderRadius: 8, cursor: 'pointer' }}>
+                <button onClick={handleTab4EditSave} style={{ flex: 1, padding: '10px 0', fontSize: '0.875rem', fontWeight: 600, color: '#fff', backgroundColor: 'var(--blue-600)', border: 'none', borderRadius: 8, cursor: 'pointer' }}>
                   저장
                 </button>
               </div>
@@ -7011,20 +7014,20 @@ export default function IRPPage() {
       {tab4LogAddOpen && (
         <div style={{ position: 'fixed', inset: 0, zIndex: 1100, display: 'flex', alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(0,0,0,0.45)' }}
           onClick={(e) => { if (e.target === e.currentTarget) setTab4LogAddOpen(false); }}>
-          <div style={{ backgroundColor: '#fff', borderRadius: 14, padding: 24, width: '100%', maxWidth: 480, boxShadow: '0 20px 60px rgba(0,0,0,0.2)' }}>
+          <div style={{ backgroundColor: 'var(--bg-card)', borderRadius: 14, padding: 24, width: '100%', maxWidth: 480, boxShadow: '0 20px 60px rgba(0,0,0,0.2)' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 18 }}>
-              <h3 style={{ margin: 0, fontSize: '1rem', fontWeight: 700, color: '#1A1A2E' }}>발송 기록 추가</h3>
-              <button onClick={() => setTab4LogAddOpen(false)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#9CA3AF', padding: 4 }}>
+              <h3 style={{ margin: 0, fontSize: '1rem', fontWeight: 700, color: 'var(--text-primary)' }}>발송 기록 추가</h3>
+              <button onClick={() => setTab4LogAddOpen(false)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', padding: 4 }}>
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
               </button>
             </div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
               <div>
-                <label style={{ display: 'block', fontSize: '0.8125rem', fontWeight: 600, color: '#374151', marginBottom: 5 }}>계좌</label>
+                <label style={{ display: 'block', fontSize: '0.8125rem', fontWeight: 600, color: 'var(--text-secondary)', marginBottom: 5 }}>계좌</label>
                 <select
                   value={tab4LogAddData.client_account_id}
                   onChange={(e) => setTab4LogAddData({ ...tab4LogAddData, client_account_id: e.target.value })}
-                  style={{ width: '100%', padding: '8px 10px', fontSize: '0.8125rem', border: '1px solid #E1E5EB', borderRadius: 8, outline: 'none', color: '#1A1A2E' }}
+                  style={{ width: '100%', padding: '8px 10px', fontSize: '0.8125rem', border: '1px solid var(--border)', borderRadius: 8, outline: 'none', color: 'var(--text-primary)' }}
                 >
                   <option value="">계좌 선택 (선택사항)</option>
                   {tab4ClientAccounts.map((a) => (
@@ -7033,11 +7036,11 @@ export default function IRPPage() {
                 </select>
               </div>
               <div>
-                <label style={{ display: 'block', fontSize: '0.8125rem', fontWeight: 600, color: '#374151', marginBottom: 5 }}>유형</label>
+                <label style={{ display: 'block', fontSize: '0.8125rem', fontWeight: 600, color: 'var(--text-secondary)', marginBottom: 5 }}>유형</label>
                 <select
                   value={tab4LogAddData.message_type}
                   onChange={(e) => setTab4LogAddData({ ...tab4LogAddData, message_type: e.target.value })}
-                  style={{ width: '100%', padding: '8px 10px', fontSize: '0.8125rem', border: '1px solid #E1E5EB', borderRadius: 8, outline: 'none', color: '#1A1A2E' }}
+                  style={{ width: '100%', padding: '8px 10px', fontSize: '0.8125rem', border: '1px solid var(--border)', borderRadius: 8, outline: 'none', color: 'var(--text-primary)' }}
                 >
                   <option value="portfolio_save">수정저장</option>
                   <option value="alimtalk_suggestion">변경제안(톡)</option>
@@ -7047,30 +7050,30 @@ export default function IRPPage() {
                 </select>
               </div>
               <div>
-                <label style={{ display: 'block', fontSize: '0.8125rem', fontWeight: 600, color: '#374151', marginBottom: 5 }}>발송일</label>
+                <label style={{ display: 'block', fontSize: '0.8125rem', fontWeight: 600, color: 'var(--text-secondary)', marginBottom: 5 }}>발송일</label>
                 <input
                   type="datetime-local"
                   value={tab4LogAddData.sent_at}
                   onChange={(e) => setTab4LogAddData({ ...tab4LogAddData, sent_at: e.target.value })}
-                  style={{ width: '100%', padding: '8px 10px', fontSize: '0.8125rem', border: '1px solid #E1E5EB', borderRadius: 8, outline: 'none', color: '#1A1A2E' }}
+                  style={{ width: '100%', padding: '8px 10px', fontSize: '0.8125rem', border: '1px solid var(--border)', borderRadius: 8, outline: 'none', color: 'var(--text-primary)' }}
                 />
               </div>
               <div>
-                <label style={{ display: 'block', fontSize: '0.8125rem', fontWeight: 600, color: '#374151', marginBottom: 5 }}>발송 내용 요약</label>
+                <label style={{ display: 'block', fontSize: '0.8125rem', fontWeight: 600, color: 'var(--text-secondary)', marginBottom: 5 }}>발송 내용 요약</label>
                 <input
                   type="text"
                   value={tab4LogAddData.message_summary}
                   onChange={(e) => setTab4LogAddData({ ...tab4LogAddData, message_summary: e.target.value })}
                   placeholder="발송 내용 요약을 입력하세요"
                   maxLength={200}
-                  style={{ width: '100%', padding: '8px 10px', fontSize: '0.8125rem', border: '1px solid #E1E5EB', borderRadius: 8, outline: 'none', color: '#1A1A2E' }}
+                  style={{ width: '100%', padding: '8px 10px', fontSize: '0.8125rem', border: '1px solid var(--border)', borderRadius: 8, outline: 'none', color: 'var(--text-primary)' }}
                 />
               </div>
               <div style={{ display: 'flex', gap: 8, marginTop: 4 }}>
-                <button onClick={() => setTab4LogAddOpen(false)} style={{ flex: 1, padding: '10px 0', fontSize: '0.875rem', fontWeight: 600, color: '#6B7280', backgroundColor: '#F3F4F6', border: 'none', borderRadius: 8, cursor: 'pointer' }}>
+                <button onClick={() => setTab4LogAddOpen(false)} style={{ flex: 1, padding: '10px 0', fontSize: '0.875rem', fontWeight: 600, color: 'var(--text-muted)', backgroundColor: 'var(--bg-surface)', border: 'none', borderRadius: 8, cursor: 'pointer' }}>
                   취소
                 </button>
-                <button onClick={handleTab4AddLog} style={{ flex: 1, padding: '10px 0', fontSize: '0.875rem', fontWeight: 600, color: '#fff', backgroundColor: '#1E3A5F', border: 'none', borderRadius: 8, cursor: 'pointer' }}>
+                <button onClick={handleTab4AddLog} style={{ flex: 1, padding: '10px 0', fontSize: '0.875rem', fontWeight: 600, color: '#fff', backgroundColor: 'var(--blue-600)', border: 'none', borderRadius: 8, cursor: 'pointer' }}>
                   추가
                 </button>
               </div>
@@ -7097,7 +7100,7 @@ export default function IRPPage() {
         >
           <div
             style={{
-              backgroundColor: '#FFFFFF',
+              backgroundColor: 'var(--bg-card)',
               borderRadius: 12,
               padding: '28px 32px',
               width: '100%',
@@ -7110,7 +7113,7 @@ export default function IRPPage() {
                 margin: '0 0 6px',
                 fontSize: '1.0625rem',
                 fontWeight: 800,
-                color: '#1A1A2E',
+                color: 'var(--text-primary)',
                 letterSpacing: '-0.3px',
               }}
             >
@@ -7120,7 +7123,7 @@ export default function IRPPage() {
               style={{
                 margin: '0 0 20px',
                 fontSize: '0.8125rem',
-                color: '#6B7280',
+                color: 'var(--text-muted)',
                 lineHeight: 1.5,
               }}
             >
@@ -7134,7 +7137,7 @@ export default function IRPPage() {
                 display: 'block',
                 fontSize: '0.8125rem',
                 fontWeight: 600,
-                color: '#374151',
+                color: 'var(--text-secondary)',
                 marginBottom: 6,
               }}
             >
@@ -7152,10 +7155,10 @@ export default function IRPPage() {
                 width: '100%',
                 padding: '10px 12px',
                 fontSize: '0.875rem',
-                border: '1px solid #E1E5EB',
+                border: '1px solid var(--border)',
                 borderRadius: 8,
                 outline: 'none',
-                color: '#1A1A2E',
+                color: 'var(--text-primary)',
                 boxSizing: 'border-box',
                 marginBottom: 20,
               }}
@@ -7169,8 +7172,8 @@ export default function IRPPage() {
                   padding: '9px 18px',
                   fontSize: '0.8125rem',
                   fontWeight: 600,
-                  color: '#6B7280',
-                  backgroundColor: '#F3F4F6',
+                  color: 'var(--text-muted)',
+                  backgroundColor: 'var(--bg-surface)',
                   border: 'none',
                   borderRadius: 8,
                   cursor: 'pointer',
@@ -7187,7 +7190,7 @@ export default function IRPPage() {
                   fontWeight: 600,
                   color: '#FFFFFF',
                   backgroundColor:
-                    !emailInput.trim() || emailSending ? '#9CA3AF' : '#1E3A5F',
+                    !emailInput.trim() || emailSending ? '#9CA3AF' : '#3B82F6',
                   border: 'none',
                   borderRadius: 8,
                   cursor: !emailInput.trim() || emailSending ? 'not-allowed' : 'pointer',
@@ -7234,7 +7237,7 @@ export default function IRPPage() {
         >
           <div
             style={{
-              backgroundColor: '#FFFFFF',
+              backgroundColor: 'var(--bg-card)',
               borderRadius: 12,
               padding: '28px 32px',
               width: '100%',
@@ -7247,21 +7250,21 @@ export default function IRPPage() {
                 margin: '0 0 6px',
                 fontSize: '1.0625rem',
                 fontWeight: 800,
-                color: '#1A1A2E',
+                color: 'var(--text-primary)',
                 letterSpacing: '-0.3px',
               }}
             >
               상품 마스터 등록
             </h3>
-            <p style={{ margin: '0 0 20px', fontSize: '0.8125rem', color: '#6B7280', lineHeight: 1.5 }}>
+            <p style={{ margin: '0 0 20px', fontSize: '0.8125rem', color: 'var(--text-muted)', lineHeight: 1.5 }}>
               신규 상품을 마스터에 등록합니다. 등록 후 동일 상품명의 항목에 자동 적용됩니다.
             </p>
 
             <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
               {/* 1. 상품유형 (맨 위) */}
               <div>
-                <label style={{ display: 'block', fontSize: '0.8125rem', fontWeight: 600, color: '#374151', marginBottom: 5 }}>
-                  상품유형 <span style={{ color: '#EF4444' }}>*</span>
+                <label style={{ display: 'block', fontSize: '0.8125rem', fontWeight: 600, color: 'var(--text-secondary)', marginBottom: 5 }}>
+                  상품유형 <span style={{ color: 'var(--danger)' }}>*</span>
                 </label>
                 <select
                   value={registerForm.product_type}
@@ -7273,9 +7276,9 @@ export default function IRPPage() {
                   }}
                   style={{
                     width: '100%', padding: '9px 12px', fontSize: '0.875rem',
-                    border: '1px solid #E1E5EB', borderRadius: 8, outline: 'none',
-                    color: registerForm.product_type ? '#1A1A2E' : '#9CA3AF',
-                    backgroundColor: '#fff', cursor: 'pointer', boxSizing: 'border-box',
+                    border: '1px solid var(--border)', borderRadius: 8, outline: 'none',
+                    color: registerForm.product_type ? 'var(--text-primary)' : '#9CA3AF',
+                    backgroundColor: 'var(--bg-card)', cursor: 'pointer', boxSizing: 'border-box',
                   }}
                 >
                   <option value="">상품유형을 먼저 선택하세요</option>
@@ -7286,18 +7289,18 @@ export default function IRPPage() {
               {/* 2. 상품명 — ETF/MMF: 자동검색, 그 외: 직접입력 */}
               {registerForm.product_type && (
                 <div style={{ position: 'relative' }}>
-                  <label style={{ display: 'block', fontSize: '0.8125rem', fontWeight: 600, color: '#374151', marginBottom: 5 }}>
-                    상품명 <span style={{ color: '#EF4444' }}>*</span>
+                  <label style={{ display: 'block', fontSize: '0.8125rem', fontWeight: 600, color: 'var(--text-secondary)', marginBottom: 5 }}>
+                    상품명 <span style={{ color: 'var(--danger)' }}>*</span>
                     {(registerForm.product_type === 'ETF' || registerForm.product_type === 'MMF') ? (
-                      <span style={{ fontWeight: 400, marginLeft: 8, color: '#9CA3AF', fontSize: '0.75rem' }}>
+                      <span style={{ fontWeight: 400, marginLeft: 8, color: 'var(--text-muted)', fontSize: '0.75rem' }}>
                         2글자 이상 입력 시 자동 검색
                       </span>
                     ) : (
-                      <span style={{ fontWeight: 400, marginLeft: 8, color: '#9CA3AF', fontSize: '0.75rem' }}>
+                      <span style={{ fontWeight: 400, marginLeft: 8, color: 'var(--text-muted)', fontSize: '0.75rem' }}>
                         직접 입력 |{' '}
                         <a href="https://www.nhsec.com/index.jsp" target="_blank" rel="noopener noreferrer"
                           data-tooltip="NH투자증권 > 금융상품 > 펀드 > 펀드검색"
-                          style={{ color: '#2563EB', textDecoration: 'underline' }}>
+                          style={{ color: 'var(--blue-500)', textDecoration: 'underline' }}>
                           펀드 검색(NH투자증권)
                         </a>
                       </span>
@@ -7312,18 +7315,18 @@ export default function IRPPage() {
                         onChange={(e) => handleRegStockSearch(e.target.value)}
                         style={{
                           width: '100%', padding: '9px 12px', fontSize: '0.875rem',
-                          border: '1px solid #E1E5EB', borderRadius: 8, outline: 'none',
-                          color: '#1A1A2E', boxSizing: 'border-box',
+                          border: '1px solid var(--border)', borderRadius: 8, outline: 'none',
+                          color: 'var(--text-primary)', boxSizing: 'border-box',
                         }}
                         autoFocus
                       />
                       {regStockSearching && (
-                        <div style={{ position: 'absolute', right: 10, top: 30, color: '#9CA3AF', fontSize: '0.75rem' }}>검색 중...</div>
+                        <div style={{ position: 'absolute', right: 10, top: 30, color: 'var(--text-muted)', fontSize: '0.75rem' }}>검색 중...</div>
                       )}
                       {regStockResults.length > 0 && (
                         <div style={{
                           position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 100,
-                          backgroundColor: '#fff', border: '1px solid #E1E5EB', borderRadius: 8,
+                          backgroundColor: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 8,
                           boxShadow: '0 8px 24px rgba(0,0,0,0.12)', maxHeight: 220, overflowY: 'auto', marginTop: 4,
                         }}>
                           {regStockResults.map((item) => (
@@ -7331,22 +7334,22 @@ export default function IRPPage() {
                               style={{
                                 width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'space-between',
                                 padding: '8px 12px', border: 'none', background: 'none', cursor: 'pointer',
-                                textAlign: 'left', borderBottom: '1px solid #F3F4F6', fontSize: '0.8125rem',
+                                textAlign: 'left', borderBottom: '1px solid var(--border)', fontSize: '0.8125rem',
                               }}
                               onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = '#F5F7FA'; }}
                               onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = 'transparent'; }}
                             >
                               <div style={{ flex: 1, minWidth: 0 }}>
-                                <div style={{ fontWeight: 600, color: '#1A1A2E' }}>{item.name}</div>
-                                <div style={{ fontSize: '0.75rem', color: '#6B7280' }}>
+                                <div style={{ fontWeight: 600, color: 'var(--text-primary)' }}>{item.name}</div>
+                                <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
                                   <span style={{ fontFamily: 'monospace' }}>{item.code}</span>
-                                  {item.type && <span style={{ marginLeft: 6, padding: '1px 4px', borderRadius: 3, backgroundColor: item.type === 'ETF' ? '#EFF6FF' : item.type === '해외ETF' ? '#FDF2F8' : item.type === '국내주식' ? '#ECFDF5' : '#FEF3C7', color: item.type === 'ETF' ? '#2563EB' : item.type === '해외ETF' ? '#DB2777' : item.type === '국내주식' ? '#059669' : '#D97706', fontSize: '0.625rem', fontWeight: 600 }}>{item.type}</span>}
-                                  {item.exchange && <span style={{ marginLeft: 4, fontSize: '0.625rem', color: '#9CA3AF' }}>{item.exchange}</span>}
+                                  {item.type && <span style={{ marginLeft: 6, padding: '1px 4px', borderRadius: 3, backgroundColor: item.type === 'ETF' ? 'rgba(56,189,248,0.12)' : item.type === '해외ETF' ? 'rgba(236,72,153,0.14)' : item.type === '국내주식' ? 'rgba(16,185,129,0.12)' : 'rgba(245,158,11,0.16)', color: item.type === 'ETF' ? '#2563EB' : item.type === '해외ETF' ? '#DB2777' : item.type === '국내주식' ? '#059669' : '#D97706', fontSize: '0.625rem', fontWeight: 600 }}>{item.type}</span>}
+                                  {item.exchange && <span style={{ marginLeft: 4, fontSize: '0.625rem', color: 'var(--text-muted)' }}>{item.exchange}</span>}
                                 </div>
                               </div>
                               <div style={{ textAlign: 'right', flexShrink: 0 }}>
-                                {item.price != null && <div style={{ fontWeight: 600, color: '#1E3A5F', fontSize: '0.8125rem' }}>{item.currency === 'USD' ? `$${item.price}` : item.price?.toLocaleString('ko-KR')}</div>}
-                                {item.nav != null && <div style={{ fontSize: '0.6875rem', color: '#9CA3AF' }}>NAV {item.nav?.toLocaleString('ko-KR')}</div>}
+                                {item.price != null && <div style={{ fontWeight: 600, color: 'var(--blue-400)', fontSize: '0.8125rem' }}>{item.currency === 'USD' ? `$${item.price}` : item.price?.toLocaleString('ko-KR')}</div>}
+                                {item.nav != null && <div style={{ fontSize: '0.6875rem', color: 'var(--text-muted)' }}>NAV {item.nav?.toLocaleString('ko-KR')}</div>}
                               </div>
                             </button>
                           ))}
@@ -7361,8 +7364,8 @@ export default function IRPPage() {
                       onChange={(e) => setRegisterForm((f) => ({ ...f, product_name: e.target.value }))}
                       style={{
                         width: '100%', padding: '9px 12px', fontSize: '0.875rem',
-                        border: '1px solid #E1E5EB', borderRadius: 8, outline: 'none',
-                        color: '#1A1A2E', boxSizing: 'border-box',
+                        border: '1px solid var(--border)', borderRadius: 8, outline: 'none',
+                        color: 'var(--text-primary)', boxSizing: 'border-box',
                       }}
                       autoFocus
                     />
@@ -7373,7 +7376,7 @@ export default function IRPPage() {
               {/* 3. 종목코드 */}
               {registerForm.product_type && (
                 <div>
-                  <label style={{ display: 'block', fontSize: '0.8125rem', fontWeight: 600, color: '#374151', marginBottom: 5 }}>
+                  <label style={{ display: 'block', fontSize: '0.8125rem', fontWeight: 600, color: 'var(--text-secondary)', marginBottom: 5 }}>
                     종목코드
                   </label>
                   <input
@@ -7384,10 +7387,10 @@ export default function IRPPage() {
                     readOnly={registerForm.product_type === 'ETF' || registerForm.product_type === 'MMF'}
                     style={{
                       width: '100%', padding: '9px 12px', fontSize: '0.875rem',
-                      border: '1px solid #E1E5EB', borderRadius: 8, outline: 'none',
+                      border: '1px solid var(--border)', borderRadius: 8, outline: 'none',
                       fontFamily: 'monospace', boxSizing: 'border-box',
-                      color: registerForm.product_code ? '#1A1A2E' : '#9CA3AF',
-                      backgroundColor: (registerForm.product_type === 'ETF' || registerForm.product_type === 'MMF') ? '#F9FAFB' : '#fff',
+                      color: registerForm.product_code ? 'var(--text-primary)' : '#9CA3AF',
+                      backgroundColor: (registerForm.product_type === 'ETF' || registerForm.product_type === 'MMF') ? 'var(--bg-surface)' : 'var(--bg-card)',
                     }}
                   />
                 </div>
@@ -7397,17 +7400,17 @@ export default function IRPPage() {
               {registerForm.product_type && (
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
                   <div>
-                    <label style={{ display: 'block', fontSize: '0.8125rem', fontWeight: 600, color: '#374151', marginBottom: 5 }}>위험도</label>
+                    <label style={{ display: 'block', fontSize: '0.8125rem', fontWeight: 600, color: 'var(--text-secondary)', marginBottom: 5 }}>위험도</label>
                     <select value={registerForm.risk_level} onChange={(e) => setRegisterForm((f) => ({ ...f, risk_level: e.target.value }))}
-                      style={{ width: '100%', padding: '9px 12px', fontSize: '0.875rem', border: '1px solid #E1E5EB', borderRadius: 8, outline: 'none', color: registerForm.risk_level ? '#1A1A2E' : '#9CA3AF', backgroundColor: '#fff', cursor: 'pointer', boxSizing: 'border-box' }}>
+                      style={{ width: '100%', padding: '9px 12px', fontSize: '0.875rem', border: '1px solid var(--border)', borderRadius: 8, outline: 'none', color: registerForm.risk_level ? 'var(--text-primary)' : '#9CA3AF', backgroundColor: 'var(--bg-card)', cursor: 'pointer', boxSizing: 'border-box' }}>
                       <option value="">선택</option>
                       {RISK_LEVELS.map((rl) => <option key={rl} value={rl}>{rl}</option>)}
                     </select>
                   </div>
                   <div>
-                    <label style={{ display: 'block', fontSize: '0.8125rem', fontWeight: 600, color: '#374151', marginBottom: 5 }}>지역</label>
+                    <label style={{ display: 'block', fontSize: '0.8125rem', fontWeight: 600, color: 'var(--text-secondary)', marginBottom: 5 }}>지역</label>
                     <select value={registerForm.region} onChange={(e) => setRegisterForm((f) => ({ ...f, region: e.target.value }))}
-                      style={{ width: '100%', padding: '9px 12px', fontSize: '0.875rem', border: '1px solid #E1E5EB', borderRadius: 8, outline: 'none', color: registerForm.region ? '#1A1A2E' : '#9CA3AF', backgroundColor: '#fff', cursor: 'pointer', boxSizing: 'border-box' }}>
+                      style={{ width: '100%', padding: '9px 12px', fontSize: '0.875rem', border: '1px solid var(--border)', borderRadius: 8, outline: 'none', color: registerForm.region ? 'var(--text-primary)' : '#9CA3AF', backgroundColor: 'var(--bg-card)', cursor: 'pointer', boxSizing: 'border-box' }}>
                       <option value="">선택</option>
                       {REGIONS.map((rg) => <option key={rg} value={rg}>{rg}</option>)}
                     </select>
@@ -7423,8 +7426,8 @@ export default function IRPPage() {
                   padding: '9px 18px',
                   fontSize: '0.8125rem',
                   fontWeight: 600,
-                  color: '#6B7280',
-                  backgroundColor: '#F3F4F6',
+                  color: 'var(--text-muted)',
+                  backgroundColor: 'var(--bg-surface)',
                   border: 'none',
                   borderRadius: 8,
                   cursor: 'pointer',
@@ -7439,7 +7442,7 @@ export default function IRPPage() {
                   fontSize: '0.8125rem',
                   fontWeight: 600,
                   color: '#FFFFFF',
-                  backgroundColor: '#1E3A5F',
+                  backgroundColor: 'var(--blue-600)',
                   border: 'none',
                   borderRadius: 8,
                   cursor: 'pointer',
@@ -7458,79 +7461,79 @@ export default function IRPPage() {
       {/* 상품명 변경 메모 팝업 */}
       {nameChangeMemoOpen && (
         <div style={{ position: 'fixed', inset: 0, zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(0,0,0,0.5)' }}>
-          <div style={{ backgroundColor: '#fff', borderRadius: 12, width: 640, maxHeight: '80vh', display: 'flex', flexDirection: 'column', boxShadow: '0 20px 60px rgba(0,0,0,0.3)' }}>
+          <div style={{ backgroundColor: 'var(--bg-card)', borderRadius: 12, width: 640, maxHeight: '80vh', display: 'flex', flexDirection: 'column', boxShadow: '0 20px 60px rgba(0,0,0,0.3)' }}>
             {/* 헤더 */}
-            <div style={{ padding: '20px 24px 12px', borderBottom: '1px solid #E5E7EB', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <div style={{ padding: '20px 24px 12px', borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
               <div>
-                <h3 style={{ margin: 0, fontSize: '1.125rem', fontWeight: 700, color: '#1E3A5F' }}>상품명 변경 메모</h3>
-                <p style={{ margin: '4px 0 0', fontSize: '0.75rem', color: '#6B7280' }}>
+                <h3 style={{ margin: 0, fontSize: '1.125rem', fontWeight: 700, color: 'var(--blue-400)' }}>상품명 변경 메모</h3>
+                <p style={{ margin: '4px 0 0', fontSize: '0.75rem', color: 'var(--text-muted)' }}>
                   상품명 전체가 아닌, 변경된 키워드를 중심으로 입력하세요. (예: 이스트스프링 → 카디안)
                 </p>
               </div>
-              <button onClick={() => setNameChangeMemoOpen(false)} style={{ background: 'none', border: 'none', fontSize: '1.25rem', cursor: 'pointer', color: '#6B7280' }}>✕</button>
+              <button onClick={() => setNameChangeMemoOpen(false)} style={{ background: 'none', border: 'none', fontSize: '1.25rem', cursor: 'pointer', color: 'var(--text-muted)' }}>✕</button>
             </div>
 
             {/* 등록 폼 */}
-            <div style={{ padding: '16px 24px', borderBottom: '1px solid #F3F4F6', display: 'flex', gap: 8, alignItems: 'flex-end', flexWrap: 'wrap' }}>
+            <div style={{ padding: '16px 24px', borderBottom: '1px solid var(--border)', display: 'flex', gap: 8, alignItems: 'flex-end', flexWrap: 'wrap' }}>
               <div style={{ flex: 1, minWidth: 120 }}>
-                <label style={{ fontSize: '0.75rem', color: '#374151', fontWeight: 600 }}>변경 전 키워드</label>
+                <label style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', fontWeight: 600 }}>변경 전 키워드</label>
                 <input value={ncNewOld} onChange={e => setNcNewOld(e.target.value)} placeholder="예: 이스트스프링"
-                  style={{ width: '100%', padding: '6px 10px', border: '1px solid #D1D5DB', borderRadius: 6, fontSize: '0.8125rem', marginTop: 2 }} />
+                  style={{ width: '100%', padding: '6px 10px', border: '1px solid var(--border-strong)', borderRadius: 6, fontSize: '0.8125rem', marginTop: 2 }} />
               </div>
-              <div style={{ fontSize: '1.25rem', color: '#9CA3AF', paddingBottom: 4 }}>→</div>
+              <div style={{ fontSize: '1.25rem', color: 'var(--text-muted)', paddingBottom: 4 }}>→</div>
               <div style={{ flex: 1, minWidth: 120 }}>
-                <label style={{ fontSize: '0.75rem', color: '#374151', fontWeight: 600 }}>변경 후 키워드</label>
+                <label style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', fontWeight: 600 }}>변경 후 키워드</label>
                 <input value={ncNewNew} onChange={e => setNcNewNew(e.target.value)} placeholder="예: 카디안"
-                  style={{ width: '100%', padding: '6px 10px', border: '1px solid #D1D5DB', borderRadius: 6, fontSize: '0.8125rem', marginTop: 2 }} />
+                  style={{ width: '100%', padding: '6px 10px', border: '1px solid var(--border-strong)', borderRadius: 6, fontSize: '0.8125rem', marginTop: 2 }} />
               </div>
               <div style={{ flex: 1, minWidth: 100 }}>
-                <label style={{ fontSize: '0.75rem', color: '#374151', fontWeight: 600 }}>메모 (선택)</label>
+                <label style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', fontWeight: 600 }}>메모 (선택)</label>
                 <input value={ncNewMemo} onChange={e => setNcNewMemo(e.target.value)} placeholder="변경사유"
-                  style={{ width: '100%', padding: '6px 10px', border: '1px solid #D1D5DB', borderRadius: 6, fontSize: '0.8125rem', marginTop: 2 }} />
+                  style={{ width: '100%', padding: '6px 10px', border: '1px solid var(--border-strong)', borderRadius: 6, fontSize: '0.8125rem', marginTop: 2 }} />
               </div>
-              <button onClick={addNameChange} style={{ padding: '6px 16px', backgroundColor: '#1E3A5F', color: '#fff', border: 'none', borderRadius: 6, fontSize: '0.8125rem', fontWeight: 600, cursor: 'pointer', whiteSpace: 'nowrap' }}>추가</button>
+              <button onClick={addNameChange} style={{ padding: '6px 16px', backgroundColor: 'var(--blue-600)', color: '#fff', border: 'none', borderRadius: 6, fontSize: '0.8125rem', fontWeight: 600, cursor: 'pointer', whiteSpace: 'nowrap' }}>추가</button>
             </div>
 
             {/* 목록 */}
             <div style={{ flex: 1, overflowY: 'auto', padding: '12px 24px 20px' }}>
               {ncLoading ? (
-                <p style={{ textAlign: 'center', color: '#9CA3AF', fontSize: '0.875rem' }}>로딩 중...</p>
+                <p style={{ textAlign: 'center', color: 'var(--text-muted)', fontSize: '0.875rem' }}>로딩 중...</p>
               ) : nameChanges.length === 0 ? (
-                <p style={{ textAlign: 'center', color: '#9CA3AF', fontSize: '0.875rem', padding: '24px 0' }}>등록된 변경 메모가 없습니다.</p>
+                <p style={{ textAlign: 'center', color: 'var(--text-muted)', fontSize: '0.875rem', padding: '24px 0' }}>등록된 변경 메모가 없습니다.</p>
               ) : (
                 <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.8125rem' }}>
                   <thead>
-                    <tr style={{ borderBottom: '2px solid #E5E7EB' }}>
-                      <th style={{ padding: '8px 6px', textAlign: 'left', color: '#374151', fontWeight: 600 }}>변경 전</th>
+                    <tr style={{ borderBottom: '2px solid var(--border)' }}>
+                      <th style={{ padding: '8px 6px', textAlign: 'left', color: 'var(--text-secondary)', fontWeight: 600 }}>변경 전</th>
                       <th style={{ padding: '8px 2px', width: 30, textAlign: 'center' }}></th>
-                      <th style={{ padding: '8px 6px', textAlign: 'left', color: '#374151', fontWeight: 600 }}>변경 후</th>
-                      <th style={{ padding: '8px 6px', textAlign: 'left', color: '#374151', fontWeight: 600 }}>메모</th>
-                      <th style={{ padding: '8px 6px', width: 100, textAlign: 'center', color: '#374151', fontWeight: 600 }}>관리</th>
+                      <th style={{ padding: '8px 6px', textAlign: 'left', color: 'var(--text-secondary)', fontWeight: 600 }}>변경 후</th>
+                      <th style={{ padding: '8px 6px', textAlign: 'left', color: 'var(--text-secondary)', fontWeight: 600 }}>메모</th>
+                      <th style={{ padding: '8px 6px', width: 100, textAlign: 'center', color: 'var(--text-secondary)', fontWeight: 600 }}>관리</th>
                     </tr>
                   </thead>
                   <tbody>
                     {nameChanges.map(nc => (
-                      <tr key={nc.id} style={{ borderBottom: '1px solid #F3F4F6' }}>
+                      <tr key={nc.id} style={{ borderBottom: '1px solid var(--border)' }}>
                         {ncEditId === nc.id ? (
                           <>
-                            <td style={{ padding: '6px' }}><input value={ncEditOld} onChange={e => setNcEditOld(e.target.value)} style={{ width: '100%', padding: '4px 8px', border: '1px solid #D1D5DB', borderRadius: 4, fontSize: '0.8125rem' }} /></td>
-                            <td style={{ textAlign: 'center', color: '#9CA3AF' }}>→</td>
-                            <td style={{ padding: '6px' }}><input value={ncEditNew} onChange={e => setNcEditNew(e.target.value)} style={{ width: '100%', padding: '4px 8px', border: '1px solid #D1D5DB', borderRadius: 4, fontSize: '0.8125rem' }} /></td>
-                            <td style={{ padding: '6px' }}><input value={ncEditMemo} onChange={e => setNcEditMemo(e.target.value)} style={{ width: '100%', padding: '4px 8px', border: '1px solid #D1D5DB', borderRadius: 4, fontSize: '0.8125rem' }} /></td>
+                            <td style={{ padding: '6px' }}><input value={ncEditOld} onChange={e => setNcEditOld(e.target.value)} style={{ width: '100%', padding: '4px 8px', border: '1px solid var(--border-strong)', borderRadius: 4, fontSize: '0.8125rem' }} /></td>
+                            <td style={{ textAlign: 'center', color: 'var(--text-muted)' }}>→</td>
+                            <td style={{ padding: '6px' }}><input value={ncEditNew} onChange={e => setNcEditNew(e.target.value)} style={{ width: '100%', padding: '4px 8px', border: '1px solid var(--border-strong)', borderRadius: 4, fontSize: '0.8125rem' }} /></td>
+                            <td style={{ padding: '6px' }}><input value={ncEditMemo} onChange={e => setNcEditMemo(e.target.value)} style={{ width: '100%', padding: '4px 8px', border: '1px solid var(--border-strong)', borderRadius: 4, fontSize: '0.8125rem' }} /></td>
                             <td style={{ padding: '6px', textAlign: 'center' }}>
-                              <button onClick={() => updateNameChange(nc.id)} style={{ padding: '3px 10px', backgroundColor: '#1E3A5F', color: '#fff', border: 'none', borderRadius: 4, fontSize: '0.75rem', cursor: 'pointer', marginRight: 4 }}>저장</button>
+                              <button onClick={() => updateNameChange(nc.id)} style={{ padding: '3px 10px', backgroundColor: 'var(--blue-600)', color: '#fff', border: 'none', borderRadius: 4, fontSize: '0.75rem', cursor: 'pointer', marginRight: 4 }}>저장</button>
                               <button onClick={() => setNcEditId(null)} style={{ padding: '3px 10px', backgroundColor: '#6B7280', color: '#fff', border: 'none', borderRadius: 4, fontSize: '0.75rem', cursor: 'pointer' }}>취소</button>
                             </td>
                           </>
                         ) : (
                           <>
-                            <td style={{ padding: '8px 6px', color: '#DC2626', fontWeight: 500 }}>{nc.old_keyword}</td>
-                            <td style={{ textAlign: 'center', color: '#9CA3AF' }}>→</td>
-                            <td style={{ padding: '8px 6px', color: '#059669', fontWeight: 500 }}>{nc.new_keyword}</td>
-                            <td style={{ padding: '8px 6px', color: '#6B7280' }}>{nc.memo || '-'}</td>
+                            <td style={{ padding: '8px 6px', color: 'var(--danger)', fontWeight: 500 }}>{nc.old_keyword}</td>
+                            <td style={{ textAlign: 'center', color: 'var(--text-muted)' }}>→</td>
+                            <td style={{ padding: '8px 6px', color: 'var(--success)', fontWeight: 500 }}>{nc.new_keyword}</td>
+                            <td style={{ padding: '8px 6px', color: 'var(--text-muted)' }}>{nc.memo || '-'}</td>
                             <td style={{ padding: '8px 6px', textAlign: 'center' }}>
-                              <button onClick={() => { setNcEditId(nc.id); setNcEditOld(nc.old_keyword); setNcEditNew(nc.new_keyword); setNcEditMemo(nc.memo || ''); }} style={{ padding: '3px 10px', backgroundColor: '#3B82F6', color: '#fff', border: 'none', borderRadius: 4, fontSize: '0.75rem', cursor: 'pointer', marginRight: 4 }}>수정</button>
-                              <button onClick={() => deleteNameChange(nc.id)} style={{ padding: '3px 10px', backgroundColor: '#EF4444', color: '#fff', border: 'none', borderRadius: 4, fontSize: '0.75rem', cursor: 'pointer' }}>삭제</button>
+                              <button onClick={() => { setNcEditId(nc.id); setNcEditOld(nc.old_keyword); setNcEditNew(nc.new_keyword); setNcEditMemo(nc.memo || ''); }} style={{ padding: '3px 10px', backgroundColor: 'var(--blue-400)', color: '#fff', border: 'none', borderRadius: 4, fontSize: '0.75rem', cursor: 'pointer', marginRight: 4 }}>수정</button>
+                              <button onClick={() => deleteNameChange(nc.id)} style={{ padding: '3px 10px', backgroundColor: 'var(--danger)', color: '#fff', border: 'none', borderRadius: 4, fontSize: '0.75rem', cursor: 'pointer' }}>삭제</button>
                             </td>
                           </>
                         )}
@@ -7630,23 +7633,23 @@ export default function IRPPage() {
         return (
           <div style={{ position: 'fixed', inset: 0, zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(0,0,0,0.45)' }}
             onClick={(e) => { if (e.target === e.currentTarget) setLoadMasterTarget(null); }}>
-            <div style={{ backgroundColor: '#fff', borderRadius: 14, padding: 24, width: '100%', maxWidth: 520, maxHeight: '70vh', display: 'flex', flexDirection: 'column', boxShadow: '0 20px 60px rgba(0,0,0,0.2)' }}>
+            <div style={{ backgroundColor: 'var(--bg-card)', borderRadius: 14, padding: 24, width: '100%', maxWidth: 520, maxHeight: '70vh', display: 'flex', flexDirection: 'column', boxShadow: '0 20px 60px rgba(0,0,0,0.2)' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
-                <h3 style={{ margin: 0, fontSize: '1rem', fontWeight: 700, color: '#1A1A2E' }}>상품 마스터에서 불러오기</h3>
-                <button onClick={() => setLoadMasterTarget(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#9CA3AF', padding: 4 }}>
+                <h3 style={{ margin: 0, fontSize: '1rem', fontWeight: 700, color: 'var(--text-primary)' }}>상품 마스터에서 불러오기</h3>
+                <button onClick={() => setLoadMasterTarget(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', padding: 4 }}>
                   <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
                 </button>
               </div>
-              <div style={{ marginBottom: 10, fontSize: '0.75rem', color: '#6B7280' }}>
-                현재 상품명: <strong style={{ color: '#1A1A2E' }}>{loadMasterTarget.productName}</strong>
+              <div style={{ marginBottom: 10, fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+                현재 상품명: <strong style={{ color: 'var(--text-primary)' }}>{loadMasterTarget.productName}</strong>
               </div>
               <input type="text" placeholder="상품명 또는 종목코드 검색..." value={loadMasterSearch}
                 onChange={(e) => setLoadMasterSearch(e.target.value)}
-                style={{ width: '100%', padding: '8px 10px', fontSize: '0.8125rem', border: '1px solid #E1E5EB', borderRadius: 8, outline: 'none', marginBottom: 10, boxSizing: 'border-box' }}
+                style={{ width: '100%', padding: '8px 10px', fontSize: '0.8125rem', border: '1px solid var(--border)', borderRadius: 8, outline: 'none', marginBottom: 10, boxSizing: 'border-box' }}
                 autoFocus />
-              <div style={{ flex: 1, overflowY: 'auto', border: '1px solid #E1E5EB', borderRadius: 8 }}>
+              <div style={{ flex: 1, overflowY: 'auto', border: '1px solid var(--border)', borderRadius: 8 }}>
                 {filtered.length === 0 ? (
-                  <div style={{ padding: 20, textAlign: 'center', color: '#9CA3AF', fontSize: '0.8125rem' }}>검색 결과 없음</div>
+                  <div style={{ padding: 20, textAlign: 'center', color: 'var(--text-muted)', fontSize: '0.8125rem' }}>검색 결과 없음</div>
                 ) : (
                   filtered.map((m) => (
                     <button key={m.id} type="button"
@@ -7674,26 +7677,26 @@ export default function IRPPage() {
                       }}
                       style={{
                         width: '100%', padding: '8px 12px', textAlign: 'left', border: 'none',
-                        borderBottom: '1px solid #F3F4F6', cursor: 'pointer', backgroundColor: 'transparent',
+                        borderBottom: '1px solid var(--border)', cursor: 'pointer', backgroundColor: 'transparent',
                         display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8,
                         transition: 'background-color 0.1s',
                       }}
-                      onMouseEnter={(e) => { (e.currentTarget).style.backgroundColor = '#EEF2F7'; }}
+                      onMouseEnter={(e) => { (e.currentTarget).style.backgroundColor = 'var(--bg-card-2)'; }}
                       onMouseLeave={(e) => { (e.currentTarget).style.backgroundColor = 'transparent'; }}>
                       <div>
-                        <div style={{ fontSize: '0.8125rem', fontWeight: 500, color: '#1A1A2E' }}>{m.product_name}</div>
-                        <div style={{ fontSize: '0.6875rem', color: '#9CA3AF', marginTop: 2 }}>
-                          <span style={{ fontWeight: 600, color: '#1E3A5F', backgroundColor: '#EEF2F7', padding: '1px 6px', borderRadius: 3, marginRight: 4 }}>{m.product_type || '-'}</span>{m.product_code || '-'} | {m.risk_level || '-'} | {m.region || '-'}
+                        <div style={{ fontSize: '0.8125rem', fontWeight: 500, color: 'var(--text-primary)' }}>{m.product_name}</div>
+                        <div style={{ fontSize: '0.6875rem', color: 'var(--text-muted)', marginTop: 2 }}>
+                          <span style={{ fontWeight: 600, color: 'var(--blue-400)', backgroundColor: 'var(--bg-card-2)', padding: '1px 6px', borderRadius: 3, marginRight: 4 }}>{m.product_type || '-'}</span>{m.product_code || '-'} | {m.risk_level || '-'} | {m.region || '-'}
                         </div>
                       </div>
                       {m.score >= 80 && (
-                        <span style={{ fontSize: '0.625rem', padding: '2px 6px', backgroundColor: '#DCFCE7', color: '#16A34A', borderRadius: 4, fontWeight: 600, flexShrink: 0 }}>유사</span>
+                        <span style={{ fontSize: '0.625rem', padding: '2px 6px', backgroundColor: 'var(--success-bg)', color: 'var(--success)', borderRadius: 4, fontWeight: 600, flexShrink: 0 }}>유사</span>
                       )}
                     </button>
                   ))
                 )}
               </div>
-              <div style={{ marginTop: 8, fontSize: '0.6875rem', color: '#9CA3AF', textAlign: 'right' }}>
+              <div style={{ marginTop: 8, fontSize: '0.6875rem', color: 'var(--text-muted)', textAlign: 'right' }}>
                 {filtered.length}개 상품
               </div>
             </div>

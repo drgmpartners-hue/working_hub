@@ -28,7 +28,7 @@ function fmtTooltip(v: number): string {
 }
 
 const COLORS = {
-  lifetime: { balance: '#1E3A5F', pension: '#F59E0B', fill: 'rgba(30,58,95,0.15)' },
+  lifetime: { balance: '#3B82F6', pension: '#F59E0B', fill: 'rgba(30,58,95,0.15)' },
   fixed: { balance: '#3B82F6', pension: '#3B82F6', fill: 'rgba(59,130,246,0.15)' },
   infinite: { balance: '#16A34A', pension: '#D97706', fill: 'rgba(22,163,74,0.12)' },
 };
@@ -41,8 +41,8 @@ function CustomTooltip({ active, payload, label, isComposition }: any) {
     : { balance: '잔액', pension: '연금(연)' };
   const total = isComposition ? payload.reduce((s: number, p: { value: number }) => s + p.value, 0) : 0;
   return (
-    <div style={{ backgroundColor: '#fff', border: '1px solid #E5E7EB', borderRadius: '8px', padding: '10px 14px', fontSize: '12px', boxShadow: '0 2px 8px rgba(0,0,0,0.1)' }}>
-      <div style={{ fontWeight: 600, color: '#374151', marginBottom: '6px' }}>{label}세</div>
+    <div style={{ backgroundColor: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: '8px', padding: '10px 14px', fontSize: '12px', boxShadow: '0 2px 8px rgba(0,0,0,0.1)' }}>
+      <div style={{ fontWeight: 600, color: 'var(--text-secondary)', marginBottom: '6px' }}>{label}세</div>
       {payload.map((p: { name: string; value: number; color: string }, i: number) => (
         <div key={i} style={{ display: 'flex', justifyContent: 'space-between', gap: '16px', marginBottom: '2px' }}>
           <span style={{ color: p.color }}>{nameMap[p.name] ?? p.name}</span>
@@ -50,8 +50,8 @@ function CustomTooltip({ active, payload, label, isComposition }: any) {
         </div>
       ))}
       {isComposition && total > 0 && (
-        <div style={{ display: 'flex', justifyContent: 'space-between', gap: '16px', marginTop: '4px', paddingTop: '4px', borderTop: '1px solid #E5E7EB', fontWeight: 700 }}>
-          <span style={{ color: '#374151' }}>합계</span>
+        <div style={{ display: 'flex', justifyContent: 'space-between', gap: '16px', marginTop: '4px', paddingTop: '4px', borderTop: '1px solid var(--border)', fontWeight: 700 }}>
+          <span style={{ color: 'var(--text-secondary)' }}>합계</span>
           <span style={{ fontVariantNumeric: 'tabular-nums' }}>{fmtTooltip(total)}</span>
         </div>
       )}
@@ -60,7 +60,7 @@ function CustomTooltip({ active, payload, label, isComposition }: any) {
 }
 
 export default function PensionOptionChart({ data, type, retireAge, showBalance, isComposition }: Props) {
-  if (!data.length) return <div style={{ padding: '40px', textAlign: 'center', color: '#9CA3AF', fontSize: '13px' }}>데이터 없음</div>;
+  if (!data.length) return <div style={{ padding: '40px', textAlign: 'center', color: 'var(--text-muted)', fontSize: '13px' }}>데이터 없음</div>;
 
   const c = COLORS[type];
   // Y축: composition이면 합계 기준, showBalance면 잔액+연금 중 최대
@@ -87,7 +87,7 @@ export default function PensionOptionChart({ data, type, retireAge, showBalance,
     <div style={{ width: '100%', height: 280 }}>
       <ResponsiveContainer>
         <ComposedChart data={data} margin={{ top: 10, right: 20, left: 10, bottom: 5 }}>
-          <CartesianGrid strokeDasharray="3 3" stroke="#F3F4F6" />
+          <CartesianGrid strokeDasharray="3 3" stroke="#243049" />
           <XAxis dataKey="age" fontSize={11} tick={{ fill: '#9CA3AF' }} tickFormatter={(v) => `${v}세`}
             interval={type === 'lifetime' ? 9 : type === 'infinite' ? 4 : 'preserveStartEnd'} />
           <YAxis fontSize={10} tick={{ fill: '#9CA3AF' }} tickFormatter={fmtAxis} domain={[0, yMax]} />
@@ -95,7 +95,7 @@ export default function PensionOptionChart({ data, type, retireAge, showBalance,
           {isComposition ? (<>
             {/* 스택 바: 아래=이자(감소), 위=원금(증가) → 총합 일정 */}
             <Bar dataKey="pension" name="pension" stackId="comp" fill="#F59E0B" opacity={0.75} barSize={8} />
-            <Bar dataKey="balance" name="balance" stackId="comp" fill="#1E3A5F" opacity={0.85} barSize={8} />
+            <Bar dataKey="balance" name="balance" stackId="comp" fill="#3B82F6" opacity={0.85} barSize={8} />
           </>) : (<>
             {showBalance && <Area type="monotone" dataKey="balance" name="balance" fill={c.fill} stroke={c.balance} strokeWidth={2} />}
             {type === 'infinite'

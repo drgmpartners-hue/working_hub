@@ -74,11 +74,11 @@ const inputStyle: React.CSSProperties = {
   width: '100%',
   padding: '5px 8px',
   fontSize: '0.8125rem',
-  border: '1px solid #E1E5EB',
+  border: '1px solid var(--border)',
   borderRadius: 6,
   outline: 'none',
-  color: '#1A1A2E',
-  backgroundColor: '#FFFFFF',
+  color: 'var(--text-primary)',
+  backgroundColor: 'var(--bg-card)',
   boxSizing: 'border-box',
 };
 
@@ -94,14 +94,14 @@ const thStyle: React.CSSProperties = {
   color: '#fff',
   textAlign: 'left' as const,
   whiteSpace: 'nowrap' as const,
-  backgroundColor: '#1E3A5F',
+  backgroundColor: 'var(--blue-600)',
 };
 
 const tdStyle: React.CSSProperties = {
   padding: '8px 12px',
   fontSize: '0.8125rem',
-  color: '#1A1A2E',
-  borderBottom: '1px solid #E1E5EB',
+  color: 'var(--text-primary)',
+  borderBottom: '1px solid var(--border)',
   verticalAlign: 'middle',
 };
 
@@ -190,7 +190,7 @@ function FieldOptionPopup({
     >
       <div
         style={{
-          backgroundColor: '#fff',
+          backgroundColor: 'var(--bg-card)',
           borderRadius: 12,
           width: '100%',
           maxWidth: 420,
@@ -202,9 +202,9 @@ function FieldOptionPopup({
         }}
       >
         {/* Header */}
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '14px 20px', borderBottom: '1px solid #E1E5EB' }}>
-          <h3 style={{ margin: 0, fontSize: '0.9375rem', fontWeight: 700, color: '#1A1A2E' }}>{title} 관리</h3>
-          <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#9CA3AF', padding: 4, borderRadius: 4 }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '14px 20px', borderBottom: '1px solid var(--border)' }}>
+          <h3 style={{ margin: 0, fontSize: '0.9375rem', fontWeight: 700, color: 'var(--text-primary)' }}>{title} 관리</h3>
+          <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', padding: 4, borderRadius: 4 }}>
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" /></svg>
           </button>
         </div>
@@ -212,12 +212,12 @@ function FieldOptionPopup({
         {/* List */}
         <div style={{ flex: 1, overflowY: 'auto', padding: '12px 20px' }}>
           {options.length === 0 && (
-            <div style={{ textAlign: 'center', color: '#9CA3AF', fontSize: '0.8125rem', padding: '20px 0' }}>
+            <div style={{ textAlign: 'center', color: 'var(--text-muted)', fontSize: '0.8125rem', padding: '20px 0' }}>
               등록된 항목이 없습니다.
             </div>
           )}
           {options.map((opt) => (
-            <div key={opt.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 0', borderBottom: '1px solid #F3F4F6' }}>
+            <div key={opt.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 0', borderBottom: '1px solid var(--border)' }}>
               {editId === opt.id ? (
                 <>
                   <input
@@ -234,24 +234,24 @@ function FieldOptionPopup({
                     autoFocus
                   />
                   <button onClick={() => handleUpdate(opt.id)} disabled={saving}
-                    style={{ padding: '3px 8px', fontSize: '0.6875rem', fontWeight: 700, color: '#fff', backgroundColor: '#1E3A5F', border: 'none', borderRadius: 4, cursor: 'pointer', whiteSpace: 'nowrap' }}>
+                    style={{ padding: '3px 8px', fontSize: '0.6875rem', fontWeight: 700, color: '#fff', backgroundColor: 'var(--blue-600)', border: 'none', borderRadius: 4, cursor: 'pointer', whiteSpace: 'nowrap' }}>
                     저장
                   </button>
                   <button onClick={() => setEditId(null)}
-                    style={{ padding: '3px 8px', fontSize: '0.6875rem', fontWeight: 600, color: '#374151', backgroundColor: '#F3F4F6', border: '1px solid #E1E5EB', borderRadius: 4, cursor: 'pointer', whiteSpace: 'nowrap' }}>
+                    style={{ padding: '3px 8px', fontSize: '0.6875rem', fontWeight: 600, color: 'var(--text-secondary)', backgroundColor: 'var(--bg-surface)', border: '1px solid var(--border)', borderRadius: 4, cursor: 'pointer', whiteSpace: 'nowrap' }}>
                     취소
                   </button>
                 </>
               ) : (
                 <>
-                  <span style={{ flex: '0 0 80px', fontSize: '0.75rem', color: '#9CA3AF', fontFamily: 'monospace' }}>{opt.value}</span>
-                  <span style={{ flex: 1, fontSize: '0.8125rem', color: '#1A1A2E', fontWeight: 600 }}>{opt.label}</span>
+                  <span style={{ flex: '0 0 80px', fontSize: '0.75rem', color: 'var(--text-muted)', fontFamily: 'monospace' }}>{opt.value}</span>
+                  <span style={{ flex: 1, fontSize: '0.8125rem', color: 'var(--text-primary)', fontWeight: 600 }}>{opt.label}</span>
                   <button onClick={() => { setEditId(opt.id); setEditValue(opt.value); setEditLabel(opt.label); }}
-                    style={{ padding: '2px 6px', fontSize: '0.6875rem', fontWeight: 600, color: '#1E3A5F', backgroundColor: '#EEF2F7', border: '1px solid #CBD5E1', borderRadius: 4, cursor: 'pointer' }}>
+                    style={{ padding: '2px 6px', fontSize: '0.6875rem', fontWeight: 600, color: 'var(--blue-400)', backgroundColor: 'var(--bg-card-2)', border: '1px solid var(--border-strong)', borderRadius: 4, cursor: 'pointer' }}>
                     수정
                   </button>
                   <button onClick={() => handleDelete(opt.id)}
-                    style={{ padding: '2px 6px', fontSize: '0.6875rem', fontWeight: 600, color: '#EF4444', backgroundColor: '#FEF2F2', border: '1px solid #FECACA', borderRadius: 4, cursor: 'pointer' }}>
+                    style={{ padding: '2px 6px', fontSize: '0.6875rem', fontWeight: 600, color: 'var(--danger)', backgroundColor: 'var(--danger-bg)', border: '1px solid rgba(239,68,68,0.35)', borderRadius: 4, cursor: 'pointer' }}>
                     삭제
                   </button>
                 </>
@@ -261,7 +261,7 @@ function FieldOptionPopup({
         </div>
 
         {/* Add new */}
-        <div style={{ padding: '12px 20px', borderTop: '1px solid #E1E5EB', backgroundColor: '#FAFBFC' }}>
+        <div style={{ padding: '12px 20px', borderTop: '1px solid var(--border)', backgroundColor: 'var(--bg-surface)' }}>
           <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
             <input
               value={newValue}
@@ -725,7 +725,7 @@ export function ClientManagementModal({ isOpen, onClose, onClientAdded }: Client
     >
       <div
         style={{
-          backgroundColor: '#fff',
+          backgroundColor: 'var(--bg-card)',
           borderRadius: 14,
           width: '100%',
           maxWidth: 920,
@@ -743,11 +743,11 @@ export function ClientManagementModal({ isOpen, onClose, onClientAdded }: Client
             alignItems: 'center',
             justifyContent: 'space-between',
             padding: '18px 24px',
-            borderBottom: '1px solid #E1E5EB',
+            borderBottom: '1px solid var(--border)',
             flexShrink: 0,
           }}
         >
-          <h2 style={{ margin: 0, fontSize: '1.0625rem', fontWeight: 800, color: '#1A1A2E' }}>
+          <h2 style={{ margin: 0, fontSize: '1.0625rem', fontWeight: 800, color: 'var(--text-primary)' }}>
             계좌 정보 관리
           </h2>
           <button
@@ -756,7 +756,7 @@ export function ClientManagementModal({ isOpen, onClose, onClientAdded }: Client
               background: 'none',
               border: 'none',
               cursor: 'pointer',
-              color: '#9CA3AF',
+              color: 'var(--text-muted)',
               padding: 6,
               display: 'flex',
               alignItems: 'center',
@@ -779,7 +779,7 @@ export function ClientManagementModal({ isOpen, onClose, onClientAdded }: Client
             alignItems: 'center',
             gap: 10,
             padding: '14px 24px',
-            borderBottom: '1px solid #E1E5EB',
+            borderBottom: '1px solid var(--border)',
             flexShrink: 0,
             flexWrap: 'wrap',
           }}
@@ -826,8 +826,8 @@ export function ClientManagementModal({ isOpen, onClose, onClientAdded }: Client
           <button
             onClick={resetFilters}
             style={{
-              padding: '5px 12px', fontSize: '0.8125rem', fontWeight: 600, color: '#6B7280',
-              backgroundColor: '#F3F4F6', border: '1px solid #E1E5EB', borderRadius: 7, cursor: 'pointer', whiteSpace: 'nowrap',
+              padding: '5px 12px', fontSize: '0.8125rem', fontWeight: 600, color: 'var(--text-muted)',
+              backgroundColor: 'var(--bg-surface)', border: '1px solid var(--border)', borderRadius: 7, cursor: 'pointer', whiteSpace: 'nowrap',
             }}
           >
             초기화
@@ -837,7 +837,7 @@ export function ClientManagementModal({ isOpen, onClose, onClientAdded }: Client
         {/* Table */}
         <div style={{ flex: 1, overflowY: 'auto', padding: '0 24px' }}>
           {loading ? (
-            <div style={{ textAlign: 'center', color: '#9CA3AF', fontSize: '0.875rem', padding: '40px 0' }}>
+            <div style={{ textAlign: 'center', color: 'var(--text-muted)', fontSize: '0.875rem', padding: '40px 0' }}>
               불러오는 중...
             </div>
           ) : (
@@ -874,7 +874,7 @@ export function ClientManagementModal({ isOpen, onClose, onClientAdded }: Client
               <tbody>
                 {filteredRows.length === 0 && !addingNew && (
                   <tr>
-                    <td colSpan={7} style={{ ...tdStyle, textAlign: 'center', color: '#9CA3AF', padding: '32px 0' }}>
+                    <td colSpan={7} style={{ ...tdStyle, textAlign: 'center', color: 'var(--text-muted)', padding: '32px 0' }}>
                       {searchKeyword || filterAccountType || filterSecurities
                         ? '검색 결과가 없습니다.'
                         : '등록된 고객이 없습니다. 신규 등록 버튼을 눌러 추가하세요.'}
@@ -890,12 +890,12 @@ export function ClientManagementModal({ isOpen, onClose, onClientAdded }: Client
                     <React.Fragment key={rowKey}>
                     <tr style={{ backgroundColor: isEditing ? '#F0F4FF' : idx % 2 === 0 ? '#fff' : '#FAFBFC' }}>
                       {/* No. */}
-                      <td style={{ ...tdStyle, textAlign: 'center', color: '#9CA3AF', fontSize: '0.75rem' }}>
+                      <td style={{ ...tdStyle, textAlign: 'center', color: 'var(--text-muted)', fontSize: '0.75rem' }}>
                         {idx + 1}
                       </td>
 
                       {/* 고객명 */}
-                      <td style={{ ...tdStyle, fontWeight: row.isFirstForClient ? 600 : 400, color: row.isFirstForClient ? '#1A1A2E' : '#6B7280' }}>
+                      <td style={{ ...tdStyle, fontWeight: row.isFirstForClient ? 600 : 400, color: row.isFirstForClient ? 'var(--text-primary)' : '#6B7280' }}>
                         {isEditing ? (
                           <input
                             type="text"
@@ -905,7 +905,7 @@ export function ClientManagementModal({ isOpen, onClose, onClientAdded }: Client
                             autoFocus
                           />
                         ) : (
-                          row.isFirstForClient ? row.clientName : <span style={{ paddingLeft: 12, color: '#9CA3AF' }}>&#8627;</span>
+                          row.isFirstForClient ? row.clientName : <span style={{ paddingLeft: 12, color: 'var(--text-muted)' }}>&#8627;</span>
                         )}
                       </td>
 
@@ -930,7 +930,7 @@ export function ClientManagementModal({ isOpen, onClose, onClientAdded }: Client
                             ))}
                           </select>
                         ) : (
-                          <span style={{ color: row.securitiesCompany ? '#1A1A2E' : '#D1D5DB' }}>
+                          <span style={{ color: row.securitiesCompany ? 'var(--text-primary)' : '#D1D5DB' }}>
                             {row.securitiesCompany || '-'}
                           </span>
                         )}
@@ -951,8 +951,8 @@ export function ClientManagementModal({ isOpen, onClose, onClientAdded }: Client
                           </select>
                         ) : (
                           <span style={{
-                            display: 'inline-block', fontSize: '0.75rem', fontWeight: 600, color: '#1E3A5F',
-                            backgroundColor: '#EEF2F7', padding: '2px 8px', borderRadius: 5,
+                            display: 'inline-block', fontSize: '0.75rem', fontWeight: 600, color: 'var(--blue-400)',
+                            backgroundColor: 'var(--bg-card-2)', padding: '2px 8px', borderRadius: 5,
                           }}>
                             {row.accountType ? getAccountTypeLabel(row.accountType) : '-'}
                           </span>
@@ -1005,7 +1005,7 @@ export function ClientManagementModal({ isOpen, onClose, onClientAdded }: Client
                               {saving ? '...' : '저장'}
                             </button>
                             <button onClick={cancelEdit}
-                              style={{ padding: '3px 8px', fontSize: '0.6875rem', fontWeight: 600, color: '#374151', backgroundColor: '#F3F4F6', border: '1px solid #E1E5EB', borderRadius: 5, cursor: 'pointer' }}>
+                              style={{ padding: '3px 8px', fontSize: '0.6875rem', fontWeight: 600, color: 'var(--text-secondary)', backgroundColor: 'var(--bg-surface)', border: '1px solid var(--border)', borderRadius: 5, cursor: 'pointer' }}>
                               취소
                             </button>
                           </div>
@@ -1013,16 +1013,16 @@ export function ClientManagementModal({ isOpen, onClose, onClientAdded }: Client
                           <div style={{ display: 'flex', gap: 3, justifyContent: 'center', whiteSpace: 'nowrap' }}>
                             {row.isFirstForClient && (
                               <button onClick={() => startAddAccount(row.clientId)} title="계좌 추가"
-                                style={{ padding: '3px 6px', fontSize: '0.6875rem', fontWeight: 600, color: '#059669', backgroundColor: '#F0FDF4', border: '1px solid #BBF7D0', borderRadius: 5, cursor: 'pointer' }}>
+                                style={{ padding: '3px 6px', fontSize: '0.6875rem', fontWeight: 600, color: 'var(--success)', backgroundColor: 'var(--success-bg)', border: '1px solid rgba(16,185,129,0.3)', borderRadius: 5, cursor: 'pointer' }}>
                                 +계좌
                               </button>
                             )}
                             <button onClick={() => startEdit(row)} title="수정"
-                              style={{ padding: '3px 6px', fontSize: '0.6875rem', fontWeight: 600, color: '#1E3A5F', backgroundColor: '#EEF2F7', border: '1px solid #CBD5E1', borderRadius: 5, cursor: 'pointer' }}>
+                              style={{ padding: '3px 6px', fontSize: '0.6875rem', fontWeight: 600, color: 'var(--blue-400)', backgroundColor: 'var(--bg-card-2)', border: '1px solid var(--border-strong)', borderRadius: 5, cursor: 'pointer' }}>
                               수정
                             </button>
                             <button onClick={() => handleDeleteAccount(row)} title="삭제"
-                              style={{ padding: '3px 6px', fontSize: '0.6875rem', fontWeight: 600, color: '#EF4444', backgroundColor: '#FEF2F2', border: '1px solid #FECACA', borderRadius: 5, cursor: 'pointer' }}>
+                              style={{ padding: '3px 6px', fontSize: '0.6875rem', fontWeight: 600, color: 'var(--danger)', backgroundColor: 'var(--danger-bg)', border: '1px solid rgba(239,68,68,0.35)', borderRadius: 5, cursor: 'pointer' }}>
                               삭제
                             </button>
                           </div>
@@ -1032,9 +1032,9 @@ export function ClientManagementModal({ isOpen, onClose, onClientAdded }: Client
 
                     {/* Inline add-account row */}
                     {addAccountClientId === row.clientId && row.isFirstForClient && (
-                      <tr style={{ backgroundColor: '#F0FFF4' }}>
-                        <td style={{ ...tdStyle, textAlign: 'center', color: '#9CA3AF', fontSize: '0.75rem' }}>+</td>
-                        <td style={{ ...tdStyle, color: '#059669', fontSize: '0.75rem', fontWeight: 600 }}>
+                      <tr style={{ backgroundColor: 'var(--success-bg)' }}>
+                        <td style={{ ...tdStyle, textAlign: 'center', color: 'var(--text-muted)', fontSize: '0.75rem' }}>+</td>
+                        <td style={{ ...tdStyle, color: 'var(--success)', fontSize: '0.75rem', fontWeight: 600 }}>
                           &#8627; 계좌 추가
                         </td>
                         <td style={tdStyle}>
@@ -1089,7 +1089,7 @@ export function ClientManagementModal({ isOpen, onClose, onClientAdded }: Client
                             </button>
                             <button
                               onClick={cancelAddAccount}
-                              style={{ padding: '4px 10px', fontSize: '0.75rem', fontWeight: 600, color: '#374151', backgroundColor: '#F3F4F6', border: '1px solid #E1E5EB', borderRadius: 6, cursor: 'pointer' }}
+                              style={{ padding: '4px 10px', fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-secondary)', backgroundColor: 'var(--bg-surface)', border: '1px solid var(--border)', borderRadius: 6, cursor: 'pointer' }}
                             >
                               취소
                             </button>
@@ -1103,8 +1103,8 @@ export function ClientManagementModal({ isOpen, onClose, onClientAdded }: Client
 
                 {/* New row (inline) */}
                 {addingNew && (
-                  <tr style={{ backgroundColor: '#F0FFF4' }}>
-                    <td style={{ ...tdStyle, textAlign: 'center', color: '#9CA3AF', fontSize: '0.75rem' }}>*</td>
+                  <tr style={{ backgroundColor: 'var(--success-bg)' }}>
+                    <td style={{ ...tdStyle, textAlign: 'center', color: 'var(--text-muted)', fontSize: '0.75rem' }}>*</td>
                     <td style={tdStyle}>
                       <input type="text" placeholder="고객명 입력" value={newRow.clientName}
                         onChange={(e) => setNewRow((prev) => ({ ...prev, clientName: e.target.value }))}
@@ -1161,8 +1161,8 @@ export function ClientManagementModal({ isOpen, onClose, onClientAdded }: Client
                             setNewRow({ clientName: '', accountType: 'irp', accountNumber: '', securitiesCompany: '', representative: '' });
                           }}
                           style={{
-                            padding: '4px 10px', fontSize: '0.75rem', fontWeight: 600, color: '#374151',
-                            backgroundColor: '#F3F4F6', border: '1px solid #E1E5EB', borderRadius: 6, cursor: 'pointer',
+                            padding: '4px 10px', fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-secondary)',
+                            backgroundColor: 'var(--bg-surface)', border: '1px solid var(--border)', borderRadius: 6, cursor: 'pointer',
                           }}>
                           취소
                         </button>
@@ -1182,12 +1182,12 @@ export function ClientManagementModal({ isOpen, onClose, onClientAdded }: Client
             alignItems: 'center',
             justifyContent: 'space-between',
             padding: '14px 24px',
-            borderTop: '1px solid #E1E5EB',
+            borderTop: '1px solid var(--border)',
             flexShrink: 0,
-            backgroundColor: '#FAFBFC',
+            backgroundColor: 'var(--bg-surface)',
           }}
         >
-          <span style={{ fontSize: '0.8125rem', color: '#9CA3AF' }}>
+          <span style={{ fontSize: '0.8125rem', color: 'var(--text-muted)' }}>
             총 {filteredRows.length}개 행 표시 중
           </span>
           <div style={{ display: 'flex', gap: 8 }}>
@@ -1196,7 +1196,7 @@ export function ClientManagementModal({ isOpen, onClose, onClientAdded }: Client
               style={{
                 display: 'inline-flex', alignItems: 'center', gap: 5,
                 padding: '8px 16px', fontSize: '0.875rem', fontWeight: 700, color: '#fff',
-                backgroundColor: '#1E3A5F', border: 'none', borderRadius: 8, cursor: 'pointer',
+                backgroundColor: 'var(--blue-600)', border: 'none', borderRadius: 8, cursor: 'pointer',
               }}
             >
               <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
@@ -1207,8 +1207,8 @@ export function ClientManagementModal({ isOpen, onClose, onClientAdded }: Client
             </button>
             <button onClick={onClose}
               style={{
-                padding: '8px 18px', fontSize: '0.875rem', fontWeight: 600, color: '#374151',
-                backgroundColor: '#F3F4F6', border: '1px solid #E1E5EB', borderRadius: 8, cursor: 'pointer',
+                padding: '8px 18px', fontSize: '0.875rem', fontWeight: 600, color: 'var(--text-secondary)',
+                backgroundColor: 'var(--bg-surface)', border: '1px solid var(--border)', borderRadius: 8, cursor: 'pointer',
               }}>
               닫기
             </button>

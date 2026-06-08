@@ -17,7 +17,7 @@ const labelStyle: React.CSSProperties = {
   display: 'block',
   fontSize: '0.75rem',
   fontWeight: 600,
-  color: '#6B7280',
+  color: 'var(--text-muted)',
   marginBottom: 4,
   textTransform: 'uppercase',
   letterSpacing: '0.04em',
@@ -27,11 +27,11 @@ const inputStyle: React.CSSProperties = {
   width: '100%',
   padding: '8px 10px',
   fontSize: '0.875rem',
-  border: '1px solid #E1E5EB',
+  border: '1px solid var(--border)',
   borderRadius: 8,
   outline: 'none',
-  color: '#1A1A2E',
-  backgroundColor: '#FFFFFF',
+  color: 'var(--text-primary)',
+  backgroundColor: 'var(--bg-card)',
   boxSizing: 'border-box',
 };
 
@@ -262,7 +262,7 @@ export default function ProductMasterPage() {
   /* ---------------------------------------------------------------- */
 
   return (
-    <div style={{ padding: '24px 24px 40px', minHeight: '100vh', backgroundColor: '#F5F7FA' }}>
+    <div style={{ padding: '24px 24px 40px', minHeight: '100vh', backgroundColor: 'var(--bg-surface)' }}>
       {/* Back to Dashboard */}
       <button
         onClick={() => router.push('/dashboard')}
@@ -274,11 +274,11 @@ export default function ProductMasterPage() {
           background: 'none',
           border: 'none',
           cursor: 'pointer',
-          color: '#6B7280',
+          color: 'var(--text-muted)',
           fontSize: '0.8125rem',
           padding: 0,
         }}
-        onMouseEnter={(e) => ((e.currentTarget as HTMLButtonElement).style.color = '#1A1A2E')}
+        onMouseEnter={(e) => ((e.currentTarget as HTMLButtonElement).style.color = 'var(--text-primary)')}
         onMouseLeave={(e) => ((e.currentTarget as HTMLButtonElement).style.color = '#6B7280')}
       >
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -304,13 +304,13 @@ export default function ProductMasterPage() {
               margin: 0,
               fontSize: '1.5rem',
               fontWeight: 700,
-              color: '#1E3A5F',
+              color: 'var(--blue-400)',
               letterSpacing: '-0.02em',
             }}
           >
             증권사 상품 관리
           </h1>
-          <p style={{ margin: '4px 0 0', fontSize: '0.875rem', color: '#6B7280' }}>
+          <p style={{ margin: '4px 0 0', fontSize: '0.875rem', color: 'var(--text-muted)' }}>
             상품명과 위험도 · 지역을 매핑하는 마스터 데이터를 관리합니다.
           </p>
         </div>
@@ -348,7 +348,7 @@ export default function ProductMasterPage() {
             style={{
               ...inputStyle,
               paddingLeft: 34,
-              border: '1px solid #E1E5EB',
+              border: '1px solid var(--border)',
             }}
           />
           {searchQuery && (
@@ -364,7 +364,7 @@ export default function ProductMasterPage() {
                 border: 'none',
                 background: 'none',
                 cursor: 'pointer',
-                color: '#9CA3AF',
+                color: 'var(--text-muted)',
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
@@ -381,30 +381,30 @@ export default function ProductMasterPage() {
 
         {/* Filters */}
         <select value={filterRisk} onChange={(e) => setFilterRisk(e.target.value)}
-          style={{ padding: '7px 10px', fontSize: '0.8125rem', border: '1px solid #E1E5EB', borderRadius: 8, outline: 'none', color: filterRisk ? '#1A1A2E' : '#9CA3AF', cursor: 'pointer', backgroundColor: filterRisk ? '#EFF6FF' : '#fff' }}>
+          style={{ padding: '7px 10px', fontSize: '0.8125rem', border: '1px solid var(--border)', borderRadius: 8, outline: 'none', color: filterRisk ? 'var(--text-primary)' : '#9CA3AF', cursor: 'pointer', backgroundColor: filterRisk ? '#EFF6FF' : '#fff' }}>
           <option value="">위험도</option>
           {RISK_LEVELS.map((r) => <option key={r} value={r}>{r}</option>)}
         </select>
         <select value={filterRegion} onChange={(e) => setFilterRegion(e.target.value)}
-          style={{ padding: '7px 10px', fontSize: '0.8125rem', border: '1px solid #E1E5EB', borderRadius: 8, outline: 'none', color: filterRegion ? '#1A1A2E' : '#9CA3AF', cursor: 'pointer', backgroundColor: filterRegion ? '#EFF6FF' : '#fff' }}>
+          style={{ padding: '7px 10px', fontSize: '0.8125rem', border: '1px solid var(--border)', borderRadius: 8, outline: 'none', color: filterRegion ? 'var(--text-primary)' : '#9CA3AF', cursor: 'pointer', backgroundColor: filterRegion ? '#EFF6FF' : '#fff' }}>
           <option value="">지역</option>
           {REGIONS.map((r) => <option key={r} value={r}>{r}</option>)}
         </select>
         <select value={filterType} onChange={(e) => setFilterType(e.target.value)}
-          style={{ padding: '7px 10px', fontSize: '0.8125rem', border: '1px solid #E1E5EB', borderRadius: 8, outline: 'none', color: filterType ? '#1A1A2E' : '#9CA3AF', cursor: 'pointer', backgroundColor: filterType ? '#EFF6FF' : '#fff' }}>
+          style={{ padding: '7px 10px', fontSize: '0.8125rem', border: '1px solid var(--border)', borderRadius: 8, outline: 'none', color: filterType ? 'var(--text-primary)' : '#9CA3AF', cursor: 'pointer', backgroundColor: filterType ? '#EFF6FF' : '#fff' }}>
           <option value="">상품유형</option>
           {PRODUCT_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}
         </select>
         {hasFilter && (
           <button onClick={resetFilters}
-            style={{ padding: '7px 14px', fontSize: '0.8125rem', fontWeight: 600, color: '#EF4444', backgroundColor: '#FEF2F2', border: '1px solid #FECACA', borderRadius: 8, cursor: 'pointer' }}>
+            style={{ padding: '7px 14px', fontSize: '0.8125rem', fontWeight: 600, color: 'var(--danger)', backgroundColor: 'var(--danger-bg)', border: '1px solid rgba(239,68,68,0.35)', borderRadius: 8, cursor: 'pointer' }}>
             필터해제
           </button>
         )}
 
         {/* Count badge */}
         {!loading && (
-          <span style={{ fontSize: '0.8125rem', color: '#6B7280', backgroundColor: '#EEF2F7', padding: '4px 10px', borderRadius: 6, fontWeight: 500 }}>
+          <span style={{ fontSize: '0.8125rem', color: 'var(--text-muted)', backgroundColor: 'var(--bg-card-2)', padding: '4px 10px', borderRadius: 6, fontWeight: 500 }}>
             {hasFilter ? `${filteredItems.length}/${items.length}개` : `총 ${items.length}개`}
           </span>
         )}
@@ -426,7 +426,7 @@ export default function ProductMasterPage() {
             style={{
               padding: '60px 24px',
               textAlign: 'center',
-              color: '#9CA3AF',
+              color: 'var(--text-muted)',
               fontSize: '0.9375rem',
             }}
           >
@@ -434,8 +434,8 @@ export default function ProductMasterPage() {
               style={{
                 width: 28,
                 height: 28,
-                border: '3px solid #E1E5EB',
-                borderTopColor: '#1E3A5F',
+                border: '3px solid var(--border)',
+                borderTopColor: 'var(--blue-500)',
                 borderRadius: '50%',
                 animation: 'spin 0.7s linear infinite',
                 margin: '0 auto 12px',
@@ -448,7 +448,7 @@ export default function ProductMasterPage() {
             style={{
               padding: '40px 24px',
               textAlign: 'center',
-              color: '#EF4444',
+              color: 'var(--danger)',
               fontSize: '0.9375rem',
             }}
           >
@@ -482,15 +482,15 @@ export default function ProductMasterPage() {
           {/* 상품명 (with stock search autocomplete) */}
           <div style={{ position: 'relative' }}>
             <label style={labelStyle}>
-              상품명 <span style={{ color: '#EF4444' }}>*</span>
-              <span style={{ fontWeight: 400, textTransform: 'none', letterSpacing: 0, marginLeft: 8, color: '#9CA3AF' }}>
+              상품명 <span style={{ color: 'var(--danger)' }}>*</span>
+              <span style={{ fontWeight: 400, textTransform: 'none', letterSpacing: 0, marginLeft: 8, color: 'var(--text-muted)' }}>
                 2글자 이상 입력 시 ETF 자동 검색 |{' '}
                 <a
                   href="https://www.nhsec.com/index.jsp"
                   target="_blank"
                   rel="noopener noreferrer"
                   title="NH투자증권 > 금융상품 > 펀드 > 펀드검색"
-                  style={{ color: '#2563EB', textDecoration: 'underline', fontWeight: 500 }}
+                  style={{ color: 'var(--blue-500)', textDecoration: 'underline', fontWeight: 500 }}
                 >
                   펀드 검색(NH투자증권)
                 </a>
@@ -505,7 +505,7 @@ export default function ProductMasterPage() {
               autoFocus
             />
             {stockSearching && (
-              <div style={{ position: 'absolute', right: 10, top: 28, color: '#9CA3AF', fontSize: '0.75rem' }}>검색 중...</div>
+              <div style={{ position: 'absolute', right: 10, top: 28, color: 'var(--text-muted)', fontSize: '0.75rem' }}>검색 중...</div>
             )}
             {stockResults.length > 0 && (
               <div
@@ -515,8 +515,8 @@ export default function ProductMasterPage() {
                   left: 0,
                   right: 0,
                   zIndex: 100,
-                  backgroundColor: '#fff',
-                  border: '1px solid #E1E5EB',
+                  backgroundColor: 'var(--bg-card)',
+                  border: '1px solid var(--border)',
                   borderRadius: 8,
                   boxShadow: '0 8px 24px rgba(0,0,0,0.12)',
                   maxHeight: 260,
@@ -539,25 +539,25 @@ export default function ProductMasterPage() {
                       background: 'none',
                       cursor: 'pointer',
                       textAlign: 'left',
-                      borderBottom: '1px solid #F3F4F6',
+                      borderBottom: '1px solid var(--border)',
                       fontSize: '0.8125rem',
                     }}
                     onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = '#F5F7FA'; }}
                     onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = 'transparent'; }}
                   >
                     <div>
-                      <div style={{ fontWeight: 600, color: '#1A1A2E' }}>{item.name}</div>
-                      <div style={{ fontSize: '0.75rem', color: '#6B7280' }}>
+                      <div style={{ fontWeight: 600, color: 'var(--text-primary)' }}>{item.name}</div>
+                      <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
                         <span style={{ fontFamily: 'monospace' }}>{item.code}</span>
                         <span style={{ margin: '0 6px', color: '#D1D5DB' }}>|</span>
                         <span>{item.type}</span>
                       </div>
                     </div>
                     <div style={{ textAlign: 'right', flexShrink: 0 }}>
-                      <div style={{ fontWeight: 600, color: '#1E3A5F', fontSize: '0.8125rem' }}>
+                      <div style={{ fontWeight: 600, color: 'var(--blue-400)', fontSize: '0.8125rem' }}>
                         {item.price?.toLocaleString('ko-KR')}
                       </div>
-                      <div style={{ fontSize: '0.6875rem', color: '#9CA3AF' }}>
+                      <div style={{ fontSize: '0.6875rem', color: 'var(--text-muted)' }}>
                         NAV {item.nav?.toLocaleString('ko-KR')}
                       </div>
                     </div>
@@ -629,11 +629,11 @@ export default function ProductMasterPage() {
             <div
               style={{
                 padding: '10px 14px',
-                backgroundColor: '#FEF2F2',
-                border: '1px solid #FECACA',
+                backgroundColor: 'var(--danger-bg)',
+                border: '1px solid rgba(239,68,68,0.35)',
                 borderRadius: 8,
                 fontSize: '0.8125rem',
-                color: '#DC2626',
+                color: 'var(--danger)',
               }}
             >
               {formError}

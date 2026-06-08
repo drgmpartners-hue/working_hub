@@ -19,7 +19,7 @@ export const Input = forwardRef<HTMLInputElement, InputProps>(
       ? '#EF4444'
       : focused
       ? '#4A90D9'
-      : '#E1E5EB';
+      : 'var(--border-strong)';
 
     const boxShadow = error
       ? '0 0 0 3px rgba(239,68,68,0.15)'
@@ -35,7 +35,7 @@ export const Input = forwardRef<HTMLInputElement, InputProps>(
             style={{
               fontSize: '0.8125rem',
               fontWeight: 500,
-              color: error ? '#EF4444' : '#1A1A2E',
+              color: error ? '#EF4444' : 'var(--text-primary)',
               marginBottom: 2,
             }}
           >
@@ -60,8 +60,8 @@ export const Input = forwardRef<HTMLInputElement, InputProps>(
             height: 40,
             padding: '0 12px',
             fontSize: '0.875rem',
-            color: disabled ? '#6B7280' : '#1A1A2E',
-            backgroundColor: disabled ? '#F5F7FA' : '#FFFFFF',
+            color: disabled ? 'var(--text-muted)' : 'var(--text-primary)',
+            backgroundColor: disabled ? 'var(--bg-surface)' : 'var(--bg-card)',
             border: `1px solid ${borderColor}`,
             borderRadius: 8,
             outline: 'none',
@@ -74,7 +74,7 @@ export const Input = forwardRef<HTMLInputElement, InputProps>(
         />
 
         {error && (
-          <span style={{ fontSize: '0.75rem', color: '#EF4444', marginTop: 2, display: 'flex', alignItems: 'center', gap: 4 }}>
+          <span style={{ fontSize: '0.75rem', color: 'var(--danger)', marginTop: 2, display: 'flex', alignItems: 'center', gap: 4 }}>
             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
               <circle cx="12" cy="12" r="10" />
               <line x1="12" y1="8" x2="12" y2="12" />
@@ -85,7 +85,7 @@ export const Input = forwardRef<HTMLInputElement, InputProps>(
         )}
 
         {hint && !error && (
-          <span style={{ fontSize: '0.75rem', color: '#6B7280', marginTop: 2 }}>
+          <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: 2 }}>
             {hint}
           </span>
         )}

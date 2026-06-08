@@ -66,7 +66,7 @@ export function Modal({ open, onClose, title, children, maxWidth = 520, hideClos
         style={{
           width: '100%',
           maxWidth,
-          backgroundColor: '#FFFFFF',
+          backgroundColor: 'var(--bg-card)',
           borderRadius: 14,
           boxShadow: '0 20px 60px rgba(0,0,0,0.18), 0 4px 16px rgba(0,0,0,0.1)',
           display: 'flex',
@@ -84,7 +84,7 @@ export function Modal({ open, onClose, title, children, maxWidth = 520, hideClos
               alignItems: 'center',
               justifyContent: 'space-between',
               padding: '18px 24px 14px',
-              borderBottom: '1px solid #E1E5EB',
+              borderBottom: '1px solid var(--border)',
               flexShrink: 0,
             }}
           >
@@ -94,7 +94,7 @@ export function Modal({ open, onClose, title, children, maxWidth = 520, hideClos
                   margin: 0,
                   fontSize: '1.0625rem',
                   fontWeight: 600,
-                  color: '#1A1A2E',
+                  color: 'var(--text-primary)',
                   letterSpacing: '-0.01em',
                 }}
               >
@@ -115,17 +115,17 @@ export function Modal({ open, onClose, title, children, maxWidth = 520, hideClos
                   borderRadius: 6,
                   border: 'none',
                   backgroundColor: 'transparent',
-                  color: '#6B7280',
+                  color: 'var(--text-muted)',
                   cursor: 'pointer',
                   transition: 'background-color 0.15s ease, color 0.15s ease',
                 }}
                 onMouseEnter={(e) => {
-                  (e.currentTarget as HTMLButtonElement).style.backgroundColor = '#F5F7FA';
-                  (e.currentTarget as HTMLButtonElement).style.color = '#1A1A2E';
+                  (e.currentTarget as HTMLButtonElement).style.backgroundColor = 'var(--bg-surface)';
+                  (e.currentTarget as HTMLButtonElement).style.color = 'var(--text-primary)';
                 }}
                 onMouseLeave={(e) => {
                   (e.currentTarget as HTMLButtonElement).style.backgroundColor = 'transparent';
-                  (e.currentTarget as HTMLButtonElement).style.color = '#6B7280';
+                  (e.currentTarget as HTMLButtonElement).style.color = 'var(--text-muted)';
                 }}
               >
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">

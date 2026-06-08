@@ -33,8 +33,8 @@ export function TabNavigation() {
         display: 'flex',
         alignItems: 'flex-end',
         height: '48px',
-        borderBottom: '1px solid #E5E7EB',
-        backgroundColor: '#ffffff',
+        borderBottom: '1px solid var(--border)',
+        backgroundColor: 'var(--bg-card)',
         paddingLeft: '24px',
         paddingRight: '24px',
       }}

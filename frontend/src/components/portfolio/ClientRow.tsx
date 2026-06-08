@@ -84,11 +84,11 @@ const inputStyle: React.CSSProperties = {
   width: '100%',
   padding: '8px 10px',
   fontSize: '0.8125rem',
-  border: '1px solid #E1E5EB',
+  border: '1px solid var(--border)',
   borderRadius: 8,
   outline: 'none',
-  color: '#1A1A2E',
-  backgroundColor: '#FFFFFF',
+  color: 'var(--text-primary)',
+  backgroundColor: 'var(--bg-card)',
   boxSizing: 'border-box',
 };
 
@@ -96,7 +96,7 @@ const labelStyle: React.CSSProperties = {
   display: 'block',
   fontSize: '0.75rem',
   fontWeight: 600,
-  color: '#6B7280',
+  color: 'var(--text-muted)',
   marginBottom: 4,
   textTransform: 'uppercase' as const,
   letterSpacing: '0.04em',
@@ -358,8 +358,8 @@ export function ClientRow({ index, clients, data, onChange }: ClientRowProps) {
             style={{
               fontSize: '0.8125rem',
               fontWeight: 700,
-              color: '#1E3A5F',
-              backgroundColor: '#EEF2F7',
+              color: 'var(--blue-400)',
+              backgroundColor: 'var(--bg-card-2)',
               padding: '3px 10px',
               borderRadius: 6,
             }}
@@ -383,7 +383,7 @@ export function ClientRow({ index, clients, data, onChange }: ClientRowProps) {
                     style={{
                       ...inputStyle, cursor: 'pointer', flex: 1, padding: '6px 8px', fontSize: '0.75rem',
                       textAlign: 'left', display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-                      color: data.clientName ? '#1A1A2E' : '#9CA3AF',
+                      color: data.clientName ? 'var(--text-primary)' : '#9CA3AF',
                     }}>
                     <span>{data.clientName || '고객을 선택하세요'}</span>
                     <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
@@ -392,7 +392,7 @@ export function ClientRow({ index, clients, data, onChange }: ClientRowProps) {
                   </button>
                   {isExistingClient && (
                     <button type="button" onClick={openEditModal} title="고객 정보 수정"
-                      style={{ flexShrink: 0, width: 28, height: 28, display: 'flex', alignItems: 'center', justifyContent: 'center', border: '1px solid #E1E5EB', borderRadius: 6, backgroundColor: '#F9FAFB', cursor: 'pointer', color: '#6B7280' }}>
+                      style={{ flexShrink: 0, width: 28, height: 28, display: 'flex', alignItems: 'center', justifyContent: 'center', border: '1px solid var(--border)', borderRadius: 6, backgroundColor: 'var(--bg-surface)', cursor: 'pointer', color: 'var(--text-muted)' }}>
                       <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                         <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
                         <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
@@ -405,12 +405,12 @@ export function ClientRow({ index, clients, data, onChange }: ClientRowProps) {
                 {dropdownOpen && (
                   <div style={{
                     position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 50,
-                    marginTop: 4, backgroundColor: '#fff', border: '1px solid #E1E5EB',
+                    marginTop: 4, backgroundColor: 'var(--bg-card)', border: '1px solid var(--border)',
                     borderRadius: 8, boxShadow: '0 8px 24px rgba(0,0,0,0.12)', overflow: 'hidden',
                     minWidth: 200,
                   }}>
                     {/* 검색창 */}
-                    <div style={{ padding: '6px 8px', borderBottom: '1px solid #E1E5EB' }}>
+                    <div style={{ padding: '6px 8px', borderBottom: '1px solid var(--border)' }}>
                       <input type="text" placeholder="고객명 검색..."
                         value={clientSearch}
                         onChange={(e) => { setClientSearch(e.target.value); setClientPage(0); }}
@@ -424,14 +424,14 @@ export function ClientRow({ index, clients, data, onChange }: ClientRowProps) {
                       style={{
                         width: '100%', padding: '6px 10px', fontSize: '0.75rem', textAlign: 'left',
                         border: 'none', backgroundColor: !data.clientId ? '#EEF2F7' : 'transparent',
-                        cursor: 'pointer', color: '#9CA3AF',
+                        cursor: 'pointer', color: 'var(--text-muted)',
                       }}>
                       -- 선택 해제 --
                     </button>
 
                     {/* 고객 목록 */}
                     {pagedClients.length === 0 ? (
-                      <div style={{ padding: '10px', fontSize: '0.75rem', color: '#9CA3AF', textAlign: 'center' }}>
+                      <div style={{ padding: '10px', fontSize: '0.75rem', color: 'var(--text-muted)', textAlign: 'center' }}>
                         검색 결과 없음
                       </div>
                     ) : (
@@ -442,12 +442,12 @@ export function ClientRow({ index, clients, data, onChange }: ClientRowProps) {
                             width: '100%', padding: '6px 10px', fontSize: '0.75rem', textAlign: 'left',
                             border: 'none', cursor: 'pointer',
                             backgroundColor: data.clientId === c.id ? '#EEF2F7' : 'transparent',
-                            color: '#1A1A2E', display: 'flex', justifyContent: 'space-between',
+                            color: 'var(--text-primary)', display: 'flex', justifyContent: 'space-between',
                           }}
                           onMouseEnter={(e) => { if (data.clientId !== c.id) (e.currentTarget).style.backgroundColor = '#F9FAFB'; }}
                           onMouseLeave={(e) => { if (data.clientId !== c.id) (e.currentTarget).style.backgroundColor = 'transparent'; }}>
                           <span>{c.unique_code ? `${c.name}(${c.unique_code})` : c.name}</span>
-                          <span style={{ color: '#9CA3AF', fontSize: '0.6875rem' }}>
+                          <span style={{ color: 'var(--text-muted)', fontSize: '0.6875rem' }}>
                             {c.accounts.length}개 계좌
                           </span>
                         </button>
@@ -458,7 +458,7 @@ export function ClientRow({ index, clients, data, onChange }: ClientRowProps) {
                     {totalPages > 1 && (
                       <div style={{
                         display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-                        padding: '4px 8px', borderTop: '1px solid #E1E5EB', fontSize: '0.6875rem', color: '#6B7280',
+                        padding: '4px 8px', borderTop: '1px solid var(--border)', fontSize: '0.6875rem', color: 'var(--text-muted)',
                       }}>
                         <button type="button" disabled={clientPage === 0}
                           onClick={() => setClientPage((p) => p - 1)}
@@ -475,7 +475,7 @@ export function ClientRow({ index, clients, data, onChange }: ClientRowProps) {
                     )}
 
                     {/* 총 인원 */}
-                    <div style={{ padding: '3px 10px', borderTop: '1px solid #F3F4F6', fontSize: '0.625rem', color: '#9CA3AF', textAlign: 'right' }}>
+                    <div style={{ padding: '3px 10px', borderTop: '1px solid var(--border)', fontSize: '0.625rem', color: 'var(--text-muted)', textAlign: 'right' }}>
                       총 {filteredClients.length}명
                     </div>
                   </div>
@@ -507,7 +507,7 @@ export function ClientRow({ index, clients, data, onChange }: ClientRowProps) {
               <div style={{ flex: '0 1 120px', minWidth: 100 }}>
                 <label style={labelStyle}>증권사명</label>
                 {isExistingClient && currentAccount ? (
-                  <div style={{ padding: '6px 8px', fontSize: '0.75rem', color: '#374151', border: '1px solid #E1E5EB', borderRadius: 8, backgroundColor: '#F9FAFB' }}>
+                  <div style={{ padding: '6px 8px', fontSize: '0.75rem', color: 'var(--text-secondary)', border: '1px solid var(--border)', borderRadius: 8, backgroundColor: 'var(--bg-surface)' }}>
                     {currentAccount.securities_company || '-'}
                   </div>
                 ) : (
@@ -519,7 +519,7 @@ export function ClientRow({ index, clients, data, onChange }: ClientRowProps) {
               <div style={{ flex: '1 1 160px', minWidth: 140 }}>
                 <label style={labelStyle}>계좌번호</label>
                 {isExistingClient && currentAccount ? (
-                  <div style={{ padding: '6px 8px', fontSize: '0.75rem', color: '#374151', border: '1px solid #E1E5EB', borderRadius: 8, backgroundColor: '#F9FAFB' }}>
+                  <div style={{ padding: '6px 8px', fontSize: '0.75rem', color: 'var(--text-secondary)', border: '1px solid var(--border)', borderRadius: 8, backgroundColor: 'var(--bg-surface)' }}>
                     {currentAccount.account_number || '미등록'}
                   </div>
                 ) : (
@@ -542,16 +542,16 @@ export function ClientRow({ index, clients, data, onChange }: ClientRowProps) {
               <div style={{ position: 'relative', display: 'inline-block' }}>
                 {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img src={data.imagePreview} alt="업로드된 이미지"
-                  style={{ maxWidth: '100%', maxHeight: 140, borderRadius: 8, border: '1px solid #E1E5EB', objectFit: 'contain', display: 'block' }} />
+                  style={{ maxWidth: '100%', maxHeight: 140, borderRadius: 8, border: '1px solid var(--border)', objectFit: 'contain', display: 'block' }} />
                 <button onClick={removeImage} title="이미지 제거"
-                  style={{ position: 'absolute', top: -6, right: -6, width: 20, height: 20, borderRadius: '50%', backgroundColor: '#EF4444', color: '#fff', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.65rem', fontWeight: 700 }}>
+                  style={{ position: 'absolute', top: -6, right: -6, width: 20, height: 20, borderRadius: '50%', backgroundColor: 'var(--danger)', color: '#fff', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.65rem', fontWeight: 700 }}>
                   ×
                 </button>
               </div>
             ) : (
               <div ref={pasteZoneRef} tabIndex={0} onPaste={handlePaste}
                 onClick={() => pasteZoneRef.current?.focus()}
-                style={{ border: '2px dashed #CBD5E1', borderRadius: 8, padding: '16px 12px', textAlign: 'center', cursor: 'default', backgroundColor: '#FAFBFC', transition: 'border-color 0.15s, background-color 0.15s', userSelect: 'none' }}
+                style={{ border: '2px dashed var(--border-strong)', borderRadius: 8, padding: '16px 12px', textAlign: 'center', cursor: 'default', backgroundColor: 'var(--bg-surface)', transition: 'border-color 0.15s, background-color 0.15s', userSelect: 'none' }}
                 onMouseEnter={(e) => { (e.currentTarget as HTMLDivElement).style.borderColor = '#1E3A5F'; (e.currentTarget as HTMLDivElement).style.backgroundColor = '#EEF2F7'; }}
                 onMouseLeave={(e) => { (e.currentTarget as HTMLDivElement).style.borderColor = '#CBD5E1'; (e.currentTarget as HTMLDivElement).style.backgroundColor = '#FAFBFC'; }}
                 onFocus={(e) => { (e.currentTarget as HTMLDivElement).style.borderColor = '#1E3A5F'; }}
@@ -559,10 +559,10 @@ export function ClientRow({ index, clients, data, onChange }: ClientRowProps) {
                 <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#9CA3AF" strokeWidth="1.5" style={{ margin: '0 auto 6px', display: 'block' }}>
                   <rect x="3" y="3" width="18" height="18" rx="2" ry="2" /><circle cx="8.5" cy="8.5" r="1.5" /><polyline points="21 15 16 10 5 21" />
                 </svg>
-                <p style={{ margin: 0, fontSize: '0.75rem', color: '#6B7280', fontWeight: 500 }}>Ctrl+V로 이미지 붙여넣기</p>
-                <p style={{ margin: '2px 0 0', fontSize: '0.6875rem', color: '#9CA3AF' }}>PNG, JPG, GIF 지원</p>
+                <p style={{ margin: 0, fontSize: '0.75rem', color: 'var(--text-muted)', fontWeight: 500 }}>Ctrl+V로 이미지 붙여넣기</p>
+                <p style={{ margin: '2px 0 0', fontSize: '0.6875rem', color: 'var(--text-muted)' }}>PNG, JPG, GIF 지원</p>
                 <button type="button" onClick={(e) => { e.stopPropagation(); fileInputRef.current?.click(); }}
-                  style={{ marginTop: 8, padding: '4px 12px', fontSize: '0.6875rem', fontWeight: 600, color: '#1E3A5F', backgroundColor: '#EEF2F7', border: '1px solid #CBD5E1', borderRadius: 6, cursor: 'pointer' }}>
+                  style={{ marginTop: 8, padding: '4px 12px', fontSize: '0.6875rem', fontWeight: 600, color: 'var(--blue-400)', backgroundColor: 'var(--bg-card-2)', border: '1px solid var(--border-strong)', borderRadius: 6, cursor: 'pointer' }}>
                   파일 선택
                 </button>
               </div>
@@ -589,7 +589,7 @@ export function ClientRow({ index, clients, data, onChange }: ClientRowProps) {
         >
           <div
             style={{
-              backgroundColor: '#fff',
+              backgroundColor: 'var(--bg-card)',
               borderRadius: 14,
               padding: 28,
               width: '100%',
@@ -599,12 +599,12 @@ export function ClientRow({ index, clients, data, onChange }: ClientRowProps) {
           >
             {/* Modal header */}
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20 }}>
-              <h3 style={{ margin: 0, fontSize: '1rem', fontWeight: 700, color: '#1A1A2E' }}>
+              <h3 style={{ margin: 0, fontSize: '1rem', fontWeight: 700, color: 'var(--text-primary)' }}>
                 고객 정보 수정
               </h3>
               <button
                 onClick={() => setEditModalOpen(false)}
-                style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#9CA3AF', padding: 4 }}
+                style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', padding: 4 }}
               >
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
                   <line x1="18" y1="6" x2="6" y2="18" />
@@ -633,12 +633,12 @@ export function ClientRow({ index, clients, data, onChange }: ClientRowProps) {
                     key={acc.id}
                     style={{
                       padding: 14,
-                      border: '1px solid #E1E5EB',
+                      border: '1px solid var(--border)',
                       borderRadius: 10,
-                      backgroundColor: '#F9FAFB',
+                      backgroundColor: 'var(--bg-surface)',
                     }}
                   >
-                    <div style={{ fontSize: '0.75rem', fontWeight: 700, color: '#1E3A5F', marginBottom: 10 }}>
+                    <div style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--blue-400)', marginBottom: 10 }}>
                       {ACCOUNT_TYPE_LABELS[acc.account_type] ?? acc.account_type}
                     </div>
                     <div style={{ display: 'flex', gap: 10 }}>
@@ -698,9 +698,9 @@ export function ClientRow({ index, clients, data, onChange }: ClientRowProps) {
                   padding: '9px 18px',
                   fontSize: '0.875rem',
                   fontWeight: 600,
-                  color: '#374151',
-                  backgroundColor: '#F3F4F6',
-                  border: '1px solid #E1E5EB',
+                  color: 'var(--text-secondary)',
+                  backgroundColor: 'var(--bg-surface)',
+                  border: '1px solid var(--border)',
                   borderRadius: 8,
                   cursor: 'pointer',
                 }}

@@ -14,32 +14,32 @@ interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
 
 const variantStyles: Record<ButtonVariant, React.CSSProperties> = {
   primary: {
-    backgroundColor: '#1E3A5F',
+    backgroundColor: 'var(--blue-600)',
     color: '#ffffff',
-    border: '1px solid #1E3A5F',
+    border: '1px solid var(--blue-500)',
   },
   secondary: {
     backgroundColor: 'transparent',
-    color: '#1E3A5F',
-    border: '1px solid #1E3A5F',
+    color: 'var(--blue-400)',
+    border: '1px solid var(--blue-500)',
   },
   ghost: {
     backgroundColor: 'transparent',
-    color: '#6B7280',
+    color: 'var(--text-muted)',
     border: '1px solid transparent',
   },
   danger: {
-    backgroundColor: '#EF4444',
+    backgroundColor: 'var(--danger)',
     color: '#ffffff',
-    border: '1px solid #EF4444',
+    border: '1px solid var(--danger)',
   },
 };
 
 const variantHoverStyles: Record<ButtonVariant, React.CSSProperties> = {
   primary: { backgroundColor: '#162d4a', borderColor: '#162d4a' },
   secondary: { backgroundColor: 'rgba(30,58,95,0.06)' },
-  ghost: { backgroundColor: 'rgba(107,114,128,0.08)', color: '#1A1A2E' },
-  danger: { backgroundColor: '#dc2626', borderColor: '#dc2626' },
+  ghost: { backgroundColor: 'rgba(107,114,128,0.08)', color: 'var(--text-primary)' },
+  danger: { backgroundColor: 'var(--danger)', borderColor: 'var(--danger)' },
 };
 
 const sizeStyles: Record<ButtonSize, React.CSSProperties> = {

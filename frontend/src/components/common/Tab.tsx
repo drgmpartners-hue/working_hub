@@ -25,7 +25,7 @@ export function Tab({ items, activeKey, onChange, variant = 'underline' }: TabPr
         style={{
           display: 'inline-flex',
           gap: 4,
-          backgroundColor: '#F5F7FA',
+          backgroundColor: 'var(--bg-surface)',
           padding: 4,
           borderRadius: 10,
         }}
@@ -47,8 +47,8 @@ export function Tab({ items, activeKey, onChange, variant = 'underline' }: TabPr
                 cursor: item.disabled ? 'not-allowed' : 'pointer',
                 fontSize: '0.875rem',
                 fontWeight: isActive ? 600 : 400,
-                color: isActive ? '#1E3A5F' : '#6B7280',
-                backgroundColor: isActive ? '#FFFFFF' : 'transparent',
+                color: isActive ? 'var(--blue-600)' : 'var(--text-muted)',
+                backgroundColor: isActive ? 'var(--bg-card)' : 'transparent',
                 boxShadow: isActive ? '0 1px 3px rgba(0,0,0,0.1)' : 'none',
                 transition: 'all 0.15s ease',
                 opacity: item.disabled ? 0.45 : 1,
@@ -67,8 +67,8 @@ export function Tab({ items, activeKey, onChange, variant = 'underline' }: TabPr
                     borderRadius: 9,
                     fontSize: '0.6875rem',
                     fontWeight: 600,
-                    backgroundColor: isActive ? '#1E3A5F' : '#E1E5EB',
-                    color: isActive ? '#ffffff' : '#6B7280',
+                    backgroundColor: isActive ? 'var(--blue-600)' : 'var(--border-strong)',
+                    color: isActive ? '#ffffff' : 'var(--text-muted)',
                   }}
                 >
                   {item.count}
@@ -86,7 +86,7 @@ export function Tab({ items, activeKey, onChange, variant = 'underline' }: TabPr
     <div
       style={{
         display: 'flex',
-        borderBottom: '1px solid #E1E5EB',
+        borderBottom: '1px solid var(--border)',
         gap: 0,
       }}
     >
@@ -103,24 +103,24 @@ export function Tab({ items, activeKey, onChange, variant = 'underline' }: TabPr
               gap: 6,
               padding: '10px 16px',
               border: 'none',
-              borderBottom: isActive ? '2px solid #1E3A5F' : '2px solid transparent',
+              borderBottom: isActive ? '2px solid var(--blue-400)' : '2px solid transparent',
               marginBottom: -1,
               backgroundColor: 'transparent',
               cursor: item.disabled ? 'not-allowed' : 'pointer',
               fontSize: '0.875rem',
               fontWeight: isActive ? 600 : 400,
-              color: isActive ? '#1E3A5F' : '#6B7280',
+              color: isActive ? 'var(--blue-400)' : 'var(--text-muted)',
               transition: 'color 0.15s ease, border-color 0.15s ease',
               opacity: item.disabled ? 0.45 : 1,
             }}
             onMouseEnter={(e) => {
               if (!item.disabled && !isActive) {
-                (e.currentTarget as HTMLButtonElement).style.color = '#1A1A2E';
+                (e.currentTarget as HTMLButtonElement).style.color = 'var(--text-primary)';
               }
             }}
             onMouseLeave={(e) => {
               if (!item.disabled && !isActive) {
-                (e.currentTarget as HTMLButtonElement).style.color = '#6B7280';
+                (e.currentTarget as HTMLButtonElement).style.color = 'var(--text-muted)';
               }
             }}
           >
@@ -137,8 +137,8 @@ export function Tab({ items, activeKey, onChange, variant = 'underline' }: TabPr
                   borderRadius: 9,
                   fontSize: '0.6875rem',
                   fontWeight: 600,
-                  backgroundColor: isActive ? '#1E3A5F' : '#E1E5EB',
-                  color: isActive ? '#ffffff' : '#6B7280',
+                  backgroundColor: isActive ? 'var(--blue-600)' : 'var(--border-strong)',
+                  color: isActive ? '#ffffff' : 'var(--text-muted)',
                 }}
               >
                 {item.count}

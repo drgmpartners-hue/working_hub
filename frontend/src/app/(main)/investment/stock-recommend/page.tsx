@@ -33,8 +33,8 @@ function ThemeBasket({ basket, onRemove, onRecommend, loading }: ThemeBasketProp
   return (
     <div
       style={{
-        backgroundColor: '#FFFFFF',
-        border: '1px solid #E1E5EB',
+        backgroundColor: 'var(--bg-card)',
+        border: '1px solid var(--border)',
         borderRadius: 12,
         padding: 20,
         boxShadow: '0 1px 3px rgba(0,0,0,0.06)',
@@ -48,7 +48,7 @@ function ThemeBasket({ basket, onRemove, onRecommend, loading }: ThemeBasketProp
             width: 28,
             height: 28,
             borderRadius: 8,
-            backgroundColor: '#EBF5F5',
+            backgroundColor: 'rgba(56,189,248,0.10)',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
@@ -60,7 +60,7 @@ function ThemeBasket({ basket, onRemove, onRecommend, loading }: ThemeBasketProp
             <path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6" />
           </svg>
         </div>
-        <h3 style={{ margin: 0, fontSize: '0.9375rem', fontWeight: 700, color: '#1A1A2E' }}>
+        <h3 style={{ margin: 0, fontSize: '0.9375rem', fontWeight: 700, color: 'var(--text-primary)' }}>
           분석 바스켓
         </h3>
         {basket.length > 0 && (
@@ -89,9 +89,9 @@ function ThemeBasket({ basket, onRemove, onRecommend, loading }: ThemeBasketProp
           style={{
             padding: '24px 12px',
             textAlign: 'center',
-            color: '#9CA3AF',
+            color: 'var(--text-muted)',
             fontSize: '0.8125rem',
-            border: '2px dashed #E1E5EB',
+            border: '2px dashed var(--border)',
             borderRadius: 8,
           }}
         >
@@ -108,8 +108,8 @@ function ThemeBasket({ basket, onRemove, onRecommend, loading }: ThemeBasketProp
                 gap: 8,
                 padding: '8px 10px',
                 borderRadius: 8,
-                backgroundColor: '#F5F7FA',
-                border: '1px solid #E1E5EB',
+                backgroundColor: 'var(--bg-surface)',
+                border: '1px solid var(--border)',
               }}
             >
               <div
@@ -117,7 +117,7 @@ function ThemeBasket({ basket, onRemove, onRecommend, loading }: ThemeBasketProp
                   width: 28,
                   height: 28,
                   borderRadius: 6,
-                  backgroundColor: '#EBF5F5',
+                  backgroundColor: 'rgba(56,189,248,0.10)',
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'center',
@@ -129,7 +129,7 @@ function ThemeBasket({ basket, onRemove, onRecommend, loading }: ThemeBasketProp
               >
                 {theme.ai_score}
               </div>
-              <span style={{ fontSize: '0.8125rem', fontWeight: 600, color: '#1A1A2E', flex: 1, minWidth: 0 }}>
+              <span style={{ fontSize: '0.8125rem', fontWeight: 600, color: 'var(--text-primary)', flex: 1, minWidth: 0 }}>
                 {theme.theme_name}
               </span>
               <button
@@ -138,7 +138,7 @@ function ThemeBasket({ basket, onRemove, onRecommend, loading }: ThemeBasketProp
                   background: 'none',
                   border: 'none',
                   cursor: 'pointer',
-                  color: '#9CA3AF',
+                  color: 'var(--text-muted)',
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'center',
@@ -187,7 +187,7 @@ function ThemeBasket({ basket, onRemove, onRecommend, loading }: ThemeBasketProp
         {loading ? 'AI 분석 중...' : '종목 추천 받기'}
       </Button>
       {basket.length > 0 && (
-        <p style={{ margin: '8px 0 0', fontSize: '0.75rem', color: '#6B7280', textAlign: 'center' }}>
+        <p style={{ margin: '8px 0 0', fontSize: '0.75rem', color: 'var(--text-muted)', textAlign: 'center' }}>
           {basket.length}개 테마를 기반으로 AI 추천
         </p>
       )}
@@ -229,7 +229,7 @@ function StepIndicator({ currentStep }: { currentStep: 1 | 2 }) {
                   </svg>
                 ) : step}
               </div>
-              <span style={{ fontSize: '0.6875rem', color: isActive ? '#1A1A2E' : '#9CA3AF', whiteSpace: 'nowrap', fontWeight: isActive ? 600 : 400 }}>
+              <span style={{ fontSize: '0.6875rem', color: isActive ? 'var(--text-primary)' : '#9CA3AF', whiteSpace: 'nowrap', fontWeight: isActive ? 600 : 400 }}>
                 {step === 1 ? '테마 분석' : '종목 확인'}
               </span>
             </div>
@@ -328,7 +328,7 @@ export default function StockRecommendPage() {
   }
 
   return (
-    <div style={{ maxWidth: '1100px', margin: '0 auto' }}>
+    <div style={{ width: '100%' }}>
       {/* Page header */}
       <div style={{ marginBottom: 28 }}>
         <button
@@ -341,11 +341,11 @@ export default function StockRecommendPage() {
             background: 'none',
             border: 'none',
             cursor: 'pointer',
-            color: '#6B7280',
+            color: 'var(--text-muted)',
             fontSize: '0.8125rem',
             padding: 0,
           }}
-          onMouseEnter={(e) => ((e.currentTarget as HTMLButtonElement).style.color = '#1A1A2E')}
+          onMouseEnter={(e) => ((e.currentTarget as HTMLButtonElement).style.color = 'var(--text-primary)')}
           onMouseLeave={(e) => ((e.currentTarget as HTMLButtonElement).style.color = '#6B7280')}
         >
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
@@ -361,7 +361,7 @@ export default function StockRecommendPage() {
                 width: 36,
                 height: 4,
                 borderRadius: 2,
-                background: 'linear-gradient(90deg, #2E8B8B 0%, #059669 100%)',
+                background: 'linear-gradient(90deg, #2E8B8B 0%, var(--success) 100%)',
                 marginBottom: 12,
               }}
             />
@@ -370,13 +370,13 @@ export default function StockRecommendPage() {
                 margin: 0,
                 fontSize: '24px',
                 fontWeight: 800,
-                color: '#1A1A2E',
+                color: 'var(--text-primary)',
                 letterSpacing: '-0.4px',
               }}
             >
               주식/ETF 추천 프로그램
             </h1>
-            <p style={{ margin: '6px 0 0', fontSize: '0.875rem', color: '#6B7280' }}>
+            <p style={{ margin: '6px 0 0', fontSize: '0.875rem', color: 'var(--text-muted)' }}>
               AI가 테마별 주식/ETF를 분석하고 최적의 종목을 추천합니다.
             </p>
           </div>
@@ -391,10 +391,10 @@ export default function StockRecommendPage() {
           style={{
             marginBottom: 16,
             padding: '12px 16px',
-            backgroundColor: '#FEF2F2',
-            border: '1px solid #FECACA',
+            backgroundColor: 'var(--danger-bg)',
+            border: '1px solid rgba(239,68,68,0.35)',
             borderRadius: 8,
-            color: '#B91C1C',
+            color: 'var(--danger)',
             fontSize: '0.875rem',
           }}
         >
@@ -414,8 +414,8 @@ export default function StockRecommendPage() {
                 gap: 10,
                 marginBottom: 16,
                 padding: '12px 16px',
-                backgroundColor: '#FFFFFF',
-                border: '1px solid #E1E5EB',
+                backgroundColor: 'var(--bg-card)',
+                border: '1px solid var(--border)',
                 borderRadius: 10,
               }}
             >
@@ -426,10 +426,10 @@ export default function StockRecommendPage() {
                 <rect x="3" y="14" width="7" height="7" />
               </svg>
               <div>
-                <p style={{ margin: 0, fontSize: '0.875rem', fontWeight: 600, color: '#1A1A2E' }}>
+                <p style={{ margin: 0, fontSize: '0.875rem', fontWeight: 600, color: 'var(--text-primary)' }}>
                   테마 목록
                 </p>
-                <p style={{ margin: 0, fontSize: '0.75rem', color: '#6B7280' }}>
+                <p style={{ margin: 0, fontSize: '0.75rem', color: 'var(--text-muted)' }}>
                   분석하고 싶은 테마를 선택해 바스켓에 담으세요.
                 </p>
               </div>
@@ -466,7 +466,7 @@ export default function StockRecommendPage() {
                   flexWrap: 'wrap',
                 }}
               >
-                <span style={{ fontSize: '0.875rem', color: '#6B7280' }}>분석 바스켓:</span>
+                <span style={{ fontSize: '0.875rem', color: 'var(--text-muted)' }}>분석 바스켓:</span>
                 {basket.map((theme) => (
                   <span
                     key={theme.id}
@@ -474,7 +474,7 @@ export default function StockRecommendPage() {
                       padding: '3px 10px',
                       borderRadius: 6,
                       fontSize: '0.8125rem',
-                      backgroundColor: '#EBF5F5',
+                      backgroundColor: 'rgba(56,189,248,0.10)',
                       color: '#2E8B8B',
                       fontWeight: 600,
                     }}
@@ -501,10 +501,10 @@ export default function StockRecommendPage() {
 
           {/* Section header */}
           <div style={{ marginBottom: 16 }}>
-            <h2 style={{ margin: '0 0 4px', fontSize: '1rem', fontWeight: 700, color: '#1A1A2E' }}>
+            <h2 style={{ margin: '0 0 4px', fontSize: '1rem', fontWeight: 700, color: 'var(--text-primary)' }}>
               AI 추천 종목
             </h2>
-            <p style={{ margin: 0, fontSize: '0.8125rem', color: '#6B7280' }}>
+            <p style={{ margin: 0, fontSize: '0.8125rem', color: 'var(--text-muted)' }}>
               선택한 테마를 기반으로 AI가 추천한 종목입니다. 종목을 클릭하면 상세 분석을 볼 수 있습니다.
             </p>
           </div>
@@ -512,7 +512,7 @@ export default function StockRecommendPage() {
           {recommendationId ? (
             <StockList recommendationId={recommendationId} />
           ) : (
-            <div style={{ textAlign: 'center', padding: '48px 0', color: '#6B7280', fontSize: '0.875rem' }}>
+            <div style={{ textAlign: 'center', padding: '48px 0', color: 'var(--text-muted)', fontSize: '0.875rem' }}>
               추천 데이터를 불러오는 중...
             </div>
           )}

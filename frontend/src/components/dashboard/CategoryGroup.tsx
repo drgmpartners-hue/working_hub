@@ -62,9 +62,9 @@ export function CategoryGroup({
     <div
       style={{
         borderRadius: '16px',
-        border: '1.5px solid #E1E5EB',
+        border: '1.5px solid var(--border)',
         overflow: 'hidden',
-        backgroundColor: '#FFFFFF',
+        backgroundColor: 'var(--bg-card)',
         boxShadow: '0 1px 6px rgba(0,0,0,0.04)',
       }}
     >
@@ -126,7 +126,7 @@ export function CategoryGroup({
             style={{
               fontSize: '16px',
               fontWeight: 700,
-              color: '#1A1A2E',
+              color: 'var(--text-primary)',
               letterSpacing: '-0.2px',
             }}
           >

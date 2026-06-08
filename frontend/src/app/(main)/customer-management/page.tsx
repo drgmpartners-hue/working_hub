@@ -337,14 +337,14 @@ export default function CustomerManagementPage() {
   /* ---------------------------------------------------------------- */
 
   return (
-    <div style={{ maxWidth: '1100px', margin: '0 auto' }}>
+    <div style={{ width: '100%' }}>
       {/* 대시보드로 돌아가기 */}
       <button
         onClick={() => router.push('/dashboard')}
         style={{
           display: 'inline-flex', alignItems: 'center', gap: 6,
           padding: '6px 0', fontSize: '0.8125rem', fontWeight: 500,
-          color: '#6B7280', background: 'none', border: 'none',
+          color: 'var(--text-muted)', background: 'none', border: 'none',
           cursor: 'pointer', marginBottom: 8,
         }}
       >
@@ -369,7 +369,7 @@ export default function CustomerManagementPage() {
               width: '36px',
               height: '4px',
               borderRadius: '2px',
-              background: 'linear-gradient(90deg, #1E3A5F 0%, #4A90D9 100%)',
+              background: 'linear-gradient(90deg, var(--blue-600) 0%, var(--blue-400) 100%)',
               marginBottom: '12px',
             }}
           />
@@ -378,13 +378,13 @@ export default function CustomerManagementPage() {
               margin: 0,
               fontSize: '24px',
               fontWeight: 800,
-              color: '#1A1A2E',
+              color: 'var(--text-primary)',
               letterSpacing: '-0.5px',
             }}
           >
             고객 정보 관리
           </h1>
-          <p style={{ margin: '6px 0 0', fontSize: '13.5px', color: '#6B7280' }}>
+          <p style={{ margin: '6px 0 0', fontSize: '13.5px', color: 'var(--text-muted)' }}>
             고객 기본 정보를 등록하고 다른 프로그램과 연동합니다.
           </p>
         </div>
@@ -425,9 +425,9 @@ export default function CustomerManagementPage() {
               width: '100%',
               padding: '9px 12px 9px 38px',
               borderRadius: '8px',
-              border: '1px solid #D1D5DB',
+              border: '1px solid var(--border-strong)',
               fontSize: '0.875rem',
-              color: '#111827',
+              color: 'var(--text-primary)',
               outline: 'none',
               boxSizing: 'border-box',
             }}
@@ -443,7 +443,7 @@ export default function CustomerManagementPage() {
             padding: '9px 18px',
             borderRadius: '8px',
             border: 'none',
-            background: '#1E3A5F',
+            background: 'var(--blue-600)',
             color: '#fff',
             marginLeft: 'auto',
             fontSize: '0.8125rem',
@@ -466,8 +466,8 @@ export default function CustomerManagementPage() {
           style={{
             display: 'flex', alignItems: 'center', justifyContent: 'center',
             width: 38, height: 38, borderRadius: '8px',
-            border: '1px solid #D1D5DB', background: '#fff',
-            color: '#9CA3AF', cursor: 'pointer',
+            border: '1px solid var(--border-strong)', background: 'var(--bg-card)',
+            color: 'var(--text-muted)', cursor: 'pointer',
           }}
         >
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -512,8 +512,8 @@ export default function CustomerManagementPage() {
           style={{
             display: 'flex', alignItems: 'center', justifyContent: 'center',
             width: 38, height: 38, borderRadius: '8px',
-            border: '1px solid #059669', background: '#fff',
-            color: '#059669', cursor: 'pointer',
+            border: '1px solid var(--success)', background: 'var(--bg-card)',
+            color: 'var(--success)', cursor: 'pointer',
           }}
         >
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -535,8 +535,8 @@ export default function CustomerManagementPage() {
           style={{
             display: 'flex', alignItems: 'center', justifyContent: 'center',
             width: 38, height: 38, borderRadius: '8px',
-            border: '1px solid #6B7280', background: '#fff',
-            color: '#6B7280', cursor: 'pointer',
+            border: '1px solid #6B7280', background: 'var(--bg-card)',
+            color: 'var(--text-muted)', cursor: 'pointer',
           }}
         >
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -550,25 +550,25 @@ export default function CustomerManagementPage() {
       {/* ── Table card ── */}
       <div
         style={{
-          border: '1px solid #E1E5EB',
+          border: '1px solid var(--border)',
           borderRadius: '12px',
-          backgroundColor: '#fff',
+          backgroundColor: 'var(--bg-card)',
           overflow: 'hidden',
         }}
       >
         {loading ? (
-          <div style={{ padding: '60px 20px', textAlign: 'center', color: '#6B7280', fontSize: '14px' }}>
+          <div style={{ padding: '60px 20px', textAlign: 'center', color: 'var(--text-muted)', fontSize: '14px' }}>
             불러오는 중...
           </div>
         ) : error ? (
-          <div style={{ padding: '60px 20px', textAlign: 'center', color: '#DC2626', fontSize: '14px' }}>
+          <div style={{ padding: '60px 20px', textAlign: 'center', color: 'var(--danger)', fontSize: '14px' }}>
             {error}
           </div>
         ) : (
           <div style={{ overflowX: 'auto' }}>
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.875rem' }}>
               <thead>
-                <tr style={{ background: '#F8FAFC', borderBottom: '1px solid #E1E5EB' }}>
+                <tr style={{ background: 'var(--bg-surface)', borderBottom: '1px solid var(--border)' }}>
                   {['No.', '고객명', '고유번호', '생년월일', '전화번호', '이메일', '관리'].map((h) => (
                     <th
                       key={h}
@@ -577,7 +577,7 @@ export default function CustomerManagementPage() {
                         textAlign: h === '관리' ? 'center' : 'left',
                         fontWeight: 600,
                         fontSize: '0.8125rem',
-                        color: '#374151',
+                        color: 'var(--text-secondary)',
                         whiteSpace: 'nowrap',
                       }}
                     >
@@ -594,7 +594,7 @@ export default function CustomerManagementPage() {
                       style={{
                         padding: '48px 20px',
                         textAlign: 'center',
-                        color: '#9CA3AF',
+                        color: 'var(--text-muted)',
                         fontSize: '14px',
                       }}
                     >
@@ -606,28 +606,28 @@ export default function CustomerManagementPage() {
                     <tr
                       key={c.id}
                       style={{
-                        borderBottom: '1px solid #F3F4F6',
+                        borderBottom: '1px solid var(--border)',
                         transition: 'background 0.12s',
                       }}
                       onMouseEnter={(e) => (e.currentTarget.style.background = '#F9FAFB')}
                       onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
                     >
-                      <td style={{ padding: '12px 14px', color: '#9CA3AF', fontSize: '0.8125rem' }}>
+                      <td style={{ padding: '12px 14px', color: 'var(--text-muted)', fontSize: '0.8125rem' }}>
                         {idx + 1}
                       </td>
-                      <td style={{ padding: '12px 14px', fontWeight: 600, color: '#111827' }}>
+                      <td style={{ padding: '12px 14px', fontWeight: 600, color: 'var(--text-primary)' }}>
                         {c.name}
                       </td>
-                      <td style={{ padding: '12px 14px', color: '#374151', fontFamily: 'monospace', fontSize: '0.875rem' }}>
+                      <td style={{ padding: '12px 14px', color: 'var(--text-secondary)', fontFamily: 'monospace', fontSize: '0.875rem' }}>
                         {c.unique_code}
                       </td>
-                      <td style={{ padding: '12px 14px', color: '#374151' }}>
+                      <td style={{ padding: '12px 14px', color: 'var(--text-secondary)' }}>
                         {c.birth_date ?? <span style={{ color: '#D1D5DB' }}>-</span>}
                       </td>
-                      <td style={{ padding: '12px 14px', color: '#374151' }}>
+                      <td style={{ padding: '12px 14px', color: 'var(--text-secondary)' }}>
                         {c.phone ?? <span style={{ color: '#D1D5DB' }}>-</span>}
                       </td>
-                      <td style={{ padding: '12px 14px', color: '#374151' }}>
+                      <td style={{ padding: '12px 14px', color: 'var(--text-secondary)' }}>
                         {c.email ?? <span style={{ color: '#D1D5DB' }}>-</span>}
                       </td>
                       <td style={{ padding: '12px 14px', textAlign: 'center' }}>
@@ -637,9 +637,9 @@ export default function CustomerManagementPage() {
                             style={{
                               padding: '5px 12px',
                               borderRadius: '7px',
-                              border: '1px solid #D1D5DB',
-                              background: '#fff',
-                              color: '#374151',
+                              border: '1px solid var(--border-strong)',
+                              background: 'var(--bg-card)',
+                              color: 'var(--text-secondary)',
                               fontSize: '0.75rem',
                               fontWeight: 500,
                               cursor: 'pointer',
@@ -652,9 +652,9 @@ export default function CustomerManagementPage() {
                             style={{
                               padding: '5px 12px',
                               borderRadius: '7px',
-                              border: '1px solid #FECACA',
-                              background: '#FFF5F5',
-                              color: '#DC2626',
+                              border: '1px solid rgba(239,68,68,0.35)',
+                              background: 'var(--danger-bg)',
+                              color: 'var(--danger)',
                               fontSize: '0.75rem',
                               fontWeight: 500,
                               cursor: 'pointer',
@@ -675,7 +675,7 @@ export default function CustomerManagementPage() {
 
       {/* ── Footer count ── */}
       {!loading && !error && (
-        <p style={{ margin: '10px 0 0', fontSize: '12.5px', color: '#9CA3AF', textAlign: 'right' }}>
+        <p style={{ margin: '10px 0 0', fontSize: '12.5px', color: 'var(--text-muted)', textAlign: 'right' }}>
           총 {filtered.length}명
           {searchQuery && customers.length !== filtered.length && ` (전체 ${customers.length}명 중)`}
         </p>
@@ -701,7 +701,7 @@ export default function CustomerManagementPage() {
         >
           <div
             style={{
-              background: '#fff',
+              background: 'var(--bg-card)',
               borderRadius: '14px',
               padding: '28px',
               width: '100%',
@@ -713,7 +713,7 @@ export default function CustomerManagementPage() {
           >
             {/* Modal header */}
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '22px' }}>
-              <h2 style={{ margin: 0, fontSize: '18px', fontWeight: 700, color: '#111827' }}>
+              <h2 style={{ margin: 0, fontSize: '18px', fontWeight: 700, color: 'var(--text-primary)' }}>
                 {editTarget ? '고객 정보 수정' : '고객 추가'}
               </h2>
               <button
@@ -722,7 +722,7 @@ export default function CustomerManagementPage() {
                   background: 'none',
                   border: 'none',
                   cursor: 'pointer',
-                  color: '#9CA3AF',
+                  color: 'var(--text-muted)',
                   padding: '4px',
                   lineHeight: 1,
                 }}
@@ -742,8 +742,8 @@ export default function CustomerManagementPage() {
                     disabled={notionLoading}
                     style={{
                       width: '100%', padding: '10px', borderRadius: '8px',
-                      border: '1px dashed #D1D5DB', background: '#FAFBFC',
-                      color: '#374151', fontSize: '13px', fontWeight: 500,
+                      border: '1px dashed var(--border-strong)', background: 'var(--bg-surface)',
+                      color: 'var(--text-secondary)', fontSize: '13px', fontWeight: 500,
                       cursor: notionLoading ? 'wait' : 'pointer', display: 'flex', alignItems: 'center',
                       justifyContent: 'center', gap: '8px', opacity: notionLoading ? 0.6 : 1,
                     }}
@@ -753,37 +753,37 @@ export default function CustomerManagementPage() {
                 )}
 
                 {notionError && (
-                  <div style={{ marginTop: '8px', padding: '8px 12px', borderRadius: '6px', background: '#FEF2F2', border: '1px solid #FECACA', fontSize: '12px', color: '#DC2626' }}>
+                  <div style={{ marginTop: '8px', padding: '8px 12px', borderRadius: '6px', background: 'var(--danger-bg)', border: '1px solid rgba(239,68,68,0.35)', fontSize: '12px', color: 'var(--danger)' }}>
                     {notionError}
-                    <button onClick={resetNotion} style={{ marginLeft: '8px', background: 'none', border: 'none', color: '#DC2626', textDecoration: 'underline', cursor: 'pointer', fontSize: '12px' }}>닫기</button>
+                    <button onClick={resetNotion} style={{ marginLeft: '8px', background: 'none', border: 'none', color: 'var(--danger)', textDecoration: 'underline', cursor: 'pointer', fontSize: '12px' }}>닫기</button>
                   </div>
                 )}
 
                 {/* Step 1: DB 선택 */}
                 {notionStep === 'selectDb' && (
-                  <div style={{ border: '1px solid #E5E7EB', borderRadius: '8px', overflow: 'hidden' }}>
-                    <div style={{ padding: '8px 12px', background: '#F0F4FA', fontSize: '12px', fontWeight: 600, color: '#1E3A5F', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <div style={{ border: '1px solid var(--border)', borderRadius: '8px', overflow: 'hidden' }}>
+                    <div style={{ padding: '8px 12px', background: '#F0F4FA', fontSize: '12px', fontWeight: 600, color: 'var(--blue-400)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                       <span>Notion 데이터베이스 선택</span>
-                      <button onClick={resetNotion} style={{ background: 'none', border: 'none', color: '#9CA3AF', cursor: 'pointer', fontSize: '12px' }}>취소</button>
+                      <button onClick={resetNotion} style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', fontSize: '12px' }}>취소</button>
                     </div>
                     {/* DB 검색 */}
-                    <div style={{ padding: '8px 10px', borderBottom: '1px solid #E5E7EB' }}>
+                    <div style={{ padding: '8px 10px', borderBottom: '1px solid var(--border)' }}>
                       <input
                         type="text"
                         placeholder="데이터베이스 검색..."
                         value={notionDbSearch}
                         onChange={e => setNotionDbSearch(e.target.value)}
-                        style={{ width: '100%', padding: '6px 10px', borderRadius: '6px', border: '1px solid #D1D5DB', fontSize: '12px', outline: 'none' }}
+                        style={{ width: '100%', padding: '6px 10px', borderRadius: '6px', border: '1px solid var(--border-strong)', fontSize: '12px', outline: 'none' }}
                       />
                     </div>
                     {notionLoading ? (
-                      <div style={{ padding: '24px', textAlign: 'center', color: '#6B7280', fontSize: '13px' }}>
+                      <div style={{ padding: '24px', textAlign: 'center', color: 'var(--text-muted)', fontSize: '13px' }}>
                         <div style={{ marginBottom: '8px', fontSize: '20px', animation: 'spin 1s linear infinite', display: 'inline-block' }}>⏳</div><br />
                         <span className="notion-spinner" style={{ marginRight: 6 }} />데이터 불러오는 중...
                         <style>{`@keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }`}</style>
                       </div>
                     ) : notionDbs.length === 0 ? (
-                      <div style={{ padding: '16px', textAlign: 'center', color: '#9CA3AF', fontSize: '13px' }}>
+                      <div style={{ padding: '16px', textAlign: 'center', color: 'var(--text-muted)', fontSize: '13px' }}>
                         접근 가능한 데이터베이스가 없습니다.<br />
                         <span style={{ fontSize: '11px' }}>Notion에서 페이지 [···] → [연결 추가]에서 통합을 연결해주세요.</span>
                       </div>
@@ -797,7 +797,7 @@ export default function CustomerManagementPage() {
                             onClick={() => { setNotionDbSearch(''); setNotionSelectedDbTitle(db.title); loadNotionRows(db.id); }}
                             style={{
                               width: '100%', padding: '10px 12px', border: 'none',
-                              borderBottom: '1px solid #F3F4F6', background: '#fff',
+                              borderBottom: '1px solid var(--border)', background: 'var(--bg-card)',
                               textAlign: 'left', cursor: 'pointer', fontSize: '13px',
                               display: 'flex', alignItems: 'center', gap: '8px',
                             }}
@@ -805,7 +805,7 @@ export default function CustomerManagementPage() {
                             onMouseOut={e => (e.currentTarget.style.background = '#fff')}
                           >
                             <span>{db.icon ?? '📄'}</span>
-                            <span style={{ fontWeight: 500, color: '#111827' }}>{db.title}</span>
+                            <span style={{ fontWeight: 500, color: 'var(--text-primary)' }}>{db.title}</span>
                           </button>
                         ))}
                       </div>
@@ -815,24 +815,24 @@ export default function CustomerManagementPage() {
 
                 {/* Step 2: 필드 매핑 + 행 선택 */}
                 {notionStep === 'mapping' && (
-                  <div style={{ border: '1px solid #E5E7EB', borderRadius: '8px', overflow: 'hidden' }}>
-                    <div style={{ padding: '8px 12px', background: '#F0F4FA', fontSize: '12px', fontWeight: 600, color: '#1E3A5F', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <div style={{ border: '1px solid var(--border)', borderRadius: '8px', overflow: 'hidden' }}>
+                    <div style={{ padding: '8px 12px', background: '#F0F4FA', fontSize: '12px', fontWeight: 600, color: 'var(--blue-400)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                       <span>필드 매핑 → 고객 선택{notionSelectedDbTitle ? ` (${notionSelectedDbTitle})` : ''}</span>
                       <div style={{ display: 'flex', gap: '8px' }}>
-                        <button onClick={() => { clearNotionCustomerConfig(); setNotionRows([]); setNotionColumns([]); setNotionRowSearch(''); fetchNotionDbList(); }} style={{ background: 'none', border: 'none', color: '#3B82F6', cursor: 'pointer', fontSize: '11px' }}>DB 변경</button>
-                        <button onClick={resetNotion} style={{ background: 'none', border: 'none', color: '#9CA3AF', cursor: 'pointer', fontSize: '12px' }}>취소</button>
+                        <button onClick={() => { clearNotionCustomerConfig(); setNotionRows([]); setNotionColumns([]); setNotionRowSearch(''); fetchNotionDbList(); }} style={{ background: 'none', border: 'none', color: 'var(--blue-400)', cursor: 'pointer', fontSize: '11px' }}>DB 변경</button>
+                        <button onClick={resetNotion} style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', fontSize: '12px' }}>취소</button>
                       </div>
                     </div>
 
                     {/* 로딩 */}
                     {notionLoading && (
-                      <div style={{ padding: '20px', textAlign: 'center', color: '#6B7280', fontSize: '13px' }}><span className="notion-spinner" style={{ marginRight: 6 }} />데이터 불러오는 중...</div>
+                      <div style={{ padding: '20px', textAlign: 'center', color: 'var(--text-muted)', fontSize: '13px' }}><span className="notion-spinner" style={{ marginRight: 6 }} />데이터 불러오는 중...</div>
                     )}
 
                     {!notionLoading && (<>
                       {/* 매핑 설정 */}
-                      <div style={{ padding: '10px 12px', background: '#FAFBFC', borderBottom: '1px solid #E5E7EB' }}>
-                        <div style={{ fontSize: '11px', color: '#6B7280', marginBottom: '6px' }}>Notion 컬럼 → 고객 필드 매핑 (자동 감지됨, 수정 가능)</div>
+                      <div style={{ padding: '10px 12px', background: 'var(--bg-surface)', borderBottom: '1px solid var(--border)' }}>
+                        <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginBottom: '6px' }}>Notion 컬럼 → 고객 필드 매핑 (자동 감지됨, 수정 가능)</div>
                         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px' }}>
                           {[
                             { key: 'name', label: '고객명 *' },
@@ -841,7 +841,7 @@ export default function CustomerManagementPage() {
                             { key: 'email', label: '이메일' },
                           ].map(f => (
                             <div key={f.key} style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '12px' }}>
-                              <span style={{ width: '60px', color: '#374151', fontWeight: 500, flexShrink: 0 }}>{f.label}</span>
+                              <span style={{ width: '60px', color: 'var(--text-secondary)', fontWeight: 500, flexShrink: 0 }}>{f.label}</span>
                               <select
                                 value={notionMapping[f.key] ?? ''}
                                 onChange={e => {
@@ -849,7 +849,7 @@ export default function CustomerManagementPage() {
                                   setNotionMapping(updated);
                                   if (notionSelectedDb) saveNotionCustomerConfig(notionSelectedDb, notionSelectedDbTitle, updated);
                                 }}
-                                style={{ flex: 1, padding: '4px 6px', borderRadius: '4px', border: '1px solid #D1D5DB', fontSize: '11px', background: notionMapping[f.key] ? '#ECFDF5' : '#fff' }}
+                                style={{ flex: 1, padding: '4px 6px', borderRadius: '4px', border: '1px solid var(--border-strong)', fontSize: '11px', background: notionMapping[f.key] ? '#ECFDF5' : '#fff' }}
                               >
                                 <option value="">-- 선택 --</option>
                                 {notionColumns.map(c => <option key={c} value={c}>{c}</option>)}
@@ -860,26 +860,26 @@ export default function CustomerManagementPage() {
                       </div>
 
                       {/* 고객 검색 */}
-                      <div style={{ padding: '8px 10px', borderBottom: '1px solid #E5E7EB' }}>
+                      <div style={{ padding: '8px 10px', borderBottom: '1px solid var(--border)' }}>
                         <input
                           type="text"
                           placeholder="고객 검색 (이름, 전화번호 등)..."
                           value={notionRowSearch}
                           onChange={e => setNotionRowSearch(e.target.value)}
-                          style={{ width: '100%', padding: '6px 10px', borderRadius: '6px', border: '1px solid #D1D5DB', fontSize: '12px', outline: 'none' }}
+                          style={{ width: '100%', padding: '6px 10px', borderRadius: '6px', border: '1px solid var(--border-strong)', fontSize: '12px', outline: 'none' }}
                         />
                       </div>
 
                       {/* 행 목록 */}
                       <div style={{ maxHeight: '220px', overflowY: 'auto' }}>
                         {notionRows.length === 0 ? (
-                          <div style={{ padding: '16px', textAlign: 'center', color: '#9CA3AF', fontSize: '13px' }}>데이터가 없습니다.</div>
+                          <div style={{ padding: '16px', textAlign: 'center', color: 'var(--text-muted)', fontSize: '13px' }}>데이터가 없습니다.</div>
                         ) : (() => {
                           const q = notionRowSearch.toLowerCase().trim();
                           const filtered = q
                             ? notionRows.filter(row => Object.values(row.properties).some(v => v && v.toLowerCase().includes(q)))
                             : notionRows;
-                          if (filtered.length === 0) return <div style={{ padding: '16px', textAlign: 'center', color: '#9CA3AF', fontSize: '13px' }}>검색 결과가 없습니다.</div>;
+                          if (filtered.length === 0) return <div style={{ padding: '16px', textAlign: 'center', color: 'var(--text-muted)', fontSize: '13px' }}>검색 결과가 없습니다.</div>;
                           return filtered.map(row => {
                             const dn = notionMapping.name ? (row.properties[notionMapping.name] ?? '-') : Object.values(row.properties)[0] ?? '-';
                             const db2 = notionMapping.birth_date ? (row.properties[notionMapping.birth_date] ?? '') : '';
@@ -891,23 +891,23 @@ export default function CustomerManagementPage() {
                                 onClick={() => { applyNotionRow(row); setNotionRowSearch(''); }}
                                 style={{
                                   width: '100%', padding: '9px 12px', border: 'none',
-                                  borderBottom: '1px solid #F3F4F6', background: '#fff',
+                                  borderBottom: '1px solid var(--border)', background: 'var(--bg-card)',
                                   textAlign: 'left', cursor: 'pointer', fontSize: '12px',
                                   display: 'flex', alignItems: 'center', gap: '10px',
                                 }}
                                 onMouseOver={e => (e.currentTarget.style.background = '#F0FFF4')}
                                 onMouseOut={e => (e.currentTarget.style.background = '#fff')}
                               >
-                                <span style={{ fontWeight: 600, color: '#111827', minWidth: '70px' }}>{dn}</span>
-                                {db2 && <span style={{ color: '#6B7280', fontSize: '11px' }}>{db2}</span>}
-                                {dp && <span style={{ color: '#6B7280', fontSize: '11px' }}>{dp}</span>}
-                                {de && <span style={{ color: '#9CA3AF', fontSize: '11px' }}>{de}</span>}
+                                <span style={{ fontWeight: 600, color: 'var(--text-primary)', minWidth: '70px' }}>{dn}</span>
+                                {db2 && <span style={{ color: 'var(--text-muted)', fontSize: '11px' }}>{db2}</span>}
+                                {dp && <span style={{ color: 'var(--text-muted)', fontSize: '11px' }}>{dp}</span>}
+                                {de && <span style={{ color: 'var(--text-muted)', fontSize: '11px' }}>{de}</span>}
                               </button>
                             );
                           });
                         })()}
                       </div>
-                      <div style={{ padding: '6px 10px', background: '#F9FAFB', borderTop: '1px solid #E5E7EB', fontSize: '10px', color: '#9CA3AF' }}>
+                      <div style={{ padding: '6px 10px', background: 'var(--bg-surface)', borderTop: '1px solid var(--border)', fontSize: '10px', color: 'var(--text-muted)' }}>
                         총 {notionRows.length}건 · 클릭하면 폼에 자동 입력됩니다
                       </div>
                     </>)}
@@ -924,15 +924,15 @@ export default function CustomerManagementPage() {
                   style={{
                     padding: '9px 12px',
                     borderRadius: '8px',
-                    border: '1px solid #E5E7EB',
-                    background: '#F8FAFC',
+                    border: '1px solid var(--border)',
+                    background: 'var(--bg-surface)',
                     fontSize: '0.875rem',
-                    color: '#6B7280',
+                    color: 'var(--text-muted)',
                     fontFamily: 'monospace',
                   }}
                 >
                   {editTarget.unique_code}
-                  <span style={{ marginLeft: '8px', fontSize: '0.75rem', color: '#9CA3AF' }}>(서버 자동 생성, 변경 불가)</span>
+                  <span style={{ marginLeft: '8px', fontSize: '0.75rem', color: 'var(--text-muted)' }}>(서버 자동 생성, 변경 불가)</span>
                 </div>
               </div>
             )}
@@ -940,7 +940,7 @@ export default function CustomerManagementPage() {
             {/* 고객명 */}
             <div style={{ marginBottom: '16px' }}>
               <label style={labelStyle}>
-                고객명 <span style={{ color: '#DC2626' }}>*</span>
+                고객명 <span style={{ color: 'var(--danger)' }}>*</span>
               </label>
               <input
                 type="text"
@@ -954,7 +954,7 @@ export default function CustomerManagementPage() {
             {/* 생년월일 */}
             <div style={{ marginBottom: '16px' }}>
               <label style={labelStyle}>
-                생년월일 <span style={{ color: '#DC2626' }}>*</span>
+                생년월일 <span style={{ color: 'var(--danger)' }}>*</span>
               </label>
               <input
                 type="date"
@@ -999,7 +999,7 @@ export default function CustomerManagementPage() {
             </div>
 
             {/* 안내 메모 */}
-            <p style={{ fontSize: '12px', color: '#9CA3AF', marginTop: '8px', marginBottom: '16px' }}>
+            <p style={{ fontSize: '12px', color: 'var(--text-muted)', marginTop: '8px', marginBottom: '16px' }}>
               ※ &apos;증권사 투자 상품 관리기&apos; 이용 시 전화번호와 이메일이 반드시 필요합니다.
             </p>
 
@@ -1010,10 +1010,10 @@ export default function CustomerManagementPage() {
                   marginBottom: '16px',
                   padding: '10px 14px',
                   borderRadius: '8px',
-                  background: '#FFF5F5',
-                  border: '1px solid #FECACA',
+                  background: 'var(--danger-bg)',
+                  border: '1px solid rgba(239,68,68,0.35)',
                   fontSize: '0.8125rem',
-                  color: '#DC2626',
+                  color: 'var(--danger)',
                 }}
               >
                 {formError}
@@ -1028,9 +1028,9 @@ export default function CustomerManagementPage() {
                 style={{
                   padding: '9px 20px',
                   borderRadius: '8px',
-                  border: '1px solid #D1D5DB',
-                  background: '#fff',
-                  color: '#374151',
+                  border: '1px solid var(--border-strong)',
+                  background: 'var(--bg-card)',
+                  color: 'var(--text-secondary)',
                   fontSize: '0.875rem',
                   fontWeight: 500,
                   cursor: submitting ? 'not-allowed' : 'pointer',
@@ -1046,7 +1046,7 @@ export default function CustomerManagementPage() {
                   padding: '9px 20px',
                   borderRadius: '8px',
                   border: 'none',
-                  background: '#1E3A5F',
+                  background: 'var(--blue-600)',
                   color: '#fff',
                   fontSize: '0.875rem',
                   fontWeight: 600,
@@ -1074,17 +1074,17 @@ const labelStyle: React.CSSProperties = {
   marginBottom: '6px',
   fontSize: '0.8125rem',
   fontWeight: 600,
-  color: '#374151',
+  color: 'var(--text-secondary)',
 };
 
 const inputStyle: React.CSSProperties = {
   width: '100%',
   padding: '9px 12px',
   borderRadius: '8px',
-  border: '1px solid #D1D5DB',
+  border: '1px solid var(--border-strong)',
   fontSize: '0.875rem',
-  color: '#111827',
+  color: 'var(--text-primary)',
   outline: 'none',
   boxSizing: 'border-box',
-  background: '#fff',
+  background: 'var(--bg-card)',
 };

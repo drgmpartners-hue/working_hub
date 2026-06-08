@@ -13,7 +13,7 @@ const labelStyle: React.CSSProperties = {
   display: 'block',
   fontSize: '0.75rem',
   fontWeight: 600,
-  color: '#6B7280',
+  color: 'var(--text-muted)',
   marginBottom: 4,
   textTransform: 'uppercase',
   letterSpacing: '0.04em',
@@ -23,18 +23,18 @@ const inputStyle: React.CSSProperties = {
   width: '100%',
   padding: '10px 12px',
   fontSize: '0.875rem',
-  border: '1px solid #E1E5EB',
+  border: '1px solid var(--border)',
   borderRadius: 8,
   outline: 'none',
-  color: '#1A1A2E',
-  backgroundColor: '#FFFFFF',
+  color: 'var(--text-primary)',
+  backgroundColor: 'var(--bg-card)',
   boxSizing: 'border-box',
 };
 
 const readonlyStyle: React.CSSProperties = {
   ...inputStyle,
-  backgroundColor: '#F5F7FA',
-  color: '#6B7280',
+  backgroundColor: 'var(--bg-surface)',
+  color: 'var(--text-muted)',
   cursor: 'default',
 };
 
@@ -79,7 +79,7 @@ const API_PROVIDERS: ProviderDef[] = [
     label: 'Claude API (Anthropic)',
     description: 'AI 분석 및 리포트 생성에 사용됩니다.',
     icon: '🤖',
-    color: '#D97706',
+    color: 'var(--warning)',
     fields: [
       { name: 'api_key', label: 'API Key', placeholder: 'sk-ant-... 형식의 키를 입력하세요' },
     ],
@@ -455,11 +455,11 @@ export default function SettingsPage() {
           background: 'none',
           border: 'none',
           cursor: 'pointer',
-          color: '#6B7280',
+          color: 'var(--text-muted)',
           fontSize: '0.8125rem',
           padding: 0,
         }}
-        onMouseEnter={(e) => ((e.currentTarget as HTMLButtonElement).style.color = '#1A1A2E')}
+        onMouseEnter={(e) => ((e.currentTarget as HTMLButtonElement).style.color = 'var(--text-primary)')}
         onMouseLeave={(e) => ((e.currentTarget as HTMLButtonElement).style.color = '#6B7280')}
       >
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -468,12 +468,12 @@ export default function SettingsPage() {
         대시보드로 돌아가기
       </button>
 
-      <h1 style={{ margin: '0 0 16px', fontSize: '1.5rem', fontWeight: 700, color: '#1E3A5F' }}>
+      <h1 style={{ margin: '0 0 16px', fontSize: '1.5rem', fontWeight: 700, color: 'var(--blue-400)' }}>
         설정
       </h1>
 
       {/* Tabs */}
-      <div style={{ display: 'flex', gap: 0, borderBottom: '1px solid #E1E5EB', marginBottom: 20 }}>
+      <div style={{ display: 'flex', gap: 0, borderBottom: '1px solid var(--border)', marginBottom: 20 }}>
         <button style={tabStyle(activeTab === 'profile')} onClick={() => setActiveTab('profile')}>
           개인정보
         </button>
@@ -489,7 +489,7 @@ export default function SettingsPage() {
         <>
           {/* Section 1: Profile */}
           <Card style={{ marginBottom: 20 }}>
-            <h2 style={{ margin: '0 0 16px', fontSize: '1rem', fontWeight: 700, color: '#1A1A2E' }}>
+            <h2 style={{ margin: '0 0 16px', fontSize: '1rem', fontWeight: 700, color: 'var(--text-primary)' }}>
               개인정보
             </h2>
 
@@ -546,7 +546,7 @@ export default function SettingsPage() {
 
           {/* Section 2: Password */}
           <Card>
-            <h2 style={{ margin: '0 0 16px', fontSize: '1rem', fontWeight: 700, color: '#1A1A2E' }}>
+            <h2 style={{ margin: '0 0 16px', fontSize: '1rem', fontWeight: 700, color: 'var(--text-primary)' }}>
               비밀번호 변경
             </h2>
 
@@ -614,7 +614,7 @@ export default function SettingsPage() {
       {/* ============================================================ */}
       {activeTab === 'api' && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-          <p style={{ margin: 0, fontSize: '0.8125rem', color: '#6B7280' }}>
+          <p style={{ margin: 0, fontSize: '0.8125rem', color: 'var(--text-muted)' }}>
             외부 서비스 API 키를 등록하면 기준가 자동 조회, AI 분석 등의 기능을 사용할 수 있습니다.
             API 키는 암호화되어 안전하게 저장됩니다.
           </p>
@@ -635,7 +635,7 @@ export default function SettingsPage() {
           )}
 
           {apiLoading ? (
-            <div style={{ textAlign: 'center', padding: 40, color: '#9CA3AF' }}>로딩 중...</div>
+            <div style={{ textAlign: 'center', padding: 40, color: 'var(--text-muted)' }}>로딩 중...</div>
           ) : (
             API_PROVIDERS.map((provider) => {
               const saved = apiKeys.find((k) => k.provider === provider.key);
@@ -664,7 +664,7 @@ export default function SettingsPage() {
                     {/* Content */}
                     <div style={{ flex: 1, minWidth: 0 }}>
                       <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
-                        <h3 style={{ margin: 0, fontSize: '0.9375rem', fontWeight: 700, color: '#1A1A2E' }}>
+                        <h3 style={{ margin: 0, fontSize: '0.9375rem', fontWeight: 700, color: 'var(--text-primary)' }}>
                           {provider.label}
                         </h3>
                         {saved && (
@@ -682,7 +682,7 @@ export default function SettingsPage() {
                           </span>
                         )}
                       </div>
-                      <p style={{ margin: '0 0 8px', fontSize: '0.8125rem', color: '#6B7280' }}>
+                      <p style={{ margin: '0 0 8px', fontSize: '0.8125rem', color: 'var(--text-muted)' }}>
                         {provider.description}
                       </p>
 
@@ -694,15 +694,15 @@ export default function SettingsPage() {
                             if (!val) return null;
                             return (
                               <div key={f.name} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                                <span style={{ fontSize: '0.75rem', fontWeight: 600, color: '#6B7280', minWidth: 80 }}>
+                                <span style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-muted)', minWidth: 80 }}>
                                   {f.label}:
                                 </span>
                                 <code
                                   style={{
                                     fontSize: '0.8125rem',
                                     fontFamily: 'monospace',
-                                    color: '#374151',
-                                    backgroundColor: '#F5F7FA',
+                                    color: 'var(--text-secondary)',
+                                    backgroundColor: 'var(--bg-surface)',
                                     padding: '2px 8px',
                                     borderRadius: 4,
                                   }}
@@ -726,7 +726,7 @@ export default function SettingsPage() {
                               <div key={f.name}>
                                 <label style={{ ...labelStyle, marginBottom: 3 }}>
                                   {f.label}
-                                  {saved && <span style={{ fontWeight: 400, color: '#9CA3AF', textTransform: 'none', letterSpacing: 0 }}> (빈칸이면 기존 키 유지)</span>}
+                                  {saved && <span style={{ fontWeight: 400, color: 'var(--text-muted)', textTransform: 'none', letterSpacing: 0 }}> (빈칸이면 기존 키 유지)</span>}
                                 </label>
                                 <input
                                   type="text"
@@ -767,9 +767,9 @@ export default function SettingsPage() {
                                 padding: '7px 16px',
                                 fontSize: '0.8125rem',
                                 fontWeight: 600,
-                                color: '#6B7280',
-                                backgroundColor: '#F3F4F6',
-                                border: '1px solid #E1E5EB',
+                                color: 'var(--text-muted)',
+                                backgroundColor: 'var(--bg-surface)',
+                                border: '1px solid var(--border)',
                                 borderRadius: 7,
                                 cursor: 'pointer',
                               }}
@@ -783,9 +783,9 @@ export default function SettingsPage() {
                                 padding: '7px 16px',
                                 fontSize: '0.8125rem',
                                 fontWeight: 600,
-                                color: '#059669',
-                                backgroundColor: '#F0FDF4',
-                                border: '1px solid #BBF7D0',
+                                color: 'var(--success)',
+                                backgroundColor: 'var(--success-bg)',
+                                border: '1px solid rgba(16,185,129,0.3)',
                                 borderRadius: 7,
                                 cursor: apiTesting === provider.key ? 'not-allowed' : 'pointer',
                               }}
@@ -823,7 +823,7 @@ export default function SettingsPage() {
                             padding: 0,
                             fontSize: '0.75rem',
                             fontWeight: 600,
-                            color: '#6B7280',
+                            color: 'var(--text-muted)',
                             display: 'flex',
                             alignItems: 'center',
                             gap: 4,
@@ -838,7 +838,7 @@ export default function SettingsPage() {
                           {provider.guide.title}
                         </button>
                         {expandedGuide === provider.key && (
-                          <ol style={{ margin: '8px 0 0', paddingLeft: 20, fontSize: '0.8125rem', color: '#374151', lineHeight: 1.7 }}>
+                          <ol style={{ margin: '8px 0 0', paddingLeft: 20, fontSize: '0.8125rem', color: 'var(--text-secondary)', lineHeight: 1.7 }}>
                             {provider.guide.steps.map((step, i) => (
                               <li key={i} style={{ marginBottom: 4 }}>{step}</li>
                             ))}
@@ -860,9 +860,9 @@ export default function SettingsPage() {
                                   padding: '6px 10px',
                                   fontSize: '0.75rem',
                                   fontWeight: 600,
-                                  color: '#059669',
-                                  backgroundColor: '#F0FDF4',
-                                  border: '1px solid #BBF7D0',
+                                  color: 'var(--success)',
+                                  backgroundColor: 'var(--success-bg)',
+                                  border: '1px solid rgba(16,185,129,0.3)',
                                   borderRadius: 6,
                                   cursor: apiTesting === provider.key ? 'not-allowed' : 'pointer',
                                 }}
@@ -893,8 +893,8 @@ export default function SettingsPage() {
                                   padding: '6px 10px',
                                   fontSize: '0.75rem',
                                   fontWeight: 600,
-                                  color: '#1E3A5F',
-                                  backgroundColor: '#EEF2F7',
+                                  color: 'var(--blue-400)',
+                                  backgroundColor: 'var(--bg-card-2)',
                                   border: '1px solid #C7D2E2',
                                   borderRadius: 6,
                                   cursor: 'pointer',
@@ -908,9 +908,9 @@ export default function SettingsPage() {
                                   padding: '6px 10px',
                                   fontSize: '0.75rem',
                                   fontWeight: 600,
-                                  color: '#DC2626',
-                                  backgroundColor: '#FEF2F2',
-                                  border: '1px solid #FECACA',
+                                  color: 'var(--danger)',
+                                  backgroundColor: 'var(--danger-bg)',
+                                  border: '1px solid rgba(239,68,68,0.35)',
                                   borderRadius: 6,
                                   cursor: 'pointer',
                                 }}
