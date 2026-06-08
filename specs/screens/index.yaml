@@ -31,6 +31,11 @@ screens:
     file: stock-recommend.yaml
     auth: true
 
+  - name: 추천 성과·검증 (사후성과)
+    route: /investment/stock-recommend?tab=performance
+    file: stock-recommend-performance.yaml
+    auth: true
+
   - name: 카드뉴스 제작
     route: /content/card-news
     file: content-card-news.yaml
@@ -95,7 +100,7 @@ categories:
     screens: [commission-dr-gm, commission-securities]
 
   - name: 투자 분석
-    screens: [portfolio-irp, stock-recommend, customer-portfolio, stock-detail, retirement-desired-plan, retirement-investment-flow, retirement-plan, retirement-interactive-calc, retirement-pension-plan]
+    screens: [portfolio-irp, stock-recommend, stock-recommend-performance, customer-portfolio, stock-detail, retirement-desired-plan, retirement-investment-flow, retirement-plan, retirement-interactive-calc, retirement-pension-plan]
 
   - name: 콘텐츠 제작
     screens: [content-card-news, content-report, content-cover-promo]

@@ -5,6 +5,37 @@ screen:
   route: /investment/stock-recommend
   layout: full-width
   auth: true
+  description: |
+    어드바이저용 독립형 추천+근거+검증 엔진 (08-stock-etf-recommend).
+    [추천] 탭: 테마 → 종목(+우측 근거 사이드패널) → 비중 의 3-step 흐름.
+    [성과·검증] 탭: 추천 사후성과 추적 → stock-recommend-performance.yaml.
+    종목 행 클릭 시 우측 근거 사이드패널(stock-detail.yaml)이 차트·이평선·밸류·시그널·종합점수·백테스트를 제공.
+
+# 기존 구현 참고 (재작성 X, 진화 O) — 현 2-step·모달 UI를 확장
+existing_implementation:
+  page: frontend/src/app/(main)/investment/stock-recommend/page.tsx
+  components:
+    - frontend/src/components/investment/ThemeList.tsx       # Step1 테마 목록 (재사용)
+    - frontend/src/components/investment/StockList.tsx        # Step2 종목 테이블 (재사용·컬럼 확장)
+    - frontend/src/components/investment/StockAnalysisPopup.tsx  # 현 모달 → stock-detail 우측 사이드패널로 진화
+  api_prefix: /api/v1   # 실제 구현 프리픽스 (resources.yaml 표기는 advisory)
+  existing_endpoints:
+    - POST /api/v1/stocks/recommendations            # theme_ids[] → 추천 생성(폴링)
+    - GET  /api/v1/stocks/recommendations/:id        # 상태 폴링
+    - GET  /api/v1/stocks/recommendations/:id/stocks # 추천 종목 목록
+    - POST /api/v1/stocks/pool                        # 회사풀 담기
+  changes:
+    - "StepIndicator: 2-step(테마 분석/종목 확인) → 3-step(테마/종목/비중)"
+    - "StockList 테이블 컬럼 확장: + 종합점수 · 시그널 태그 · PBR/PER, 스크리닝 필터 헤더 추가"
+    - "StockAnalysisPopup(모달) → 우측 근거 사이드패널(slide-panel)로 전환, 시그널/종합점수/백테스트 섹션 추가"
+    - "신규 [추천]/[성과·검증] 탭 추가 (앱 공통 탭 패턴 — Wrap 은퇴설계 탭 UI 참고)"
+    - "ThemeBasket(분석 바스켓, 280px sticky sidebar) 유지"
+  design_tokens:
+    accent: "#2E8B8B (teal)"
+    primary: "#1E3A5F (navy)"
+    success: "#059669"
+    top5_highlight: "#D97706 (amber + star)"
+    note: "var(--bg-card)/--border/--text-* 다크 디자인 시스템 사용 (05-design-system)"
 
 data_requirements:
   - resource: stock_themes
@@ -12,98 +43,147 @@ data_requirements:
   - resource: stock_recommendations
     needs: [id, selected_themes, ai_scores, status]
   - resource: recommended_stocks
-    needs: [id, stock_code, stock_name, theme, rank, return_1m, return_3m, return_6m, institutional_buy, foreign_buy, is_top5, analysis_report]
+    needs: [id, stock_code, stock_name, theme, rank, return_1m, return_3m, return_6m,
+            institutional_buy, foreign_buy, is_top5, pbr, per, composite_score,
+            signal_tags, ma_alignment, allocation_pct]
+    filters: { pbr_max: "?pbr_max", ma_alignment: "?ma_alignment", score_min: "?score_min" }
   - resource: company_stock_pool
     needs: [id, pool_name, stocks]
 
 components:
+  - id: main_tabs
+    type: navigation
+    position: main
+    function: "탭 전환 — [추천] / [성과·검증(사후성과)]"
+    events:
+      - on: click:tab_performance
+        do: /investment/stock-recommend?tab=performance 로 이동 (성과·검증 탭)
+
   - id: step_indicator
     type: navigation
     position: main
-    function: 2단계 위저드 진행 표시 (테마 분석 / 종목 확인)
+    function: "3단계 위저드 진행 표시 (Step1 테마 분석 / Step2 종목 추천 / Step3 비중 제안)"
     events:
       - on: click:step
         do: 해당 단계로 이동
 
+  # === Step 1: 테마 분석 ===
   - id: theme_list
     type: list
     position: main
-    function: 증권사 API 테마 목록 + AI 분석 점수 + 추천 하이라이트
+    function: 테마 목록 + AI 분석 점수 + 추천 하이라이트 + 테마 근거(뉴스 요약)
     data_source:
       resource: stock_themes
     events:
       - on: click:analyze
-        do: 테마 AI 분석 요청 (뉴스 분석 기반 점수)
+        do: 테마 AI 분석 요청 (뉴스 공출현 기반 점수)
       - on: click:add_basket
-        do: 선택 테마를 바구니에 추가 (복수 선택)
+        do: 선택 테마를 바스켓에 추가 (복수 선택)
       - on: click:remove_basket
-        do: 바구니에서 테마 제거
+        do: 바스켓에서 테마 제거
 
   - id: theme_basket
     type: list
     position: main
-    function: 선택된 테마 바구니 표시
+    function: 선택된 테마 바스켓 표시
     events:
       - on: click:next
-        do: Step 2로 이동 (선택 테마의 주식 목록 조회)
+        do: Step 2로 이동 (선택 테마의 종목 목록 조회)
+
+  # === Step 2: 종목 추천 + 스크리닝 ===
+  - id: screening_filter
+    type: form
+    position: main
+    function: "지표 스크리닝 필터 (예: PBR<1 & 정배열, 종합점수 N 이상) — 종목 리스트 실시간 필터링"
+    events:
+      - on: change:filter
+        do: 필터 조건으로 recommended_stocks 재조회 (filters 적용)
+      - on: click:reset
+        do: 필터 초기화
 
   - id: stock_list
     type: list
     position: main
-    function: 선택 테마별 주식 목록 (Top 5 구별 표시) + 상세 정보
+    function: |
+      선택 테마별 종목 목록 (Top 5 구별 표시).
+      각 행: 종목명 · 종합점수 · 시그널 태그(골든크로스/정배열) · PBR/PER · 기간 수익률 · 수급.
+      행 클릭 시 우측 근거 사이드패널 오픈.
     data_source:
       resource: recommended_stocks
     events:
-      - on: click:add_portfolio
-        do: 개인 포트폴리오에 주식 추가
-      - on: click:add_pool
-        do: 회사 투자풀에 주식 추가
-      - on: click:stock_detail
-        do: 주식 분석 보고서 팝업 열기
+      - on: click:row
+        do: 우측 근거 사이드패널 열기 (stock-detail.yaml — 차트·이평선·밸류·시그널·종합점수·백테스트)
+      - on: click:add_basket
+        do: 비중 제안 대상(Step3 바스켓)에 종목 추가
+      - on: click:next
+        do: Step 3으로 이동 (담은 종목의 비중 제안)
 
-  - id: stock_analysis_popup
-    type: detail
-    position: overlay
-    function: 개별 주식 AI 분석 보고서 (NotebookLM식 리서치 기반)
+  # === Step 3: 비중 제안 ===
+  - id: allocation_panel
+    type: form
+    position: main
+    function: |
+      담은 종목별 비중(%) 배분 제안 + 수동 조정.
+      합계 100% 검증, 비중 산출 기준(균등/점수가중)은 추후 확정(미결정).
     data_source:
       resource: recommended_stocks
+      fields: [stock_name, composite_score, allocation_pct]
     events:
-      - on: click:generate_report
-        do: AI 리서치 기반 분석 보고서 생성
+      - on: change:allocation
+        do: 종목 비중 수정 후 합계 재계산
+      - on: click:add_pool
+        do: 구성된 종목+비중을 회사 종목풀(company_stock_pool)에 저장
+
+  # === 우측 근거 사이드패널 (공통, Step2에서 호출) ===
+  - id: evidence_side_panel
+    type: detail
+    position: panel-right
+    function: |
+      종목 판단 근거 패널 (08 M2/M3). 상세 컴포넌트는 stock-detail.yaml 참조.
+      기준가 차트 + 이동평균선(5/20/60/120) + 밸류지표(PBR·PER·EPS·ROE·배당)
+      + 시그널 자동해석(골든/데드크로스·정배열) + 종합점수 + 백테스트("1년 전 담았다면?").
+    data_source:
+      resource: stock_market_data
+    events:
       - on: click:close
-        do: 팝업 닫기
+        do: 사이드패널 닫기
 
 connections:
   navigations:
-    - from: step_indicator
-      to: /dashboard
-    - from: stock_list
-      to: /portfolio/irp
+    - from: main_tabs
+      to: /investment/stock-recommend?tab=performance
+  embeds:
+    - stock-detail (우측 근거 사이드패널 — Step2 종목 행 클릭)
   shared_components:
     - header_bar
 
 tests:
-  - name: 테마 분석 및 선택
-    when: 테마 분석 실행 후 테마 선택
+  - name: Step1 테마 분석 및 바스켓
+    when: 테마 분석 실행 후 복수 테마 선택
     then:
-      - AI 분석 점수가 각 테마에 표시
-      - 추천 테마가 하이라이트 표시
-      - 바구니에 복수 테마 담기 가능
+      - 각 테마에 AI 분석 점수·뉴스 근거 표시
+      - 추천 테마 하이라이트
+      - 바스켓에 복수 테마 담기 가능
 
-  - name: 종목 확인 및 Top 5
-    when: Step 2 진입
+  - name: Step2 종목 추천 + 근거 패널
+    when: Step2 진입 후 종목 행 클릭
     then:
-      - 선택 테마의 주식 목록 표시
-      - Top 5 주식이 시각적으로 구별
-      - 기간별 수익률, 기관/외국인 매수 정보 표시
+      - 종목 목록에 종합점수·시그널 태그·PBR/PER 표시, Top5 구별
+      - 행 클릭 시 우측 근거 사이드패널(차트·이평선·시그널·종합점수·백테스트) 오픈
 
-  - name: 포트폴리오 담기
-    when: 주식 선택 후 포트폴리오 담기 클릭
+  - name: 스크리닝 필터
+    when: "PBR<1 & 정배열 필터 적용"
     then:
-      - 개인 포트폴리오 또는 회사풀에 추가
-      - 추가 완료 알림 표시
+      - 조건을 만족하는 종목만 리스트에 표시
+      - 필터 초기화 시 전체 종목 복원
 
-  - name: 주식 분석 보고서
-    when: 개별 주식 분석 버튼 클릭
+  - name: Step3 비중 제안
+    when: 담은 종목으로 Step3 진입
     then:
-      - 팝업에 AI 리서치 기반 분석 보고서 표시
+      - 종목별 비중(%) 제안 표시, 수동 조정 가능
+      - 합계 100% 검증, 종목풀 저장 가능
+
+  - name: 성과·검증 탭 전환
+    when: "[성과·검증] 탭 클릭"
+    then:
+      - 추천 사후성과 추적 화면으로 전환

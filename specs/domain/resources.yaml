@@ -127,6 +127,9 @@ resources:
     endpoints:
       - method: GET
         path: /api/stocks/recommendations/:rec_id/stocks
+      # 스크리닝: 지표 필터(예: PBR<1 & 정배열)로 종목 추림 (08-stock-etf-recommend M3)
+      - method: GET
+        path: /api/stocks/screening
     fields:
       id: { type: integer, pk: true }
       recommendation_id: { type: integer, fk: stock_recommendations }
@@ -141,6 +144,13 @@ resources:
       foreign_buy: { type: bigint }
       is_top5: { type: boolean }
       analysis_report: { type: jsonb }
+      # 스크리닝/근거 표시용 요약 지표 (상세는 stock_market_data 참조)
+      pbr: { type: decimal }
+      per: { type: decimal }
+      composite_score: { type: decimal }      # 종합점수 (placeholder 로직, 사용자 자료 대기)
+      signal_tags: { type: jsonb }            # ["golden_cross","ma_aligned"] 자동 해석 결과
+      ma_alignment: { type: string, enum: [bullish, bearish, mixed] }  # 정배열/역배열
+      allocation_pct: { type: decimal }       # Step3 비중 제안 (%)
 
   company_stock_pool:
     endpoints:
@@ -309,6 +319,9 @@ resources:
         path: /api/market/stocks/:code/fundamentals
       - method: GET
         path: /api/market/stocks/:code/supply-demand
+      # 시그널·종합점수 (이평선 시계열에서 코드 계산, 08 M3)
+      - method: GET
+        path: /api/market/stocks/:code/signals
     fields:
       code: { type: string, pk: true }
       name: { type: string }
@@ -323,10 +336,20 @@ resources:
       ma60: { type: decimal }
       ma120: { type: decimal }
       volume_history: { type: jsonb }
-      # 밸류에이션
+      # 밸류에이션 (08 M2: PBR·PER·EPS·ROE·배당)
       per: { type: decimal }
       eps: { type: decimal }
       pbr: { type: decimal }
+      roe: { type: decimal }
+      # 시그널·종합점수 (08 M3 — 산정 로직은 사용자 제공 자료 분석 후 확정, 그 전까지 placeholder)
+      signals: { type: jsonb }
+      # signals 구조:
+      #   golden_cross: bool   # 골든크로스 발생 (단기선이 장기선 상향 돌파)
+      #   dead_cross: bool     # 데드크로스 발생
+      #   ma_alignment: string # bullish(정배열) / bearish(역배열) / mixed
+      #   disparity: {ma20, ma60}  # 이격도(%)
+      composite_score: { type: decimal }   # 종합점수 (0~100, placeholder)
+      score_breakdown: { type: jsonb }     # 점수 산정 근거 {valuation, momentum, supply, ...}
       # 배당 (주식/ETF 공통)
       dividend_yield: { type: decimal }
       dividend_cycle: { type: string }
@@ -352,6 +375,51 @@ resources:
       etf_top10_ratio: { type: jsonb }
       data_source: { type: string, enum: [kis, naver] }
       updated_at: { type: timestamp }
+
+  # === 주식·ETF 추천 고도화 (08-stock-etf-recommend) ===
+
+  # 백테스트 — "1년 전 담았다면?" (추천 흐름 안, 근거 패널에서 호출, 08 M4)
+  stock_backtests:
+    endpoints:
+      - method: GET
+        path: /api/market/stocks/:code/backtest
+    fields:
+      id: { type: integer, pk: true }
+      stock_code: { type: string }
+      stock_name: { type: string }
+      period: { type: string, enum: ["1m", "3m", "6m", "1y", "3y"] }
+      entry_date: { type: date }
+      entry_price: { type: decimal }
+      current_price: { type: decimal }
+      return_rate: { type: decimal }          # 해당 기간 수익률(%)
+      benchmark_return: { type: decimal }      # 벤치마크(코스피 등) 동기간 수익률(%)
+      max_drawdown: { type: decimal }          # 최대 낙폭(%)
+      chart_data: { type: jsonb }              # 기간 수익률 추이 시계열
+      data_source: { type: string, enum: [kis, naver] }
+
+  # 추천 사후성과 추적 — 별도 탭 (08 M4)
+  recommendation_performance:
+    endpoints:
+      - method: GET
+        path: /api/stocks/performance
+      - method: GET
+        path: /api/stocks/performance/summary
+    fields:
+      id: { type: integer, pk: true }
+      recommendation_id: { type: integer, fk: stock_recommendations }
+      stock_code: { type: string }
+      stock_name: { type: string }
+      theme: { type: string }
+      recommended_date: { type: date }
+      recommended_price: { type: decimal }
+      current_price: { type: decimal }
+      return_since: { type: decimal }          # 추천 이후 수익률(%)
+      benchmark_return: { type: decimal }       # 동기간 벤치마크 수익률(%)
+      excess_return: { type: decimal }          # 초과수익(추천 - 벤치마크)
+      holding_days: { type: integer }
+      status: { type: string, enum: [hit, miss, holding] }  # 성공/실패/보유중
+      composite_score_at_rec: { type: decimal } # 추천 시점 종합점수 (스코어 신뢰도 검증용)
+      created_at: { type: timestamp }
 
   # === Wrap Retirement (랩 은퇴설계) ===
 

@@ -7,8 +7,19 @@ screen:
   auth: true
   description: |
     주식 또는 ETF 개별 종목의 상세 분석 정보를 슬라이드업/팝업으로 제공.
-    SCR-10 포트폴리오 테이블 또는 SCR-06 추천 화면에서 종목 클릭 시 진입.
+    SCR-10 포트폴리오 테이블 또는 SCR-06 추천 화면(우측 근거 사이드패널)에서 종목 클릭 시 진입.
     stock_type(stock/etf)에 따라 표시 섹션이 다름.
+    08-stock-etf-recommend 고도화: 시그널 자동해석·종합점수·백테스트 섹션 추가
+    (추천 흐름의 "판단 근거" 역할). 스코어/시그널 산정 로직은 사용자 제공 자료 대기 → placeholder.
+
+# 기존 구현 참고 — 현 모달(StockAnalysisPopup)을 우측 슬라이드 패널로 진화
+existing_implementation:
+  current: frontend/src/components/investment/StockAnalysisPopup.tsx  # Modal(maxWidth 600)
+  current_shows: [theme/sector 뱃지, 수익률 뱃지(1/3/6개월), market_cap, AI analysis_report, 포트폴리오/회사풀 담기]
+  changes:
+    - "Modal → slide-panel(우측) 전환, 추천 화면 Step2 행 클릭으로 진입"
+    - "기존 표시(수익률·시총·AI리포트·담기 버튼) 유지 + 차트/이평선/밸류/시그널/종합점수/백테스트 섹션 추가"
+  api_prefix: /api/v1
 
 data_requirements:
   - resource: stock_market_data
@@ -41,7 +52,13 @@ data_requirements:
       - supply_chain
       - etf_holdings
       - etf_top10_ratio
+      - roe
+      - signals
+      - composite_score
+      - score_breakdown
       - data_source
+  - resource: stock_backtests
+    needs: [period, entry_date, entry_price, current_price, return_rate, benchmark_return, max_drawdown, chart_data]
 
 components:
   - id: detail_header
@@ -75,10 +92,46 @@ components:
     type: stats_card
     position: panel-main
     condition: stock_type == "stock"
-    function: "밸류에이션 지표: PER, EPS, PBR (업종 평균 대비 색상 표시)"
+    function: "밸류에이션 지표: PBR, PER, EPS, ROE, 배당 (업종 평균 대비 색상 표시)"
     data_source:
       resource: stock_market_data
-      fields: [per, eps, pbr]
+      fields: [pbr, per, eps, roe, dividend_yield]
+
+  # === 시그널·종합점수 (08 M3 — 주식/ETF 공통, 추천 판단 근거) ===
+
+  - id: signal_section
+    type: stats_card
+    position: panel-main
+    function: |
+      시그널 자동 해석: 골든/데드크로스, 이동평균선 정배열/역배열, 이격도.
+      배지 형태로 표시 (예: "골든크로스 ▲", "정배열", "20일 이격 +3%").
+      ⚠️ 산정 로직은 사용자 제공 자료 분석 후 확정 (현재 placeholder).
+    data_source:
+      resource: stock_market_data
+      fields: [signals]
+
+  - id: composite_score_section
+    type: stats_card
+    position: panel-main
+    function: |
+      종합점수 (0~100) + 산정 근거 분해(밸류/모멘텀/수급 등).
+      ⚠️ 가중치 로직은 사용자 제공 자료 대기 (placeholder).
+    data_source:
+      resource: stock_market_data
+      fields: [composite_score, score_breakdown]
+
+  - id: backtest_section
+    type: chart
+    position: panel-main
+    function: |
+      백테스트 "1년 전 담았다면?" — 기간별 수익률 + 벤치마크 대비 + 최대낙폭.
+      기간 선택: 1개월 / 3개월 / 6개월 / 1년 / 3년.
+    data_source:
+      resource: stock_backtests
+      fields: [period, return_rate, benchmark_return, max_drawdown, chart_data]
+    events:
+      - on: change:period
+        do: 선택 기간 백테스트 재계산
 
   - id: supply_demand_chart
     type: chart
@@ -214,3 +267,10 @@ tests:
     then:
       - 패널 내용이 선택 종목 데이터로 교체
       - 패널 닫힘 없이 내용만 갱신
+
+  - name: 시그널·종합점수·백테스트 (추천 근거)
+    when: 추천 화면 Step2에서 종목 클릭으로 근거 패널 진입
+    then:
+      - signal_section 표시 (골든/데드크로스·정배열 배지)
+      - composite_score_section 표시 (종합점수 + 산정 근거)
+      - backtest_section 표시 (기간 선택, 벤치마크 대비 수익률)

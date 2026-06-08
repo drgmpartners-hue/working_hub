@@ -1066,6 +1066,195 @@ flowchart TD
 
 ---
 
+## Phase 5: 주식·ETF 추천 고도화 (08-stock-etf-recommend)
+
+> 입력: `docs/planning/08-stock-etf-recommend.md`, `specs/screens/stock-recommend.yaml`, `stock-detail.yaml`, `stock-recommend-performance.yaml`
+> 기존 구현(P3-S2 주식/ETF 추천, P3-S4 종목 상세)을 **진화**(재작성 X). 현 2-step·모달 → 탭+3-step·우측 사이드패널.
+> ⚠️ **핵심 의존성**: 시그널/종합점수 산정 로직은 사용자 제공 자료 분석 후 확정. 그 전까지 **placeholder 인터페이스**로 구현하고 자료 입수 시 로직만 교체.
+
+### P5-R1: 데이터 수집 파이프라인 (일배치)
+
+#### [ ] P5-R1-T1: 종목 마스터 + 영업일 캘린더
+- **담당**: backend-specialist
+- **의존**: P0-T0.3
+- **스펙**: 전종목 코드·종목명·시장구분(KRX/KIS) 주기 갱신(상장/폐지), 휴장일 처리·거래일 기준 캘린더 (08 §5 4대 함정 #2·#3)
+- **파일**: `backend/tests/services/test_stock_master.py` → `backend/app/services/stock_master_service.py`, `backend/app/services/trading_calendar.py`
+- **TDD**: RED → GREEN → REFACTOR
+
+#### [ ] P5-R1-T2: 시세 수집기 (KIS 수정주가 OHLCV 주력 + 백업)
+- **담당**: backend-specialist
+- **의존**: P5-R1-T1
+- **스펙**: KIS 기간별시세(수정주가) 주력, 네이버 차트/Yahoo 백업. **단일 소스 통일**(소스 혼용 금지, 08 §5 함정 #1). 과거 1회 백필 → 매일 종가 증분. KIS 토큰 1일 1회 발급 + 초당 제한 큐/sleep (함정 #4)
+- **파일**: `backend/tests/services/test_price_collector.py` → `backend/app/services/collectors/kis_price.py`, `backend/app/services/collectors/rate_limiter.py`
+- **TDD**: RED → GREEN → REFACTOR
+
+#### [ ] P5-R1-T3: 재무·공시·뉴스 수집기 (DART + 네이버 검색)
+- **담당**: backend-specialist
+- **의존**: P5-R1-T1
+- **스펙**: DART OpenAPI(재무제표·공시 list.json), 네이버 검색 OpenAPI(뉴스) — 종목↔테마 공출현 정량화. 네이버 일일 쿼터 배치 관리
+- **파일**: `backend/tests/services/test_fundamentals_collector.py` → `backend/app/services/collectors/dart.py`, `backend/app/services/collectors/naver_news.py`
+- **TDD**: RED → GREEN → REFACTOR
+
+### P5-R2: 시그널·종합점수 엔진
+
+#### [ ] P5-R2-T1: 이동평균선·시그널 계산
+- **담당**: backend-specialist
+- **의존**: P5-R1-T2
+- **스펙**: 종가 시계열에서 5/20/60/120 이평선·골든/데드크로스·정배열(ma_alignment)·이격도 코드 계산 (08 §5 — 수집 아님, 계산)
+- **파일**: `backend/tests/services/test_signal_engine.py` → `backend/app/services/signal_engine.py`
+- **TDD**: RED → GREEN → REFACTOR
+
+#### [ ] P5-R2-T2: 종합점수 산정 (placeholder)
+- **담당**: backend-specialist
+- **의존**: P5-R2-T1, P5-R1-T3
+- **스펙**: ⚠️ **placeholder** — composite_score(0~100)·score_breakdown(valuation/momentum/supply) 인터페이스만 확정, 가중치는 사용자 자료 입수 후 교체. 자료 대기 명시 주석 필수
+- **파일**: `backend/tests/services/test_scoring.py` → `backend/app/services/scoring_service.py`
+- **TDD**: RED → GREEN → REFACTOR
+
+### P5-R3: Stock Market Data 확장
+
+#### [ ] P5-R3-T1: Market Data 필드·API 확장
+- **담당**: backend-specialist
+- **리소스**: stock_market_data
+- **의존**: P5-R2-T1, P5-R2-T2
+- **엔드포인트**: GET /api/v1/market/stocks/:code/signals (+기존 :code, /chart, /fundamentals 응답에 signals·composite_score·score_breakdown·roe 추가)
+- **필드**: roe, signals, composite_score, score_breakdown
+- **파일**: `backend/tests/api/test_market_signals.py` → `backend/app/routers/market.py`, `backend/app/models/stock_market_data.py` (마이그레이션 포함)
+- **TDD**: RED → GREEN → REFACTOR
+
+### P5-R4: Recommended Stocks 확장 + 스크리닝
+
+#### [ ] P5-R4-T1: 추천종목 지표 확장 + 스크리닝 API
+- **담당**: backend-specialist
+- **리소스**: recommended_stocks
+- **의존**: P5-R2-T1, P5-R3-T1
+- **엔드포인트**: GET /api/v1/stocks/screening (지표 필터: PBR<1 & 정배열 & 종합점수≥N)
+- **필드**: pbr, per, composite_score, signal_tags, ma_alignment, allocation_pct
+- **파일**: `backend/tests/api/test_stock_screening.py` → `backend/app/routers/stocks.py`, `backend/app/services/screening_service.py`
+- **TDD**: RED → GREEN → REFACTOR
+
+### P5-R5: Stock Backtests (신규)
+
+#### [ ] P5-R5-T1: 백테스트 API
+- **담당**: backend-specialist
+- **리소스**: stock_backtests
+- **의존**: P5-R1-T2
+- **엔드포인트**: GET /api/v1/market/stocks/:code/backtest ("1년 전 담았다면?" — 기간별 수익률·벤치마크 대비·최대낙폭)
+- **필드**: stock_code, period, entry_date, entry_price, current_price, return_rate, benchmark_return, max_drawdown, chart_data
+- **파일**: `backend/tests/api/test_backtest.py` → `backend/app/routers/market.py`, `backend/app/services/backtest_service.py`
+- **TDD**: RED → GREEN → REFACTOR
+
+### P5-R6: Recommendation Performance (신규)
+
+#### [ ] P5-R6-T1: 추천 사후성과 API
+- **담당**: backend-specialist
+- **리소스**: recommendation_performance
+- **의존**: P3-R5 (recommended_stocks), P5-R1-T2
+- **엔드포인트**: GET /api/v1/stocks/performance, GET /api/v1/stocks/performance/summary (적중률·평균 초과수익·종합점수 신뢰도)
+- **필드**: recommendation_id, stock_code, stock_name, theme, recommended_date, recommended_price, current_price, return_since, benchmark_return, excess_return, holding_days, status, composite_score_at_rec
+- **파일**: `backend/tests/api/test_recommendation_performance.py` → `backend/app/routers/stocks.py`, `backend/app/services/performance_service.py`
+- **TDD**: RED → GREEN → REFACTOR
+
+### P5-S1: 주식/ETF 추천 화면 고도화
+
+#### [ ] P5-S1-T1: 탭 + 3-step + 스크리닝 UI
+- **담당**: frontend-specialist
+- **화면**: /investment/stock-recommend
+- **의존**: P5-R4-T1, P5-R3-T1
+- **스펙**: 기존 `page.tsx`·`StockList.tsx`·`ThemeList.tsx`·`ThemeBasket` **재사용/확장**
+  - StepIndicator 2-step → 3-step(테마/종목/비중)
+  - [추천]/[성과·검증] 탭 추가 (앱 공통 탭 패턴)
+  - StockList 컬럼 확장: 종합점수·시그널 태그·PBR/PER
+  - 스크리닝 필터 헤더(PBR<1 & 정배열 등)
+  - Step3 비중 제안 패널(allocation_pct, 합계 100% 검증)
+  - 종목 행 클릭 → 우측 근거 사이드패널(P5-S2) 연동
+- **파일**: `frontend/src/app/(main)/investment/stock-recommend/page.tsx`, `frontend/src/components/investment/StockList.tsx`, `frontend/src/components/investment/ScreeningFilter.tsx`, `frontend/src/components/investment/AllocationPanel.tsx`
+
+#### [ ] P5-S1-T2: 추천 화면 통합 테스트
+- **담당**: test-specialist
+- **의존**: P5-S1-T1
+- **시나리오**:
+  | 이름 | When | Then |
+  |------|------|------|
+  | Step1 테마 바스켓 | 테마 분석 후 복수 선택 | AI점수·근거 표시, 바스켓 복수 담기 |
+  | Step2 근거 패널 | 종목 행 클릭 | 종합점수·시그널 컬럼, 우측 사이드패널 오픈 |
+  | 스크리닝 | PBR<1 & 정배열 필터 | 조건 만족 종목만 표시, 초기화 복원 |
+  | Step3 비중 | 담은 종목으로 진입 | 비중 제안·조정, 합계 100% 검증 |
+  | 탭 전환 | [성과·검증] 클릭 | 성과 화면 전환 |
+- **파일**: `frontend/tests/e2e/stock-recommend.spec.ts`
+
+### P5-S2: 종목 근거 사이드패널 (모달 → 슬라이드패널)
+
+#### [ ] P5-S2-T1: 사이드패널 진화 + 시그널/점수/백테스트
+- **담당**: frontend-specialist
+- **화면**: 우측 슬라이드 패널 (독립 라우트 없음)
+- **의존**: P5-R3-T1, P5-R5-T1
+- **스펙**: 기존 `StockAnalysisPopup.tsx`(Modal) → **slide-panel** 전환. 기존 표시(수익률·시총·AI리포트·담기) 유지 + 차트/이평선(5/20/60/120)/밸류(PBR·PER·EPS·ROE·배당)/시그널 배지/종합점수/백테스트 섹션 추가
+- **파일**: `frontend/src/components/investment/StockDetailPanel.tsx` (StockAnalysisPopup 대체), `frontend/src/components/investment/SignalBadge.tsx`, `frontend/src/components/investment/BacktestChart.tsx`
+
+#### [ ] P5-S2-T2: 사이드패널 통합 테스트
+- **담당**: test-specialist
+- **의존**: P5-S2-T1
+- **시나리오**:
+  | 이름 | When | Then |
+  |------|------|------|
+  | 주식 근거 | stock_type=stock 클릭 | 차트·밸류·시그널·종합점수·백테스트 표시 |
+  | ETF 근거 | stock_type=etf 클릭 | 차트·배당·구성종목 + 주식전용 미표시 |
+  | 백테스트 기간 | 기간 변경 | 벤치마크 대비 수익률 갱신 |
+  | 데이터 fallback | KIS 실패 | naver로 전환, data_source 표시 변경 |
+- **파일**: `frontend/tests/e2e/stock-detail-panel.spec.ts`
+
+### P5-S3: 추천 성과·검증 탭 (신규)
+
+#### [ ] P5-S3-T1: 성과·검증 화면 UI
+- **담당**: frontend-specialist
+- **화면**: /investment/stock-recommend?tab=performance
+- **의존**: P5-R6-T1
+- **스펙**: 요약 카드(적중률·평균 초과수익·추적 수), 필터(테마/상태/기간), 사후성과 테이블, 종합점수 신뢰도 차트. 행 클릭 → 근거 사이드패널(P5-S2)
+- **파일**: `frontend/src/components/investment/PerformanceTab.tsx`, `frontend/src/components/investment/PerformanceSummary.tsx`, `frontend/src/components/investment/ScoreReliabilityChart.tsx`
+
+#### [ ] P5-S3-T2: 성과·검증 통합 테스트
+- **담당**: test-specialist
+- **의존**: P5-S3-T1
+- **시나리오**:
+  | 이름 | When | Then |
+  |------|------|------|
+  | 성과 요약 | 탭 진입 | 적중률·초과수익 요약, 사후성과 테이블 |
+  | 필터링 | 테마/상태 필터 | 조건 만족 추천만 반영 |
+  | 점수 신뢰도 | 데이터 로드 | 점수 구간별 평균 수익률 차트 |
+  | 드릴다운 | 행 클릭 | 근거 사이드패널 오픈 |
+- **파일**: `frontend/tests/e2e/stock-recommend-performance.spec.ts`
+
+### Verification
+
+#### [ ] P5-S1-V: 추천 화면 연결점 검증
+- **담당**: test-specialist
+- **검증 항목**:
+  - [ ] Field Coverage: recommended_stocks.[pbr, per, composite_score, signal_tags, ma_alignment, allocation_pct] 존재
+  - [ ] Endpoint: GET /api/v1/stocks/screening 필터 응답 정상
+  - [ ] Navigation: [추천]↔[성과·검증] 탭 전환, 종목 행 → 사이드패널
+  - [ ] Auth: 로그인 필수 / Shared: HeaderBar
+- **파일**: `frontend/tests/integration/stock-recommend.verify.ts`
+
+#### [ ] P5-S2-V: 근거 사이드패널 연결점 검증
+- **담당**: test-specialist
+- **검증 항목**:
+  - [ ] Field Coverage: stock_market_data.[roe, signals, composite_score, score_breakdown] 존재
+  - [ ] Field Coverage: stock_backtests.[period, return_rate, benchmark_return, max_drawdown, chart_data] 존재
+  - [ ] Endpoint: GET /api/v1/market/stocks/:code/signals, /backtest 응답 정상
+  - [ ] stock_type 분기(주식/ETF) 섹션 표시
+- **파일**: `frontend/tests/integration/stock-detail-panel.verify.ts`
+
+#### [ ] P5-S3-V: 성과·검증 연결점 검증
+- **담당**: test-specialist
+- **검증 항목**:
+  - [ ] Field Coverage: recommendation_performance.[return_since, benchmark_return, excess_return, status, composite_score_at_rec] 존재
+  - [ ] Endpoint: GET /api/v1/stocks/performance, /performance/summary 응답 정상
+  - [ ] Navigation: 행 클릭 → 근거 사이드패널
+- **파일**: `frontend/tests/integration/stock-recommend-performance.verify.ts`
+
+---
+
 ## 태스크 요약
 
 | Phase | Resource 태스크 | Screen 태스크 | Verification | 합계 |
@@ -1075,7 +1264,10 @@ flowchart TD
 | P2 | 2 (R1~R2) | 2 (S1, S2) × UI+Test | 2 (S1-V, S2-V) | 10 |
 | P3 | 6 (R1~R6) | 2 (S1, S2) × UI+Test | 2 (S1-V, S2-V) | 14 |
 | P4 | 2 (R1~R2) | 3 (S1, S2, S3) × UI+Test | 3 (S1-V, S2-V, S3-V) | 14 |
-| **합계** | **15** | **20** | **9** | **55** |
+| P5 | 9 (R1-T1~3, R2-T1~2, R3, R4, R5, R6) | 3 (S1, S2, S3) × UI+Test | 3 (S1-V, S2-V, S3-V) | 18 |
+| **합계** | **24** | **26** | **12** | **73** |
+
+> P5 (주식·ETF 추천 고도화): 기존 P3-S2/P3-S4 진화 + 신규 성과·검증 탭. ⚠️ 시그널·종합점수 로직은 사용자 자료 대기(placeholder).
 
 ### 병렬 실행 그룹
 
@@ -1086,3 +1278,5 @@ flowchart TD
 | P3 Resources | {P3-R1, P3-R3, P3-R6} 병렬 → P3-R2, P3-R4 → P3-R5 |
 | P4 Resources | P4-R1 → P4-R2 (순차) |
 | P4 Screens | P4-S1, P4-S2, P4-S3 (3개 병렬 가능) |
+| P5 Resources | P5-R1-T1 → {P5-R1-T2, P5-R1-T3} 병렬 → P5-R2-T1 → P5-R2-T2 → {P5-R3, P5-R4, P5-R5, P5-R6} 병렬 |
+| P5 Screens | P5-S2-T1 먼저(사이드패널) → {P5-S1-T1, P5-S3-T1} 병렬 → 각 Test/V |
