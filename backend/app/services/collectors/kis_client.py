@@ -209,6 +209,37 @@ class KISClient:
             "name": o.get("rprs_mrkt_kor_name") or None,
         }
 
+    # --------------------------------------------------------------- 수급
+    async def get_investor_trend(self, code: str) -> dict:
+        """외국인·기관 순매수 동향(최근). 반환: {foreign_net, institution_net, recent:[{date,foreign,institution}]}."""
+        await asyncio.sleep(_CALL_INTERVAL)
+        async with httpx.AsyncClient(timeout=10) as client:
+            res = await client.get(
+                f"{_BASE}/uapi/domestic-stock/v1/quotations/inquire-investor",
+                headers=await self._headers("FHKST01010900"),
+                params={"FID_COND_MRKT_DIV_CODE": "J", "FID_INPUT_ISCD": code},
+            )
+        if res.status_code != 200:
+            return {}
+        rows = res.json().get("output") or []
+
+        def _i(v):
+            try:
+                return int(float(v))
+            except (TypeError, ValueError):
+                return 0
+
+        recent = []
+        f_sum = 0
+        i_sum = 0
+        for r in rows[:20]:
+            f = _i(r.get("frgn_ntby_qty"))   # 외국인 순매수 수량
+            inst = _i(r.get("orgn_ntby_qty"))  # 기관 순매수 수량
+            f_sum += f
+            i_sum += inst
+            recent.append({"date": r.get("stck_bsop_date"), "foreign": f, "institution": inst})
+        return {"foreign_net": f_sum, "institution_net": i_sum, "recent": recent}
+
     # ------------------------------------------------------------- financials
     async def get_financial_ratio(self, code: str) -> dict:
         """재무비율(ROE 등). 최근 결산 기준. 실패/없음 시 빈 dict."""

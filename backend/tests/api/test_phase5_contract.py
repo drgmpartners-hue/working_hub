@@ -46,11 +46,23 @@ async def _fake_get_backtest(db, user_id, code, period):
     return stock_advanced_service.get_backtest(code, period)
 
 
+async def _fake_get_insights(db, user_id, code, name):
+    from app.schemas.stock import StockInsightsResponse, NewsItem, FinancialTrendPoint
+    return StockInsightsResponse(
+        code=code,
+        news=[NewsItem(title="테스트 뉴스", link="http://x", description="d", pub_date="")],
+        revenue_trend=[FinancialTrendPoint(period="당기", value=1000.0)],
+        operating_profit_trend=[FinancialTrendPoint(period="당기", value=100.0)],
+        data_source="live",
+    )
+
+
 @pytest.fixture(autouse=True)
 def _patch_market_service():
-    """market_data_service(KIS 실호출)를 mock 서비스로 위임 — 계약 검증 결정적 유지."""
+    """market_data_service(KIS/DART/네이버 실호출)를 mock 위임 — 계약 검증 결정적 유지."""
     with patch("app.api.v1.market.market_data_service.get_signals", new=_fake_get_signals), \
-         patch("app.api.v1.market.market_data_service.get_backtest", new=_fake_get_backtest):
+         patch("app.api.v1.market.market_data_service.get_backtest", new=_fake_get_backtest), \
+         patch("app.api.v1.market.market_data_service.get_insights", new=_fake_get_insights):
         yield
 
 
@@ -268,3 +280,28 @@ class TestContractPerformanceSummary:
         with TestClient(_make_stock_app()) as c:
             count = c.get("/api/v1/stocks/performance/summary").json()["tracked_count"]
         assert count > 0
+
+
+# ---------------------------------------------------------------------------
+# Contract: GET /api/v1/market/stocks/{code}/insights
+# ---------------------------------------------------------------------------
+
+class TestContractInsights:
+    """P5-R1 insights(뉴스+재무) 계약 검증."""
+
+    def test_status_200(self):
+        with TestClient(_make_market_app()) as c:
+            resp = c.get("/api/v1/market/stocks/005930/insights?name=삼성전자")
+        assert resp.status_code == 200
+
+    def test_required_fields(self):
+        with TestClient(_make_market_app()) as c:
+            body = c.get("/api/v1/market/stocks/005930/insights").json()
+        for field in ("code", "news", "revenue_trend", "operating_profit_trend", "data_source"):
+            assert field in body, f"[insights] missing field: {field}"
+
+    def test_news_item_structure(self):
+        with TestClient(_make_market_app()) as c:
+            news = c.get("/api/v1/market/stocks/005930/insights").json()["news"]
+        assert isinstance(news, list) and news
+        assert "title" in news[0] and "link" in news[0]

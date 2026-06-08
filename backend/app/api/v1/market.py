@@ -12,7 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.deps import CurrentUser
 from app.db.session import get_db
-from app.schemas.stock import BacktestResponse, MarketSignalsResponse
+from app.schemas.stock import BacktestResponse, MarketSignalsResponse, StockInsightsResponse
 from app.services import market_data_service
 
 router = APIRouter(prefix="/market", tags=["market"])
@@ -61,3 +61,22 @@ async def get_stock_backtest(
     KIS 실 OHLCV 기반 기간 수익률·KOSPI 대비·최대낙폭. 키 없거나 실패 시 mock 폴백.
     """
     return await market_data_service.get_backtest(db, current_user.id, code, period)
+
+
+# ---------------------------------------------------------------------------
+# P5-R1: Insights (네이버 뉴스 + DART 재무)
+# ---------------------------------------------------------------------------
+
+@router.get(
+    "/stocks/{code}/insights",
+    response_model=StockInsightsResponse,
+    summary="[P5-R1] 종목 뉴스(네이버) + 재무 trend(DART)",
+)
+async def get_stock_insights(
+    code: str,
+    current_user: CurrentUser,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    name: str | None = Query(default=None, description="뉴스 검색용 종목명"),
+) -> StockInsightsResponse:
+    """네이버 뉴스 + DART 매출·영업이익 trend. 해당 키가 없으면 빈 값."""
+    return await market_data_service.get_insights(db, current_user.id, code, name)

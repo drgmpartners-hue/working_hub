@@ -12,15 +12,36 @@ from app.schemas.stock import (
     BacktestChartPoint,
     BacktestResponse,
     DisparityResponse,
+    FinancialTrendPoint,
     MarketSignalsResponse,
+    NewsItem,
     ScoreBreakdown,
     SignalsBlock,
+    StockInsightsResponse,
 )
 from app.services import stock_advanced_service, indicator_engine
 from app.services.collectors.key_access import get_user_key
 from app.services.collectors.kis_client import KISClient
+from app.services.collectors.naver_news_client import NaverNewsClient
+from app.services.collectors.dart_client import DARTClient
 
 logger = logging.getLogger(__name__)
+
+
+async def _supply_score(client: "KISClient", code: str) -> float:
+    """수급 점수(0~20): 최근 외국인+기관 순매수 방향 기반. 실패 시 중립 10.
+    ⚠️ 가중치는 사용자 자료로 확정 예정.
+    """
+    try:
+        trend = await client.get_investor_trend(code)
+        net = (trend.get("foreign_net") or 0) + (trend.get("institution_net") or 0)
+        if net > 0:
+            return 16.0
+        if net < 0:
+            return 6.0
+        return 10.0
+    except Exception:
+        return 10.0
 
 
 def _valuation_score(per: float | None, pbr: float | None) -> float:
@@ -60,7 +81,7 @@ async def get_signals(db: AsyncSession, user_id: str, code: str) -> MarketSignal
         pbr = price_info.get("pbr")
         valuation = _valuation_score(per, pbr)
         momentum = indicator_engine.compute_momentum_score(closes)
-        supply = 20.0  # 수급 점수 placeholder (외국인/기관 연동 후 교체)
+        supply = await _supply_score(client, code)
         composite = round(min(max(valuation + momentum + supply, 0), 100), 1)
         roe = ratio.get("roe")
         if roe is None:
@@ -172,3 +193,39 @@ async def get_backtest(db: AsyncSession, user_id: str, code: str, period: str):
     except Exception as e:
         logger.warning("KIS 백테스트 실패, mock 폴백 (code=%s): %s", code, e)
         return stock_advanced_service.get_backtest(code, period)
+
+
+async def get_insights(db: AsyncSession, user_id: str, code: str, name: str | None) -> StockInsightsResponse:
+    """네이버 뉴스 + DART 재무(매출·영업이익 trend). 키 없는 소스는 빈 값."""
+    news: list[NewsItem] = []
+    revenue: list[FinancialTrendPoint] = []
+    operating: list[FinancialTrendPoint] = []
+    source = "mock"
+
+    naver = await get_user_key(db, user_id, "naver_search")
+    if naver:
+        try:
+            raw = await NaverNewsClient(*naver).search(name or code, display=5)
+            news = [NewsItem(**n) for n in raw]
+            source = "live"
+        except Exception as e:
+            logger.info("네이버 뉴스 조회 실패(무시): %s", e)
+
+    dart = await get_user_key(db, user_id, "dart")
+    if dart:
+        try:
+            fin = await DARTClient(dart[0]).get_financials(code)
+            revenue = [FinancialTrendPoint(**p) for p in fin.get("revenue_trend", [])]
+            operating = [FinancialTrendPoint(**p) for p in fin.get("operating_profit_trend", [])]
+            if revenue or operating:
+                source = "live"
+        except Exception as e:
+            logger.info("DART 재무 조회 실패(무시): %s", e)
+
+    return StockInsightsResponse(
+        code=code,
+        news=news,
+        revenue_trend=revenue,
+        operating_profit_trend=operating,
+        data_source=source,
+    )

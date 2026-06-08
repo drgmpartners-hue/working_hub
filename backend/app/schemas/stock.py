@@ -83,6 +83,30 @@ class BacktestResponse(BaseModel):
 
 
 # ---------------------------------------------------------------------------
+# P5-R1: Insights (네이버 뉴스 + DART 재무)
+# ---------------------------------------------------------------------------
+
+class NewsItem(BaseModel):
+    title: str
+    link: str
+    description: str = ""
+    pub_date: str = ""
+
+
+class FinancialTrendPoint(BaseModel):
+    period: str  # 전전기/전기/당기
+    value: float
+
+
+class StockInsightsResponse(BaseModel):
+    code: str
+    news: list[NewsItem] = []
+    revenue_trend: list[FinancialTrendPoint] = []
+    operating_profit_trend: list[FinancialTrendPoint] = []
+    data_source: str = "mock"  # "live"=뉴스/재무 실데이터 / "mock"=키 미연동
+
+
+# ---------------------------------------------------------------------------
 # P5-R6: Recommendation Performance
 # ---------------------------------------------------------------------------
 

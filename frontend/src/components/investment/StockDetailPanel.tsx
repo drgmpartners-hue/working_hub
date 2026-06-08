@@ -72,6 +72,14 @@ interface SignalApiData {
   data_source?: string; // "kis"=실시간 / "mock"=예시
 }
 
+interface InsightsData {
+  code: string;
+  news: Array<{ title: string; link: string; description?: string; pub_date?: string }>;
+  revenue_trend: Array<{ period: string; value: number }>;
+  operating_profit_trend: Array<{ period: string; value: number }>;
+  data_source?: string; // "live" | "mock"
+}
+
 type BacktestPeriod = '1m' | '3m' | '6m' | '1y' | '3y';
 
 /* ------------------------------------------------------------------ */
@@ -156,6 +164,8 @@ export function StockDetailPanel({ stock, open, onClose }: StockDetailPanelProps
   const [backtestPeriod, setBacktestPeriod] = useState<BacktestPeriod>('1y');
   const [backtestLoading, setBacktestLoading] = useState(false);
 
+  const [insights, setInsights] = useState<InsightsData | null>(null);
+
   const [addingPortfolio, setAddingPortfolio] = useState(false);
   const [addingPool, setAddingPool] = useState(false);
   const [portfolioSuccess, setPortfolioSuccess] = useState(false);
@@ -199,12 +209,27 @@ export function StockDetailPanel({ stock, open, onClose }: StockDetailPanelProps
     }
   }, []);
 
+  /* fetch insights (뉴스 + 재무) */
+  const fetchInsights = useCallback(async (code: string, name: string) => {
+    try {
+      const res = await fetch(
+        `${API_URL}/api/v1/market/stocks/${code}/insights?name=${encodeURIComponent(name)}`,
+        { headers: { ...authLib.getAuthHeader() } }
+      );
+      if (res.ok) setInsights(await res.json());
+    } catch {
+      // silent
+    }
+  }, []);
+
   useEffect(() => {
     if (!open || !stock) return;
     setSignals(null);
     setBacktestData(null);
+    setInsights(null);
     fetchSignals(stock.stock_code);
     fetchBacktest(stock.stock_code, backtestPeriod);
+    fetchInsights(stock.stock_code, stock.stock_name);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, stock?.stock_code]);
 
@@ -744,6 +769,69 @@ export function StockDetailPanel({ stock, open, onClose }: StockDetailPanelProps
                 >
                   {stock.analysis_report}
                 </p>
+              </div>
+              <Divider />
+            </>
+          )}
+
+          {/* 7-b. 재무 (DART 매출·영업이익) */}
+          {insights && (insights.revenue_trend.length > 0 || insights.operating_profit_trend.length > 0) && (
+            <>
+              <SectionTitle>재무 (매출·영업이익)</SectionTitle>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 14 }}>
+                {[
+                  { label: '매출액', data: insights.revenue_trend, color: '#3B82F6' },
+                  { label: '영업이익', data: insights.operating_profit_trend, color: '#059669' },
+                ].map(({ label, data, color }) =>
+                  data.length === 0 ? null : (
+                    <div key={label}>
+                      <p style={{ margin: '0 0 4px', fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-muted)' }}>{label}</p>
+                      <div style={{ display: 'flex', gap: 8 }}>
+                        {data.map((p) => (
+                          <div key={p.period} style={{ flex: 1, padding: '8px 10px', borderRadius: 8, backgroundColor: 'var(--bg-surface)', border: '1px solid var(--border)' }}>
+                            <div style={{ fontSize: '0.6875rem', color: 'var(--text-muted)' }}>{p.period}</div>
+                            <div style={{ fontSize: '0.8125rem', fontWeight: 700, color }}>
+                              {(p.value / 1e8).toLocaleString('ko-KR', { maximumFractionDigits: 0 })}억
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )
+                )}
+              </div>
+              <Divider />
+            </>
+          )}
+
+          {/* 7-c. 관련 뉴스 (네이버) */}
+          {insights && insights.news.length > 0 && (
+            <>
+              <SectionTitle>관련 뉴스</SectionTitle>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 14 }}>
+                {insights.news.map((n, i) => (
+                  <a
+                    key={i}
+                    href={n.link}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    style={{
+                      display: 'block',
+                      padding: '8px 12px',
+                      borderRadius: 8,
+                      backgroundColor: 'var(--bg-surface)',
+                      border: '1px solid var(--border)',
+                      textDecoration: 'none',
+                    }}
+                  >
+                    <p style={{ margin: 0, fontSize: '0.8125rem', fontWeight: 600, color: 'var(--text-primary)' }}>{n.title}</p>
+                    {n.description && (
+                      <p style={{ margin: '2px 0 0', fontSize: '0.6875rem', color: 'var(--text-muted)', overflow: 'hidden', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' as const }}>
+                        {n.description}
+                      </p>
+                    )}
+                  </a>
+                ))}
               </div>
               <Divider />
             </>
