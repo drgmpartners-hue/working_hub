@@ -1,7 +1,117 @@
 """Stock theme, recommendation, recommended stock, and company stock pool schemas."""
 from datetime import datetime
-from typing import Any, Optional
+from typing import Any, Literal, Optional
 from pydantic import BaseModel
+
+
+# ---------------------------------------------------------------------------
+# P5-R3: Market Signals
+# ---------------------------------------------------------------------------
+
+class DisparityResponse(BaseModel):
+    ma20: float
+    ma60: float
+
+
+class SignalsBlock(BaseModel):
+    golden_cross: bool
+    dead_cross: bool
+    ma_alignment: Literal["bullish", "bearish", "mixed"]
+    disparity: DisparityResponse
+
+
+class ScoreBreakdown(BaseModel):
+    valuation: float
+    momentum: float
+    supply: float
+
+
+class MarketSignalsResponse(BaseModel):
+    code: str
+    ma5: float
+    ma20: float
+    ma60: float
+    ma120: float
+    signals: SignalsBlock
+    composite_score: float  # 0~100
+    score_breakdown: ScoreBreakdown
+    roe: float
+
+
+# ---------------------------------------------------------------------------
+# P5-R4: Stock Screening
+# ---------------------------------------------------------------------------
+
+class ScreeningItemResponse(BaseModel):
+    stock_code: str
+    stock_name: str
+    theme: str
+    pbr: float
+    per: float
+    composite_score: float
+    signal_tags: list[str]
+    ma_alignment: Literal["bullish", "bearish", "mixed"]
+    return_1m: float
+    return_3m: float
+    return_6m: float
+    is_top5: bool
+    allocation_pct: float
+
+
+# ---------------------------------------------------------------------------
+# P5-R5: Backtest
+# ---------------------------------------------------------------------------
+
+class BacktestChartPoint(BaseModel):
+    date: str
+    value: float
+    benchmark: float
+
+
+class BacktestResponse(BaseModel):
+    stock_code: str
+    period: str
+    entry_date: str
+    entry_price: float
+    current_price: float
+    return_rate: float
+    benchmark_return: float
+    max_drawdown: float
+    chart_data: list[BacktestChartPoint]
+
+
+# ---------------------------------------------------------------------------
+# P5-R6: Recommendation Performance
+# ---------------------------------------------------------------------------
+
+class PerformanceItemResponse(BaseModel):
+    recommendation_id: str
+    stock_code: str
+    stock_name: str
+    theme: str
+    recommended_date: str
+    recommended_price: float
+    current_price: float
+    return_since: float
+    benchmark_return: float
+    excess_return: float
+    holding_days: int
+    status: Literal["hit", "miss", "holding"]
+    composite_score_at_rec: float
+
+
+class StatusDistribution(BaseModel):
+    hit: int
+    miss: int
+    holding: int
+
+
+class PerformanceSummaryResponse(BaseModel):
+    hit_rate: float
+    avg_excess_return: float
+    tracked_count: int
+    avg_holding_days: float
+    status_distribution: StatusDistribution
 
 
 class StockThemeResponse(BaseModel):
