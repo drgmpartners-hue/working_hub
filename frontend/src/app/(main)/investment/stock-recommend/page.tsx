@@ -1,21 +1,23 @@
 /**
- * 주식/ETF 추천 프로그램
+ * 주식/ETF 추천 프로그램 (고도화 v2)
  * /investment/stock-recommend
  *
- * 2-step wizard:
- *  Step 1: 테마 분석 – ThemeList + ThemeBasket
- *  Step 2: 종목 확인 – StockList + StockAnalysisPopup
+ * [탭] 추천      — 3-step wizard: 테마 분석 / 종목 추천 / 비중 제안
+ * [탭] 성과·검증  — 추천 사후성과 추적 (PerformanceTab)
  */
 'use client';
 
-import { useState } from 'react';
-import { useRouter } from 'next/navigation';
+import { useState, Suspense } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { Button } from '@/components/common/Button';
 import { Card } from '@/components/common/Card';
 import { ThemeList } from '@/components/investment/ThemeList';
 import { StockList } from '@/components/investment/StockList';
+import { AllocationPanel } from '@/components/investment/AllocationPanel';
+import { PerformanceTab } from '@/components/investment/PerformanceTab';
 import { authLib } from '@/lib/auth';
 import type { StockTheme } from '@/components/investment/ThemeList';
+import type { StockItem } from '@/components/investment/StockDetailPanel';
 import { API_URL } from '@/lib/api-url';
 
 /* ------------------------------------------------------------------ */
@@ -147,7 +149,7 @@ function ThemeBasket({ basket, onRemove, onRecommend, loading }: ThemeBasketProp
                   flexShrink: 0,
                 }}
                 onMouseEnter={(e) => ((e.currentTarget as HTMLButtonElement).style.color = '#DC2626')}
-                onMouseLeave={(e) => ((e.currentTarget as HTMLButtonElement).style.color = '#9CA3AF')}
+                onMouseLeave={(e) => ((e.currentTarget as HTMLButtonElement).style.color = 'var(--text-muted)')}
               >
                 <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
                   <line x1="18" y1="6" x2="6" y2="18" />
@@ -196,17 +198,22 @@ function ThemeBasket({ basket, onRemove, onRecommend, loading }: ThemeBasketProp
 }
 
 /* ------------------------------------------------------------------ */
-/*  Step indicator                                                      */
+/*  Step indicator (3 steps)                                            */
 /* ------------------------------------------------------------------ */
 
-function StepIndicator({ currentStep }: { currentStep: 1 | 2 }) {
+function StepIndicator({ currentStep }: { currentStep: 1 | 2 | 3 }) {
+  const steps = [
+    { num: 1 as const, label: '테마 분석' },
+    { num: 2 as const, label: '종목 추천' },
+    { num: 3 as const, label: '비중 제안' },
+  ];
   return (
     <div style={{ display: 'flex', alignItems: 'center', gap: 0 }}>
-      {([1, 2] as const).map((step, i) => {
-        const isActive = currentStep === step;
-        const isDone = currentStep > step;
+      {steps.map((step, i) => {
+        const isActive = currentStep === step.num;
+        const isDone = currentStep > step.num;
         return (
-          <div key={step} style={{ display: 'flex', alignItems: 'center' }}>
+          <div key={step.num} style={{ display: 'flex', alignItems: 'center' }}>
             <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4 }}>
               <div
                 style={{
@@ -216,10 +223,11 @@ function StepIndicator({ currentStep }: { currentStep: 1 | 2 }) {
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'center',
-                  backgroundColor: isDone ? '#2E8B8B' : isActive ? '#1E3A5F' : '#E1E5EB',
-                  color: isDone || isActive ? '#fff' : '#9CA3AF',
+                  backgroundColor: isDone ? '#2E8B8B' : isActive ? '#1E3A5F' : 'var(--bg-surface)',
+                  color: isDone || isActive ? '#fff' : 'var(--text-muted)',
                   fontSize: '0.8125rem',
                   fontWeight: 700,
+                  border: isDone || isActive ? 'none' : '1px solid var(--border)',
                   transition: 'all 0.2s ease',
                 }}
               >
@@ -227,18 +235,25 @@ function StepIndicator({ currentStep }: { currentStep: 1 | 2 }) {
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round">
                     <polyline points="20 6 9 17 4 12" />
                   </svg>
-                ) : step}
+                ) : step.num}
               </div>
-              <span style={{ fontSize: '0.6875rem', color: isActive ? 'var(--text-primary)' : '#9CA3AF', whiteSpace: 'nowrap', fontWeight: isActive ? 600 : 400 }}>
-                {step === 1 ? '테마 분석' : '종목 확인'}
+              <span
+                style={{
+                  fontSize: '0.6875rem',
+                  color: isActive ? 'var(--text-primary)' : 'var(--text-muted)',
+                  whiteSpace: 'nowrap',
+                  fontWeight: isActive ? 600 : 400,
+                }}
+              >
+                {step.label}
               </span>
             </div>
-            {i < 1 && (
+            {i < steps.length - 1 && (
               <div
                 style={{
-                  width: 48,
+                  width: 40,
                   height: 2,
-                  backgroundColor: isDone ? '#2E8B8B' : '#E1E5EB',
+                  backgroundColor: isDone ? '#2E8B8B' : 'var(--border)',
                   margin: '0 4px',
                   marginBottom: 18,
                   transition: 'background-color 0.2s ease',
@@ -253,16 +268,22 @@ function StepIndicator({ currentStep }: { currentStep: 1 | 2 }) {
 }
 
 /* ------------------------------------------------------------------ */
-/*  Main page                                                           */
+/*  Main page (with Suspense wrapper for useSearchParams)              */
 /* ------------------------------------------------------------------ */
 
-export default function StockRecommendPage() {
+function StockRecommendPageInner() {
   const router = useRouter();
-  const [step, setStep] = useState<1 | 2>(1);
+  const searchParams = useSearchParams();
+  const activeTab = searchParams.get('tab') === 'performance' ? 'performance' : 'recommend';
+
+  const [step, setStep] = useState<1 | 2 | 3>(1);
   const [basket, setBasket] = useState<StockTheme[]>([]);
   const [recommendationId, setRecommendationId] = useState<number | null>(null);
   const [recommending, setRecommending] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  /* Step3 비중 제안 대상 종목 */
+  const [allocationStocks, setAllocationStocks] = useState<StockItem[]>([]);
 
   function addToBasket(theme: StockTheme) {
     setBasket((prev) => {
@@ -273,6 +294,13 @@ export default function StockRecommendPage() {
 
   function removeFromBasket(themeId: number) {
     setBasket((prev) => prev.filter((t) => t.id !== themeId));
+  }
+
+  function addToAllocation(stock: StockItem) {
+    setAllocationStocks((prev) => {
+      if (prev.some((s) => s.id === stock.id)) return prev;
+      return [...prev, stock];
+    });
   }
 
   async function requestRecommendation() {
@@ -286,21 +314,15 @@ export default function StockRecommendPage() {
           'Content-Type': 'application/json',
           ...authLib.getAuthHeader(),
         },
-        body: JSON.stringify({
-          theme_ids: basket.map((t) => t.id),
-        }),
+        body: JSON.stringify({ theme_ids: basket.map((t) => t.id) }),
       });
       if (!res.ok) throw new Error('추천 요청에 실패했습니다.');
       const data = await res.json();
-
-      // Poll for completion if needed
       const recId: number = data.id;
       setRecommendationId(recId);
-
       if (data.status === 'processing') {
         await pollRecommendation(recId);
       }
-
       setStep(2);
     } catch (err) {
       setError(err instanceof Error ? err.message : '알 수 없는 오류');
@@ -320,17 +342,24 @@ export default function StockRecommendPage() {
         await new Promise((r) => setTimeout(r, 2000));
         return poll();
       }
-      if (data.status === 'error') {
-        throw new Error('추천 생성 중 오류가 발생했습니다.');
-      }
+      if (data.status === 'error') throw new Error('추천 생성 중 오류가 발생했습니다.');
     };
     return poll();
+  }
+
+  /* Tab navigation helpers */
+  function goToTab(tab: 'recommend' | 'performance') {
+    if (tab === 'performance') {
+      router.push('/investment/stock-recommend?tab=performance');
+    } else {
+      router.push('/investment/stock-recommend');
+    }
   }
 
   return (
     <div style={{ width: '100%' }}>
       {/* Page header */}
-      <div style={{ marginBottom: 28 }}>
+      <div style={{ marginBottom: 24 }}>
         <button
           onClick={() => router.push('/dashboard')}
           style={{
@@ -346,7 +375,7 @@ export default function StockRecommendPage() {
             padding: 0,
           }}
           onMouseEnter={(e) => ((e.currentTarget as HTMLButtonElement).style.color = 'var(--text-primary)')}
-          onMouseLeave={(e) => ((e.currentTarget as HTMLButtonElement).style.color = '#6B7280')}
+          onMouseLeave={(e) => ((e.currentTarget as HTMLButtonElement).style.color = 'var(--text-muted)')}
         >
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
             <polyline points="15 18 9 12 15 6" />
@@ -361,7 +390,7 @@ export default function StockRecommendPage() {
                 width: 36,
                 height: 4,
                 borderRadius: 2,
-                background: 'linear-gradient(90deg, #2E8B8B 0%, var(--success) 100%)',
+                background: 'linear-gradient(90deg, #2E8B8B 0%, #059669 100%)',
                 marginBottom: 12,
               }}
             />
@@ -381,20 +410,61 @@ export default function StockRecommendPage() {
             </p>
           </div>
 
-          <StepIndicator currentStep={step} />
+          {activeTab === 'recommend' && <StepIndicator currentStep={step} />}
         </div>
       </div>
 
-      {/* Error */}
+      {/* ---- Tab bar ---- */}
+      <div
+        style={{
+          display: 'flex',
+          borderBottom: '2px solid var(--border)',
+          marginBottom: 24,
+          gap: 0,
+        }}
+      >
+        {[
+          { key: 'recommend' as const, label: '추천', icon: '📊' },
+          { key: 'performance' as const, label: '성과·검증', icon: '📈' },
+        ].map(({ key, label, icon }) => {
+          const isActive = activeTab === key;
+          return (
+            <button
+              key={key}
+              onClick={() => goToTab(key)}
+              style={{
+                padding: '10px 20px',
+                border: 'none',
+                borderBottom: `2px solid ${isActive ? '#2E8B8B' : 'transparent'}`,
+                marginBottom: -2,
+                backgroundColor: 'transparent',
+                cursor: 'pointer',
+                color: isActive ? '#2E8B8B' : 'var(--text-muted)',
+                fontSize: '0.9375rem',
+                fontWeight: isActive ? 700 : 400,
+                display: 'flex',
+                alignItems: 'center',
+                gap: 6,
+                transition: 'all 0.15s ease',
+              }}
+            >
+              <span>{icon}</span>
+              {label}
+            </button>
+          );
+        })}
+      </div>
+
+      {/* ---- Error ---- */}
       {error && (
         <div
           style={{
             marginBottom: 16,
             padding: '12px 16px',
-            backgroundColor: 'var(--danger-bg)',
+            backgroundColor: 'var(--danger-bg, rgba(220,38,38,0.08))',
             border: '1px solid rgba(239,68,68,0.35)',
             borderRadius: 8,
-            color: 'var(--danger)',
+            color: 'var(--danger, #DC2626)',
             fontSize: '0.875rem',
           }}
         >
@@ -402,122 +472,159 @@ export default function StockRecommendPage() {
         </div>
       )}
 
-      {/* Step 1: 테마 분석 */}
-      {step === 1 && (
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 280px', gap: 20, alignItems: 'start' }}>
-          {/* Theme list */}
-          <div>
-            <div
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: 10,
-                marginBottom: 16,
-                padding: '12px 16px',
-                backgroundColor: 'var(--bg-card)',
-                border: '1px solid var(--border)',
-                borderRadius: 10,
-              }}
-            >
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#2E8B8B" strokeWidth="2" strokeLinecap="round">
-                <rect x="3" y="3" width="7" height="7" />
-                <rect x="14" y="3" width="7" height="7" />
-                <rect x="14" y="14" width="7" height="7" />
-                <rect x="3" y="14" width="7" height="7" />
-              </svg>
+      {/* ================================================================ */}
+      {/* TAB: 성과·검증                                                    */}
+      {/* ================================================================ */}
+      {activeTab === 'performance' && <PerformanceTab />}
+
+      {/* ================================================================ */}
+      {/* TAB: 추천                                                          */}
+      {/* ================================================================ */}
+      {activeTab === 'recommend' && (
+        <>
+          {/* ---- Step 1: 테마 분석 ---- */}
+          {step === 1 && (
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 280px', gap: 20, alignItems: 'start' }}>
               <div>
-                <p style={{ margin: 0, fontSize: '0.875rem', fontWeight: 600, color: 'var(--text-primary)' }}>
-                  테마 목록
-                </p>
-                <p style={{ margin: 0, fontSize: '0.75rem', color: 'var(--text-muted)' }}>
-                  분석하고 싶은 테마를 선택해 바스켓에 담으세요.
-                </p>
+                <div
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 10,
+                    marginBottom: 16,
+                    padding: '12px 16px',
+                    backgroundColor: 'var(--bg-card)',
+                    border: '1px solid var(--border)',
+                    borderRadius: 10,
+                  }}
+                >
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#2E8B8B" strokeWidth="2" strokeLinecap="round">
+                    <rect x="3" y="3" width="7" height="7" />
+                    <rect x="14" y="3" width="7" height="7" />
+                    <rect x="14" y="14" width="7" height="7" />
+                    <rect x="3" y="14" width="7" height="7" />
+                  </svg>
+                  <div>
+                    <p style={{ margin: 0, fontSize: '0.875rem', fontWeight: 600, color: 'var(--text-primary)' }}>
+                      테마 목록
+                    </p>
+                    <p style={{ margin: 0, fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+                      분석하고 싶은 테마를 선택해 바스켓에 담으세요.
+                    </p>
+                  </div>
+                </div>
+                <ThemeList
+                  basket={basket}
+                  onAddToBasket={addToBasket}
+                  onRemoveFromBasket={removeFromBasket}
+                />
               </div>
-            </div>
-            <ThemeList
-              basket={basket}
-              onAddToBasket={addToBasket}
-              onRemoveFromBasket={removeFromBasket}
-            />
-          </div>
-
-          {/* Basket sidebar */}
-          <ThemeBasket
-            basket={basket}
-            onRemove={removeFromBasket}
-            onRecommend={requestRecommendation}
-            loading={recommending}
-          />
-        </div>
-      )}
-
-      {/* Step 2: 종목 확인 */}
-      {step === 2 && (
-        <div>
-          {/* Step 2 header */}
-          <Card padding={16} style={{ marginBottom: 20 }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-              <div
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 8,
-                  flex: 1,
-                  flexWrap: 'wrap',
-                }}
-              >
-                <span style={{ fontSize: '0.875rem', color: 'var(--text-muted)' }}>분석 바스켓:</span>
-                {basket.map((theme) => (
-                  <span
-                    key={theme.id}
-                    style={{
-                      padding: '3px 10px',
-                      borderRadius: 6,
-                      fontSize: '0.8125rem',
-                      backgroundColor: 'rgba(56,189,248,0.10)',
-                      color: '#2E8B8B',
-                      fontWeight: 600,
-                    }}
-                  >
-                    {theme.theme_name}
-                  </span>
-                ))}
-              </div>
-              <Button
-                size="sm"
-                variant="secondary"
-                onClick={() => {
-                  setStep(1);
-                  setRecommendationId(null);
-                }}
-              >
-                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
-                  <polyline points="15 18 9 12 15 6" />
-                </svg>
-                테마 재선택
-              </Button>
-            </div>
-          </Card>
-
-          {/* Section header */}
-          <div style={{ marginBottom: 16 }}>
-            <h2 style={{ margin: '0 0 4px', fontSize: '1rem', fontWeight: 700, color: 'var(--text-primary)' }}>
-              AI 추천 종목
-            </h2>
-            <p style={{ margin: 0, fontSize: '0.8125rem', color: 'var(--text-muted)' }}>
-              선택한 테마를 기반으로 AI가 추천한 종목입니다. 종목을 클릭하면 상세 분석을 볼 수 있습니다.
-            </p>
-          </div>
-
-          {recommendationId ? (
-            <StockList recommendationId={recommendationId} />
-          ) : (
-            <div style={{ textAlign: 'center', padding: '48px 0', color: 'var(--text-muted)', fontSize: '0.875rem' }}>
-              추천 데이터를 불러오는 중...
+              <ThemeBasket
+                basket={basket}
+                onRemove={removeFromBasket}
+                onRecommend={requestRecommendation}
+                loading={recommending}
+              />
             </div>
           )}
-        </div>
+
+          {/* ---- Step 2: 종목 추천 ---- */}
+          {step === 2 && (
+            <div>
+              {/* Step2 header */}
+              <Card padding={16} style={{ marginBottom: 20 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, flex: 1, flexWrap: 'wrap' }}>
+                    <span style={{ fontSize: '0.875rem', color: 'var(--text-muted)' }}>분석 바스켓:</span>
+                    {basket.map((theme) => (
+                      <span
+                        key={theme.id}
+                        style={{
+                          padding: '3px 10px',
+                          borderRadius: 6,
+                          fontSize: '0.8125rem',
+                          backgroundColor: 'rgba(46,139,139,0.12)',
+                          color: '#2E8B8B',
+                          fontWeight: 600,
+                        }}
+                      >
+                        {theme.theme_name}
+                      </span>
+                    ))}
+                  </div>
+                  <div style={{ display: 'flex', gap: 8, flexShrink: 0 }}>
+                    <Button
+                      size="sm"
+                      variant="secondary"
+                      onClick={() => {
+                        setStep(1);
+                        setRecommendationId(null);
+                      }}
+                    >
+                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+                        <polyline points="15 18 9 12 15 6" />
+                      </svg>
+                      테마 재선택
+                    </Button>
+                    {allocationStocks.length > 0 && (
+                      <Button
+                        size="sm"
+                        variant="primary"
+                        onClick={() => setStep(3)}
+                        style={{ backgroundColor: '#2E8B8B', borderColor: '#2E8B8B' }}
+                      >
+                        비중 제안 ({allocationStocks.length})
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+                          <polyline points="9 18 15 12 9 6" />
+                        </svg>
+                      </Button>
+                    )}
+                  </div>
+                </div>
+              </Card>
+
+              {/* Section header */}
+              <div style={{ marginBottom: 16 }}>
+                <h2 style={{ margin: '0 0 4px', fontSize: '1rem', fontWeight: 700, color: 'var(--text-primary)' }}>
+                  AI 추천 종목
+                </h2>
+                <p style={{ margin: 0, fontSize: '0.8125rem', color: 'var(--text-muted)' }}>
+                  행 클릭 → 우측 근거 패널(차트·이평선·밸류·시그널·백테스트). + 버튼 → 비중 제안에 추가.
+                </p>
+              </div>
+
+              {recommendationId ? (
+                <StockList
+                  recommendationId={recommendationId}
+                  onAddToAllocation={addToAllocation}
+                  allocationStocks={allocationStocks}
+                />
+              ) : (
+                <div style={{ textAlign: 'center', padding: '48px 0', color: 'var(--text-muted)', fontSize: '0.875rem' }}>
+                  추천 데이터를 불러오는 중...
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* ---- Step 3: 비중 제안 ---- */}
+          {step === 3 && (
+            <AllocationPanel
+              stocks={allocationStocks}
+              onBack={() => setStep(2)}
+            />
+          )}
+        </>
       )}
     </div>
+  );
+}
+
+/* Suspense wrapper required for useSearchParams in Next.js App Router */
+export default function StockRecommendPage() {
+  return (
+    <Suspense fallback={<div style={{ padding: '48px 0', textAlign: 'center', color: 'var(--text-muted)' }}>로딩 중...</div>}>
+      <StockRecommendPageInner />
+    </Suspense>
   );
 }

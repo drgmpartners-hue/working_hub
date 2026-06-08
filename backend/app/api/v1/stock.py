@@ -1,6 +1,6 @@
 """Stock theme, recommendation, recommended stock, and company stock pool endpoints."""
-from typing import Annotated
-from fastapi import APIRouter, Depends, HTTPException, status
+from typing import Annotated, Optional
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.deps import CurrentUser
 from app.db.session import get_db
@@ -12,8 +12,12 @@ from app.schemas.stock import (
     RecommendedStockResponse,
     CompanyStockPoolCreate,
     CompanyStockPoolResponse,
+    ScreeningItemResponse,
+    PerformanceItemResponse,
+    PerformanceSummaryResponse,
 )
 from app.services import stock_service
+from app.services import stock_advanced_service  # noqa: F401 (used below)
 
 router = APIRouter(prefix="/stocks", tags=["stocks"])
 
@@ -166,3 +170,76 @@ async def add_to_stock_pool(
     """Create a new company stock pool entry."""
     pool = await stock_service.add_to_pool(db, body)
     return CompanyStockPoolResponse.model_validate(pool)
+
+
+# ---------------------------------------------------------------------------
+# P5-R4: Stock Screening (mock)
+# ---------------------------------------------------------------------------
+
+
+@router.get(
+    "/screening",
+    response_model=list[ScreeningItemResponse],
+    summary="[P5-R4] 종목 스크리닝 (mock)",
+)
+async def screen_stocks(
+    current_user: CurrentUser,
+    pbr_max: Optional[float] = Query(default=None, description="PBR 최댓값 필터"),
+    ma_alignment: Optional[str] = Query(
+        default=None, description="이동평균 정렬: bullish|bearish|mixed"
+    ),
+    score_min: Optional[float] = Query(default=None, description="종합점수 최솟값 필터"),
+) -> list[ScreeningItemResponse]:
+    """
+    mock 풀에서 쿼리 파라미터로 필터링한 종목 리스트 반환.
+    ⚠️ 산정 로직 사용자 자료 대기 — placeholder (결정적 hash-mock).
+    """
+    return stock_advanced_service.get_screening(
+        pbr_max=pbr_max,
+        ma_alignment=ma_alignment,
+        score_min=score_min,
+    )
+
+
+# ---------------------------------------------------------------------------
+# P5-R6: Recommendation Performance (mock)
+# ---------------------------------------------------------------------------
+
+
+@router.get(
+    "/performance/summary",
+    response_model=PerformanceSummaryResponse,
+    summary="[P5-R6] 추천 사후성과 요약 (mock)",
+)
+async def get_performance_summary(
+    current_user: CurrentUser,
+) -> PerformanceSummaryResponse:
+    """
+    전체 추천 종목 사후성과 요약 지표 반환.
+    ⚠️ 산정 로직 사용자 자료 대기 — placeholder (결정적 hash-mock).
+    """
+    return stock_advanced_service.get_performance_summary()
+
+
+@router.get(
+    "/performance",
+    response_model=list[PerformanceItemResponse],
+    summary="[P5-R6] 추천 사후성과 리스트 (mock)",
+)
+async def get_performance(
+    current_user: CurrentUser,
+    theme: Optional[str] = Query(default=None, description="테마 필터"),
+    status_filter: Optional[str] = Query(
+        default=None, alias="status", description="상태 필터: hit|miss|holding"
+    ),
+    period: Optional[str] = Query(default=None, description="보유 기간 필터: 1m|3m|6m|1y|3y"),
+) -> list[PerformanceItemResponse]:
+    """
+    추천 종목 사후성과 리스트 반환. theme/status/period 필터 지원.
+    ⚠️ 산정 로직 사용자 자료 대기 — placeholder (결정적 hash-mock).
+    """
+    return stock_advanced_service.get_performance(
+        theme=theme,
+        status=status_filter,
+        period=period,
+    )

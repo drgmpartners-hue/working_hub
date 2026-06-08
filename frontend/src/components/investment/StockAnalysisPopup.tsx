@@ -5,21 +5,10 @@ import { Modal } from '@/components/common/Modal';
 import { Button } from '@/components/common/Button';
 import { authLib } from '@/lib/auth';
 import { API_URL } from '@/lib/api-url';
+import type { StockItem } from './StockDetailPanel';
 
-export interface StockItem {
-  id: number;
-  stock_name: string;
-  stock_code: string;
-  theme: string;
-  rank: number;
-  return_1m: number;
-  return_3m: number;
-  return_6m: number;
-  is_top5: boolean;
-  analysis_report?: string;
-  market_cap?: number;
-  sector?: string;
-}
+// StockItem is now defined in StockDetailPanel — re-export for backward compat
+export type { StockItem } from './StockDetailPanel';
 
 interface StockAnalysisPopupProps {
   stock: StockItem | null;

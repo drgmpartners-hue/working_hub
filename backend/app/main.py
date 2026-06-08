@@ -7,6 +7,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 logger = logging.getLogger(__name__)
 from app.api.v1 import auth, users, brand, ai_settings, upload, crawling, commission, content, portfolio, stock
+from app.api.v1 import market as market_router
 from app.api.v1 import clients as clients_router
 from app.api.v1 import snapshots as snapshots_router
 from app.api.v1 import product_master as product_master_router
@@ -83,6 +84,7 @@ app.include_router(inflation_rate_router.router, prefix="/api/v1")
 app.include_router(deposit_accounts_router, prefix="/api/v1")
 app.include_router(deposit_transactions_router, prefix="/api/v1")
 app.include_router(notion_router.router, prefix="/api/v1")
+app.include_router(market_router.router, prefix="/api/v1")
 
 
 @app.exception_handler(Exception)
