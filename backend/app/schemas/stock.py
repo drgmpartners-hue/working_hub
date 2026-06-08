@@ -36,6 +36,7 @@ class MarketSignalsResponse(BaseModel):
     composite_score: float  # 0~100
     score_breakdown: ScoreBreakdown
     roe: float
+    data_source: str = "mock"  # "kis"=실데이터 / "mock"=placeholder
 
 
 # ---------------------------------------------------------------------------
@@ -78,6 +79,7 @@ class BacktestResponse(BaseModel):
     benchmark_return: float
     max_drawdown: float
     chart_data: list[BacktestChartPoint]
+    data_source: str = "mock"  # "kis"=실데이터 / "mock"=placeholder
 
 
 # ---------------------------------------------------------------------------

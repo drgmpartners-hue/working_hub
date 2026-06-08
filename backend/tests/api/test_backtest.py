@@ -4,12 +4,15 @@ GET /api/v1/market/stocks/{code}/backtest?period=1y
 """
 from __future__ import annotations
 
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
+import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from app.core.deps import get_current_user
+from app.db.session import get_db
 from app.models.user import User
+from app.services import stock_advanced_service
 
 
 def _make_user() -> User:
@@ -19,10 +22,26 @@ def _make_user() -> User:
     return user
 
 
+async def _fake_db():
+    yield None
+
+
+async def _fake_get_backtest(db, user_id, code, period):
+    """KIS 호출 없이 mock 서비스로 위임 (계약/형상 검증용)."""
+    return stock_advanced_service.get_backtest(code, period)
+
+
+@pytest.fixture(autouse=True)
+def _patch_market_service():
+    with patch("app.api.v1.market.market_data_service.get_backtest", new=_fake_get_backtest):
+        yield
+
+
 def _make_app() -> FastAPI:
     from app.api.v1.market import router as market_router
     app = FastAPI()
     app.dependency_overrides[get_current_user] = lambda: _make_user()
+    app.dependency_overrides[get_db] = _fake_db
     app.include_router(market_router, prefix="/api/v1")
     return app
 
