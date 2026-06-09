@@ -190,6 +190,30 @@ async def populate_themes(db: AsyncSession) -> list[StockTheme]:
     return await get_themes(db)
 
 
+async def upsert_themes_from_mapping(db: AsyncSession, mapping: dict) -> int:
+    """역설계 수집 결과 {theme_name: [members]} 를 stock_themes에 upsert.
+
+    기존 테마는 실제 소속 종목 수(stock_count) 갱신, 신규는 추가. 신규 추가 수 반환.
+    """
+    result = await db.execute(select(StockTheme))
+    existing = {t.theme_name: t for t in result.scalars().all()}
+    added = 0
+    for name, members in mapping.items():
+        cnt = len(members)
+        if name in existing:
+            existing[name].stock_count = cnt
+        else:
+            db.add(StockTheme(
+                theme_name=name,
+                ai_score=theme_score(name),
+                stock_count=cnt,
+                news_summary=f"'{name}' 네이버 테마 — 소속 {cnt}종목 (역설계 수집)",
+            ))
+            added += 1
+    await db.commit()
+    return added
+
+
 async def analyze_themes(
     db: AsyncSession,
     theme_ids: list[str],

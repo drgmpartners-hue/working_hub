@@ -18,9 +18,11 @@ from app.schemas.stock import (
     ThemeScoreResponse,
     ThemeAxes,
     CalibrationReportResponse,
+    ThemeCollectResponse,
 )
 from app.models.stock import StockTheme
 from app.services import stock_service, theme_scoring, weight_calibration
+from app.services.collectors import theme_mapping_collector
 from app.services import stock_advanced_service  # noqa: F401 (used below)
 
 router = APIRouter(prefix="/stocks", tags=["stocks"])
@@ -61,6 +63,29 @@ async def refresh_themes(
     """
     themes = await stock_service.populate_themes(db)
     return [StockThemeResponse.model_validate(t) for t in themes]
+
+
+@router.post(
+    "/themes/collect",
+    response_model=ThemeCollectResponse,
+    summary="테마-종목 매핑 역설계 수집 (네이버 금융 테마)",
+)
+async def collect_theme_mapping(
+    current_user: CurrentUser,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    max_pages: int = Query(default=7, ge=1, le=8, description="네이버 테마 목록 페이지 수(페이지당 ~40테마)"),
+) -> ThemeCollectResponse:
+    """네이버 금융 테마에서 테마+소속종목을 수집해 매핑 캐시 생성, DB 테마 upsert.
+
+    이후 테마 5축 집계가 실제 소속 종목으로 동작한다.
+    """
+    mapping = await theme_mapping_collector.collect(max_pages=max_pages)
+    added = await stock_service.upsert_themes_from_mapping(db, mapping)
+    return ThemeCollectResponse(
+        collected_themes=len(mapping),
+        new_themes=added,
+        total_members=sum(len(v) for v in mapping.values()),
+    )
 
 
 @router.get(

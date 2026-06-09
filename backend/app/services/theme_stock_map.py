@@ -30,6 +30,40 @@ THEME_STOCKS: dict[str, list[tuple[str, str]]] = {
 }
 
 
+def _normalize(s: str) -> str:
+    """테마명 정규화 — 공백·특수문자 제거, 소문자화 (매칭용)."""
+    import re
+    return re.sub(r"[^0-9a-z가-힣]", "", s.lower())
+
+
+def _match_collected(theme_name: str, collected: dict) -> list[list[str]] | None:
+    """수집 맵에서 테마명 매칭 — 정확 일치 → 부분 토큰 일치."""
+    if theme_name in collected:
+        return collected[theme_name]
+    norm = _normalize(theme_name)
+    if not norm:
+        return None
+    # 우리 테마명의 핵심 토큰(2자+)이 수집 테마명에 포함되거나 그 반대
+    for key, members in collected.items():
+        nk = _normalize(key)
+        if norm == nk or (len(norm) >= 2 and (norm in nk or nk in norm)):
+            return members
+    return None
+
+
 def get_member_stocks(theme_name: str, limit: int = 4) -> list[tuple[str, str]]:
-    """테마 소속 종목(코드,이름) 반환. 매핑 없으면 빈 리스트."""
+    """테마 소속 종목(코드,이름) 반환.
+
+    우선순위: 네이버 수집 매핑(역설계) → 큐레이션 매핑 → 빈 리스트.
+    """
+    # 지연 임포트(순환 방지) + 캐시 로드
+    try:
+        from app.services.collectors.theme_mapping_collector import load_cached_map
+        collected = load_cached_map()
+    except Exception:
+        collected = {}
+    if collected:
+        hit = _match_collected(theme_name, collected)
+        if hit:
+            return [(m[0], m[1]) for m in hit[:limit]]
     return THEME_STOCKS.get(theme_name, [])[:limit]

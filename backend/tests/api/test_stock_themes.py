@@ -336,3 +336,31 @@ class TestCalibration:
         assert resp.status_code == 200
         assert resp.json()["applied"] is True
         mock_apply.assert_called_once()
+
+
+# ---------------------------------------------------------------------------
+# POST /api/v1/stocks/themes/collect (역설계 수집)
+# ---------------------------------------------------------------------------
+
+class TestCollectMapping:
+    """POST /themes/collect"""
+
+    def _app(self):
+        from app.db.session import get_db
+        app = FastAPI()
+        app.dependency_overrides[get_current_user] = lambda: _make_user()
+        app.dependency_overrides[get_db] = _fake_db_session
+        app.include_router(stock_router, prefix="/api/v1")
+        return app
+
+    def test_collect_200(self):
+        mapping = {"HBM(고대역폭메모리)": [["089030", "테크윙"], ["451220", "아이엠티"]], "2차전지": [["373220", "LG에너지솔루션"]]}
+        with patch("app.api.v1.stock.theme_mapping_collector.collect", new=AsyncMock(return_value=mapping)), \
+             patch("app.api.v1.stock.stock_service.upsert_themes_from_mapping", new=AsyncMock(return_value=2)):
+            with TestClient(self._app()) as client:
+                resp = client.post("/api/v1/stocks/themes/collect?max_pages=1")
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["collected_themes"] == 2
+        assert body["new_themes"] == 2
+        assert body["total_members"] == 3

@@ -137,6 +137,14 @@ class ThemeScoreResponse(BaseModel):
     data_source: str = "mock"  # "live"=소속 종목 실데이터 집계 / "mock"=매핑·키 미연동
 
 
+class ThemeCollectResponse(BaseModel):
+    """테마-종목 매핑 역설계 수집 결과."""
+    collected_themes: int
+    new_themes: int
+    total_members: int
+    data_source: str = "naver"
+
+
 class CalibrationReportResponse(BaseModel):
     """사후검증 가중치 보정 리포트."""
     sample_codes: int
