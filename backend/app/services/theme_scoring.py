@@ -11,12 +11,14 @@ import math
 import logging
 from typing import Optional
 
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.services import market_data_service, weight_calibration
+from app.services import market_data_service, weight_calibration  # noqa: F401
 from app.services.theme_stock_map import get_member_stocks
 from app.services.collectors.key_access import get_user_key
 from app.services.collectors.naver_news_client import NaverNewsClient
+from app.models.stock_metrics import ThemeMember, StockDailyMetric
 
 logger = logging.getLogger(__name__)
 
@@ -35,36 +37,54 @@ async def _attention_score(theme_name: str, naver: Optional[tuple[str, str]]) ->
         return 50.0
 
 
-async def aggregate_theme(db: AsyncSession, user_id: str, theme_name: str) -> Optional[dict]:
-    """테마 5축 집계. 매핑/실데이터 없으면 None(→ placeholder 폴백).
+async def _member_codes(db: AsyncSession, theme_name: str, limit: int = 6) -> list[str]:
+    """테마 소속 종목코드 — DB(theme_members) 우선, 없으면 파일/큐레이션 폴백."""
+    rows = (
+        await db.execute(
+            select(ThemeMember.code).where(ThemeMember.theme_name == theme_name).limit(limit)
+        )
+    ).scalars().all()
+    if rows:
+        return list(rows)
+    return [c for c, _ in get_member_stocks(theme_name, limit=limit)]
 
+
+async def aggregate_theme(db: AsyncSession, user_id: str, theme_name: str) -> Optional[dict]:
+    """테마 5축 집계 — DB 매핑 + 배치 사전계산 지표(stock_daily_metrics)로 산출.
+
+    KIS 라이브 호출 없이 DB만 읽어 빠르고 일관됨. 멤버/지표 없으면 None(placeholder 폴백).
     반환: {score, phase, axes{...}, weights{...}, members[...], data_source}
     """
-    members = get_member_stocks(theme_name, limit=4)
-    if not members:
+    codes = await _member_codes(db, theme_name, limit=6)
+    if not codes:
         return None
 
-    sigs = []
-    for code, _name in members:
-        s = await market_data_service.get_signals(db, user_id, code)  # 10분 캐시
-        if s.data_source == "kis":
-            sigs.append(s)
-    if not sigs:
-        return None
+    # 각 멤버의 최신 지표 (배치 적재분)
+    latest = (await db.execute(select(StockDailyMetric.trade_date).order_by(StockDailyMetric.trade_date.desc()).limit(1))).scalar()
+    metrics = []
+    if latest:
+        rows = (
+            await db.execute(
+                select(StockDailyMetric).where(
+                    StockDailyMetric.code.in_(codes), StockDailyMetric.trade_date == latest
+                )
+            )
+        ).scalars().all()
+        metrics = [m for m in rows if m.momentum is not None]
+    if not metrics:
+        return None  # 배치 지표 없음 → placeholder
 
-    n = len(sigs)
-    # 종목 score_breakdown: valuation(0~40)/momentum(0~40)/supply(0~20) → 0~100 정규화
-    momentum = sum(s.score_breakdown.momentum for s in sigs) / n / 40 * 100
-    supply = sum(s.score_breakdown.supply for s in sigs) / n / 20 * 100
-    valuation = sum(s.score_breakdown.valuation for s in sigs) / n / 40 * 100
-    fundamentals = min(100.0, max(0.0, sum(s.roe for s in sigs) / n / 25 * 100))  # ROE 25%→100
+    n = len(metrics)
+    momentum = sum((m.momentum or 0) for m in metrics) / n / 40 * 100
+    supply = sum((m.supply or 0) for m in metrics) / n / 20 * 100
+    valuation = sum((m.valuation or 0) for m in metrics) / n / 40 * 100
+    fundamentals = min(100.0, max(0.0, sum((m.roe or 0) for m in metrics) / n / 25 * 100))
 
     naver = await get_user_key(db, user_id, "naver_search")
     attention = await _attention_score(theme_name, naver)
 
-    # 국면(theme): 소속 종목 phase 분포 — 30% 이상이면 채택
-    breakout_ratio = sum(1 for s in sigs if s.phase == "breakout") / n
-    turnaround_ratio = sum(1 for s in sigs if s.phase == "turnaround") / n
+    breakout_ratio = sum(1 for m in metrics if m.phase == "breakout") / n
+    turnaround_ratio = sum(1 for m in metrics if m.phase == "turnaround") / n
     if breakout_ratio >= 0.30:
         phase = "breakout"
     elif turnaround_ratio >= 0.30:
@@ -79,7 +99,7 @@ async def aggregate_theme(db: AsyncSession, user_id: str, theme_name: str) -> Op
         "attention": round(attention, 1),
         "valuation": round(valuation, 1),
     }
-    w = weight_calibration._load_weights()[phase]  # 보정 가중치 우선
+    w = weight_calibration._load_weights()[phase]
     score = round(sum(axes[k] * w[k] for k in w), 1)
 
     return {
@@ -87,7 +107,7 @@ async def aggregate_theme(db: AsyncSession, user_id: str, theme_name: str) -> Op
         "phase": phase,
         "axes": axes,
         "weights": w,
-        "members": [{"code": s.code, "phase": s.phase, "score": s.composite_score} for s in sigs],
+        "members": [{"code": m.code, "phase": m.phase or "neutral", "score": m.composite_score or 0} for m in metrics],
         "breakout_ratio": round(breakout_ratio, 2),
         "turnaround_ratio": round(turnaround_ratio, 2),
         "data_source": "live",

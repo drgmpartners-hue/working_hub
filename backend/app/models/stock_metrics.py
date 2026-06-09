@@ -49,6 +49,19 @@ class StockDailyMetric(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now(), onupdate=func.now())
 
 
+class ThemeMember(Base):
+    """테마 → 소속 종목 매핑 (DB 저장, 모든 서버 공유·재배포 영속). 파일 캐시 대체."""
+    __tablename__ = "theme_members"
+    __table_args__ = (
+        UniqueConstraint("theme_name", "code", name="uq_theme_member"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    theme_name: Mapped[str] = mapped_column(String(200), nullable=False, index=True)
+    code: Mapped[str] = mapped_column(String(20), nullable=False)
+    name: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+
+
 class ScoreSnapshot(Base):
     """전향적 스냅샷 — 비가격 축 사후검증 보정용 (정답=horizon_return)."""
     __tablename__ = "score_snapshots"

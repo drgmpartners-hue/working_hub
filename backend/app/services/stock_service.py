@@ -191,10 +191,15 @@ async def populate_themes(db: AsyncSession) -> list[StockTheme]:
 
 
 async def upsert_themes_from_mapping(db: AsyncSession, mapping: dict) -> int:
-    """역설계 수집 결과 {theme_name: [members]} 를 stock_themes에 upsert.
+    """역설계 수집 결과 {theme_name: [[code,name],...]} 를 DB에 저장.
 
-    기존 테마는 실제 소속 종목 수(stock_count) 갱신, 신규는 추가. 신규 추가 수 반환.
+    - stock_themes: 테마 upsert(소속 종목 수 갱신/신규 추가)
+    - theme_members: 테마→종목 매핑을 DB에 저장(파일캐시 대체, 모든 서버 공유·영속)
+    신규 테마 추가 수 반환.
     """
+    from sqlalchemy import delete
+    from app.models.stock_metrics import ThemeMember
+
     result = await db.execute(select(StockTheme))
     existing = {t.theme_name: t for t in result.scalars().all()}
     added = 0
@@ -210,6 +215,13 @@ async def upsert_themes_from_mapping(db: AsyncSession, mapping: dict) -> int:
                 news_summary=f"'{name}' 네이버 테마 — 소속 {cnt}종목 (역설계 수집)",
             ))
             added += 1
+        # theme_members 교체(해당 테마 기존 삭제 후 재삽입)
+        await db.execute(delete(ThemeMember).where(ThemeMember.theme_name == name))
+        for m in members:
+            code = m[0] if isinstance(m, (list, tuple)) else m.get("code")
+            mname = m[1] if isinstance(m, (list, tuple)) and len(m) > 1 else (m.get("name") if isinstance(m, dict) else None)
+            if code:
+                db.add(ThemeMember(theme_name=name, code=code, name=mname))
     await db.commit()
     return added
 

@@ -11,7 +11,7 @@ from app.models.ai_setting import AIAPISetting
 from app.models.file_upload import FileUpload
 from app.models.crawling import CrawlingJob
 from app.models.stock import StockTheme, CompanyStockPool
-from app.models.stock_metrics import StockDailyMetric, ScoreSnapshot
+from app.models.stock_metrics import StockDailyMetric, ScoreSnapshot, ThemeMember
 from app.models.app_setting import AppSetting
 
 # Depends on users
