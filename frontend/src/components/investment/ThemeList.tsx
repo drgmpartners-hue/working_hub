@@ -17,6 +17,54 @@ export interface StockTheme {
   analyzed_at?: string;
 }
 
+interface ThemeScore {
+  score: number;
+  phase: 'breakout' | 'turnaround' | 'neutral';
+  axes: { momentum: number; supply: number; fundamentals: number; attention: number; valuation: number };
+  data_source: string; // 'live' | 'mock'
+}
+
+const PHASE_META: Record<string, { label: string; color: string; bg: string }> = {
+  breakout: { label: '🚀 고점돌파', color: '#DC2626', bg: 'rgba(220,38,38,0.12)' },
+  turnaround: { label: '⚓ 바닥탈출', color: '#2563EB', bg: 'rgba(37,99,235,0.12)' },
+};
+
+const AXIS_LABELS: Array<[keyof ThemeScore['axes'], string]> = [
+  ['momentum', '모멘텀'],
+  ['supply', '수급'],
+  ['fundamentals', '실적'],
+  ['attention', '관심도'],
+  ['valuation', '밸류'],
+];
+
+function ThemeScorePanel({ sc }: { sc: ThemeScore }) {
+  return (
+    <div style={{ marginTop: 8, padding: '8px 10px', borderRadius: 8, backgroundColor: 'var(--bg-surface)', border: '1px solid var(--border)' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 6 }}>
+        {PHASE_META[sc.phase] && (
+          <span style={{ padding: '1px 7px', borderRadius: 999, fontSize: '0.6875rem', fontWeight: 700, color: PHASE_META[sc.phase].color, backgroundColor: PHASE_META[sc.phase].bg }}>
+            {PHASE_META[sc.phase].label}
+          </span>
+        )}
+        <span style={{ fontSize: '0.6875rem', color: 'var(--text-muted)' }}>
+          {sc.data_source === 'live' ? '실데이터 5축 집계' : '예시(매핑 대기)'}
+        </span>
+      </div>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+        {AXIS_LABELS.map(([key, label]) => (
+          <div key={key} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+            <span style={{ width: 38, fontSize: '0.6875rem', color: 'var(--text-muted)' }}>{label}</span>
+            <div style={{ flex: 1, height: 5, borderRadius: 3, backgroundColor: 'var(--border)', overflow: 'hidden' }}>
+              <div style={{ height: '100%', width: `${Math.max(0, Math.min(100, sc.axes[key]))}%`, backgroundColor: '#2E8B8B', borderRadius: 3 }} />
+            </div>
+            <span style={{ width: 28, textAlign: 'right', fontSize: '0.6875rem', fontWeight: 600, color: 'var(--text-primary)' }}>{Math.round(sc.axes[key])}</span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 interface ThemeListProps {
   basket: StockTheme[];
   onAddToBasket: (theme: StockTheme) => void;
@@ -31,6 +79,7 @@ export function ThemeList({ basket, onAddToBasket, onRemoveFromBasket }: ThemeLi
   const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState('');
   const [sortBy, setSortBy] = useState<'score_desc' | 'score_asc' | 'name_asc' | 'name_desc'>('score_desc');
+  const [scores, setScores] = useState<Record<string | number, ThemeScore>>({});
 
   useEffect(() => {
     fetchThemes();
@@ -55,18 +104,16 @@ export function ThemeList({ basket, onAddToBasket, onRemoveFromBasket }: ThemeLi
 
   async function analyzeTheme(theme: StockTheme) {
     setAnalyzingId(theme.id);
+    setError(null);
     try {
-      const res = await fetch(`${API_URL}/api/v1/stocks/themes/analyze`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          ...authLib.getAuthHeader(),
-        },
-        body: JSON.stringify({ theme_id: theme.id }),
+      // 5축 집계 점수 (소속 종목 실데이터 기반)
+      const res = await fetch(`${API_URL}/api/v1/stocks/themes/${theme.id}/score`, {
+        headers: { ...authLib.getAuthHeader() },
       });
       if (!res.ok) throw new Error('테마 분석 실패');
-      const updated: StockTheme = await res.json();
-      setThemes((prev) => prev.map((t) => (t.id === updated.id ? updated : t)));
+      const sc: ThemeScore = await res.json();
+      setScores((prev) => ({ ...prev, [theme.id]: sc }));
+      setThemes((prev) => prev.map((t) => (t.id === theme.id ? { ...t, ai_score: sc.score } : t)));
     } catch (err) {
       setError(err instanceof Error ? err.message : '분석 중 오류가 발생했습니다.');
     } finally {
@@ -364,6 +411,9 @@ export function ThemeList({ basket, onAddToBasket, onRemoveFromBasket }: ThemeLi
                 >
                   {theme.news_summary || '뉴스 요약 없음'}
                 </p>
+
+                {/* 5축 집계 결과 (분석 후 표시) */}
+                {scores[theme.id] && <ThemeScorePanel sc={scores[theme.id]} />}
 
                 {/* Actions */}
                 <div style={{ display: 'flex', gap: 8 }}>
