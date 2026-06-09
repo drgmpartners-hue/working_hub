@@ -76,6 +76,7 @@ export function ThemeList({ basket, onAddToBasket, onRemoveFromBasket }: ThemeLi
   const [loading, setLoading] = useState(false);
   const [analyzingId, setAnalyzingId] = useState<number | null>(null);
   const [refreshing, setRefreshing] = useState(false);
+  const [collecting, setCollecting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState('');
   const [sortBy, setSortBy] = useState<'score_desc' | 'score_asc' | 'name_asc' | 'name_desc'>('score_desc');
@@ -118,6 +119,23 @@ export function ThemeList({ basket, onAddToBasket, onRemoveFromBasket }: ThemeLi
       setError(err instanceof Error ? err.message : '분석 중 오류가 발생했습니다.');
     } finally {
       setAnalyzingId(null);
+    }
+  }
+
+  async function collectMapping() {
+    setCollecting(true);
+    setError(null);
+    try {
+      const res = await fetch(`${API_URL}/api/v1/stocks/themes/collect`, {
+        method: 'POST',
+        headers: { ...authLib.getAuthHeader() },
+      });
+      if (!res.ok) throw new Error('역설계 수집에 실패했습니다.');
+      await fetchThemes();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : '역설계 수집 중 오류가 발생했습니다.');
+    } finally {
+      setCollecting(false);
     }
   }
 
@@ -320,6 +338,32 @@ export function ThemeList({ basket, onAddToBasket, onRemoveFromBasket }: ThemeLi
             <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10" />
           </svg>
           {refreshing ? '반영 중...' : '테마 반영'}
+        </button>
+        <button
+          onClick={collectMapping}
+          disabled={collecting}
+          title="네이버 금융 테마에서 테마·소속종목을 자동 수집(역설계). 1~2분 소요."
+          style={{
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: 6,
+            height: 34,
+            padding: '0 12px',
+            borderRadius: 6,
+            border: '1px solid #2E8B8B',
+            cursor: collecting ? 'default' : 'pointer',
+            backgroundColor: collecting ? 'var(--bg-card)' : 'rgba(46,139,139,0.10)',
+            color: '#2E8B8B',
+            fontSize: '0.75rem',
+            fontWeight: 700,
+            opacity: collecting ? 0.7 : 1,
+          }}
+        >
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"
+            style={collecting ? { animation: 'spin 0.7s linear infinite' } : undefined}>
+            <path d="M21 12a9 9 0 1 1-6.219-8.56" />
+          </svg>
+          {collecting ? '수집 중...' : '역설계 수집'}
         </button>
       </div>
 
