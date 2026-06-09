@@ -12,6 +12,19 @@ import type { StockItem } from './StockDetailPanel';
 
 /* ------------------------------------------------------------------ */
 
+interface CalibrationReport {
+  sample_codes: number;
+  pairs: number;
+  horizon: number;
+  r_momentum: number | null;
+  momentum_factor: number;
+  current_weights: Record<string, Record<string, number>>;
+  proposed_weights: Record<string, Record<string, number>>;
+  data_source: string;
+  note: string;
+  applied: boolean;
+}
+
 const STATUS_LABEL: Record<string, string> = {
   success: '성공',
   failure: '실패',
@@ -56,6 +69,25 @@ export function PerformanceTab() {
   /* Detail panel */
   const [panelStock, setPanelStock] = useState<StockItem | null>(null);
   const [panelOpen, setPanelOpen] = useState(false);
+
+  /* 가중치 보정 */
+  const [calib, setCalib] = useState<CalibrationReport | null>(null);
+  const [calibLoading, setCalibLoading] = useState(false);
+
+  const runCalibration = useCallback(async (apply: boolean) => {
+    setCalibLoading(true);
+    try {
+      const res = await fetch(`${API_URL}/api/v1/stocks/calibration/${apply ? 'apply' : 'report'}`, {
+        method: apply ? 'POST' : 'GET',
+        headers: { ...authLib.getAuthHeader() },
+      });
+      if (res.ok) setCalib(await res.json());
+    } catch {
+      /* silent */
+    } finally {
+      setCalibLoading(false);
+    }
+  }, []);
 
   /* fetch summary */
   const fetchSummary = useCallback(async () => {
@@ -128,6 +160,66 @@ export function PerformanceTab() {
     <div>
       {/* Summary */}
       <PerformanceSummary data={summary} loading={summaryLoading} />
+
+      {/* 사후검증 가중치 보정 */}
+      <div
+        style={{
+          padding: '14px 16px',
+          backgroundColor: 'var(--bg-card)',
+          border: '1px solid var(--border)',
+          borderRadius: 10,
+          marginBottom: 16,
+        }}
+      >
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+          <div style={{ flex: 1, minWidth: 200 }}>
+            <p style={{ margin: 0, fontSize: '0.875rem', fontWeight: 700, color: 'var(--text-primary)' }}>
+              사후검증 가중치 보정
+            </p>
+            <p style={{ margin: '2px 0 0', fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+              과거 모멘텀 점수가 이후 수익을 예측했는지 검증 → 가중치를 데이터로 조정
+            </p>
+          </div>
+          <button
+            onClick={() => runCalibration(false)}
+            disabled={calibLoading}
+            style={{ height: 32, padding: '0 12px', borderRadius: 6, border: '1px solid var(--border)', backgroundColor: 'var(--bg-surface)', color: 'var(--text-primary)', fontSize: '0.8125rem', fontWeight: 600, cursor: calibLoading ? 'default' : 'pointer' }}
+          >
+            {calibLoading ? '검증 중...' : '보정 리포트'}
+          </button>
+          {calib && calib.data_source === 'live' && (
+            <button
+              onClick={() => runCalibration(true)}
+              disabled={calibLoading}
+              style={{ height: 32, padding: '0 12px', borderRadius: 6, border: 'none', backgroundColor: '#2E8B8B', color: '#fff', fontSize: '0.8125rem', fontWeight: 600, cursor: calibLoading ? 'default' : 'pointer' }}
+            >
+              {calib.applied ? '✓ 적용됨' : '적용'}
+            </button>
+          )}
+        </div>
+
+        {calib && (
+          <div style={{ marginTop: 12, display: 'flex', gap: 14, flexWrap: 'wrap', fontSize: '0.8125rem' }}>
+            <div>
+              <span style={{ color: 'var(--text-muted)' }}>표본</span>{' '}
+              <strong style={{ color: 'var(--text-primary)' }}>{calib.sample_codes}종목 · {calib.pairs}쌍</strong>
+            </div>
+            <div>
+              <span style={{ color: 'var(--text-muted)' }}>모멘텀 상관계수({calib.horizon}일)</span>{' '}
+              <strong style={{ color: (calib.r_momentum ?? 0) >= 0 ? '#059669' : '#DC2626' }}>
+                {calib.r_momentum != null ? calib.r_momentum.toFixed(3) : 'N/A'}
+              </strong>
+            </div>
+            <div>
+              <span style={{ color: 'var(--text-muted)' }}>모멘텀 가중치</span>{' '}
+              <strong style={{ color: 'var(--text-primary)' }}>
+                {(calib.current_weights.neutral?.momentum ?? 0).toFixed(2)} → {(calib.proposed_weights.neutral?.momentum ?? 0).toFixed(2)}
+              </strong>
+            </div>
+            <div style={{ width: '100%', color: 'var(--text-muted)', fontSize: '0.75rem' }}>{calib.note}</div>
+          </div>
+        )}
+      </div>
 
       {/* Filters */}
       <div
