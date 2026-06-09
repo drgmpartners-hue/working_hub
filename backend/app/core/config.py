@@ -27,6 +27,10 @@ class Settings(BaseSettings):
     # Google OAuth
     GOOGLE_CLIENT_ID: str = ""
 
+    # Resend (이메일 발송 — API 키 하나로 발송, SMTP 불필요)
+    RESEND_API_KEY: str = ""
+    RESEND_FROM: str = "onboarding@resend.dev"  # 도메인 인증 전 기본 발신주소(가입 본인 메일로만 발송)
+
     @computed_field
     @property
     def ASYNC_DATABASE_URL(self) -> str:

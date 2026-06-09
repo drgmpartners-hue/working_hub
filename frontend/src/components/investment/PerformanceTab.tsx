@@ -117,7 +117,7 @@ export function PerformanceTab() {
     setReportMsg('발송 중...');
     try {
       const res = await fetch(`${API_URL}/api/v1/stocks/report/send`, { method: 'POST', headers: { ...authLib.getAuthHeader() } });
-      setReportMsg(res.ok ? '발송 요청 완료 (SMTP 미설정 시 서버 로그만)' : '발송 실패');
+      setReportMsg(res.ok ? '발송 요청 완료 (메일 미설정 시 서버 로그만)' : '발송 실패');
     } catch { setReportMsg('발송 실패'); }
   }, []);
 

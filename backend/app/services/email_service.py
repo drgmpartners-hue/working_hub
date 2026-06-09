@@ -160,14 +160,41 @@ async def notify_staff_call_reservation(
         return False
 
 
+async def _send_resend(to: str, subject: str, body_html: str) -> bool:
+    """Resend API로 발송 (API 키 하나, SMTP 불필요)."""
+    import httpx
+
+    async with httpx.AsyncClient(timeout=10) as client:
+        res = await client.post(
+            "https://api.resend.com/emails",
+            headers={
+                "Authorization": f"Bearer {settings.RESEND_API_KEY}",
+                "Content-Type": "application/json",
+            },
+            json={"from": settings.RESEND_FROM, "to": [to], "subject": subject, "html": body_html},
+        )
+    if res.status_code in (200, 201):
+        return True
+    logger.error("Resend 발송 실패 (status=%s): %s", res.status_code, res.text[:200])
+    return False
+
+
 async def send_stock_report(to: str, body_html: str, report_date: str) -> bool:
-    """주식·ETF 일일 분석 리포트 이메일 발송. SMTP 미설정 시 mock 로그."""
+    """주식·ETF 일일 분석 리포트 이메일 발송.
+
+    우선순위: Resend(RESEND_API_KEY) → SMTP(SMTP_HOST) → mock 로그.
+    """
     subject = f"[Working Hub] 주식·ETF 일일 분석 리포트 ({report_date})"
     try:
-        if not settings.SMTP_HOST or not to:
-            logger.info("[MOCK EMAIL] 일일 리포트 → %s (%s) — SMTP 미설정으로 발송 생략", to, report_date)
+        if not to:
+            logger.info("[MOCK EMAIL] 일일 리포트 — 수신자 없음, 발송 생략")
             return False
-        return _send_smtp(to, subject, body_html)
+        if settings.RESEND_API_KEY:
+            return await _send_resend(to, subject, body_html)
+        if settings.SMTP_HOST:
+            return _send_smtp(to, subject, body_html)
+        logger.info("[MOCK EMAIL] 일일 리포트 → %s (%s) — 메일 미설정으로 발송 생략", to, report_date)
+        return False
     except Exception as exc:
         logger.error("Email send failed (stock report): %s", exc)
         return False
