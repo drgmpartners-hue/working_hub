@@ -131,21 +131,33 @@ _EXTRA_THEME_NAMES = [
 ]
 
 
+def theme_score(name: str) -> float:
+    """테마 점수(ai_score)의 **단일 산정 함수** — 결정적(해시 기반) placeholder.
+
+    동일 테마명 → 항상 같은 값(랜덤 아님). 점수 산정은 반드시 이 함수만 사용.
+    ⚠️ 실연동 시 내부 구현을 '소속 종목 종합점수(KIS) 평균 + 뉴스 공출현(네이버) 가중'으로 교체.
+       (08-stock-etf §5 — 좋은 테마 판단 기준). 외부 인터페이스는 그대로 유지.
+    """
+    if name in _CURATED_THEMES:
+        return _CURATED_THEMES[name][0]
+    h = int(hashlib.md5(name.encode("utf-8")).hexdigest(), 16)
+    return round(45.0 + (h % 500) / 10.0, 1)   # 45.0 ~ 94.9
+
+
 def _theme_payload(name: str) -> tuple[float, int, str]:
     """테마명 → (ai_score, stock_count, news_summary). 결정적(해시 기반) placeholder.
 
-    동일 테마명은 항상 같은 값 → 반복 호출에도 안정적. 실연동 시 실제 산정값으로 대체.
+    점수는 theme_score()로 일원화. stock_count·summary는 부트스트랩용 placeholder.
     """
     if name in _CURATED_THEMES:
         return _CURATED_THEMES[name]
     h = int(hashlib.md5(name.encode("utf-8")).hexdigest(), 16)
-    ai_score = round(45.0 + (h % 500) / 10.0, 1)   # 45.0 ~ 94.9
     stock_count = 4 + (h % 18)                       # 4 ~ 21
     summary = (
         f"'{name}' 테마 점수는 관련 종목군의 수급·모멘텀·뉴스 흐름을 종합한 값입니다. "
         "(실연동 시 뉴스 공출현·수급 데이터 기반으로 갱신)"
     )
-    return ai_score, stock_count, summary
+    return theme_score(name), stock_count, summary
 
 
 async def populate_themes(db: AsyncSession) -> list[StockTheme]:
@@ -182,13 +194,17 @@ async def analyze_themes(
     db: AsyncSession,
     theme_ids: list[str],
 ) -> list[StockTheme]:
-    """Mock AI analysis: update ai_score and news_summary for the given themes."""
+    """테마 분석: news_summary를 Gemini로 갱신. 점수는 단일 산정함수(결정적) 유지.
+
+    ⚠️ 과거엔 ai_score를 매 호출마다 random으로 덮어써 점수가 흔들렸음 → 제거.
+       ai_score 산정은 theme_score()로 일원화. 실연동 시 소속 종목 종합점수 집계로 교체.
+    """
     result = await db.execute(
         select(StockTheme).where(StockTheme.id.in_(theme_ids))
     )
     themes = list(result.scalars().all())
 
-    # Call Gemini for real analysis
+    # Gemini로 뉴스/분석 텍스트 생성 (실연동)
     theme_names = [t.theme_name for t in themes]
     try:
         ai_result = ai_service.analyze_stock_themes(theme_names)
@@ -198,14 +214,10 @@ async def analyze_themes(
         ai_text = ""
 
     for theme in themes:
-        theme.ai_score = round(random.uniform(50.0, 99.9), 1)
+        theme.ai_score = theme_score(theme.theme_name)  # 결정적 — 랜덤 제거
         if ai_text:
             theme.news_summary = f"[Gemini AI 분석]\n{ai_text}"
-        else:
-            theme.news_summary = (
-                f"'{theme.theme_name}' 테마는 최근 긍정적인 뉴스 흐름을 "
-                "보이고 있습니다. 관련 산업의 성장세가 지속되며 투자 매력도가 높아지고 있습니다."
-            )
+        # ai_text 없으면 기존 news_summary 유지 (덮어쓰지 않음)
 
     await db.commit()
     for theme in themes:
@@ -229,7 +241,7 @@ async def create_recommendation(
         user_id=user_id,
         selected_themes=data.selected_themes,
         ai_scores={
-            theme: round(random.uniform(50.0, 99.9), 1)
+            theme: theme_score(theme)  # 결정적 — 랜덤 제거, 테마 목록과 동일 점수
             for theme in data.selected_themes.keys()
         },
         status="completed",
