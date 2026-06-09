@@ -15,8 +15,11 @@ from app.schemas.stock import (
     ScreeningItemResponse,
     PerformanceItemResponse,
     PerformanceSummaryResponse,
+    ThemeScoreResponse,
+    ThemeAxes,
 )
-from app.services import stock_service
+from app.models.stock import StockTheme
+from app.services import stock_service, theme_scoring
 from app.services import stock_advanced_service  # noqa: F401 (used below)
 
 router = APIRouter(prefix="/stocks", tags=["stocks"])
@@ -57,6 +60,45 @@ async def refresh_themes(
     """
     themes = await stock_service.populate_themes(db)
     return [StockThemeResponse.model_validate(t) for t in themes]
+
+
+@router.get(
+    "/themes/{theme_id}/score",
+    response_model=ThemeScoreResponse,
+    summary="테마 5축 집계 점수 (소속 종목 실데이터 + 국면 가중치 스위칭)",
+)
+async def get_theme_score(
+    theme_id: str,
+    current_user: CurrentUser,
+    db: Annotated[AsyncSession, Depends(get_db)],
+) -> ThemeScoreResponse:
+    """테마 점수를 소속 종목 실데이터로 5축 집계.
+
+    모멘텀·수급·실적·관심도·밸류 5축 + 국면(고점돌파/바닥탈출)별 가중치 스위칭.
+    매핑/키 없으면 placeholder(data_source=mock) 폴백. live 시 ai_score를 DB에 반영.
+    """
+    theme = await db.get(StockTheme, theme_id)
+    if not theme:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="테마를 찾을 수 없습니다.")
+
+    agg = await theme_scoring.aggregate_theme(db, current_user.id, theme.theme_name)
+    if agg is None:
+        # placeholder 폴백 — 기존 점수 유지, 5축은 0
+        return ThemeScoreResponse(
+            theme_id=theme_id,
+            theme_name=theme.theme_name,
+            score=theme.ai_score or stock_service.theme_score(theme.theme_name),
+            phase="neutral",
+            axes=ThemeAxes(momentum=0, supply=0, fundamentals=0, attention=0, valuation=0),
+            weights=theme_scoring._WEIGHTS["neutral"],
+            members=[],
+            data_source="mock",
+        )
+
+    # 실데이터 집계 성공 → DB ai_score 갱신
+    theme.ai_score = agg["score"]
+    await db.commit()
+    return ThemeScoreResponse(theme_id=theme_id, theme_name=theme.theme_name, **agg)
 
 
 @router.post(

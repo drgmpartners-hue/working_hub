@@ -237,3 +237,60 @@ class TestStockThemeSchemas:
         from app.schemas.stock import StockThemeAnalyzeRequest
         req = StockThemeAnalyzeRequest(theme_ids=[])
         assert req.theme_ids == []
+
+
+# ---------------------------------------------------------------------------
+# GET /api/v1/stocks/themes/{id}/score  (5축 집계)
+# ---------------------------------------------------------------------------
+
+class _FakeTheme:
+    theme_name = "방산"
+    ai_score = 80.0
+
+
+class _FakeSession:
+    async def get(self, model, _id):
+        return _FakeTheme()
+    async def commit(self):
+        return None
+
+
+async def _fake_db_session():
+    yield _FakeSession()
+
+
+class TestThemeScore:
+    """GET /api/v1/stocks/themes/{id}/score"""
+
+    def _app(self):
+        from app.db.session import get_db
+        app = FastAPI()
+        app.dependency_overrides[get_current_user] = lambda: _make_user()
+        app.dependency_overrides[get_db] = _fake_db_session
+        app.include_router(stock_router, prefix="/api/v1")
+        return app
+
+    def test_score_live_aggregation(self):
+        agg = {
+            "score": 43.3, "phase": "turnaround",
+            "axes": {"momentum": 2.2, "supply": 55.0, "fundamentals": 86.4, "attention": 100.0, "valuation": 0.0},
+            "weights": {"momentum": 0.3, "supply": 0.4, "fundamentals": 0.1, "attention": 0.12, "valuation": 0.08},
+            "members": [{"code": "012450", "phase": "turnaround", "score": 50.0}],
+            "data_source": "live",
+        }
+        with patch("app.api.v1.stock.theme_scoring.aggregate_theme", new=AsyncMock(return_value=agg)):
+            with TestClient(self._app()) as client:
+                resp = client.get("/api/v1/stocks/themes/t1/score")
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["phase"] == "turnaround"
+        assert body["axes"]["fundamentals"] == 86.4
+        assert body["data_source"] == "live"
+
+    def test_score_placeholder_fallback(self):
+        """매핑/실데이터 없음 → mock 폴백, 200."""
+        with patch("app.api.v1.stock.theme_scoring.aggregate_theme", new=AsyncMock(return_value=None)):
+            with TestClient(self._app()) as client:
+                resp = client.get("/api/v1/stocks/themes/t1/score")
+        assert resp.status_code == 200
+        assert resp.json()["data_source"] == "mock"

@@ -109,6 +109,35 @@ class StockInsightsResponse(BaseModel):
 
 
 # ---------------------------------------------------------------------------
+# 테마 5축 집계 점수
+# ---------------------------------------------------------------------------
+
+class ThemeAxes(BaseModel):
+    momentum: float       # 모멘텀
+    supply: float         # 수급
+    fundamentals: float   # 실적
+    attention: float      # 관심도
+    valuation: float      # 밸류(역방향)
+
+
+class ThemeMemberScore(BaseModel):
+    code: str
+    phase: Literal["breakout", "turnaround", "neutral"]
+    score: float
+
+
+class ThemeScoreResponse(BaseModel):
+    theme_id: str
+    theme_name: str
+    score: float
+    phase: Literal["breakout", "turnaround", "neutral"]
+    axes: ThemeAxes
+    weights: dict[str, float]
+    members: list[ThemeMemberScore] = []
+    data_source: str = "mock"  # "live"=소속 종목 실데이터 집계 / "mock"=매핑·키 미연동
+
+
+# ---------------------------------------------------------------------------
 # P5-R6: Recommendation Performance
 # ---------------------------------------------------------------------------
 

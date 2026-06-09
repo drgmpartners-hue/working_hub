@@ -5,6 +5,7 @@ KIS 실시세 + 지표 엔진으로 시그널·종합점수를 산출. 키가 �
 """
 from __future__ import annotations
 
+import time
 import logging
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -26,6 +27,10 @@ from app.services.collectors.naver_news_client import NaverNewsClient
 from app.services.collectors.dart_client import DARTClient
 
 logger = logging.getLogger(__name__)
+
+# 종목 signals TTL 캐시 (테마 5축 집계 시 동일 종목 중복 KIS 호출 방지)
+_SIGNALS_CACHE: dict[str, tuple[float, MarketSignalsResponse]] = {}
+_SIGNALS_TTL = 600  # 10분
 
 
 def _supply_score(trend: dict | None) -> float:
@@ -59,7 +64,12 @@ def _valuation_score(per: float | None, pbr: float | None, *, peg_exempt: bool =
 
 
 async def get_signals(db: AsyncSession, user_id: str, code: str) -> MarketSignalsResponse:
-    """KIS 실데이터 기반 시그널. 실패 시 mock 폴백."""
+    """KIS 실데이터 기반 시그널. 실패 시 mock 폴백. 성공 결과는 10분 TTL 캐시."""
+    cache_key = f"{user_id}:{code}"
+    cached = _SIGNALS_CACHE.get(cache_key)
+    if cached and (time.monotonic() - cached[0]) < _SIGNALS_TTL:
+        return cached[1]
+
     creds = await get_user_key(db, user_id, "kis")
     if not creds:
         return stock_advanced_service.get_market_signals(code)  # data_source="mock"
@@ -100,7 +110,7 @@ async def get_signals(db: AsyncSession, user_id: str, code: str) -> MarketSignal
         if roe is None:
             roe = 0.0
 
-        return MarketSignalsResponse(
+        result = MarketSignalsResponse(
             code=code,
             ma5=sig["ma5"],
             ma20=sig["ma20"],
@@ -126,6 +136,8 @@ async def get_signals(db: AsyncSession, user_id: str, code: str) -> MarketSignal
             phase_reasons=phase["reasons"],
             data_source="kis",
         )
+        _SIGNALS_CACHE[cache_key] = (time.monotonic(), result)
+        return result
     except Exception as e:
         logger.warning("KIS 실데이터 실패, mock 폴백 (code=%s): %s", code, e)
         return stock_advanced_service.get_market_signals(code)
