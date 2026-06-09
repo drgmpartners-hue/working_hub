@@ -158,3 +158,16 @@ async def notify_staff_call_reservation(
     except Exception as exc:
         logger.error("Email send failed (staff call reservation alert): %s", exc)
         return False
+
+
+async def send_stock_report(to: str, body_html: str, report_date: str) -> bool:
+    """주식·ETF 일일 분석 리포트 이메일 발송. SMTP 미설정 시 mock 로그."""
+    subject = f"[Working Hub] 주식·ETF 일일 분석 리포트 ({report_date})"
+    try:
+        if not settings.SMTP_HOST or not to:
+            logger.info("[MOCK EMAIL] 일일 리포트 → %s (%s) — SMTP 미설정으로 발송 생략", to, report_date)
+            return False
+        return _send_smtp(to, subject, body_html)
+    except Exception as exc:
+        logger.error("Email send failed (stock report): %s", exc)
+        return False

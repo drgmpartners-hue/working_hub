@@ -19,6 +19,7 @@ class StockTheme(Base):
     ai_score: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
     news_summary: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     stock_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    phase: Mapped[Optional[str]] = mapped_column(String(12), nullable=True)  # breakout/turnaround/neutral
     updated_at: Mapped[datetime] = mapped_column(
         DateTime, server_default=func.now(), onupdate=func.now(), nullable=False
     )

@@ -76,6 +76,51 @@ export function PerformanceTab() {
   const [calib, setCalib] = useState<CalibrationReport | null>(null);
   const [calibLoading, setCalibLoading] = useState(false);
 
+  /* 리포트 이메일 설정 */
+  const [reportEnabled, setReportEnabled] = useState(false);
+  const [reportRecipient, setReportRecipient] = useState('');
+  const [reportMsg, setReportMsg] = useState('');
+
+  const fetchReportSettings = useCallback(async () => {
+    try {
+      const res = await fetch(`${API_URL}/api/v1/stocks/report/settings`, { headers: { ...authLib.getAuthHeader() } });
+      if (res.ok) {
+        const d = await res.json();
+        setReportEnabled(!!d.email_enabled);
+        setReportRecipient(d.recipient || '');
+      }
+    } catch { /* silent */ }
+  }, []);
+
+  const saveReportSettings = useCallback(async (enabled: boolean) => {
+    setReportMsg('');
+    try {
+      const res = await fetch(`${API_URL}/api/v1/stocks/report/settings`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json', ...authLib.getAuthHeader() },
+        body: JSON.stringify({ email_enabled: enabled, recipient: reportRecipient || null }),
+      });
+      if (res.ok) { setReportEnabled(enabled); setReportMsg(enabled ? '자동 발송 ON' : '자동 발송 OFF'); }
+    } catch { setReportMsg('저장 실패'); }
+  }, [reportRecipient]);
+
+  const previewReport = useCallback(async () => {
+    try {
+      const res = await fetch(`${API_URL}/api/v1/stocks/report/preview`, { headers: { ...authLib.getAuthHeader() } });
+      const html = await res.text();
+      const w = window.open('', '_blank');
+      if (w) { w.document.write(html); w.document.close(); }
+    } catch { setReportMsg('미리보기 실패'); }
+  }, []);
+
+  const sendReportNow = useCallback(async () => {
+    setReportMsg('발송 중...');
+    try {
+      const res = await fetch(`${API_URL}/api/v1/stocks/report/send`, { method: 'POST', headers: { ...authLib.getAuthHeader() } });
+      setReportMsg(res.ok ? '발송 요청 완료 (SMTP 미설정 시 서버 로그만)' : '발송 실패');
+    } catch { setReportMsg('발송 실패'); }
+  }, []);
+
   const runCalibration = useCallback(async (apply: boolean) => {
     setCalibLoading(true);
     try {
@@ -139,6 +184,10 @@ export function PerformanceTab() {
   useEffect(() => {
     fetchRecords();
   }, [fetchRecords]);
+
+  useEffect(() => {
+    fetchReportSettings();
+  }, [fetchReportSettings]);
 
   function openPanel(record: PerformanceRecord) {
     setPanelStock({
@@ -225,6 +274,51 @@ export function PerformanceTab() {
             <div style={{ width: '100%', color: 'var(--text-muted)', fontSize: '0.75rem' }}>{calib.note}</div>
           </div>
         )}
+      </div>
+
+      {/* 일일 리포트 이메일 */}
+      <div style={{ padding: '14px 16px', backgroundColor: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 10, marginBottom: 16 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+          <div style={{ flex: 1, minWidth: 200 }}>
+            <p style={{ margin: 0, fontSize: '0.875rem', fontWeight: 700, color: 'var(--text-primary)' }}>
+              일일 분석 리포트 이메일
+            </p>
+            <p style={{ margin: '2px 0 0', fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+              매일 배치 후 테마 랭킹·상승/하락 종목 리포트를 이메일로 발송
+            </p>
+          </div>
+          {/* ON/OFF 토글 (승인) */}
+          <button
+            onClick={() => saveReportSettings(!reportEnabled)}
+            style={{
+              display: 'inline-flex', alignItems: 'center', gap: 8, height: 32, padding: '0 14px',
+              borderRadius: 999, border: 'none', cursor: 'pointer', fontSize: '0.8125rem', fontWeight: 700,
+              backgroundColor: reportEnabled ? 'rgba(5,150,105,0.15)' : 'var(--bg-surface)',
+              color: reportEnabled ? '#059669' : 'var(--text-muted)',
+            }}
+          >
+            <span style={{ width: 8, height: 8, borderRadius: '50%', backgroundColor: reportEnabled ? '#059669' : '#9CA3AF' }} />
+            {reportEnabled ? '자동 발송 ON' : '자동 발송 OFF'}
+          </button>
+          <button onClick={previewReport} style={{ height: 32, padding: '0 12px', borderRadius: 6, border: '1px solid var(--border)', backgroundColor: 'var(--bg-surface)', color: 'var(--text-primary)', fontSize: '0.8125rem', fontWeight: 600, cursor: 'pointer' }}>
+            미리보기
+          </button>
+          <button onClick={sendReportNow} style={{ height: 32, padding: '0 12px', borderRadius: 6, border: 'none', backgroundColor: '#2E8B8B', color: '#fff', fontSize: '0.8125rem', fontWeight: 600, cursor: 'pointer' }}>
+            지금 보내기
+          </button>
+        </div>
+        <div style={{ marginTop: 10, display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+          <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>받는 사람</span>
+          <input
+            type="email"
+            value={reportRecipient}
+            onChange={(e) => setReportRecipient(e.target.value)}
+            onBlur={() => saveReportSettings(reportEnabled)}
+            placeholder="email@example.com"
+            style={{ height: 30, padding: '0 10px', borderRadius: 6, border: '1px solid var(--border)', backgroundColor: 'var(--bg-card)', color: 'var(--text-primary)', fontSize: '0.8125rem', minWidth: 220 }}
+          />
+          {reportMsg && <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>{reportMsg}</span>}
+        </div>
       </div>
 
       {/* Filters */}

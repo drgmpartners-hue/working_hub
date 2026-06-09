@@ -15,8 +15,11 @@ from datetime import date, datetime, timedelta
 from sqlalchemy import select, and_
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from sqlalchemy import select as _select
+
 from app.models.stock_metrics import StockDailyMetric, ScoreSnapshot
-from app.services import market_data_service
+from app.models.stock import StockTheme
+from app.services import market_data_service, theme_scoring
 from app.services.collectors.key_access import get_user_key
 from app.services.collectors.kis_client import KISClient
 from app.services.collectors.theme_mapping_collector import load_cached_map
@@ -99,6 +102,27 @@ async def run_batch(db: AsyncSession, user_id: str, max_codes: int = 200) -> dic
 
     await db.commit()
     return {"ok": True, "processed": processed, "snapshots": snap, "universe": len(universe), "date": str(today)}
+
+
+async def score_all_themes(db: AsyncSession, user_id: str) -> dict:
+    """모든 테마의 5축 점수를 계산해 ai_score·phase 갱신 (목록이 클릭 없이 실점수).
+
+    배치에서 종목 지표를 이미 계산했으므로 signals 캐시가 따뜻해 추가 호출 적음.
+    """
+    themes = (await db.execute(_select(StockTheme))).scalars().all()
+    scored = 0
+    for theme in themes:
+        try:
+            agg = await theme_scoring.aggregate_theme(db, user_id, theme.theme_name)
+        except Exception as e:
+            logger.info("테마 점수 실패(무시) %s: %s", theme.theme_name, e)
+            continue
+        if agg:
+            theme.ai_score = agg["score"]
+            theme.phase = agg["phase"]
+            scored += 1
+    await db.commit()
+    return {"scored_themes": scored, "total_themes": len(themes)}
 
 
 async def mature_snapshots(db: AsyncSession, user_id: str, horizon_days: int = 28) -> dict:

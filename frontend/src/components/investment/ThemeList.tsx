@@ -15,6 +15,7 @@ export interface StockTheme {
   news_summary: string;
   category?: string;
   analyzed_at?: string;
+  phase?: 'breakout' | 'turnaround' | 'neutral' | null;
 }
 
 interface ThemeScore {
@@ -423,6 +424,11 @@ export function ThemeList({ basket, onAddToBasket, onRemoveFromBasket }: ThemeLi
                   <span style={{ fontSize: '0.9375rem', fontWeight: 700, color: 'var(--text-primary)' }}>
                     {theme.theme_name}
                   </span>
+                  {theme.phase && PHASE_META[theme.phase] && (
+                    <span style={{ padding: '1px 7px', borderRadius: 999, fontSize: '0.625rem', fontWeight: 700, color: PHASE_META[theme.phase].color, backgroundColor: PHASE_META[theme.phase].bg }}>
+                      {PHASE_META[theme.phase].label}
+                    </span>
+                  )}
                   {theme.category && (
                     <span
                       style={{

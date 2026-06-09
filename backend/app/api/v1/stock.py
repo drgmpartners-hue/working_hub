@@ -19,10 +19,17 @@ from app.schemas.stock import (
     ThemeAxes,
     CalibrationReportResponse,
     ThemeCollectResponse,
+    ReportSettingsResponse,
+    ReportSettingsUpdate,
 )
+from fastapi.responses import HTMLResponse
 from app.models.stock import StockTheme
-from app.services import stock_service, theme_scoring, weight_calibration
+from app.services import (
+    stock_service, theme_scoring, weight_calibration, settings_store,
+    stock_report, email_service,
+)
 from app.services.collectors import theme_mapping_collector
+from app.core.config import settings as app_config
 from app.services import stock_advanced_service  # noqa: F401 (used below)
 
 router = APIRouter(prefix="/stocks", tags=["stocks"])
@@ -163,6 +170,55 @@ async def calibration_apply(
         weight_calibration.apply_weights(report["proposed_weights"])
         applied = True
     return CalibrationReportResponse(**report, applied=applied)
+
+
+# ---------------------------------------------------------------------------
+# 일일 리포트 이메일 (설정 / 미리보기 / 발송)
+# ---------------------------------------------------------------------------
+
+@router.get("/report/settings", response_model=ReportSettingsResponse, summary="리포트 이메일 설정 조회")
+async def get_report_settings(
+    current_user: CurrentUser,
+    db: Annotated[AsyncSession, Depends(get_db)],
+) -> ReportSettingsResponse:
+    enabled = await settings_store.get_bool(db, settings_store.REPORT_EMAIL_ENABLED, default=False)
+    recipient = await settings_store.get(db, settings_store.REPORT_EMAIL_RECIPIENT) or app_config.STAFF_EMAIL or None
+    return ReportSettingsResponse(email_enabled=enabled, recipient=recipient)
+
+
+@router.put("/report/settings", response_model=ReportSettingsResponse, summary="리포트 이메일 설정 변경(승인)")
+async def update_report_settings(
+    body: ReportSettingsUpdate,
+    current_user: CurrentUser,
+    db: Annotated[AsyncSession, Depends(get_db)],
+) -> ReportSettingsResponse:
+    await settings_store.set_value(db, settings_store.REPORT_EMAIL_ENABLED, "1" if body.email_enabled else "0")
+    if body.recipient is not None:
+        await settings_store.set_value(db, settings_store.REPORT_EMAIL_RECIPIENT, body.recipient)
+    recipient = await settings_store.get(db, settings_store.REPORT_EMAIL_RECIPIENT) or app_config.STAFF_EMAIL or None
+    return ReportSettingsResponse(email_enabled=body.email_enabled, recipient=recipient)
+
+
+@router.get("/report/preview", response_class=HTMLResponse, summary="리포트 미리보기(HTML)")
+async def preview_report(
+    current_user: CurrentUser,
+    db: Annotated[AsyncSession, Depends(get_db)],
+) -> HTMLResponse:
+    html = await stock_report.build_report_html(db)
+    return HTMLResponse(content=html)
+
+
+@router.post("/report/send", response_model=ReportSettingsResponse, summary="리포트 지금 발송(수동 승인)")
+async def send_report_now(
+    current_user: CurrentUser,
+    db: Annotated[AsyncSession, Depends(get_db)],
+) -> ReportSettingsResponse:
+    recipient = await settings_store.get(db, settings_store.REPORT_EMAIL_RECIPIENT) or app_config.STAFF_EMAIL
+    data = await stock_report.build_report_data(db)
+    html = stock_report.render_html(data)
+    await email_service.send_stock_report(recipient or "", html, data["date"])
+    enabled = await settings_store.get_bool(db, settings_store.REPORT_EMAIL_ENABLED, default=False)
+    return ReportSettingsResponse(email_enabled=enabled, recipient=recipient)
 
 
 @router.post(

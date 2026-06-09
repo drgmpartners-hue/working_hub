@@ -41,6 +41,7 @@ def _make_theme(
     obj.ai_score = ai_score
     obj.news_summary = None
     obj.stock_count = 10
+    obj.phase = None
     obj.updated_at = _NOW
     return obj
 

@@ -1,10 +1,9 @@
-"""야간 일배치 실행 스크립트 (수집 → 배치 → 성숙, 자기완결형).
+"""야간 일배치 실행 스크립트 (자기완결형).
+
+순서: ① 역설계 수집 → ② 테마 반영 → ③ 종목 지표 → ④ 테마 5축 점수 → ⑤ 스냅샷 성숙 → ⑥ 리포트 이메일
 
 사용: backend 에서  python scripts/run_daily_batch.py [max_codes] [--no-collect]
-스케줄: Railway Cron 또는 Windows 작업 스케줄러로 장 마감 후(예: 18:00) 1회.
-
-Railway는 매 실행 컨테이너가 새로 떠 .cache가 없으므로 기본적으로 역설계 수집을 먼저 수행한다.
-(--no-collect 로 수집 생략 가능 — 로컬에서 이미 수집한 경우)
+스케줄: Railway Cron 또는 작업 스케줄러로 장 마감 후(예: 평일 18:00) 1회.
 """
 import asyncio
 import sys
@@ -15,8 +14,9 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from sqlalchemy import select
 from app.db.session import AsyncSessionLocal
 from app.models.user_api_key import UserApiKey
-from app.services import daily_batch, stock_service
+from app.services import daily_batch, stock_service, stock_report, email_service, settings_store
 from app.services.collectors import theme_mapping_collector
+from app.core.config import settings
 
 
 async def main():
@@ -32,18 +32,36 @@ async def main():
         uid = row.user_id
 
         if do_collect:
-            print("1) 역설계 매핑 수집(네이버 테마) ...")
+            print("① 역설계 매핑 수집(네이버 테마) ...")
             mapping = await theme_mapping_collector.collect(max_pages=7)
             added = await stock_service.upsert_themes_from_mapping(db, mapping)
             print(f"   수집 테마 {len(mapping)}개 (신규 {added})")
 
-        print(f"2) 지표 배치 시작 (max_codes={max_codes}) ...")
+        print("② 테마 반영(큐레이션 보강) ...")
+        await stock_service.populate_themes(db)
+
+        print(f"③ 종목 지표 배치 (max_codes={max_codes}) ...")
         res = await daily_batch.run_batch(db, uid, max_codes=max_codes)
         print("   배치 결과:", res)
 
-        print("3) 스냅샷 성숙(정답 라벨링) ...")
+        print("④ 테마 5축 점수 계산 ...")
+        ts = await daily_batch.score_all_themes(db, uid)
+        print("   테마 점수:", ts)
+
+        print("⑤ 스냅샷 성숙(정답 라벨링) ...")
         mat = await daily_batch.mature_snapshots(db, uid)
         print("   스냅샷 성숙:", mat)
+
+        print("⑥ 리포트 이메일 ...")
+        enabled = await settings_store.get_bool(db, settings_store.REPORT_EMAIL_ENABLED, default=False)
+        if not enabled:
+            print("   리포트 이메일 OFF — 발송 생략 (화면에서 토글 ON 시 발송)")
+        else:
+            recipient = await settings_store.get(db, settings_store.REPORT_EMAIL_RECIPIENT) or settings.STAFF_EMAIL
+            data = await stock_report.build_report_data(db)
+            html = stock_report.render_html(data)
+            sent = await email_service.send_stock_report(recipient, html, data["date"])
+            print(f"   리포트 발송: {'성공' if sent else 'mock/생략'} → {recipient}")
 
 
 if __name__ == "__main__":

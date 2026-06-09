@@ -201,9 +201,20 @@ class StockThemeResponse(BaseModel):
     ai_score: Optional[float] = None
     news_summary: Optional[str] = None
     stock_count: int
+    phase: Optional[str] = None  # breakout/turnaround/neutral
     updated_at: datetime
 
     model_config = {"from_attributes": True}
+
+
+class ReportSettingsResponse(BaseModel):
+    email_enabled: bool
+    recipient: Optional[str] = None
+
+
+class ReportSettingsUpdate(BaseModel):
+    email_enabled: bool
+    recipient: Optional[str] = None
 
 
 class StockThemeAnalyzeRequest(BaseModel):
