@@ -49,42 +49,21 @@ async def _member_codes(db: AsyncSession, theme_name: str, limit: int = 6) -> li
     return [c for c, _ in get_member_stocks(theme_name, limit=limit)]
 
 
-async def aggregate_theme(db: AsyncSession, user_id: str, theme_name: str) -> Optional[dict]:
-    """테마 5축 집계 — DB 매핑 + 배치 사전계산 지표(stock_daily_metrics)로 산출.
-
-    KIS 라이브 호출 없이 DB만 읽어 빠르고 일관됨. 멤버/지표 없으면 None(placeholder 폴백).
-    반환: {score, phase, axes{...}, weights{...}, members[...], data_source}
+async def _finalize(db: AsyncSession, user_id: str, theme_name: str, rows: list[dict]) -> dict:
+    """멤버별 정규화 입력(rows)으로 5축·국면·점수 산출. rows 항목:
+    {code, mom(0~40), sup(0~20), val(0~40), roe, phase, comp}
     """
-    codes = await _member_codes(db, theme_name, limit=6)
-    if not codes:
-        return None
-
-    # 각 멤버의 최신 지표 (배치 적재분)
-    latest = (await db.execute(select(StockDailyMetric.trade_date).order_by(StockDailyMetric.trade_date.desc()).limit(1))).scalar()
-    metrics = []
-    if latest:
-        rows = (
-            await db.execute(
-                select(StockDailyMetric).where(
-                    StockDailyMetric.code.in_(codes), StockDailyMetric.trade_date == latest
-                )
-            )
-        ).scalars().all()
-        metrics = [m for m in rows if m.momentum is not None]
-    if not metrics:
-        return None  # 배치 지표 없음 → placeholder
-
-    n = len(metrics)
-    momentum = sum((m.momentum or 0) for m in metrics) / n / 40 * 100
-    supply = sum((m.supply or 0) for m in metrics) / n / 20 * 100
-    valuation = sum((m.valuation or 0) for m in metrics) / n / 40 * 100
-    fundamentals = min(100.0, max(0.0, sum((m.roe or 0) for m in metrics) / n / 25 * 100))
+    n = len(rows)
+    momentum = sum(r["mom"] for r in rows) / n / 40 * 100
+    supply = sum(r["sup"] for r in rows) / n / 20 * 100
+    valuation = sum(r["val"] for r in rows) / n / 40 * 100
+    fundamentals = min(100.0, max(0.0, sum(r["roe"] for r in rows) / n / 25 * 100))
 
     naver = await get_user_key(db, user_id, "naver_search")
     attention = await _attention_score(theme_name, naver)
 
-    breakout_ratio = sum(1 for m in metrics if m.phase == "breakout") / n
-    turnaround_ratio = sum(1 for m in metrics if m.phase == "turnaround") / n
+    breakout_ratio = sum(1 for r in rows if r["phase"] == "breakout") / n
+    turnaround_ratio = sum(1 for r in rows if r["phase"] == "turnaround") / n
     if breakout_ratio >= 0.30:
         phase = "breakout"
     elif turnaround_ratio >= 0.30:
@@ -93,22 +72,60 @@ async def aggregate_theme(db: AsyncSession, user_id: str, theme_name: str) -> Op
         phase = "neutral"
 
     axes = {
-        "momentum": round(momentum, 1),
-        "supply": round(supply, 1),
-        "fundamentals": round(fundamentals, 1),
-        "attention": round(attention, 1),
+        "momentum": round(momentum, 1), "supply": round(supply, 1),
+        "fundamentals": round(fundamentals, 1), "attention": round(attention, 1),
         "valuation": round(valuation, 1),
     }
     w = weight_calibration._load_weights()[phase]
     score = round(sum(axes[k] * w[k] for k in w), 1)
-
     return {
-        "score": score,
-        "phase": phase,
-        "axes": axes,
-        "weights": w,
-        "members": [{"code": m.code, "phase": m.phase or "neutral", "score": m.composite_score or 0} for m in metrics],
+        "score": score, "phase": phase, "axes": axes, "weights": w,
+        "members": [{"code": r["code"], "phase": r["phase"], "score": r["comp"]} for r in rows],
         "breakout_ratio": round(breakout_ratio, 2),
         "turnaround_ratio": round(turnaround_ratio, 2),
         "data_source": "live",
     }
+
+
+async def aggregate_theme(db: AsyncSession, user_id: str, theme_name: str) -> Optional[dict]:
+    """테마 5축 집계 — 배치 지표(DB) 우선, 없으면 KIS 즉석 계산.
+
+    1) 배치가 적재한 stock_daily_metrics가 있으면 그것으로(빠름)
+    2) 없으면 멤버 종목을 KIS로 즉석 계산(느리지만 '분석' 클릭만으로 동작)
+    멤버/실데이터 모두 없으면 None(placeholder).
+    """
+    codes = await _member_codes(db, theme_name, limit=6)
+    if not codes:
+        return None
+
+    # 1) 배치 지표 우선
+    latest = (await db.execute(
+        select(StockDailyMetric.trade_date).order_by(StockDailyMetric.trade_date.desc()).limit(1)
+    )).scalar()
+    if latest:
+        ms = (await db.execute(
+            select(StockDailyMetric).where(
+                StockDailyMetric.code.in_(codes), StockDailyMetric.trade_date == latest
+            )
+        )).scalars().all()
+        rows = [
+            {"code": m.code, "mom": m.momentum or 0, "sup": m.supply or 0, "val": m.valuation or 0,
+             "roe": m.roe or 0, "phase": m.phase or "neutral", "comp": m.composite_score or 0}
+            for m in ms if m.momentum is not None
+        ]
+        if rows:
+            return await _finalize(db, user_id, theme_name, rows)
+
+    # 2) KIS 즉석 계산 (배치 지표 없을 때)
+    rows = []
+    for code in codes[:4]:  # 즉석은 4종목으로 제한(속도)
+        s = await market_data_service.get_signals(db, user_id, code)
+        if s.data_source == "kis":
+            rows.append({
+                "code": s.code, "mom": s.score_breakdown.momentum, "sup": s.score_breakdown.supply,
+                "val": s.score_breakdown.valuation, "roe": s.roe, "phase": s.phase,
+                "comp": s.composite_score,
+            })
+    if not rows:
+        return None
+    return await _finalize(db, user_id, theme_name, rows)
