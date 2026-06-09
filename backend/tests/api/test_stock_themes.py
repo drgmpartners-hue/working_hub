@@ -294,3 +294,45 @@ class TestThemeScore:
                 resp = client.get("/api/v1/stocks/themes/t1/score")
         assert resp.status_code == 200
         assert resp.json()["data_source"] == "mock"
+
+
+# ---------------------------------------------------------------------------
+# 사후검증 가중치 보정
+# ---------------------------------------------------------------------------
+
+class TestCalibration:
+    """GET /calibration/report, POST /calibration/apply"""
+
+    def _app(self):
+        from app.db.session import get_db
+        app = FastAPI()
+        app.dependency_overrides[get_current_user] = lambda: _make_user()
+        app.dependency_overrides[get_db] = _fake_db_session
+        app.include_router(stock_router, prefix="/api/v1")
+        return app
+
+    _REPORT = {
+        "sample_codes": 12, "pairs": 576, "horizon": 20,
+        "r_momentum": -0.0936, "momentum_factor": 0.86,
+        "current_weights": {"neutral": {"momentum": 0.3}, "breakout": {}, "turnaround": {}},
+        "proposed_weights": {"neutral": {"momentum": 0.27}, "breakout": {}, "turnaround": {}},
+        "data_source": "live", "note": "ok",
+    }
+
+    def test_report_200(self):
+        with patch("app.api.v1.stock.weight_calibration.run_calibration", new=AsyncMock(return_value=self._REPORT)):
+            with TestClient(self._app()) as client:
+                resp = client.get("/api/v1/stocks/calibration/report")
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["r_momentum"] == -0.0936
+        assert body["applied"] is False
+
+    def test_apply_persists(self):
+        with patch("app.api.v1.stock.weight_calibration.run_calibration", new=AsyncMock(return_value=self._REPORT)), \
+             patch("app.api.v1.stock.weight_calibration.apply_weights") as mock_apply:
+            with TestClient(self._app()) as client:
+                resp = client.post("/api/v1/stocks/calibration/apply")
+        assert resp.status_code == 200
+        assert resp.json()["applied"] is True
+        mock_apply.assert_called_once()

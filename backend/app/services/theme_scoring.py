@@ -13,19 +13,15 @@ from typing import Optional
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.services import market_data_service
+from app.services import market_data_service, weight_calibration
 from app.services.theme_stock_map import get_member_stocks
 from app.services.collectors.key_access import get_user_key
 from app.services.collectors.naver_news_client import NaverNewsClient
 
 logger = logging.getLogger(__name__)
 
-# 국면별 5축 가중치 (합=1.0)
-_WEIGHTS = {
-    "breakout":   {"momentum": 0.15, "supply": 0.10, "fundamentals": 0.40, "attention": 0.30, "valuation": 0.05},
-    "turnaround": {"momentum": 0.30, "supply": 0.40, "fundamentals": 0.10, "attention": 0.12, "valuation": 0.08},
-    "neutral":    {"momentum": 0.30, "supply": 0.25, "fundamentals": 0.20, "attention": 0.15, "valuation": 0.10},
-}
+# 국면별 5축 가중치 — 사후검증 보정값 우선, 없으면 기본값(weight_calibration.DEFAULT_WEIGHTS)
+_WEIGHTS = weight_calibration.DEFAULT_WEIGHTS
 
 
 async def _attention_score(theme_name: str, naver: Optional[tuple[str, str]]) -> float:
@@ -83,7 +79,7 @@ async def aggregate_theme(db: AsyncSession, user_id: str, theme_name: str) -> Op
         "attention": round(attention, 1),
         "valuation": round(valuation, 1),
     }
-    w = _WEIGHTS[phase]
+    w = weight_calibration._load_weights()[phase]  # 보정 가중치 우선
     score = round(sum(axes[k] * w[k] for k in w), 1)
 
     return {

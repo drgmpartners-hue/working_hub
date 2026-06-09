@@ -17,9 +17,10 @@ from app.schemas.stock import (
     PerformanceSummaryResponse,
     ThemeScoreResponse,
     ThemeAxes,
+    CalibrationReportResponse,
 )
 from app.models.stock import StockTheme
-from app.services import stock_service, theme_scoring
+from app.services import stock_service, theme_scoring, weight_calibration
 from app.services import stock_advanced_service  # noqa: F401 (used below)
 
 router = APIRouter(prefix="/stocks", tags=["stocks"])
@@ -99,6 +100,44 @@ async def get_theme_score(
     theme.ai_score = agg["score"]
     await db.commit()
     return ThemeScoreResponse(theme_id=theme_id, theme_name=theme.theme_name, **agg)
+
+
+# ---------------------------------------------------------------------------
+# 사후검증 가중치 보정
+# ---------------------------------------------------------------------------
+
+@router.get(
+    "/calibration/report",
+    response_model=CalibrationReportResponse,
+    summary="가중치 보정 리포트 (모멘텀 예측력 역사적 백테스트)",
+)
+async def calibration_report(
+    current_user: CurrentUser,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    horizon: int = Query(default=20, ge=5, le=60, description="예측 검증 기간(거래일)"),
+) -> CalibrationReportResponse:
+    """과거 모멘텀 점수가 이후 horizon일 수익을 예측했는지 상관계수로 검증 → 제안 가중치."""
+    report = await weight_calibration.run_calibration(db, current_user.id, horizon=horizon)
+    return CalibrationReportResponse(**report, applied=False)
+
+
+@router.post(
+    "/calibration/apply",
+    response_model=CalibrationReportResponse,
+    summary="가중치 보정 적용 (제안 가중치를 영속화)",
+)
+async def calibration_apply(
+    current_user: CurrentUser,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    horizon: int = Query(default=20, ge=5, le=60),
+) -> CalibrationReportResponse:
+    """보정 리포트를 산출하고, 제안 가중치를 적용(영속화)하여 이후 테마 점수에 반영."""
+    report = await weight_calibration.run_calibration(db, current_user.id, horizon=horizon)
+    applied = False
+    if report["data_source"] == "live":
+        weight_calibration.apply_weights(report["proposed_weights"])
+        applied = True
+    return CalibrationReportResponse(**report, applied=applied)
 
 
 @router.post(

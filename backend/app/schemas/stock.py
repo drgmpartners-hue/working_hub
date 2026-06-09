@@ -137,6 +137,20 @@ class ThemeScoreResponse(BaseModel):
     data_source: str = "mock"  # "live"=소속 종목 실데이터 집계 / "mock"=매핑·키 미연동
 
 
+class CalibrationReportResponse(BaseModel):
+    """사후검증 가중치 보정 리포트."""
+    sample_codes: int
+    pairs: int
+    horizon: int = 20
+    r_momentum: Optional[float] = None   # 모멘텀↔이후수익 상관계수
+    momentum_factor: float               # 모멘텀 가중치 배수
+    current_weights: dict[str, dict[str, float]]
+    proposed_weights: dict[str, dict[str, float]]
+    data_source: str
+    note: str
+    applied: bool = False
+
+
 # ---------------------------------------------------------------------------
 # P5-R6: Recommendation Performance
 # ---------------------------------------------------------------------------
