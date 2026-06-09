@@ -304,25 +304,51 @@ async def add_to_stock_pool(
 @router.get(
     "/screening",
     response_model=list[ScreeningItemResponse],
-    summary="[P5-R4] 종목 스크리닝 (mock)",
+    summary="[P5-R4] 종목 스크리닝 (일배치 실데이터 / 미적재 시 mock)",
 )
 async def screen_stocks(
     current_user: CurrentUser,
+    db: Annotated[AsyncSession, Depends(get_db)],
     pbr_max: Optional[float] = Query(default=None, description="PBR 최댓값 필터"),
-    ma_alignment: Optional[str] = Query(
-        default=None, description="이동평균 정렬: bullish|bearish|mixed"
-    ),
+    ma_alignment: Optional[str] = Query(default=None, description="이동평균 정렬: bullish|bearish|mixed"),
     score_min: Optional[float] = Query(default=None, description="종합점수 최솟값 필터"),
 ) -> list[ScreeningItemResponse]:
-    """
-    mock 풀에서 쿼리 파라미터로 필터링한 종목 리스트 반환.
-    ⚠️ 산정 로직 사용자 자료 대기 — placeholder (결정적 hash-mock).
-    """
-    return stock_advanced_service.get_screening(
-        pbr_max=pbr_max,
-        ma_alignment=ma_alignment,
-        score_min=score_min,
-    )
+    """야간 배치가 적재한 stock_daily_metrics(최신일)에서 필터링. 미적재 시 mock 폴백."""
+    from app.models.stock_metrics import StockDailyMetric
+    from sqlalchemy import select, func as safunc
+
+    latest = (await db.execute(safunc.max(StockDailyMetric.trade_date))).scalar()
+    if latest is None:
+        return stock_advanced_service.get_screening(pbr_max=pbr_max, ma_alignment=ma_alignment, score_min=score_min)
+
+    q = select(StockDailyMetric).where(StockDailyMetric.trade_date == latest)
+    if pbr_max is not None:
+        q = q.where(StockDailyMetric.pbr.isnot(None), StockDailyMetric.pbr <= pbr_max)
+    if ma_alignment:
+        q = q.where(StockDailyMetric.ma_alignment == ma_alignment)
+    if score_min is not None:
+        q = q.where(StockDailyMetric.composite_score >= score_min)
+    q = q.order_by(StockDailyMetric.composite_score.desc().nullslast()).limit(100)
+
+    rows = (await db.execute(q)).scalars().all()
+    out: list[ScreeningItemResponse] = []
+    for i, m in enumerate(rows):
+        tags = []
+        if m.golden_cross:
+            tags.append("golden_cross")
+        if m.phase and m.phase != "neutral":
+            tags.append(m.phase)
+        if m.ma_alignment == "bullish":
+            tags.append("ma_aligned")
+        out.append(ScreeningItemResponse(
+            stock_code=m.code, stock_name=m.name or m.code, theme="",
+            pbr=m.pbr or 0.0, per=m.per or 0.0, composite_score=m.composite_score or 0.0,
+            signal_tags=tags,
+            ma_alignment=m.ma_alignment if m.ma_alignment in ("bullish", "bearish", "mixed") else "mixed",
+            return_1m=m.return_1m or 0.0, return_3m=m.return_3m or 0.0, return_6m=m.return_6m or 0.0,
+            is_top5=(i < 5), allocation_pct=0.0,
+        ))
+    return out
 
 
 # ---------------------------------------------------------------------------

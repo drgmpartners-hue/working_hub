@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import time
 import logging
+from typing import Optional
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.schemas.stock import (
@@ -63,6 +64,74 @@ def _valuation_score(per: float | None, pbr: float | None, *, peg_exempt: bool =
     return round(min(max(score, 0), 40), 1)
 
 
+async def _compute_full_kis(client: "KISClient", code: str) -> Optional[dict]:
+    """KIS 실데이터로 종목 전 지표를 한 번에 계산해 dict 반환. 데이터 부족 시 None.
+
+    반환 키: close, ma5/20/60/120, golden_cross, dead_cross, ma_alignment,
+            disparity_ma20/60, per, pbr, roe, foreign_net, institution_net,
+            valuation, momentum, supply, composite, phase, phase_reasons,
+            return_1m/3m/6m
+    """
+    ohlcv = await client.get_daily_ohlcv(code)
+    closes = [d["close"] for d in ohlcv if d.get("close")]
+    sig = indicator_engine.compute_signals(closes)
+    if any(sig[k] is None for k in ("ma5", "ma20", "ma60", "ma120")):
+        return None  # <120거래일
+
+    price_info = await client.get_price_info(code)
+    ratio = await client.get_financial_ratio(code)
+    try:
+        trend = await client.get_investor_trend(code)
+    except Exception:
+        trend = {}
+
+    volumes = [d.get("volume", 0) for d in ohlcv]
+    phase = indicator_engine.detect_phase(closes, volumes, (trend or {}).get("recent"))
+
+    per, pbr = price_info.get("per"), price_info.get("pbr")
+    growth = ratio.get("sales_growth")
+    peg_exempt = phase["phase"] == "breakout" and bool(growth and growth > 0)
+    valuation = _valuation_score(per, pbr, peg_exempt=peg_exempt)
+    momentum = indicator_engine.compute_momentum_score(closes)
+    supply = _supply_score(trend)
+    composite = round(min(max(valuation + momentum + supply, 0), 100), 1)
+    roe = ratio.get("roe") or 0.0
+
+    def _ret(days: int) -> Optional[float]:
+        if len(closes) > days:
+            return round((closes[-1] - closes[-1 - days]) / closes[-1 - days] * 100, 2)
+        return None
+
+    return {
+        "close": closes[-1],
+        "ma5": sig["ma5"], "ma20": sig["ma20"], "ma60": sig["ma60"], "ma120": sig["ma120"],
+        "golden_cross": sig["golden_cross"], "dead_cross": sig["dead_cross"],
+        "ma_alignment": sig["ma_alignment"],
+        "disparity_ma20": sig["disparity_ma20"], "disparity_ma60": sig["disparity_ma60"],
+        "per": per, "pbr": pbr, "roe": round(roe, 2),
+        "foreign_net": (trend or {}).get("foreign_net"),
+        "institution_net": (trend or {}).get("institution_net"),
+        "valuation": valuation, "momentum": momentum, "supply": supply,
+        "composite": composite,
+        "phase": phase["phase"], "phase_reasons": phase["reasons"],
+        "return_1m": _ret(20), "return_3m": _ret(60), "return_6m": _ret(120),
+    }
+
+
+def _dict_to_signals(code: str, d: dict) -> MarketSignalsResponse:
+    return MarketSignalsResponse(
+        code=code, ma5=d["ma5"], ma20=d["ma20"], ma60=d["ma60"], ma120=d["ma120"],
+        signals=SignalsBlock(
+            golden_cross=d["golden_cross"], dead_cross=d["dead_cross"],
+            ma_alignment=d["ma_alignment"],
+            disparity=DisparityResponse(ma20=d["disparity_ma20"], ma60=d["disparity_ma60"]),
+        ),
+        composite_score=d["composite"],
+        score_breakdown=ScoreBreakdown(valuation=d["valuation"], momentum=d["momentum"], supply=d["supply"]),
+        roe=d["roe"], phase=d["phase"], phase_reasons=d["phase_reasons"], data_source="kis",
+    )
+
+
 async def get_signals(db: AsyncSession, user_id: str, code: str) -> MarketSignalsResponse:
     """KIS 실데이터 기반 시그널. 실패 시 mock 폴백. 성공 결과는 10분 TTL 캐시."""
     cache_key = f"{user_id}:{code}"
@@ -73,74 +142,21 @@ async def get_signals(db: AsyncSession, user_id: str, code: str) -> MarketSignal
     creds = await get_user_key(db, user_id, "kis")
     if not creds:
         return stock_advanced_service.get_market_signals(code)  # data_source="mock"
-
-    app_key, app_secret = creds
     try:
-        client = KISClient(app_key, app_secret)
-        ohlcv = await client.get_daily_ohlcv(code)
-        closes = [d["close"] for d in ohlcv if d.get("close")]
-        sig = indicator_engine.compute_signals(closes)
-
-        # 이평선 일부라도 데이터 부족(None)이면 mock 폴백 (스키마 float 필수)
-        if any(sig[k] is None for k in ("ma5", "ma20", "ma60", "ma120")):
-            logger.info("KIS 데이터 부족(<120거래일), mock 폴백: %s", code)
+        full = await _compute_full_kis(KISClient(*creds), code)
+        if full is None:
             return stock_advanced_service.get_market_signals(code)
-
-        price_info = await client.get_price_info(code)
-        ratio = await client.get_financial_ratio(code)
-        try:
-            trend = await client.get_investor_trend(code)
-        except Exception:
-            trend = {}
-
-        # 국면 판별 (Phase Flag)
-        volumes = [d.get("volume", 0) for d in ohlcv]
-        phase = indicator_engine.detect_phase(closes, volumes, (trend or {}).get("recent"))
-
-        per = price_info.get("per")
-        pbr = price_info.get("pbr")
-        # PEG 면제: 고점돌파 + 이익성장률(>0) → 고PER 감점 면제
-        growth = ratio.get("sales_growth")
-        peg_exempt = phase["phase"] == "breakout" and bool(growth and growth > 0)
-        valuation = _valuation_score(per, pbr, peg_exempt=peg_exempt)
-        momentum = indicator_engine.compute_momentum_score(closes)
-        supply = _supply_score(trend)
-        composite = round(min(max(valuation + momentum + supply, 0), 100), 1)
-        roe = ratio.get("roe")
-        if roe is None:
-            roe = 0.0
-
-        result = MarketSignalsResponse(
-            code=code,
-            ma5=sig["ma5"],
-            ma20=sig["ma20"],
-            ma60=sig["ma60"],
-            ma120=sig["ma120"],
-            signals=SignalsBlock(
-                golden_cross=sig["golden_cross"],
-                dead_cross=sig["dead_cross"],
-                ma_alignment=sig["ma_alignment"],
-                disparity=DisparityResponse(
-                    ma20=sig["disparity_ma20"],
-                    ma60=sig["disparity_ma60"],
-                ),
-            ),
-            composite_score=composite,
-            score_breakdown=ScoreBreakdown(
-                valuation=valuation,
-                momentum=momentum,
-                supply=supply,
-            ),
-            roe=round(roe, 2),
-            phase=phase["phase"],
-            phase_reasons=phase["reasons"],
-            data_source="kis",
-        )
+        result = _dict_to_signals(code, full)
         _SIGNALS_CACHE[cache_key] = (time.monotonic(), result)
         return result
     except Exception as e:
         logger.warning("KIS 실데이터 실패, mock 폴백 (code=%s): %s", code, e)
         return stock_advanced_service.get_market_signals(code)
+
+
+async def compute_metrics_dict(client: "KISClient", code: str) -> Optional[dict]:
+    """배치용: KIS 실데이터 전 지표 dict (None=데이터부족). 예외는 호출측 처리."""
+    return await _compute_full_kis(client, code)
 
 
 _PERIOD_TRADING_DAYS = {"1m": 21, "3m": 63, "6m": 126, "1y": 252, "3y": 756}

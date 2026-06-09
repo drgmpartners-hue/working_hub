@@ -75,10 +75,35 @@ def _make_market_app() -> FastAPI:
     return app
 
 
+class _NullResult:
+    def scalar(self):
+        return None
+    def scalars(self):
+        return self
+    def all(self):
+        return []
+    def scalar_one_or_none(self):
+        return None
+
+
+class _NullSession:
+    async def execute(self, *a, **k):
+        return _NullResult()
+    async def get(self, *a, **k):
+        return None
+    async def commit(self):
+        return None
+
+
+async def _fake_stock_db():
+    yield _NullSession()
+
+
 def _make_stock_app() -> FastAPI:
     from app.api.v1.stock import router as stock_router
     app = FastAPI()
     app.dependency_overrides[get_current_user] = lambda: _mock_user()
+    app.dependency_overrides[get_db] = _fake_stock_db
     app.include_router(stock_router, prefix="/api/v1")
     return app
 

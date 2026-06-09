@@ -20,6 +20,8 @@ interface CalibrationReport {
   momentum_factor: number;
   current_weights: Record<string, Record<string, number>>;
   proposed_weights: Record<string, Record<string, number>>;
+  matured_snapshots?: number;
+  snapshot_correlations?: Record<string, number>;
   data_source: string;
   note: string;
   applied: boolean;
@@ -215,6 +217,10 @@ export function PerformanceTab() {
               <strong style={{ color: 'var(--text-primary)' }}>
                 {(calib.current_weights.neutral?.momentum ?? 0).toFixed(2)} → {(calib.proposed_weights.neutral?.momentum ?? 0).toFixed(2)}
               </strong>
+            </div>
+            <div>
+              <span style={{ color: 'var(--text-muted)' }}>스냅샷 누적(다축 보정용)</span>{' '}
+              <strong style={{ color: 'var(--text-primary)' }}>{calib.matured_snapshots ?? 0}건</strong>
             </div>
             <div style={{ width: '100%', color: 'var(--text-muted)', fontSize: '0.75rem' }}>{calib.note}</div>
           </div>

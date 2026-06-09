@@ -10,6 +10,7 @@ from fastapi.testclient import TestClient
 
 from app.api.v1.stock import router as stock_router
 from app.core.deps import get_current_user
+from app.db.session import get_db
 from app.models.user import User
 
 
@@ -20,9 +21,35 @@ def _make_user() -> User:
     return user
 
 
+class _NullResult:
+    def scalar(self):
+        return None
+    def scalars(self):
+        return self
+    def all(self):
+        return []
+    def scalar_one_or_none(self):
+        return None
+
+
+class _FakeSession:
+    """metrics 미적재(scalar→None) → mock 폴백 유도."""
+    async def execute(self, *a, **k):
+        return _NullResult()
+    async def get(self, *a, **k):
+        return None
+    async def commit(self):
+        return None
+
+
+async def _fake_db():
+    yield _FakeSession()
+
+
 def _make_app() -> FastAPI:
     app = FastAPI()
     app.dependency_overrides[get_current_user] = lambda: _make_user()
+    app.dependency_overrides[get_db] = _fake_db
     app.include_router(stock_router, prefix="/api/v1")
     return app
 

@@ -154,6 +154,8 @@ class CalibrationReportResponse(BaseModel):
     momentum_factor: float               # 모멘텀 가중치 배수
     current_weights: dict[str, dict[str, float]]
     proposed_weights: dict[str, dict[str, float]]
+    matured_snapshots: int = 0
+    snapshot_correlations: dict[str, float] = {}
     data_source: str
     note: str
     applied: bool = False

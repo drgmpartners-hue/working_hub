@@ -85,6 +85,31 @@ def _apply_momentum_factor(weights: dict, factor: float) -> dict:
     return out
 
 
+async def snapshot_correlations(db: AsyncSession) -> tuple[int, dict]:
+    """성숙된 스냅샷에서 비가격 포함 축별 상관계수 측정.
+
+    반환: (matured_count, {momentum, supply, valuation, fundamentals: r}).
+    데이터가 충분히 쌓이면(예: ≥20) 다축 보정에 사용.
+    """
+    from sqlalchemy import select
+    from app.models.stock_metrics import ScoreSnapshot
+
+    rows = (
+        await db.execute(select(ScoreSnapshot).where(ScoreSnapshot.horizon_return.isnot(None)))
+    ).scalars().all()
+    n = len(rows)
+    if n < 5:
+        return n, {}
+    ys = [r.horizon_return for r in rows]
+    corr = {}
+    for axis in ("momentum", "supply", "valuation", "fundamentals"):
+        xs = [getattr(r, axis) for r in rows]
+        pairs = [(x, y) for x, y in zip(xs, ys) if x is not None and y is not None]
+        if len(pairs) >= 5:
+            corr[axis] = _pearson([p[0] for p in pairs], [p[1] for p in pairs])
+    return n, corr
+
+
 async def run_calibration(
     db: AsyncSession,
     user_id: str,
@@ -136,6 +161,17 @@ async def run_calibration(
     factor = 1.0 if r is None else max(0.5, min(1.5, 1.0 + r * 1.5))
     proposed = _apply_momentum_factor(DEFAULT_WEIGHTS, factor)
 
+    matured, snap_corr = await snapshot_correlations(db)
+    if matured >= 20 and snap_corr:
+        note = f"모멘텀 가격축 + 스냅샷 {matured}건 다축 보정 활성."
+    elif used:
+        note = (
+            f"모멘텀(가격축) 예측력으로 보정. 비가격 축은 스냅샷 누적 중"
+            f"(성숙 {matured}건, 20건↑ 시 다축 보정)."
+        )
+    else:
+        note = "표본 부족"
+
     return {
         "sample_codes": used,
         "pairs": len(all_fwd),
@@ -144,11 +180,10 @@ async def run_calibration(
         "momentum_factor": round(factor, 3),
         "current_weights": current,
         "proposed_weights": proposed,
+        "matured_snapshots": matured,
+        "snapshot_correlations": {k: v for k, v in snap_corr.items() if v is not None},
         "data_source": "live" if used else "mock",
-        "note": (
-            "모멘텀(가격축) 예측력으로 보정. 수급·실적·관심도는 전향적 스냅샷 누적 후 보정 예정."
-            if used else "표본 부족"
-        ),
+        "note": note,
     }
 
 
