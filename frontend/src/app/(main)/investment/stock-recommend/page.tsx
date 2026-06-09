@@ -15,6 +15,7 @@ import { ThemeList } from '@/components/investment/ThemeList';
 import { StockList } from '@/components/investment/StockList';
 import { AllocationPanel } from '@/components/investment/AllocationPanel';
 import { PerformanceTab } from '@/components/investment/PerformanceTab';
+import { ReportEmailModal } from '@/components/investment/ReportEmailModal';
 import { authLib } from '@/lib/auth';
 import type { StockTheme } from '@/components/investment/ThemeList';
 import type { StockItem } from '@/components/investment/StockDetailPanel';
@@ -284,6 +285,7 @@ function StockRecommendPageInner() {
 
   /* Step3 비중 제안 대상 종목 */
   const [allocationStocks, setAllocationStocks] = useState<StockItem[]>([]);
+  const [reportModalOpen, setReportModalOpen] = useState(false);
 
   function addToBasket(theme: StockTheme) {
     setBasket((prev) => {
@@ -512,6 +514,23 @@ function StockRecommendPageInner() {
                       분석하고 싶은 테마를 선택해 바스켓에 담으세요.
                     </p>
                   </div>
+                  {/* 분석 리포트 이메일 설정 (확인/수정 팝업) */}
+                  <button
+                    onClick={() => setReportModalOpen(true)}
+                    title="일일 분석 리포트를 이메일로 받기 (수신자 확인/수정)"
+                    style={{
+                      marginLeft: 'auto', display: 'inline-flex', alignItems: 'center', gap: 6,
+                      height: 32, padding: '0 12px', borderRadius: 6,
+                      border: '1px solid var(--border)', backgroundColor: 'var(--bg-surface)',
+                      color: 'var(--text-primary)', fontSize: '0.75rem', fontWeight: 600, cursor: 'pointer',
+                    }}
+                  >
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+                      <rect x="2" y="4" width="20" height="16" rx="2" />
+                      <path d="m22 7-10 5L2 7" />
+                    </svg>
+                    리포트 이메일
+                  </button>
                 </div>
                 <ThemeList
                   basket={basket}
@@ -616,6 +635,8 @@ function StockRecommendPageInner() {
           )}
         </>
       )}
+
+      <ReportEmailModal open={reportModalOpen} onClose={() => setReportModalOpen(false)} />
     </div>
   );
 }

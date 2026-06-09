@@ -182,7 +182,13 @@ async def get_report_settings(
     db: Annotated[AsyncSession, Depends(get_db)],
 ) -> ReportSettingsResponse:
     enabled = await settings_store.get_bool(db, settings_store.REPORT_EMAIL_ENABLED, default=False)
-    recipient = await settings_store.get(db, settings_store.REPORT_EMAIL_RECIPIENT) or app_config.STAFF_EMAIL or None
+    # 기본 수신자 = 저장값 → 로그인 이메일 → STAFF_EMAIL 순
+    recipient = (
+        await settings_store.get(db, settings_store.REPORT_EMAIL_RECIPIENT)
+        or getattr(current_user, "email", None)
+        or app_config.STAFF_EMAIL
+        or None
+    )
     return ReportSettingsResponse(email_enabled=enabled, recipient=recipient)
 
 
