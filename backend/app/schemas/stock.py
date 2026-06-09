@@ -36,6 +36,8 @@ class MarketSignalsResponse(BaseModel):
     composite_score: float  # 0~100
     score_breakdown: ScoreBreakdown
     roe: float
+    phase: Literal["breakout", "turnaround", "neutral"] = "neutral"  # 국면: 고점돌파/바닥탈출/중립
+    phase_reasons: list[str] = []  # 국면 판별 근거
     data_source: str = "mock"  # "kis"=실데이터 / "mock"=placeholder
 
 

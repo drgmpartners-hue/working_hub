@@ -81,6 +81,57 @@ def compute_signals(closes: list[float]) -> dict:
     }
 
 
+def detect_phase(
+    closes: list[float],
+    volumes: list[float] | None = None,
+    investor_recent: list[dict] | None = None,
+) -> dict:
+    """국면 판별 (Phase Flag): 고점돌파 / 바닥탈출 / 중립.
+
+    - breakout(고점돌파): 52주 신고가 돌파/근접 — 주도주 추세 연장 국면
+    - turnaround(바닥탈출): (a) 이평선 수렴 후 120일선 돌파(+거래량) 또는
+                            (b) 수급 다이버전스(주가 바닥권 + 외인·기관 순매수 누적)
+    반환: {phase, reasons:[...]}
+    closes: 오래된→최신. investor_recent: [{foreign, institution}, ...] 최근 구간.
+    """
+    n = len(closes)
+    if n < 2:
+        return {"phase": "neutral", "reasons": []}
+    price = closes[-1]
+    reasons: list[str] = []
+
+    # ── 고점돌파: 52주(약 250거래일) 신고가 돌파/근접 ──
+    lookback = min(250, n)
+    hi_52w = max(closes[-lookback:])
+    if price >= hi_52w * 0.98:
+        return {"phase": "breakout", "reasons": [f"52주 신고가 돌파/근접 (고점 {hi_52w:,.0f})"]}
+
+    # ── 바닥탈출 (a) 이평선 수렴 후 장기선 돌파 ──
+    if n >= 121:
+        ma5, ma20, ma60, ma120 = (sma(closes, w) for w in (5, 20, 60, 120))
+        if ma5 and ma20 and ma60 and ma120:
+            recent_range = (max(closes[-20:-1]) - min(closes[-20:-1])) / price if n >= 21 else 1.0
+            broke_120 = closes[-2] <= ma120 < price
+            vol_surge = bool(
+                volumes and len(volumes) >= 21 and volumes[-1] > 1.5 * (sum(volumes[-21:-1]) / 20)
+            )
+            if recent_range < 0.10 and price > ma120 and (broke_120 or vol_surge):
+                reasons.append("이평선 수렴 후 120일선 돌파" + (" (거래량 급증)" if vol_surge else ""))
+
+    # ── 바닥탈출 (b) 수급 다이버전스 ──
+    if investor_recent:
+        net = sum((r.get("foreign", 0) + r.get("institution", 0)) for r in investor_recent)
+        lb = min(60, n)
+        lo, hi = min(closes[-lb:]), max(closes[-lb:])
+        in_bottom = (price - lo) / (hi - lo + 1e-9) < 0.35
+        if in_bottom and net > 0:
+            reasons.append("주가 바닥권 + 외인·기관 순매수 누적 (수급 다이버전스)")
+
+    if reasons:
+        return {"phase": "turnaround", "reasons": reasons}
+    return {"phase": "neutral", "reasons": []}
+
+
 def compute_momentum_score(closes: list[float]) -> float:
     """모멘텀 점수(0~40) 잠정 산식: 정배열 + 최근 수익률 기반.
     ⚠️ 가중치는 사용자 자료로 확정 예정.

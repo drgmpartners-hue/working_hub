@@ -28,29 +28,31 @@ from app.services.collectors.dart_client import DARTClient
 logger = logging.getLogger(__name__)
 
 
-async def _supply_score(client: "KISClient", code: str) -> float:
-    """수급 점수(0~20): 최근 외국인+기관 순매수 방향 기반. 실패 시 중립 10.
+def _supply_score(trend: dict | None) -> float:
+    """수급 점수(0~20): 최근 외국인+기관 순매수 방향 기반. 데이터 없으면 중립 10.
     ⚠️ 가중치는 사용자 자료로 확정 예정.
     """
-    try:
-        trend = await client.get_investor_trend(code)
-        net = (trend.get("foreign_net") or 0) + (trend.get("institution_net") or 0)
-        if net > 0:
-            return 16.0
-        if net < 0:
-            return 6.0
+    if not trend:
         return 10.0
-    except Exception:
-        return 10.0
+    net = (trend.get("foreign_net") or 0) + (trend.get("institution_net") or 0)
+    if net > 0:
+        return 16.0
+    if net < 0:
+        return 6.0
+    return 10.0
 
 
-def _valuation_score(per: float | None, pbr: float | None) -> float:
+def _valuation_score(per: float | None, pbr: float | None, *, peg_exempt: bool = False) -> float:
     """밸류에이션 점수(0~40) 잠정 산식: PER·PBR 낮을수록 높음.
+
+    peg_exempt=True(고점돌파 + 이익성장률>0): 고PER 감점 면제 — 진짜 주도주를 놓치지 않기 위함.
     ⚠️ 가중치는 사용자 자료로 확정 예정.
     """
     score = 20.0
-    if per and per > 0:
+    if per and per > 0 and not peg_exempt:
         score += max(-10, min(10, (15 - per)))   # PER 15 기준 ±10
+    elif peg_exempt:
+        score += 5  # 성장으로 정당화된 고PER → 감점 대신 소폭 가산
     if pbr and pbr > 0:
         score += max(-10, min(10, (1.5 - pbr) * 6))  # PBR 1.5 기준 ±10
     return round(min(max(score, 0), 40), 1)
@@ -76,12 +78,23 @@ async def get_signals(db: AsyncSession, user_id: str, code: str) -> MarketSignal
 
         price_info = await client.get_price_info(code)
         ratio = await client.get_financial_ratio(code)
+        try:
+            trend = await client.get_investor_trend(code)
+        except Exception:
+            trend = {}
+
+        # 국면 판별 (Phase Flag)
+        volumes = [d.get("volume", 0) for d in ohlcv]
+        phase = indicator_engine.detect_phase(closes, volumes, (trend or {}).get("recent"))
 
         per = price_info.get("per")
         pbr = price_info.get("pbr")
-        valuation = _valuation_score(per, pbr)
+        # PEG 면제: 고점돌파 + 이익성장률(>0) → 고PER 감점 면제
+        growth = ratio.get("sales_growth")
+        peg_exempt = phase["phase"] == "breakout" and bool(growth and growth > 0)
+        valuation = _valuation_score(per, pbr, peg_exempt=peg_exempt)
         momentum = indicator_engine.compute_momentum_score(closes)
-        supply = await _supply_score(client, code)
+        supply = _supply_score(trend)
         composite = round(min(max(valuation + momentum + supply, 0), 100), 1)
         roe = ratio.get("roe")
         if roe is None:
@@ -109,6 +122,8 @@ async def get_signals(db: AsyncSession, user_id: str, code: str) -> MarketSignal
                 supply=supply,
             ),
             roe=round(roe, 2),
+            phase=phase["phase"],
+            phase_reasons=phase["reasons"],
             data_source="kis",
         )
     except Exception as e:

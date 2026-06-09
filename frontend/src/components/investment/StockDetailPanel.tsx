@@ -70,7 +70,15 @@ interface SignalApiData {
   dividend_yield?: number;
   price_history?: Array<{ date: string; close: number; volume?: number }>;
   data_source?: string; // "kis"=실시간 / "mock"=예시
+  phase?: 'breakout' | 'turnaround' | 'neutral';
+  phase_reasons?: string[];
 }
+
+/** 국면 태그 메타 */
+const PHASE_META: Record<string, { label: string; color: string; bg: string }> = {
+  breakout: { label: '🚀 고점돌파', color: '#DC2626', bg: 'rgba(220,38,38,0.12)' },
+  turnaround: { label: '⚓ 바닥탈출', color: '#2563EB', bg: 'rgba(37,99,235,0.12)' },
+};
 
 interface InsightsData {
   code: string;
@@ -647,6 +655,22 @@ export function StockDetailPanel({ stock, open, onClose }: StockDetailPanelProps
                 title={signals.data_source === 'kis' ? 'KIS 실시세 기반 실데이터' : '외부 키 미연동 — 예시(mock) 데이터'}
               >
                 {signals.data_source === 'kis' ? '● 실시간 (KIS)' : '○ 예시 데이터'}
+              </span>
+            )}
+            {signals?.phase && PHASE_META[signals.phase] && (
+              <span
+                style={{
+                  marginBottom: 8,
+                  padding: '2px 8px',
+                  borderRadius: 999,
+                  fontSize: '0.6875rem',
+                  fontWeight: 700,
+                  backgroundColor: PHASE_META[signals.phase].bg,
+                  color: PHASE_META[signals.phase].color,
+                }}
+                title={(signals.phase_reasons || []).join(' · ')}
+              >
+                {PHASE_META[signals.phase].label}
               </span>
             )}
           </div>
