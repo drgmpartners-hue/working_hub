@@ -48,7 +48,7 @@ function ThemeScorePanel({ sc }: { sc: ThemeScore }) {
           </span>
         )}
         <span style={{ fontSize: '0.6875rem', color: 'var(--text-muted)' }}>
-          {sc.data_source === 'live' ? '실데이터 5축 집계' : '예시(매핑 대기)'}
+          {sc.data_source === 'live' ? '실데이터 5축 집계' : '계산 대기 — 다시 분석하거나 배치 후 표시'}
         </span>
       </div>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
