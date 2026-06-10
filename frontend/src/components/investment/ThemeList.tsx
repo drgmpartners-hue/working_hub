@@ -82,10 +82,27 @@ export function ThemeList({ basket, onAddToBasket, onRemoveFromBasket }: ThemeLi
   const [search, setSearch] = useState('');
   const [sortBy, setSortBy] = useState<'score_desc' | 'score_asc' | 'name_asc' | 'name_desc'>('score_desc');
   const [scores, setScores] = useState<Record<string | number, ThemeScore>>({});
+  const [status, setStatus] = useState<{
+    last_batch_at: string | null;
+    last_data_date: string | null;
+    theme_count: number;
+    scored_theme_count: number;
+    metric_count: number;
+  } | null>(null);
 
   useEffect(() => {
     fetchThemes();
+    fetchStatus();
   }, []);
+
+  async function fetchStatus() {
+    try {
+      const res = await fetch(`${API_URL}/api/v1/stocks/status`, { headers: { ...authLib.getAuthHeader() } });
+      if (res.ok) setStatus(await res.json());
+    } catch {
+      /* silent */
+    }
+  }
 
   async function fetchThemes() {
     setLoading(true);
@@ -133,6 +150,7 @@ export function ThemeList({ basket, onAddToBasket, onRemoveFromBasket }: ThemeLi
       });
       if (!res.ok) throw new Error('역설계 수집에 실패했습니다.');
       await fetchThemes();
+      await fetchStatus();
     } catch (err) {
       setError(err instanceof Error ? err.message : '역설계 수집 중 오류가 발생했습니다.');
     } finally {
@@ -286,8 +304,43 @@ export function ThemeList({ basket, onAddToBasket, onRemoveFromBasket }: ThemeLi
     outline: 'none',
   };
 
+  const fmtTime = (iso: string | null) => {
+    if (!iso) return null;
+    try {
+      return new Date(iso).toLocaleString('ko-KR', { dateStyle: 'medium', timeStyle: 'short' });
+    } catch {
+      return iso;
+    }
+  };
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+      {/* 데이터 신선도 상태 */}
+      {status && (
+        <div
+          style={{
+            display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap',
+            padding: '8px 12px', borderRadius: 8,
+            backgroundColor: status.metric_count > 0 ? 'rgba(5,150,105,0.08)' : 'rgba(217,119,6,0.08)',
+            border: `1px solid ${status.metric_count > 0 ? 'rgba(5,150,105,0.25)' : 'rgba(217,119,6,0.25)'}`,
+            fontSize: '0.75rem',
+          }}
+        >
+          <span style={{ width: 8, height: 8, borderRadius: '50%', backgroundColor: status.metric_count > 0 ? '#059669' : '#D97706', flexShrink: 0 }} />
+          {status.last_batch_at ? (
+            <span style={{ color: 'var(--text-primary)', fontWeight: 600 }}>
+              마지막 데이터 갱신: {fmtTime(status.last_batch_at)}
+            </span>
+          ) : (
+            <span style={{ color: '#D97706', fontWeight: 600 }}>아직 배치 미실행 — 역설계 수집 후 분석하세요</span>
+          )}
+          <span style={{ color: 'var(--text-muted)' }}>
+            · 종목 지표 {status.metric_count}개 · 테마 {status.scored_theme_count}/{status.theme_count} 점수계산됨
+            {status.last_data_date ? ` · 시세 ${status.last_data_date}` : ''}
+          </span>
+        </div>
+      )}
+
       {/* 검색 + 정렬 + 테마 반영 */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
         <div style={{ position: 'relative', flex: 1, minWidth: 180 }}>

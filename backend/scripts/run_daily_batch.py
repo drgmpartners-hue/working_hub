@@ -8,6 +8,7 @@
 import asyncio
 import sys
 import os
+from datetime import datetime, timezone
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
@@ -62,6 +63,10 @@ async def main():
             html = stock_report.render_html(data)
             sent = await email_service.send_stock_report(recipient, html, data["date"])
             print(f"   리포트 발송: {'성공' if sent else 'mock/생략'} → {recipient}")
+
+        # 마지막 배치(데이터 갱신) 시각 기록 → 화면 상태 표시용
+        await settings_store.set_value(db, "last_batch_at", datetime.now(timezone.utc).isoformat())
+        print("배치 완료.")
 
 
 if __name__ == "__main__":

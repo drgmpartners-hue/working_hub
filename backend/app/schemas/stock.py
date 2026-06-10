@@ -212,6 +212,16 @@ class ReportSettingsResponse(BaseModel):
     recipient: Optional[str] = None
 
 
+class SystemStatusResponse(BaseModel):
+    """데이터 신선도/현황 — 화면에서 마지막 갱신 확인용."""
+    server_started_at: str           # 백엔드 프로세스 시작(≈ 마지막 배포)
+    last_batch_at: Optional[str] = None     # 마지막 배치(데이터 갱신) 완료 시각
+    last_data_date: Optional[str] = None    # 적재된 종목 지표 최신 거래일
+    theme_count: int = 0
+    scored_theme_count: int = 0      # 5축 점수가 계산된 테마 수
+    metric_count: int = 0            # 최신일 지표 적재 종목 수
+
+
 class ReportSettingsUpdate(BaseModel):
     email_enabled: bool
     recipient: Optional[str] = None

@@ -21,7 +21,9 @@ from app.schemas.stock import (
     ThemeCollectResponse,
     ReportSettingsResponse,
     ReportSettingsUpdate,
+    SystemStatusResponse,
 )
+from datetime import datetime, timezone
 from fastapi.responses import HTMLResponse
 from app.models.stock import StockTheme
 from app.services import (
@@ -33,6 +35,9 @@ from app.core.config import settings as app_config
 from app.services import stock_advanced_service  # noqa: F401 (used below)
 
 router = APIRouter(prefix="/stocks", tags=["stocks"])
+
+# 백엔드 프로세스 시작 시각(≈ 마지막 배포). 모듈 로드 시 1회 캡처.
+_SERVER_STARTED_AT = datetime.now(timezone.utc).isoformat()
 
 
 # ---------------------------------------------------------------------------
@@ -225,6 +230,41 @@ async def send_report_now(
     await email_service.send_stock_report(recipient or "", html, data["date"])
     enabled = await settings_store.get_bool(db, settings_store.REPORT_EMAIL_ENABLED, default=False)
     return ReportSettingsResponse(email_enabled=enabled, recipient=recipient)
+
+
+# ---------------------------------------------------------------------------
+# 시스템 상태 (데이터 신선도)
+# ---------------------------------------------------------------------------
+
+@router.get("/status", response_model=SystemStatusResponse, summary="데이터 신선도/현황")
+async def system_status(
+    current_user: CurrentUser,
+    db: Annotated[AsyncSession, Depends(get_db)],
+) -> SystemStatusResponse:
+    """마지막 배치(데이터 갱신) 시각·적재 현황 — 화면에서 최신 여부 확인용."""
+    from sqlalchemy import select as _sel, func as _f
+    from app.models.stock_metrics import StockDailyMetric
+
+    last_batch = await settings_store.get(db, "last_batch_at")
+    last_date = (await db.execute(_sel(_f.max(StockDailyMetric.trade_date)))).scalar()
+    theme_count = (await db.execute(_sel(_f.count()).select_from(StockTheme))).scalar() or 0
+    scored = (await db.execute(
+        _sel(_f.count()).select_from(StockTheme).where(StockTheme.phase.isnot(None))
+    )).scalar() or 0
+    metric_count = 0
+    if last_date:
+        metric_count = (await db.execute(
+            _sel(_f.count()).select_from(StockDailyMetric).where(StockDailyMetric.trade_date == last_date)
+        )).scalar() or 0
+
+    return SystemStatusResponse(
+        server_started_at=_SERVER_STARTED_AT,
+        last_batch_at=last_batch,
+        last_data_date=str(last_date) if last_date else None,
+        theme_count=theme_count,
+        scored_theme_count=scored,
+        metric_count=metric_count,
+    )
 
 
 @router.post(
