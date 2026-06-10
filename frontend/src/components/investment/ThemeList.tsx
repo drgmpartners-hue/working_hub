@@ -327,12 +327,12 @@ export function ThemeList({ basket, onAddToBasket, onRemoveFromBasket }: ThemeLi
           }}
         >
           <span style={{ width: 8, height: 8, borderRadius: '50%', backgroundColor: status.metric_count > 0 ? '#059669' : '#D97706', flexShrink: 0 }} />
-          {status.last_batch_at ? (
+          {status.metric_count > 0 ? (
             <span style={{ color: 'var(--text-primary)', fontWeight: 600 }}>
-              마지막 데이터 갱신: {fmtTime(status.last_batch_at)}
+              마지막 데이터 갱신: {fmtTime(status.last_batch_at) || status.last_data_date || '-'}
             </span>
           ) : (
-            <span style={{ color: '#D97706', fontWeight: 600 }}>아직 배치 미실행 — 역설계 수집 후 분석하세요</span>
+            <span style={{ color: '#D97706', fontWeight: 600 }}>아직 데이터 없음 — 역설계 수집 후 분석하세요</span>
           )}
           <span style={{ color: 'var(--text-muted)' }}>
             · 종목 지표 {status.metric_count}개 · 테마 {status.scored_theme_count}/{status.theme_count} 점수계산됨

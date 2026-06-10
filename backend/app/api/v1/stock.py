@@ -247,6 +247,11 @@ async def system_status(
 
     last_batch = await settings_store.get(db, "last_batch_at")
     last_date = (await db.execute(_sel(_f.max(StockDailyMetric.trade_date)))).scalar()
+    # last_batch_at 미기록(옛 배치)이면 실제 지표 갱신 시각으로 대체
+    if not last_batch:
+        mu = (await db.execute(_sel(_f.max(StockDailyMetric.updated_at)))).scalar()
+        if mu:
+            last_batch = mu.isoformat()
     theme_count = (await db.execute(_sel(_f.count()).select_from(StockTheme))).scalar() or 0
     scored = (await db.execute(
         _sel(_f.count()).select_from(StockTheme).where(StockTheme.phase.isnot(None))
