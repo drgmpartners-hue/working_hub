@@ -4,7 +4,7 @@ import hashlib
 import logging
 from typing import Optional
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
+from sqlalchemy import select, func
 from app.models.stock import (
     StockTheme,
     StockRecommendation,
@@ -163,31 +163,51 @@ def _theme_payload(name: str) -> tuple[float, int, str]:
 async def populate_themes(db: AsyncSession) -> list[StockTheme]:
     """테마 유니버스를 stock_themes 테이블에 반영(upsert, 멱등).
 
-    이미 존재하는 theme_name은 건너뜀 → 버튼 반복 클릭에도 중복 생성 안 됨.
-    신규 테마명(추후 발굴 포함)은 추가됨 → 소스가 확장되면 그대로 노출.
-    ⚠️ 실데이터 연동 시 _CURATED_THEMES/_EXTRA_THEME_NAMES 대신 네이버/ETF/뉴스 수집 결과로 교체.
+    이미 존재하는 theme_name은 건너뜀(멱등).
+    ⚠️ 실제 매핑이 있는 큐레이션 테마(_CURATED_THEMES, THEME_STOCKS 보유)만 추가한다.
+       매핑 없는 가짜 이름(_EXTRA_THEME_NAMES)은 더 이상 넣지 않음 — 분석이 안 되는 테마 방지.
+       나머지 테마 유니버스는 역설계 수집(네이버)으로 채운다.
     """
-    all_names = list(_CURATED_THEMES.keys()) + _EXTRA_THEME_NAMES
+    from app.models.stock_metrics import ThemeMember
+    from app.services.theme_stock_map import THEME_STOCKS
+
     result = await db.execute(select(StockTheme))
     existing = {t.theme_name for t in result.scalars().all()}
-    created: list[StockTheme] = []
-    for name in all_names:
-        if name in existing:
-            continue
-        ai_score, stock_count, summary = _theme_payload(name)
-        theme = StockTheme(
-            theme_name=name,
-            ai_score=ai_score,
-            news_summary=summary,
-            stock_count=stock_count,
-        )
-        db.add(theme)
-        created.append(theme)
-    if created:
-        await db.commit()
-        for theme in created:
-            await db.refresh(theme)
+    for name in _CURATED_THEMES.keys():
+        if name not in existing:
+            ai_score, stock_count, summary = _theme_payload(name)
+            db.add(StockTheme(theme_name=name, ai_score=ai_score, news_summary=summary, stock_count=stock_count))
+        # 큐레이션 멤버를 theme_members에도 저장(분석이 DB로 동작)
+        members = THEME_STOCKS.get(name, [])
+        if members:
+            cnt = (await db.execute(
+                select(func.count()).select_from(ThemeMember).where(ThemeMember.theme_name == name)
+            )).scalar() or 0
+            if cnt == 0:
+                for code, mname in members:
+                    db.add(ThemeMember(theme_name=name, code=code, name=mname))
+    await db.commit()
     return await get_themes(db)
+
+
+async def cleanup_unmapped_themes(db: AsyncSession) -> int:
+    """매핑 없는 '가짜 큐레이션 이름'(_EXTRA_THEME_NAMES) 중 소속 종목이 없는 테마 삭제.
+
+    네이버에 없고 THEME_STOCKS도 없는 만들어낸 이름들 정리 — 분석 안 되는 테마 방지.
+    실제 네이버/큐레이션 매핑이 있는 테마는 건드리지 않음(surgical). 삭제 수 반환.
+    """
+    from sqlalchemy import delete
+    from app.models.stock_metrics import ThemeMember
+
+    mapped = set((await db.execute(select(ThemeMember.theme_name).distinct())).scalars().all())
+    removed = 0
+    for name in _EXTRA_THEME_NAMES:
+        if name in mapped:  # 네이버/큐레이션 매핑 있으면 유지
+            continue
+        res = await db.execute(delete(StockTheme).where(StockTheme.theme_name == name))
+        removed += int(getattr(res, "rowcount", 0) or 0)
+    await db.commit()
+    return removed
 
 
 async def upsert_themes_from_mapping(db: AsyncSession, mapping: dict) -> int:
@@ -224,6 +244,71 @@ async def upsert_themes_from_mapping(db: AsyncSession, mapping: dict) -> int:
                 db.add(ThemeMember(theme_name=name, code=code, name=mname))
     await db.commit()
     return added
+
+
+async def ensure_theme_members(db: AsyncSession, theme_name: str) -> int:
+    """테마의 소속 종목 매핑이 DB에 없으면 네이버에서 즉석 수집해 저장.
+
+    '분석' 클릭만으로 동작하게 하는 자동 치유. 반환: 소속 종목 수.
+    """
+    import json as _json
+    from app.models.stock_metrics import ThemeMember
+    from app.services import settings_store
+    from app.services.collectors import theme_mapping_collector as tmc
+
+    cnt = (await db.execute(
+        select(func.count()).select_from(ThemeMember).where(ThemeMember.theme_name == theme_name)
+    )).scalar() or 0
+    if cnt > 0:
+        return cnt
+
+    # 네이버 테마명→번호 맵 (app_settings에 캐시)
+    raw = await settings_store.get(db, "naver_theme_no_map")
+    no_map = {}
+    if raw:
+        try:
+            no_map = _json.loads(raw)
+        except Exception:
+            no_map = {}
+    if theme_name not in no_map:
+        try:
+            no_map = await tmc.fetch_theme_no_map()
+            await settings_store.set_value(db, "naver_theme_no_map", _json.dumps(no_map, ensure_ascii=False))
+        except Exception as e:
+            logger.info("네이버 테마목록 수집 실패: %s", e)
+            return 0
+
+    no = no_map.get(theme_name)
+    if not no:
+        # 정규화 매칭(공백/특수문자 제거)
+        import re
+        norm = lambda s: re.sub(r"[^0-9a-z가-힣]", "", s.lower())
+        target = norm(theme_name)
+        for nm, v in no_map.items():
+            if norm(nm) == target or (len(target) >= 2 and target in norm(nm)):
+                no = v
+                break
+    if not no:
+        # 네이버에 없으면 큐레이션(THEME_STOCKS) 폴백
+        from app.models.stock_metrics import ThemeMember
+        from app.services.theme_stock_map import THEME_STOCKS
+        curated = THEME_STOCKS.get(theme_name, [])
+        for code, mname in curated:
+            db.add(ThemeMember(theme_name=theme_name, code=code, name=mname))
+        if curated:
+            await db.commit()
+        return len(curated)
+
+    try:
+        members = await tmc.collect_one(no)
+    except Exception as e:
+        logger.info("테마 종목 수집 실패 %s: %s", theme_name, e)
+        return 0
+    for m in members:
+        if m[0]:
+            db.add(ThemeMember(theme_name=theme_name, code=m[0], name=(m[1] if len(m) > 1 else None)))
+    await db.commit()
+    return len(members)
 
 
 async def analyze_themes(

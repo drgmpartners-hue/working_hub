@@ -94,3 +94,17 @@ def load_cached_map() -> dict[str, list[list[str]]]:
         except Exception:
             pass
     return {}
+
+
+async def fetch_theme_no_map(max_pages: int = 7) -> dict[str, str]:
+    """네이버 테마명 → 테마번호(no) 맵. 단일 테마 온디맨드 수집용."""
+    async with httpx.AsyncClient(timeout=15) as client:
+        themes = await fetch_theme_list(client, max_pages)
+    return {name: no for no, name in themes}
+
+
+async def collect_one(theme_no: str, limit: int = 12) -> list[list[str]]:
+    """테마번호로 소속 종목 [[code,name],...] 수집."""
+    async with httpx.AsyncClient(timeout=15) as client:
+        members = await fetch_theme_members(client, theme_no, limit)
+    return [[c, n] for c, n in members]

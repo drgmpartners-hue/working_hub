@@ -139,10 +139,9 @@ class TestRefreshStockThemes:
             _make_theme("t1", "AI반도체·HBM", ai_score=94.2),
             _make_theme("t2", "방산", ai_score=86.1),
         ]
-        with patch(
-            "app.api.v1.stock.stock_service.populate_themes",
-            new=AsyncMock(return_value=populated),
-        ):
+        with patch("app.api.v1.stock.stock_service.populate_themes", new=AsyncMock(return_value=populated)), \
+             patch("app.api.v1.stock.stock_service.cleanup_unmapped_themes", new=AsyncMock(return_value=0)), \
+             patch("app.api.v1.stock.stock_service.get_themes", new=AsyncMock(return_value=populated)):
             app = _make_app()
             with TestClient(app) as client:
                 resp = client.post("/api/v1/stocks/themes/refresh")
@@ -290,7 +289,8 @@ class TestThemeScore:
 
     def test_score_placeholder_fallback(self):
         """매핑/실데이터 없음 → mock 폴백, 200."""
-        with patch("app.api.v1.stock.theme_scoring.aggregate_theme", new=AsyncMock(return_value=None)):
+        with patch("app.api.v1.stock.theme_scoring.aggregate_theme", new=AsyncMock(return_value=None)), \
+             patch("app.api.v1.stock.stock_service.ensure_theme_members", new=AsyncMock(return_value=0)):
             with TestClient(self._app()) as client:
                 resp = client.get("/api/v1/stocks/themes/t1/score")
         assert resp.status_code == 200

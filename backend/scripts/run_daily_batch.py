@@ -38,8 +38,10 @@ async def main():
             added = await stock_service.upsert_themes_from_mapping(db, mapping)
             print(f"   수집 테마 {len(mapping)}개 (신규 {added})")
 
-        print("② 테마 반영(큐레이션 보강) ...")
+        print("② 테마 반영(큐레이션 보강) + 가짜 테마 정리 ...")
         await stock_service.populate_themes(db)
+        removed = await stock_service.cleanup_unmapped_themes(db)
+        print(f"   매핑 없는 테마 {removed}개 정리")
 
         print(f"③ 종목 지표 배치 (max_codes={max_codes}) ...")
         res = await daily_batch.run_batch(db, uid, max_codes=max_codes)

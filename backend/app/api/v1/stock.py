@@ -73,7 +73,9 @@ async def refresh_themes(
     현재는 큐레이션 mock 테마. 추후 네이버 금융 테마 + ETF 구성종목 역설계 +
     뉴스 공출현(08-stock-etf §5)으로 교체.
     """
-    themes = await stock_service.populate_themes(db)
+    await stock_service.populate_themes(db)
+    await stock_service.cleanup_unmapped_themes(db)  # 매핑 없는 가짜 테마 정리
+    themes = await stock_service.get_themes(db)
     return [StockThemeResponse.model_validate(t) for t in themes]
 
 
@@ -120,6 +122,11 @@ async def get_theme_score(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="테마를 찾을 수 없습니다.")
 
     agg = await theme_scoring.aggregate_theme(db, current_user.id, theme.theme_name)
+    if agg is None:
+        # 매핑 없으면 그 테마만 즉석 수집 후 재시도 (분석 클릭만으로 동작)
+        added = await stock_service.ensure_theme_members(db, theme.theme_name)
+        if added:
+            agg = await theme_scoring.aggregate_theme(db, current_user.id, theme.theme_name)
     if agg is None:
         # placeholder 폴백 — 기존 점수 유지, 5축은 0
         return ThemeScoreResponse(
