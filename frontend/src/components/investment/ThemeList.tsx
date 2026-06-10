@@ -6,6 +6,7 @@ import { Button } from '@/components/common/Button';
 import { Card } from '@/components/common/Card';
 import { authLib } from '@/lib/auth';
 import { API_URL } from '@/lib/api-url';
+import { ThemeReportModal } from './ThemeReportModal';
 
 export interface StockTheme {
   id: number;
@@ -14,54 +15,106 @@ export interface StockTheme {
   stock_count: number;
   news_summary: string;
   category?: string;
-  analyzed_at?: string;
   phase?: 'breakout' | 'turnaround' | 'neutral' | null;
+  interest_score?: number | null;
+  attention_phase?: 'surge' | 'emerging' | 'hot' | 'fading' | 'quiet' | null;
+  change_rate?: number | null;
+  up_count?: number | null;
+  down_count?: number | null;
+  basis_date?: string | null;
 }
 
-interface ThemeScore {
-  score: number;
-  phase: 'breakout' | 'turnaround' | 'neutral';
-  axes: { momentum: number; supply: number; fundamentals: number; attention: number; valuation: number };
-  data_source: string; // 'live' | 'mock'
+interface ThemeAnalysis {
+  attention_phase: string | null;
+  interest_score: number | null;
+  change_rate: number | null;
+  up_count: number | null;
+  down_count: number | null;
+  basis_date: string | null;
+  reason: string | null;
+  flow: Array<{ date: string; change_rate: number | null }>;
+  members: Array<{ code: string; name: string }>;
+  score_detail: { axes?: Record<string, number> } | null;
 }
 
+// 관심도 국면 (네이버 테마 시세 흐름 기반)
 const PHASE_META: Record<string, { label: string; color: string; bg: string }> = {
-  breakout: { label: '🚀 고점돌파', color: '#DC2626', bg: 'rgba(220,38,38,0.12)' },
-  turnaround: { label: '⚓ 바닥탈출', color: '#2563EB', bg: 'rgba(37,99,235,0.12)' },
+  surge: { label: '🔥 급등', color: '#DC2626', bg: 'rgba(220,38,38,0.14)' },
+  emerging: { label: '✨ 신규 관심', color: '#7C3AED', bg: 'rgba(124,58,237,0.14)' },
+  hot: { label: '📈 고관심', color: '#059669', bg: 'rgba(5,150,105,0.14)' },
+  fading: { label: '📉 시들', color: '#D97706', bg: 'rgba(217,119,6,0.14)' },
+  quiet: { label: '⚪ 무관심', color: '#6B7280', bg: 'rgba(107,114,128,0.12)' },
 };
 
-const AXIS_LABELS: Array<[keyof ThemeScore['axes'], string]> = [
-  ['momentum', '모멘텀'],
-  ['supply', '수급'],
-  ['fundamentals', '실적'],
-  ['attention', '관심도'],
-  ['valuation', '밸류'],
+const FILTERS: Array<{ key: string; label: string }> = [
+  { key: 'active', label: '추천 🔥✨📈' },
+  { key: 'surge', label: '🔥 급등' },
+  { key: 'emerging', label: '✨ 신규' },
+  { key: 'hot', label: '📈 고관심' },
+  { key: 'fading', label: '📉 시들' },
+  { key: 'all', label: '전체' },
 ];
 
-function ThemeScorePanel({ sc }: { sc: ThemeScore }) {
+const AXIS_LABELS: Array<[string, string]> = [
+  ['momentum', '모멘텀'], ['supply', '수급'], ['fundamentals', '실적'], ['attention', '관심도'], ['valuation', '밸류'],
+];
+
+function FlowBars({ flow }: { flow: Array<{ date: string; change_rate: number | null }> }) {
+  const pts = flow.slice(-14);
+  if (pts.length === 0) return null;
+  const maxAbs = Math.max(1, ...pts.map((p) => Math.abs(p.change_rate ?? 0)));
   return (
-    <div style={{ marginTop: 8, padding: '8px 10px', borderRadius: 8, backgroundColor: 'var(--bg-surface)', border: '1px solid var(--border)' }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 6 }}>
-        {PHASE_META[sc.phase] && (
-          <span style={{ padding: '1px 7px', borderRadius: 999, fontSize: '0.6875rem', fontWeight: 700, color: PHASE_META[sc.phase].color, backgroundColor: PHASE_META[sc.phase].bg }}>
-            {PHASE_META[sc.phase].label}
-          </span>
-        )}
-        <span style={{ fontSize: '0.6875rem', color: 'var(--text-muted)' }}>
-          {sc.data_source === 'live' ? '실데이터 5축 집계' : '계산 대기 — 다시 분석하거나 배치 후 표시'}
-        </span>
-      </div>
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
-        {AXIS_LABELS.map(([key, label]) => (
-          <div key={key} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-            <span style={{ width: 38, fontSize: '0.6875rem', color: 'var(--text-muted)' }}>{label}</span>
-            <div style={{ flex: 1, height: 5, borderRadius: 3, backgroundColor: 'var(--border)', overflow: 'hidden' }}>
-              <div style={{ height: '100%', width: `${Math.max(0, Math.min(100, sc.axes[key]))}%`, backgroundColor: '#2E8B8B', borderRadius: 3 }} />
+    <div style={{ display: 'flex', alignItems: 'center', gap: 2, height: 32 }} title="최근 등락 흐름">
+      {pts.map((p, i) => {
+        const v = p.change_rate ?? 0;
+        const h = Math.max(2, (Math.abs(v) / maxAbs) * 14);
+        return (
+          <div key={i} style={{ display: 'flex', flexDirection: 'column', justifyContent: 'center', height: 32, flex: 1 }}>
+            <div style={{ height: 14, display: 'flex', alignItems: 'flex-end' }}>
+              <div style={{ width: '100%', height: v >= 0 ? h : 0, backgroundColor: '#DC2626', borderRadius: 1 }} />
             </div>
-            <span style={{ width: 28, textAlign: 'right', fontSize: '0.6875rem', fontWeight: 600, color: 'var(--text-primary)' }}>{Math.round(sc.axes[key])}</span>
+            <div style={{ height: 14, display: 'flex', alignItems: 'flex-start' }}>
+              <div style={{ width: '100%', height: v < 0 ? h : 0, backgroundColor: '#2563EB', borderRadius: 1 }} />
+            </div>
           </div>
-        ))}
+        );
+      })}
+    </div>
+  );
+}
+
+function AnalysisPanel({ a }: { a: ThemeAnalysis }) {
+  const pm = a.attention_phase ? PHASE_META[a.attention_phase] : null;
+  const axes = a.score_detail?.axes;
+  return (
+    <div style={{ marginTop: 8, padding: '10px 12px', borderRadius: 8, backgroundColor: 'var(--bg-surface)', border: '1px solid var(--border)' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6, flexWrap: 'wrap' }}>
+        {pm && <span style={{ padding: '1px 8px', borderRadius: 999, fontSize: '0.7rem', fontWeight: 700, color: pm.color, backgroundColor: pm.bg }}>{pm.label}</span>}
+        {a.interest_score != null && <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>관심점수 <b style={{ color: 'var(--text-primary)' }}>{a.interest_score}</b></span>}
+        {a.basis_date && <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)', marginLeft: 'auto' }}>{a.basis_date} 장마감 기준</span>}
       </div>
+      {a.reason && <p style={{ margin: '0 0 8px', fontSize: '0.75rem', color: 'var(--text-muted)', lineHeight: 1.5 }}>{a.reason}</p>}
+      {a.flow.length > 1 && <div style={{ marginBottom: 8 }}><FlowBars flow={a.flow} /></div>}
+      {axes && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 3, marginBottom: 8 }}>
+          {AXIS_LABELS.map(([key, label]) => (
+            <div key={key} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+              <span style={{ width: 38, fontSize: '0.68rem', color: 'var(--text-muted)' }}>{label}</span>
+              <div style={{ flex: 1, height: 5, borderRadius: 3, backgroundColor: 'var(--border)', overflow: 'hidden' }}>
+                <div style={{ height: '100%', width: `${Math.max(0, Math.min(100, axes[key] ?? 0))}%`, backgroundColor: '#2E8B8B', borderRadius: 3 }} />
+              </div>
+              <span style={{ width: 26, textAlign: 'right', fontSize: '0.68rem', fontWeight: 600, color: 'var(--text-primary)' }}>{Math.round(axes[key] ?? 0)}</span>
+            </div>
+          ))}
+        </div>
+      )}
+      {a.members.length > 0 && (
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
+          {a.members.slice(0, 10).map((m) => (
+            <span key={m.code} style={{ padding: '2px 7px', borderRadius: 5, fontSize: '0.68rem', backgroundColor: 'var(--bg-card)', border: '1px solid var(--border)', color: 'var(--text-muted)' }}>{m.name}</span>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
@@ -80,37 +133,20 @@ export function ThemeList({ basket, onAddToBasket, onRemoveFromBasket }: ThemeLi
   const [collecting, setCollecting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState('');
-  const [sortBy, setSortBy] = useState<'score_desc' | 'score_asc' | 'name_asc' | 'name_desc'>('score_desc');
-  const [scores, setScores] = useState<Record<string | number, ThemeScore>>({});
-  const [status, setStatus] = useState<{
-    last_batch_at: string | null;
-    last_data_date: string | null;
-    theme_count: number;
-    scored_theme_count: number;
-    metric_count: number;
-  } | null>(null);
+  const [sortBy, setSortBy] = useState<'interest_desc' | 'change_desc' | 'name_asc'>('interest_desc');
+  const [phaseFilter, setPhaseFilter] = useState('active');
+  const [analyses, setAnalyses] = useState<Record<string | number, ThemeAnalysis>>({});
+  const [reportTheme, setReportTheme] = useState<StockTheme | null>(null);
 
   useEffect(() => {
     fetchThemes();
-    fetchStatus();
   }, []);
-
-  async function fetchStatus() {
-    try {
-      const res = await fetch(`${API_URL}/api/v1/stocks/status`, { headers: { ...authLib.getAuthHeader() } });
-      if (res.ok) setStatus(await res.json());
-    } catch {
-      /* silent */
-    }
-  }
 
   async function fetchThemes() {
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch(`${API_URL}/api/v1/stocks/themes`, {
-        headers: { ...authLib.getAuthHeader() },
-      });
+      const res = await fetch(`${API_URL}/api/v1/stocks/themes`, { headers: { ...authLib.getAuthHeader() } });
       if (!res.ok) throw new Error('테마 목록을 불러오는 데 실패했습니다.');
       const data = await res.json();
       setThemes(Array.isArray(data) ? data : data.themes ?? []);
@@ -125,14 +161,11 @@ export function ThemeList({ basket, onAddToBasket, onRemoveFromBasket }: ThemeLi
     setAnalyzingId(theme.id);
     setError(null);
     try {
-      // 5축 집계 점수 (소속 종목 실데이터 기반)
-      const res = await fetch(`${API_URL}/api/v1/stocks/themes/${theme.id}/score`, {
-        headers: { ...authLib.getAuthHeader() },
-      });
+      // 분석 = 이미 읽어온 데이터(DB)만. 추가 조회/KIS 없음.
+      const res = await fetch(`${API_URL}/api/v1/stocks/themes/${theme.id}/analysis`, { headers: { ...authLib.getAuthHeader() } });
       if (!res.ok) throw new Error('테마 분석 실패');
-      const sc: ThemeScore = await res.json();
-      setScores((prev) => ({ ...prev, [theme.id]: sc }));
-      setThemes((prev) => prev.map((t) => (t.id === theme.id ? { ...t, ai_score: sc.score } : t)));
+      const a: ThemeAnalysis = await res.json();
+      setAnalyses((prev) => ({ ...prev, [theme.id]: a }));
     } catch (err) {
       setError(err instanceof Error ? err.message : '분석 중 오류가 발생했습니다.');
     } finally {
@@ -144,13 +177,9 @@ export function ThemeList({ basket, onAddToBasket, onRemoveFromBasket }: ThemeLi
     setCollecting(true);
     setError(null);
     try {
-      const res = await fetch(`${API_URL}/api/v1/stocks/themes/collect`, {
-        method: 'POST',
-        headers: { ...authLib.getAuthHeader() },
-      });
+      const res = await fetch(`${API_URL}/api/v1/stocks/themes/collect`, { method: 'POST', headers: { ...authLib.getAuthHeader() } });
       if (!res.ok) throw new Error('역설계 수집에 실패했습니다.');
       await fetchThemes();
-      await fetchStatus();
     } catch (err) {
       setError(err instanceof Error ? err.message : '역설계 수집 중 오류가 발생했습니다.');
     } finally {
@@ -162,10 +191,7 @@ export function ThemeList({ basket, onAddToBasket, onRemoveFromBasket }: ThemeLi
     setRefreshing(true);
     setError(null);
     try {
-      const res = await fetch(`${API_URL}/api/v1/stocks/themes/refresh`, {
-        method: 'POST',
-        headers: { ...authLib.getAuthHeader() },
-      });
+      const res = await fetch(`${API_URL}/api/v1/stocks/themes/refresh`, { method: 'POST', headers: { ...authLib.getAuthHeader() } });
       if (!res.ok) throw new Error('테마 반영에 실패했습니다.');
       const data = await res.json();
       setThemes(Array.isArray(data) ? data : data.themes ?? []);
@@ -178,62 +204,32 @@ export function ThemeList({ basket, onAddToBasket, onRemoveFromBasket }: ThemeLi
 
   const isInBasket = (id: number) => basket.some((t) => t.id === id);
 
-  const getScoreColor = (score: number) => {
-    if (score >= 80) return '#059669';
-    if (score >= 60) return '#D97706';
-    return '#DC2626';
+  const scoreColor = (s: number | null | undefined) => {
+    const v = s ?? 0;
+    if (v >= 70) return '#059669';
+    if (v >= 50) return '#D97706';
+    return '#6B7280';
   };
-
-  const getScoreBg = (score: number) => {
-    if (score >= 80) return '#ECFDF5';
-    if (score >= 60) return '#FFFBEB';
-    return '#FEF2F2';
+  const scoreBg = (s: number | null | undefined) => {
+    const v = s ?? 0;
+    if (v >= 70) return 'rgba(5,150,105,0.12)';
+    if (v >= 50) return 'rgba(217,119,6,0.12)';
+    return 'rgba(107,114,128,0.10)';
   };
 
   if (loading) {
     return (
       <div style={{ display: 'flex', justifyContent: 'center', padding: '48px 0' }}>
-        <div
-          style={{
-            width: 28,
-            height: 28,
-            border: '2px solid #E1E5EB',
-            borderTopColor: '#2E8B8B',
-            borderRadius: '50%',
-            animation: 'spin 0.7s linear infinite',
-          }}
-        />
+        <div style={{ width: 28, height: 28, border: '2px solid #E1E5EB', borderTopColor: '#2E8B8B', borderRadius: '50%', animation: 'spin 0.7s linear infinite' }} />
       </div>
     );
   }
 
   if (error) {
     return (
-      <div
-        style={{
-          padding: '14px 16px',
-          backgroundColor: '#FEF2F2',
-          border: '1px solid #FECACA',
-          borderRadius: 8,
-          color: '#B91C1C',
-          fontSize: '0.875rem',
-        }}
-      >
+      <div style={{ padding: '14px 16px', backgroundColor: '#FEF2F2', border: '1px solid #FECACA', borderRadius: 8, color: '#B91C1C', fontSize: '0.875rem' }}>
         {error}
-        <button
-          onClick={fetchThemes}
-          style={{
-            marginLeft: 12,
-            color: '#1E3A5F',
-            background: 'none',
-            border: 'none',
-            cursor: 'pointer',
-            textDecoration: 'underline',
-            fontSize: '0.875rem',
-          }}
-        >
-          다시 시도
-        </button>
+        <button onClick={fetchThemes} style={{ marginLeft: 12, color: '#1E3A5F', background: 'none', border: 'none', cursor: 'pointer', textDecoration: 'underline', fontSize: '0.875rem' }}>다시 시도</button>
       </div>
     );
   }
@@ -242,323 +238,124 @@ export function ThemeList({ basket, onAddToBasket, onRemoveFromBasket }: ThemeLi
     return (
       <div style={{ textAlign: 'center', padding: '40px 16px', color: 'var(--text-muted)', fontSize: '0.875rem' }}>
         <p style={{ margin: '0 0 16px' }}>등록된 테마가 없습니다.</p>
-        <button
-          onClick={refreshThemes}
-          disabled={refreshing}
-          style={{
-            display: 'inline-flex',
-            alignItems: 'center',
-            gap: 8,
-            padding: '10px 20px',
-            borderRadius: 8,
-            border: 'none',
-            cursor: refreshing ? 'default' : 'pointer',
-            backgroundColor: '#2E8B8B',
-            color: '#fff',
-            fontSize: '0.875rem',
-            fontWeight: 600,
-            opacity: refreshing ? 0.7 : 1,
-          }}
-        >
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"
-            style={refreshing ? { animation: 'spin 0.7s linear infinite' } : undefined}>
-            <polyline points="23 4 23 10 17 10" />
-            <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10" />
-          </svg>
+        <button onClick={refreshThemes} disabled={refreshing} style={{ display: 'inline-flex', alignItems: 'center', gap: 8, padding: '10px 20px', borderRadius: 8, border: 'none', cursor: refreshing ? 'default' : 'pointer', backgroundColor: '#2E8B8B', color: '#fff', fontSize: '0.875rem', fontWeight: 600, opacity: refreshing ? 0.7 : 1 }}>
           {refreshing ? '테마 반영 중...' : '테마 반영하기'}
         </button>
-        <p style={{ margin: '12px 0 0', fontSize: '0.75rem', color: 'var(--text-muted)' }}>
-          소스에서 추천 테마를 불러옵니다.
-        </p>
       </div>
     );
   }
 
+  // 기준일 (목록 데이터에서)
+  const basisDate = themes.find((t) => t.basis_date)?.basis_date || null;
+
   const displayThemes = themes
-    .filter((t) =>
-      search.trim() === '' ? true : t.theme_name.toLowerCase().includes(search.trim().toLowerCase())
-    )
+    .filter((t) => (search.trim() === '' ? true : t.theme_name.toLowerCase().includes(search.trim().toLowerCase())))
+    .filter((t) => {
+      const ph = t.attention_phase;
+      if (phaseFilter === 'all') return true;
+      if (phaseFilter === 'active') return ph === 'surge' || ph === 'emerging' || ph === 'hot';
+      return ph === phaseFilter;
+    })
     .sort((a, b) => {
       switch (sortBy) {
-        case 'score_desc':
-          return (b.ai_score ?? -1) - (a.ai_score ?? -1);
-        case 'score_asc':
-          return (a.ai_score ?? -1) - (b.ai_score ?? -1);
-        case 'name_asc':
-          return a.theme_name.localeCompare(b.theme_name, 'ko');
-        case 'name_desc':
-          return b.theme_name.localeCompare(a.theme_name, 'ko');
-        default:
-          return 0;
+        case 'interest_desc': return (b.interest_score ?? -1) - (a.interest_score ?? -1);
+        case 'change_desc': return (b.change_rate ?? -999) - (a.change_rate ?? -999);
+        case 'name_asc': return a.theme_name.localeCompare(b.theme_name, 'ko');
+        default: return 0;
       }
     });
 
-  const controlStyle: CSSProperties = {
-    height: 34,
-    padding: '0 10px',
-    borderRadius: 6,
-    border: '1px solid var(--border)',
-    backgroundColor: 'var(--bg-card)',
-    color: 'var(--text-primary)',
-    fontSize: '0.8125rem',
-    outline: 'none',
-  };
-
-  const fmtTime = (iso: string | null) => {
-    if (!iso) return null;
-    try {
-      return new Date(iso).toLocaleString('ko-KR', { dateStyle: 'medium', timeStyle: 'short' });
-    } catch {
-      return iso;
-    }
-  };
+  const controlStyle: CSSProperties = { height: 34, padding: '0 10px', borderRadius: 6, border: '1px solid var(--border)', backgroundColor: 'var(--bg-card)', color: 'var(--text-primary)', fontSize: '0.8125rem', outline: 'none' };
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-      {/* 데이터 신선도 상태 */}
-      {status && (
-        <div
-          style={{
-            display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap',
-            padding: '8px 12px', borderRadius: 8,
-            backgroundColor: status.metric_count > 0 ? 'rgba(5,150,105,0.08)' : 'rgba(217,119,6,0.08)',
-            border: `1px solid ${status.metric_count > 0 ? 'rgba(5,150,105,0.25)' : 'rgba(217,119,6,0.25)'}`,
-            fontSize: '0.75rem',
-          }}
-        >
-          <span style={{ width: 8, height: 8, borderRadius: '50%', backgroundColor: status.metric_count > 0 ? '#059669' : '#D97706', flexShrink: 0 }} />
-          {status.metric_count > 0 ? (
-            <span style={{ color: 'var(--text-primary)', fontWeight: 600 }}>
-              마지막 데이터 갱신: {fmtTime(status.last_batch_at) || status.last_data_date || '-'}
-            </span>
-          ) : (
-            <span style={{ color: '#D97706', fontWeight: 600 }}>아직 데이터 없음 — 역설계 수집 후 분석하세요</span>
-          )}
-          <span style={{ color: 'var(--text-muted)' }}>
-            · 종목 지표 {status.metric_count}개 · 테마 {status.scored_theme_count}/{status.theme_count} 점수계산됨
-            {status.last_data_date ? ` · 시세 ${status.last_data_date}` : ''}
-          </span>
-        </div>
-      )}
+      {/* 기준일 배너 */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', padding: '8px 12px', borderRadius: 8, backgroundColor: 'rgba(46,139,139,0.08)', border: '1px solid rgba(46,139,139,0.22)', fontSize: '0.75rem' }}>
+        <span style={{ width: 8, height: 8, borderRadius: '50%', backgroundColor: '#2E8B8B', flexShrink: 0 }} />
+        <span style={{ color: 'var(--text-primary)', fontWeight: 600 }}>
+          {basisDate ? `${basisDate} 장마감 기준` : '흐름 데이터 수집 전 — 배치 후 표시'}
+        </span>
+        <span style={{ color: 'var(--text-muted)' }}>· 네이버 테마 시세 흐름 · 매일 1회 갱신 (실시간 아님)</span>
+      </div>
 
-      {/* 검색 + 정렬 + 테마 반영 */}
+      {/* 국면 필터 */}
+      <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+        {FILTERS.map((f) => (
+          <button key={f.key} onClick={() => setPhaseFilter(f.key)} style={{
+            height: 30, padding: '0 11px', borderRadius: 999, cursor: 'pointer', fontSize: '0.75rem', fontWeight: 600,
+            border: phaseFilter === f.key ? '1px solid #2E8B8B' : '1px solid var(--border)',
+            backgroundColor: phaseFilter === f.key ? 'rgba(46,139,139,0.14)' : 'var(--bg-card)',
+            color: phaseFilter === f.key ? '#2E8B8B' : 'var(--text-muted)',
+          }}>{f.label}</button>
+        ))}
+      </div>
+
+      {/* 검색 + 정렬 + 수집 */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-        <div style={{ position: 'relative', flex: 1, minWidth: 180 }}>
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--text-muted)" strokeWidth="2" strokeLinecap="round"
-            style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none' }}>
-            <circle cx="11" cy="11" r="8" />
-            <path d="m21 21-4.35-4.35" />
+        <div style={{ position: 'relative', flex: 1, minWidth: 160 }}>
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--text-muted)" strokeWidth="2" strokeLinecap="round" style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none' }}>
+            <circle cx="11" cy="11" r="8" /><path d="m21 21-4.35-4.35" />
           </svg>
-          <input
-            type="text"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder="테마명 검색"
-            style={{ ...controlStyle, width: '100%', paddingLeft: 30 }}
-          />
+          <input type="text" value={search} onChange={(e) => setSearch(e.target.value)} placeholder="테마명 검색" style={{ ...controlStyle, width: '100%', paddingLeft: 30 }} />
         </div>
-        <select
-          value={sortBy}
-          onChange={(e) => setSortBy(e.target.value as typeof sortBy)}
-          style={{ ...controlStyle, cursor: 'pointer' }}
-        >
-          <option value="score_desc">점수 높은순</option>
-          <option value="score_asc">점수 낮은순</option>
-          <option value="name_asc">테마명 가나다순</option>
-          <option value="name_desc">테마명 가나다 역순</option>
+        <select value={sortBy} onChange={(e) => setSortBy(e.target.value as typeof sortBy)} style={{ ...controlStyle, cursor: 'pointer' }}>
+          <option value="interest_desc">관심점수순</option>
+          <option value="change_desc">등락률순</option>
+          <option value="name_asc">가나다순</option>
         </select>
-        <button
-          onClick={refreshThemes}
-          disabled={refreshing}
-          style={{
-            display: 'inline-flex',
-            alignItems: 'center',
-            gap: 6,
-            height: 34,
-            padding: '0 12px',
-            borderRadius: 6,
-            border: '1px solid var(--border)',
-            cursor: refreshing ? 'default' : 'pointer',
-            backgroundColor: 'var(--bg-card)',
-            color: 'var(--text-muted)',
-            fontSize: '0.75rem',
-            fontWeight: 600,
-            opacity: refreshing ? 0.7 : 1,
-          }}
-        >
-          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"
-            style={refreshing ? { animation: 'spin 0.7s linear infinite' } : undefined}>
-            <polyline points="23 4 23 10 17 10" />
-            <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10" />
-          </svg>
+        <button onClick={refreshThemes} disabled={refreshing} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, height: 34, padding: '0 12px', borderRadius: 6, border: '1px solid var(--border)', cursor: refreshing ? 'default' : 'pointer', backgroundColor: 'var(--bg-card)', color: 'var(--text-muted)', fontSize: '0.75rem', fontWeight: 600, opacity: refreshing ? 0.7 : 1 }}>
           {refreshing ? '반영 중...' : '테마 반영'}
         </button>
-        <button
-          onClick={collectMapping}
-          disabled={collecting}
-          title="네이버 금융 테마에서 테마·소속종목을 자동 수집(역설계). 1~2분 소요."
-          style={{
-            display: 'inline-flex',
-            alignItems: 'center',
-            gap: 6,
-            height: 34,
-            padding: '0 12px',
-            borderRadius: 6,
-            border: '1px solid #2E8B8B',
-            cursor: collecting ? 'default' : 'pointer',
-            backgroundColor: collecting ? 'var(--bg-card)' : 'rgba(46,139,139,0.10)',
-            color: '#2E8B8B',
-            fontSize: '0.75rem',
-            fontWeight: 700,
-            opacity: collecting ? 0.7 : 1,
-          }}
-        >
-          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"
-            style={collecting ? { animation: 'spin 0.7s linear infinite' } : undefined}>
-            <path d="M21 12a9 9 0 1 1-6.219-8.56" />
-          </svg>
+        <button onClick={collectMapping} disabled={collecting} title="네이버 금융 테마에서 테마·소속종목을 자동 수집(역설계)." style={{ display: 'inline-flex', alignItems: 'center', gap: 6, height: 34, padding: '0 12px', borderRadius: 6, border: '1px solid #2E8B8B', cursor: collecting ? 'default' : 'pointer', backgroundColor: collecting ? 'var(--bg-card)' : 'rgba(46,139,139,0.10)', color: '#2E8B8B', fontSize: '0.75rem', fontWeight: 700, opacity: collecting ? 0.7 : 1 }}>
           {collecting ? '수집 중...' : '역설계 수집'}
         </button>
       </div>
 
       {displayThemes.length === 0 && (
         <div style={{ textAlign: 'center', padding: '32px 0', color: 'var(--text-muted)', fontSize: '0.875rem' }}>
-          &lsquo;{search}&rsquo; 검색 결과가 없습니다.
+          해당 국면/검색 결과가 없습니다.
         </div>
       )}
 
       {displayThemes.map((theme) => {
         const inBasket = isInBasket(theme.id);
         const isAnalyzing = analyzingId === theme.id;
+        const pm = theme.attention_phase ? PHASE_META[theme.attention_phase] : null;
+        const chg = theme.change_rate;
 
         return (
-          <Card
-            key={theme.id}
-            padding={16}
-            hoverable
-            style={{
-              border: inBasket ? '1px solid #2E8B8B' : '1px solid var(--border)',
-              transition: 'border-color 0.15s ease',
-            }}
-          >
+          <Card key={theme.id} padding={16} hoverable style={{ border: inBasket ? '1px solid #2E8B8B' : '1px solid var(--border)', transition: 'border-color 0.15s ease' }}>
             <div style={{ display: 'flex', alignItems: 'flex-start', gap: 14 }}>
-              {/* Score badge */}
-              <div
-                style={{
-                  minWidth: 50,
-                  height: 50,
-                  borderRadius: 10,
-                  backgroundColor: getScoreBg(theme.ai_score),
-                  display: 'flex',
-                  flexDirection: 'column',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  flexShrink: 0,
-                }}
-              >
-                <span
-                  style={{
-                    fontSize: '1.0625rem',
-                    fontWeight: 800,
-                    color: getScoreColor(theme.ai_score),
-                    lineHeight: 1,
-                  }}
-                >
-                  {theme.ai_score}
-                </span>
-                <span style={{ fontSize: '0.6rem', color: getScoreColor(theme.ai_score), marginTop: 1 }}>
-                  AI점수
-                </span>
+              {/* 관심점수 뱃지 */}
+              <div style={{ minWidth: 50, height: 50, borderRadius: 10, backgroundColor: scoreBg(theme.interest_score), display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                <span style={{ fontSize: '1.0625rem', fontWeight: 800, color: scoreColor(theme.interest_score), lineHeight: 1 }}>{theme.interest_score ?? '—'}</span>
+                <span style={{ fontSize: '0.55rem', color: scoreColor(theme.interest_score), marginTop: 1 }}>관심점수</span>
               </div>
 
-              {/* Content */}
               <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
-                  <span style={{ fontSize: '0.9375rem', fontWeight: 700, color: 'var(--text-primary)' }}>
-                    {theme.theme_name}
-                  </span>
-                  {theme.phase && PHASE_META[theme.phase] && (
-                    <span style={{ padding: '1px 7px', borderRadius: 999, fontSize: '0.625rem', fontWeight: 700, color: PHASE_META[theme.phase].color, backgroundColor: PHASE_META[theme.phase].bg }}>
-                      {PHASE_META[theme.phase].label}
-                    </span>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4, flexWrap: 'wrap' }}>
+                  <span style={{ fontSize: '0.9375rem', fontWeight: 700, color: 'var(--text-primary)' }}>{theme.theme_name}</span>
+                  {pm && <span style={{ padding: '1px 8px', borderRadius: 999, fontSize: '0.625rem', fontWeight: 700, color: pm.color, backgroundColor: pm.bg }}>{pm.label}</span>}
+                  {chg != null && <span style={{ fontSize: '0.8rem', fontWeight: 700, color: chg >= 0 ? '#DC2626' : '#2563EB' }}>{chg >= 0 ? '+' : ''}{chg}%</span>}
+                  {(theme.up_count != null || theme.down_count != null) && (
+                    <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>▲{theme.up_count ?? 0} ▼{theme.down_count ?? 0}</span>
                   )}
-                  {theme.category && (
-                    <span
-                      style={{
-                        padding: '1px 7px',
-                        borderRadius: 4,
-                        fontSize: '0.6875rem',
-                        backgroundColor: '#EEF2F7',
-                        color: '#1E3A5F',
-                        fontWeight: 500,
-                      }}
-                    >
-                      {theme.category}
-                    </span>
-                  )}
-                  <span style={{ fontSize: '0.8125rem', color: '#6B7280', marginLeft: 'auto' }}>
-                    종목 {theme.stock_count}개
-                  </span>
+                  <span style={{ fontSize: '0.78rem', color: 'var(--text-muted)', marginLeft: 'auto' }}>종목 {theme.stock_count}개</span>
                 </div>
-                <p
-                  style={{
-                    margin: '0 0 10px',
-                    fontSize: '0.8125rem',
-                    color: '#6B7280',
-                    lineHeight: 1.5,
-                    overflow: 'hidden',
-                    display: '-webkit-box',
-                    WebkitLineClamp: 2,
-                    WebkitBoxOrient: 'vertical' as const,
-                  }}
-                >
-                  {theme.news_summary || '뉴스 요약 없음'}
-                </p>
 
-                {/* 5축 집계 결과 (분석 후 표시) */}
-                {scores[theme.id] && <ThemeScorePanel sc={scores[theme.id]} />}
+                {analyses[theme.id] && <AnalysisPanel a={analyses[theme.id]} />}
 
-                {/* Actions */}
-                <div style={{ display: 'flex', gap: 8 }}>
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    loading={isAnalyzing}
-                    onClick={() => analyzeTheme(theme)}
-                    style={{ fontSize: '0.8125rem', color: 'var(--text-primary)', border: '1px solid var(--border)' }}
-                  >
-                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
-                      <circle cx="11" cy="11" r="8" />
-                      <path d="m21 21-4.35-4.35" />
-                    </svg>
+                <div style={{ display: 'flex', gap: 8, marginTop: 10, flexWrap: 'wrap' }}>
+                  <Button size="sm" variant="ghost" loading={isAnalyzing} onClick={() => analyzeTheme(theme)} style={{ fontSize: '0.8125rem', color: 'var(--text-primary)', border: '1px solid var(--border)' }}>
                     {isAnalyzing ? '분석 중...' : '분석'}
                   </Button>
-
+                  <Button size="sm" variant="ghost" onClick={() => setReportTheme(theme)} style={{ fontSize: '0.8125rem', color: '#1E3A5F', border: '1px solid #1E3A5F' }}>
+                    📄 보고서
+                  </Button>
                   {inBasket ? (
-                    <Button
-                      size="sm"
-                      variant="secondary"
-                      onClick={() => onRemoveFromBasket(theme.id)}
-                      style={{ borderColor: '#2E8B8B', color: '#2E8B8B' }}
-                    >
-                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
-                        <polyline points="20 6 9 17 4 12" />
-                      </svg>
-                      담김
-                    </Button>
+                    <Button size="sm" variant="secondary" onClick={() => onRemoveFromBasket(theme.id)} style={{ borderColor: '#2E8B8B', color: '#2E8B8B' }}>담김</Button>
                   ) : (
-                    <Button
-                      size="sm"
-                      variant="ghost"
-                      onClick={() => onAddToBasket(theme)}
-                      style={{ border: '1px solid #2E8B8B', color: '#2E8B8B' }}
-                    >
-                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
-                        <line x1="12" y1="5" x2="12" y2="19" />
-                        <line x1="5" y1="12" x2="19" y2="12" />
-                      </svg>
-                      바스켓 담기
-                    </Button>
+                    <Button size="sm" variant="ghost" onClick={() => onAddToBasket(theme)} style={{ border: '1px solid #2E8B8B', color: '#2E8B8B' }}>+ 바스켓 담기</Button>
                   )}
                 </div>
               </div>
@@ -566,6 +363,16 @@ export function ThemeList({ basket, onAddToBasket, onRemoveFromBasket }: ThemeLi
           </Card>
         );
       })}
+
+      {reportTheme && (
+        <ThemeReportModal
+          themeId={reportTheme.id}
+          themeName={reportTheme.theme_name}
+          onClose={() => setReportTheme(null)}
+          inBasket={isInBasket(reportTheme.id)}
+          onAddToBasket={() => { onAddToBasket(reportTheme); }}
+        />
+      )}
     </div>
   );
 }
