@@ -240,6 +240,26 @@ class ThemeAnalysisResponse(BaseModel):
     score_detail: Optional[dict] = None       # 배치가 저장한 5축(있으면)
 
 
+class ThemeReportResponse(BaseModel):
+    """보고서 — 온디맨드 깊은 분석(멤버 과거시세 재구성 + 뉴스). 그 테마 1개만 조회."""
+    theme_id: str
+    theme_name: str
+    attention_phase: Optional[str] = None
+    interest_score: Optional[float] = None
+    change_rate: Optional[float] = None
+    basis_date: Optional[str] = None
+    period: str = "3m"                        # 1w/1m/3m/6m/1y
+    index_chart: list[dict] = []              # 테마 지수 누적수익률 [{date,value}]
+    period_return: Optional[float] = None     # 기간 수익률(%)
+    score_reason: str = ""                    # 왜 이 점수
+    badge_reason: str = ""                    # 왜 이 뱃지
+    members: list[dict] = []                  # 종목 + 기간수익률
+    news: list[dict] = []                     # 대표기사
+    news_count: int = 0
+    conclusion: str = ""                      # 담기 판단(쉽게 풀어쓴)
+    data_source: str = "live"
+
+
 class ReportSettingsResponse(BaseModel):
     email_enabled: bool
     recipient: Optional[str] = None

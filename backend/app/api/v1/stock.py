@@ -24,6 +24,7 @@ from app.schemas.stock import (
     SystemStatusResponse,
     ThemeAnalysisResponse,
     ThemeFlowPoint,
+    ThemeReportResponse,
 )
 from datetime import datetime, timezone
 from fastapi.responses import HTMLResponse
@@ -200,6 +201,25 @@ async def get_theme_analysis(
         members=[{"code": c, "name": n} for c, n in members],
         score_detail=theme.score_detail,
     )
+
+
+@router.get(
+    "/themes/{theme_id}/report",
+    response_model=ThemeReportResponse,
+    summary="테마 보고서 (온디맨드 깊은 분석)",
+)
+async def get_theme_report(
+    theme_id: str,
+    current_user: CurrentUser,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    period: str = Query("3m", description="1w/1m/3m/6m/1y"),
+) -> ThemeReportResponse:
+    """보고서 클릭 — 그 테마 멤버 과거시세로 기간별 지수 재구성 + 뉴스 + 판단(쉽게 풀어씀)."""
+    theme = await db.get(StockTheme, theme_id)
+    if not theme:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="테마를 찾을 수 없습니다.")
+    data = await theme_flow.build_report(db, current_user.id, theme, period)
+    return ThemeReportResponse(**data)
 
 
 # ---------------------------------------------------------------------------
