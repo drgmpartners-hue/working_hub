@@ -28,8 +28,28 @@ from app.services.theme_stock_map import THEME_STOCKS
 logger = logging.getLogger(__name__)
 
 
+async def build_universe_db(db: AsyncSession, max_codes: int = 600) -> list[tuple[str, str]]:
+    """배치 대상 종목 유니버스 — theme_members(DB) 기반. 테마 소속 종목을 우선 커버.
+
+    DB 매핑이 없으면 파일/큐레이션 폴백. 중복 제거 후 상한.
+    """
+    from app.models.stock_metrics import ThemeMember
+
+    seen: dict[str, str] = {}
+    rows = (await db.execute(_select(ThemeMember.code, ThemeMember.name))).all()
+    for code, name in rows:
+        seen.setdefault(code, name)
+    if not seen:
+        for members in load_cached_map().values():
+            for m in members:
+                seen.setdefault(m[0], m[1])
+    for code, name in [m for ms in THEME_STOCKS.values() for m in ms]:
+        seen.setdefault(code, name)
+    return list(seen.items())[:max_codes]
+
+
 def build_universe(max_codes: int = 200) -> list[tuple[str, str]]:
-    """배치 대상 종목 유니버스 (code, name). 수집 매핑 + 큐레이션, 중복 제거 후 상한."""
+    """(폴백) 파일/큐레이션 기반 유니버스."""
     seen: dict[str, str] = {}
     for members in load_cached_map().values():
         for m in members:
@@ -47,7 +67,7 @@ async def run_batch(db: AsyncSession, user_id: str, max_codes: int = 200) -> dic
         return {"ok": False, "reason": "KIS 키 없음", "processed": 0}
 
     client = KISClient(*creds)
-    universe = build_universe(max_codes)
+    universe = await build_universe_db(db, max_codes)
     today = date.today()
     processed = snap = 0
 
@@ -120,11 +140,13 @@ async def score_all_themes(db: AsyncSession, user_id: str) -> dict:
         if agg:
             theme.ai_score = agg["score"]
             theme.phase = agg["phase"]
+            theme.score_detail = agg  # 5축 결과 저장 → 클릭 시 재계산 없이 즉시 표시
             scored += 1
         else:
             # 미계산(배치 범위 밖) → placeholder 점수 제거해 목록 하위로 (실데이터 테마가 위로)
             theme.ai_score = None
             theme.phase = None
+            theme.score_detail = None
     await db.commit()
     return {"scored_themes": scored, "total_themes": len(themes)}
 

@@ -121,6 +121,10 @@ async def get_theme_score(
     if not theme:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="테마를 찾을 수 없습니다.")
 
+    # 배치가 저장한 5축 결과가 있으면 즉시 반환(재계산·KIS 없음 → 빠르고 안정적)
+    if theme.score_detail and theme.score_detail.get("axes"):
+        return ThemeScoreResponse(theme_id=theme_id, theme_name=theme.theme_name, **theme.score_detail)
+
     agg = await theme_scoring.aggregate_theme(db, current_user.id, theme.theme_name)
     if agg is None:
         # 매핑 없으면 그 테마만 즉석 수집 후 재시도 (분석 클릭만으로 동작)
@@ -140,8 +144,10 @@ async def get_theme_score(
             data_source="mock",
         )
 
-    # 실데이터 집계 성공 → DB ai_score 갱신
+    # 실데이터 집계 성공 → DB 저장(점수+5축 캐시) → 다음 클릭은 재계산 없이 즉시
     theme.ai_score = agg["score"]
+    theme.phase = agg["phase"]
+    theme.score_detail = agg
     await db.commit()
     return ThemeScoreResponse(theme_id=theme_id, theme_name=theme.theme_name, **agg)
 

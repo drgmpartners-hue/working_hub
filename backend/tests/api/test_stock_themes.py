@@ -246,6 +246,8 @@ class TestStockThemeSchemas:
 class _FakeTheme:
     theme_name = "방산"
     ai_score = 80.0
+    phase = None
+    score_detail = None
 
 
 class _FakeSession:

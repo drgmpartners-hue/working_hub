@@ -20,6 +20,7 @@ class StockTheme(Base):
     news_summary: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     stock_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     phase: Mapped[Optional[str]] = mapped_column(String(12), nullable=True)  # breakout/turnaround/neutral
+    score_detail: Mapped[Optional[dict]] = mapped_column(JSONB, nullable=True)  # 5축 집계 결과 캐시
     updated_at: Mapped[datetime] = mapped_column(
         DateTime, server_default=func.now(), onupdate=func.now(), nullable=False
     )
