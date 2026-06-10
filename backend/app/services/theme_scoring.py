@@ -87,11 +87,12 @@ async def _finalize(db: AsyncSession, user_id: str, theme_name: str, rows: list[
     }
 
 
-async def aggregate_theme(db: AsyncSession, user_id: str, theme_name: str) -> Optional[dict]:
+async def aggregate_theme(db: AsyncSession, user_id: str, theme_name: str, live_fallback: bool = True) -> Optional[dict]:
     """테마 5축 집계 — 배치 지표(DB) 우선, 없으면 KIS 즉석 계산.
 
     1) 배치가 적재한 stock_daily_metrics가 있으면 그것으로(빠름)
     2) 없으면 멤버 종목을 KIS로 즉석 계산(느리지만 '분석' 클릭만으로 동작)
+    live_fallback=False면 2단계(KIS) 생략 — 배치 대량 처리 시 레이트리밋 회피.
     멤버/실데이터 모두 없으면 None(placeholder).
     """
     codes = await _member_codes(db, theme_name, limit=6)
@@ -116,7 +117,9 @@ async def aggregate_theme(db: AsyncSession, user_id: str, theme_name: str) -> Op
         if rows:
             return await _finalize(db, user_id, theme_name, rows)
 
-    # 2) KIS 즉석 계산 (배치 지표 없을 때)
+    # 2) KIS 즉석 계산 (배치 지표 없을 때) — 배치 대량처리 시엔 생략(live_fallback=False)
+    if not live_fallback:
+        return None
     rows = []
     for code in codes[:4]:  # 즉석은 4종목으로 제한(속도)
         s = await market_data_service.get_signals(db, user_id, code)

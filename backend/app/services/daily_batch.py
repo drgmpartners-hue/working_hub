@@ -133,7 +133,8 @@ async def score_all_themes(db: AsyncSession, user_id: str) -> dict:
     scored = 0
     for theme in themes:
         try:
-            agg = await theme_scoring.aggregate_theme(db, user_id, theme.theme_name)
+            # 배치는 KIS 즉석호출 없이(metrics-only) 빠르게 — 레이트리밋 회피
+            agg = await theme_scoring.aggregate_theme(db, user_id, theme.theme_name, live_fallback=False)
         except Exception as e:
             logger.info("테마 점수 실패(무시) %s: %s", theme.theme_name, e)
             continue
