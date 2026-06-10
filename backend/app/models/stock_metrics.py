@@ -62,6 +62,28 @@ class ThemeMember(Base):
     name: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
 
 
+class ThemeDailySnapshot(Base):
+    """테마 일별 시세 스냅샷 (네이버 테마 시세) — 흐름/추세 분석용.
+
+    네이버는 당일치만 보여주므로, 매일 1줄씩 쌓아 시계열(흐름)을 만든다.
+    가격 데이터(등락률)는 KIS/KRX 없이 네이버 테마 페이지에서 일괄 수집.
+    """
+    __tablename__ = "theme_daily_snapshots"
+    __table_args__ = (
+        UniqueConstraint("theme_name", "snapshot_date", name="uq_theme_snap_date"),
+        Index("ix_theme_snap", "snapshot_date", "theme_name"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    theme_name: Mapped[str] = mapped_column(String(200), nullable=False, index=True)
+    snapshot_date: Mapped[date] = mapped_column(Date, nullable=False, index=True)
+    change_rate: Mapped[Optional[float]] = mapped_column(Float, nullable=True)   # 전일대비 등락률(%)
+    up_count: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)      # 상승 종목 수
+    down_count: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)    # 하락 종목 수
+    news_count: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)    # 최근 뉴스 건수(관심도)
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+
+
 class ScoreSnapshot(Base):
     """전향적 스냅샷 — 비가격 축 사후검증 보정용 (정답=horizon_return)."""
     __tablename__ = "score_snapshots"

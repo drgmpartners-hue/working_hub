@@ -15,7 +15,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from sqlalchemy import select
 from app.db.session import AsyncSessionLocal
 from app.models.user_api_key import UserApiKey
-from app.services import daily_batch, stock_service, stock_report, email_service, settings_store
+from app.services import daily_batch, stock_service, stock_report, email_service, settings_store, theme_flow
 from app.services.collectors import theme_mapping_collector
 from app.core.config import settings
 
@@ -42,6 +42,11 @@ async def main():
         await stock_service.populate_themes(db)
         removed = await stock_service.cleanup_unmapped_themes(db)
         print(f"   매핑 없는 테마 {removed}개 정리")
+
+        print("②.5 테마 흐름 스냅샷(네이버 시세, 장마감) + 4국면 분석 ...")
+        sc = await theme_flow.scan_and_snapshot(db, uid, with_news=True)
+        an = await theme_flow.analyze_flow(db)
+        print(f"   흐름 스캔/분석: {sc} / {an}")
 
         print(f"③ 종목 지표 배치 (max_codes={max_codes}) ...")
         res = await daily_batch.run_batch(db, uid, max_codes=max_codes)

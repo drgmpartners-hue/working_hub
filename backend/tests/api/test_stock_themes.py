@@ -43,6 +43,12 @@ def _make_theme(
     obj.stock_count = 10
     obj.phase = None
     obj.updated_at = _NOW
+    obj.interest_score = None
+    obj.attention_phase = None
+    obj.change_rate = None
+    obj.up_count = None
+    obj.down_count = None
+    obj.basis_date = None
     return obj
 
 

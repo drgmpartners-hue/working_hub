@@ -108,3 +108,57 @@ async def collect_one(theme_no: str, limit: int = 12) -> list[list[str]]:
     async with httpx.AsyncClient(timeout=15) as client:
         members = await fetch_theme_members(client, theme_no, limit)
     return [[c, n] for c, n in members]
+
+
+# 테마 행: 테마명 링크 ~ 다음 테마명 링크 직전까지를 한 블록으로
+_ROW_SPLIT = re.compile(r'sise_group_detail\.naver\?type=theme&no=\d+">')
+_PCT = re.compile(r'([+-]?\d+\.\d+)%')
+
+
+async def fetch_theme_quotes(max_pages: int = 7) -> list[dict]:
+    """네이버 테마 시세(장마감 기준) 일괄 수집.
+
+    각 테마: {name, change_rate(전일대비 %), up_count, down_count}.
+    KIS/KRX 불필요 — 테마 페이지 한 번 긁어 전 테마 가격신호 확보.
+    """
+    out: list[dict] = []
+    seen: set[str] = set()
+    async with httpx.AsyncClient(timeout=15) as client:
+        for page in range(1, max_pages + 1):
+            await asyncio.sleep(_CALL_INTERVAL)
+            try:
+                r = await client.get(f"{_BASE}/sise/theme.naver?page={page}", headers=_HEADERS)
+            except Exception as e:
+                logger.info("테마 시세 page=%s 실패: %s", page, e)
+                break
+            html = _decode(r)
+            # 테마명 + 등락률 (검증된 패턴)
+            pairs = re.findall(
+                r'sise_group_detail\.naver\?type=theme&no=\d+">([^<]+)</a>.*?([+-]?\d+\.\d+)%',
+                html, re.S,
+            )
+            if not pairs:
+                break
+            # 행 블록별로 상승/하락 종목수 추출(보합 포함 3개 정수 — 첫=상승, 끝=하락)
+            blocks = _ROW_SPLIT.split(html)[1:]  # 각 테마 행 본문
+            for idx, (name, chg) in enumerate(pairs):
+                name = name.strip()
+                if name in seen:
+                    continue
+                seen.add(name)
+                up = down = None
+                if idx < len(blocks):
+                    blk = blocks[idx]
+                    # 등락률 2개(전일대비·최근3일) 이후의 정수 셀들에서 상승/보합/하락
+                    nums = re.findall(r'<td[^>]*class="?number[^>]*>\s*(\d+)\s*</td>', blk)
+                    if len(nums) >= 3:
+                        up, down = int(nums[0]), int(nums[2])
+                    elif len(nums) >= 1:
+                        up = int(nums[0])
+                out.append({
+                    "name": name,
+                    "change_rate": float(chg),
+                    "up_count": up,
+                    "down_count": down,
+                })
+    return out

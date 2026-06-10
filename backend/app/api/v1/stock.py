@@ -22,13 +22,17 @@ from app.schemas.stock import (
     ReportSettingsResponse,
     ReportSettingsUpdate,
     SystemStatusResponse,
+    ThemeAnalysisResponse,
+    ThemeFlowPoint,
 )
 from datetime import datetime, timezone
 from fastapi.responses import HTMLResponse
+from sqlalchemy import select
 from app.models.stock import StockTheme
+from app.models.stock_metrics import ThemeDailySnapshot, ThemeMember
 from app.services import (
     stock_service, theme_scoring, weight_calibration, settings_store,
-    stock_report, email_service,
+    stock_report, email_service, theme_flow,
 )
 from app.services.collectors import theme_mapping_collector
 from app.core.config import settings as app_config
@@ -150,6 +154,52 @@ async def get_theme_score(
     theme.score_detail = agg
     await db.commit()
     return ThemeScoreResponse(theme_id=theme_id, theme_name=theme.theme_name, **agg)
+
+
+@router.get(
+    "/themes/{theme_id}/analysis",
+    response_model=ThemeAnalysisResponse,
+    summary="테마 분석 (DB만, 추가 조회 없음)",
+)
+async def get_theme_analysis(
+    theme_id: str,
+    current_user: CurrentUser,
+    db: Annotated[AsyncSession, Depends(get_db)],
+) -> ThemeAnalysisResponse:
+    """분석 클릭 — 이미 읽어온 데이터(스냅샷·국면·점수·종목)만. KIS/추가 스크랩 없음."""
+    theme = await db.get(StockTheme, theme_id)
+    if not theme:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="테마를 찾을 수 없습니다.")
+
+    snaps = (await db.execute(
+        select(ThemeDailySnapshot).where(ThemeDailySnapshot.theme_name == theme.theme_name)
+        .order_by(ThemeDailySnapshot.snapshot_date)
+    )).scalars().all()
+    reason = None
+    flow = []
+    if snaps:
+        f = theme_flow.compute_flow(list(snaps))
+        reason = f["reason"]
+        flow = [ThemeFlowPoint(date=p["date"], change_rate=p["change_rate"]) for p in f["flow"]]
+
+    members = (await db.execute(
+        select(ThemeMember.code, ThemeMember.name).where(ThemeMember.theme_name == theme.theme_name).limit(20)
+    )).all()
+
+    return ThemeAnalysisResponse(
+        theme_id=theme_id,
+        theme_name=theme.theme_name,
+        attention_phase=theme.attention_phase,
+        interest_score=theme.interest_score,
+        change_rate=theme.change_rate,
+        up_count=theme.up_count,
+        down_count=theme.down_count,
+        basis_date=str(theme.basis_date) if theme.basis_date else None,
+        reason=reason,
+        flow=flow,
+        members=[{"code": c, "name": n} for c, n in members],
+        score_detail=theme.score_detail,
+    )
 
 
 # ---------------------------------------------------------------------------

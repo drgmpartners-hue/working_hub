@@ -1,7 +1,7 @@
 """Stock theme, recommendation, recommended stock, and company stock pool schemas."""
 from datetime import datetime
 from typing import Any, Literal, Optional
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
 
 
 # ---------------------------------------------------------------------------
@@ -203,8 +203,41 @@ class StockThemeResponse(BaseModel):
     stock_count: int
     phase: Optional[str] = None  # breakout/turnaround/neutral
     updated_at: datetime
+    # 네이버 테마 시세 흐름/국면
+    interest_score: Optional[float] = None
+    attention_phase: Optional[str] = None  # surge/emerging/hot/fading/quiet
+    change_rate: Optional[float] = None
+    up_count: Optional[int] = None
+    down_count: Optional[int] = None
+    basis_date: Optional[str] = None
 
     model_config = {"from_attributes": True}
+
+    @field_validator("basis_date", mode="before")
+    @classmethod
+    def _date_to_str(cls, v):
+        return str(v) if v is not None else None
+
+
+class ThemeFlowPoint(BaseModel):
+    date: str
+    change_rate: Optional[float] = None
+
+
+class ThemeAnalysisResponse(BaseModel):
+    """분석 클릭 — 이미 읽어온(DB) 데이터만. KIS/추가 조회 없음."""
+    theme_id: str
+    theme_name: str
+    attention_phase: Optional[str] = None
+    interest_score: Optional[float] = None
+    change_rate: Optional[float] = None
+    up_count: Optional[int] = None
+    down_count: Optional[int] = None
+    basis_date: Optional[str] = None
+    reason: Optional[str] = None              # 국면/점수 근거
+    flow: list[ThemeFlowPoint] = []           # 누적 스냅샷(미니 흐름)
+    members: list[dict] = []                  # 소속 종목(theme_members)
+    score_detail: Optional[dict] = None       # 배치가 저장한 5축(있으면)
 
 
 class ReportSettingsResponse(BaseModel):
