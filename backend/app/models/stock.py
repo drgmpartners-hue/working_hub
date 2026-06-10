@@ -1,7 +1,7 @@
 """Stock theme, recommendation, recommended stock, and company stock pool models."""
 from datetime import datetime, date
 from typing import Optional
-from sqlalchemy import String, DateTime, Date, ForeignKey, Float, Integer, Boolean, Text
+from sqlalchemy import String, DateTime, Date, ForeignKey, Float, Integer, Boolean, Text, UniqueConstraint
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.sql import func
@@ -84,6 +84,21 @@ class RecommendedStock(Base):
     recommendation: Mapped["StockRecommendation"] = relationship(
         "StockRecommendation", back_populates="recommended_stocks"
     )
+
+
+class ThemeFavorite(Base):
+    """사용자별 테마 즐겨찾기 (theme_name 기준 — 재수집에도 안정)."""
+    __tablename__ = "theme_favorites"
+    __table_args__ = (
+        UniqueConstraint("user_id", "theme_name", name="uq_theme_fav"),
+    )
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    user_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    theme_name: Mapped[str] = mapped_column(String(200), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
 
 
 class CompanyStockPool(Base):

@@ -29,7 +29,7 @@ from app.schemas.stock import (
 from datetime import datetime, timezone
 from fastapi.responses import HTMLResponse
 from sqlalchemy import select
-from app.models.stock import StockTheme
+from app.models.stock import StockTheme, ThemeFavorite
 from app.models.stock_metrics import ThemeDailySnapshot, ThemeMember
 from app.services import (
     stock_service, theme_scoring, weight_calibration, settings_store,
@@ -220,6 +220,43 @@ async def get_theme_report(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="테마를 찾을 수 없습니다.")
     data = await theme_flow.build_report(db, current_user.id, theme, period)
     return ThemeReportResponse(**data)
+
+
+@router.get("/themes/favorites", summary="내 즐겨찾기 테마 목록")
+async def list_favorites(
+    current_user: CurrentUser,
+    db: Annotated[AsyncSession, Depends(get_db)],
+) -> list[str]:
+    """현재 사용자가 즐겨찾기한 theme_name 목록."""
+    rows = (await db.execute(
+        select(ThemeFavorite.theme_name).where(ThemeFavorite.user_id == current_user.id)
+    )).scalars().all()
+    return list(rows)
+
+
+@router.post("/themes/{theme_id}/favorite", summary="즐겨찾기 토글")
+async def toggle_favorite(
+    theme_id: str,
+    current_user: CurrentUser,
+    db: Annotated[AsyncSession, Depends(get_db)],
+) -> dict:
+    """테마 즐겨찾기 추가/해제 토글. 반환: {favorited: bool}."""
+    theme = await db.get(StockTheme, theme_id)
+    if not theme:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="테마를 찾을 수 없습니다.")
+    existing = (await db.execute(
+        select(ThemeFavorite).where(
+            ThemeFavorite.user_id == current_user.id,
+            ThemeFavorite.theme_name == theme.theme_name,
+        )
+    )).scalar_one_or_none()
+    if existing:
+        await db.delete(existing)
+        await db.commit()
+        return {"favorited": False}
+    db.add(ThemeFavorite(user_id=current_user.id, theme_name=theme.theme_name))
+    await db.commit()
+    return {"favorited": True}
 
 
 # ---------------------------------------------------------------------------

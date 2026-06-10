@@ -48,6 +48,7 @@ const PHASE_META: Record<string, { label: string; color: string; bg: string }> =
 
 const FILTERS: Array<{ key: string; label: string }> = [
   { key: 'active', label: '추천 🔥✨📈' },
+  { key: 'fav', label: '♡ 즐겨찾기' },
   { key: 'surge', label: '🔥 급등' },
   { key: 'emerging', label: '✨ 신규' },
   { key: 'hot', label: '📈 고관심' },
@@ -137,10 +138,34 @@ export function ThemeList({ basket, onAddToBasket, onRemoveFromBasket }: ThemeLi
   const [phaseFilter, setPhaseFilter] = useState('active');
   const [analyses, setAnalyses] = useState<Record<string | number, ThemeAnalysis>>({});
   const [reportTheme, setReportTheme] = useState<StockTheme | null>(null);
+  const [favorites, setFavorites] = useState<Set<string>>(new Set());
 
   useEffect(() => {
     fetchThemes();
+    fetchFavorites();
   }, []);
+
+  async function fetchFavorites() {
+    try {
+      const res = await fetch(`${API_URL}/api/v1/stocks/themes/favorites`, { headers: { ...authLib.getAuthHeader() } });
+      if (res.ok) setFavorites(new Set(await res.json()));
+    } catch { /* silent */ }
+  }
+
+  async function toggleFavorite(theme: StockTheme) {
+    // 낙관적 업데이트
+    setFavorites((prev) => {
+      const next = new Set(prev);
+      if (next.has(theme.theme_name)) next.delete(theme.theme_name);
+      else next.add(theme.theme_name);
+      return next;
+    });
+    try {
+      await fetch(`${API_URL}/api/v1/stocks/themes/${theme.id}/favorite`, { method: 'POST', headers: { ...authLib.getAuthHeader() } });
+    } catch {
+      fetchFavorites(); // 실패 시 동기화
+    }
+  }
 
   async function fetchThemes() {
     setLoading(true);
@@ -253,6 +278,7 @@ export function ThemeList({ basket, onAddToBasket, onRemoveFromBasket }: ThemeLi
     .filter((t) => {
       const ph = t.attention_phase;
       if (phaseFilter === 'all') return true;
+      if (phaseFilter === 'fav') return favorites.has(t.theme_name);
       if (phaseFilter === 'active') return ph === 'surge' || ph === 'emerging' || ph === 'hot';
       return ph === phaseFilter;
     })
@@ -334,6 +360,13 @@ export function ThemeList({ basket, onAddToBasket, onRemoveFromBasket }: ThemeLi
 
               <div style={{ flex: 1, minWidth: 0 }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4, flexWrap: 'wrap' }}>
+                  <button
+                    onClick={() => toggleFavorite(theme)}
+                    title={favorites.has(theme.theme_name) ? '즐겨찾기 해제' : '즐겨찾기'}
+                    style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '1rem', lineHeight: 1, padding: 0, color: favorites.has(theme.theme_name) ? '#DC2626' : 'var(--text-muted)' }}
+                  >
+                    {favorites.has(theme.theme_name) ? '♥' : '♡'}
+                  </button>
                   <span style={{ fontSize: '0.9375rem', fontWeight: 700, color: 'var(--text-primary)' }}>{theme.theme_name}</span>
                   {pm && <span style={{ padding: '1px 8px', borderRadius: 999, fontSize: '0.625rem', fontWeight: 700, color: pm.color, backgroundColor: pm.bg }}>{pm.label}</span>}
                   {chg != null && <span style={{ fontSize: '0.8rem', fontWeight: 700, color: chg >= 0 ? '#DC2626' : '#2563EB' }}>{chg >= 0 ? '+' : ''}{chg}%</span>}
