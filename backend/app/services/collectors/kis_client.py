@@ -240,6 +240,37 @@ class KISClient:
             recent.append({"date": r.get("stck_bsop_date"), "foreign": f, "institution": inst})
         return {"foreign_net": f_sum, "institution_net": i_sum, "recent": recent}
 
+    async def get_investor_flows(self, code: str) -> list[dict]:
+        """투자자별 순매수 '금액'(원) 일별 — 외국인/기관/개인. 보고서 수급 섹션용.
+
+        반환: [{date, foreign, institution, individual}] (금액, 원). 최근→과거 순.
+        """
+        await asyncio.sleep(_CALL_INTERVAL)
+        async with httpx.AsyncClient(timeout=10) as client:
+            res = await client.get(
+                f"{_BASE}/uapi/domestic-stock/v1/quotations/inquire-investor",
+                headers=await self._headers("FHKST01010900"),
+                params={"FID_COND_MRKT_DIV_CODE": "J", "FID_INPUT_ISCD": code},
+            )
+        if res.status_code != 200:
+            return []
+
+        def _i(v):
+            try:
+                return int(float(v))
+            except (TypeError, ValueError):
+                return 0
+
+        out = []
+        for r in (res.json().get("output") or [])[:20]:
+            out.append({
+                "date": r.get("stck_bsop_date"),
+                "foreign": _i(r.get("frgn_ntby_tr_pbmn")),       # 외국인 순매수 금액(원)
+                "institution": _i(r.get("orgn_ntby_tr_pbmn")),   # 기관
+                "individual": _i(r.get("prsn_ntby_tr_pbmn")),    # 개인
+            })
+        return out
+
     # ------------------------------------------------------------- financials
     async def get_financial_ratio(self, code: str) -> dict:
         """재무비율(ROE 등). 최근 결산 기준. 실패/없음 시 빈 dict."""

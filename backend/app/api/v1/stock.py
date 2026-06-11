@@ -213,12 +213,13 @@ async def get_theme_report(
     current_user: CurrentUser,
     db: Annotated[AsyncSession, Depends(get_db)],
     period: str = Query("3m", description="1w/1m/3m/6m/1y"),
+    refresh: bool = Query(False, description="캐시 무시하고 재생성"),
 ) -> ThemeReportResponse:
-    """보고서 클릭 — 그 테마 멤버 과거시세로 기간별 지수 재구성 + 뉴스 + 판단(쉽게 풀어씀)."""
+    """보고서 — 다기간 흐름·투자자수급·기여도·5축·뉴스 수집 후 LLM이 9섹션 종합. 일자별 캐시."""
     theme = await db.get(StockTheme, theme_id)
     if not theme:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="테마를 찾을 수 없습니다.")
-    data = await theme_flow.build_report(db, current_user.id, theme, period)
+    data = await theme_flow.build_report(db, current_user.id, theme, period, refresh=refresh)
     return ThemeReportResponse(**data)
 
 

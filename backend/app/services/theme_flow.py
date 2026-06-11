@@ -156,90 +156,200 @@ _PHASE_CONCLUSION = {
 }
 
 
-async def build_report(db: AsyncSession, user_id: str, theme: StockTheme, period: str = "3m") -> dict:
-    """보고서용 깊은 분석 — 멤버 과거시세로 기간별 테마 지수 재구성 + 뉴스. 그 테마만 조회."""
+def _win_return(closes: list[float], w: int) -> Optional[float]:
+    if len(closes) < 2:
+        return None
+    seg = closes[-(w + 1):] if len(closes) > w else closes
+    if len(seg) < 2 or not seg[0]:
+        return None
+    return round((seg[-1] - seg[0]) / seg[0] * 100, 2)
+
+
+async def build_report(db: AsyncSession, user_id: str, theme: StockTheme, period: str = "3m", refresh: bool = False) -> dict:
+    """테마 보고서 — 다기간 흐름·투자자 수급·기여도·5축·뉴스 수집 후 LLM(Gemini)이 9섹션 종합.
+
+    같은 날·테마·기간이면 캐시 반환(토큰 절약). refresh=True면 재생성.
+    """
     from app.services.collectors.kis_client import KISClient
+    from app.models.stock_metrics import ThemeReportCache
+    from app.services import ai_report
 
     period = period if period in _PERIOD_DAYS else "3m"
     days = _PERIOD_DAYS[period]
+    basis = theme.basis_date or date.today()
 
-    # 소속 종목
+    # 캐시
+    if not refresh:
+        cached = (await db.execute(
+            select(ThemeReportCache).where(
+                ThemeReportCache.theme_name == theme.theme_name,
+                ThemeReportCache.period == period,
+                ThemeReportCache.basis_date == basis,
+            )
+        )).scalar_one_or_none()
+        if cached:
+            return cached.payload
+
     members = (await db.execute(
         select(ThemeMember.code, ThemeMember.name).where(ThemeMember.theme_name == theme.theme_name).limit(8)
     )).all()
+    name_by_code = {c: n for c, n in members}
     codes = [c for c, _ in members]
 
-    index_chart: list[dict] = []
-    member_returns: dict[str, float] = {}
+    # --- 멤버 1년 시세 1회씩 → 다기간 수익률 + 지수 + 기여도 ---
+    member_closes: dict[str, list[float]] = {}
+    member_dates: dict[str, list[str]] = {}
     creds = await get_user_key(db, user_id, "kis")
     if creds and codes:
-        try:
-            client = KISClient(*creds)
-            series = []  # (dates, cumret[])
-            for code in codes[:6]:
+        client = KISClient(*creds)
+        for code in codes[:6]:
+            for attempt in range(2):  # 1회 재시도(레이트리밋 대비)
                 try:
-                    ohlcv = await client.get_daily_ohlcv(code, min_rows=days + 5)
+                    ohlcv = await client.get_daily_ohlcv(code, min_rows=260)
+                    closes = [d["close"] for d in ohlcv]
+                    if len(closes) >= 2:
+                        member_closes[code] = closes
+                        member_dates[code] = [d["date"] for d in ohlcv]
+                    break
                 except Exception:
                     continue
-                closes = [d["close"] for d in ohlcv][-(days + 1):]
-                dts = [d["date"] for d in ohlcv][-(days + 1):]
-                if len(closes) < 2 or not closes[0]:
-                    continue
-                base = closes[0]
-                cum = [round((c - base) / base * 100, 2) for c in closes]
-                series.append((dts, cum))
-                member_returns[code] = cum[-1]
-            if series:
-                minlen = min(len(s[1]) for s in series)
-                dts = series[0][0][-minlen:]
-                for i in range(minlen):
-                    vals = [s[1][len(s[1]) - minlen + i] for s in series]
-                    index_chart.append({"date": dts[i], "value": round(mean(vals), 2)})
-        except Exception as e:
-            logger.info("테마 지수 구성 실패(무시) %s: %s", theme.theme_name, e)
 
-    period_return = index_chart[-1]["value"] if index_chart else None
+    # 다기간 수익률(테마 평균)
+    period_returns: dict[str, Optional[float]] = {}
+    for pk, pdays in _PERIOD_DAYS.items():
+        rets = [r for code in member_closes if (r := _win_return(member_closes[code], pdays)) is not None]
+        period_returns[pk] = round(mean(rets), 2) if rets else None
 
-    # 뉴스
+    # 선택 기간 지수 차트 + 기여도
+    index_chart: list[dict] = []
+    contributions: list[dict] = []
+    series = []
+    for code, closes in member_closes.items():
+        seg = closes[-(days + 1):] if len(closes) > days else closes
+        dseg = member_dates[code][-(days + 1):] if len(member_dates[code]) > days else member_dates[code]
+        if len(seg) < 2 or not seg[0]:
+            continue
+        base = seg[0]
+        cum = [round((c - base) / base * 100, 2) for c in seg]
+        series.append((dseg, cum))
+        contributions.append({"code": code, "name": name_by_code.get(code), "return_pct": cum[-1]})
+    if series:
+        minlen = min(len(s[1]) for s in series)
+        dts = series[0][0][-minlen:]
+        for i in range(minlen):
+            vals = [s[1][len(s[1]) - minlen + i] for s in series]
+            index_chart.append({"date": dts[i], "value": round(mean(vals), 2)})
+    contributions.sort(key=lambda x: (x["return_pct"] is None, -(x["return_pct"] or 0)))
+
+    # --- 투자자별 수급(외국인/기관/개인) 금액 5일·20일 (억원) ---
+    investors = {"d5": {"foreign": 0.0, "institution": 0.0, "individual": 0.0},
+                 "d20": {"foreign": 0.0, "institution": 0.0, "individual": 0.0}, "sample": 0}
+    if creds and codes:
+        client = KISClient(*creds)
+        for code in codes[:6]:
+            try:
+                flows = await client.get_investor_flows(code)
+            except Exception:
+                flows = []
+            if not flows:
+                continue
+            investors["sample"] += 1
+            for n, key in ((5, "d5"), (20, "d20")):
+                for f in flows[:n]:
+                    investors[key]["foreign"] += (f.get("foreign") or 0) / 1e8
+                    investors[key]["institution"] += (f.get("institution") or 0) / 1e8
+                    investors[key]["individual"] += (f.get("individual") or 0) / 1e8
+    for k in ("d5", "d20"):
+        for inv in ("foreign", "institution", "individual"):
+            investors[k][inv] = round(investors[k][inv], 1)
+
+    # --- 5축 + 증감 ---
+    sd = theme.score_detail if isinstance(theme.score_detail, dict) else {}
+    axes = sd.get("axes")
+    prev_axes = sd.get("prev_axes")
+    axes_delta = None
+    if axes and prev_axes:
+        axes_delta = {k: round(axes.get(k, 0) - prev_axes.get(k, 0), 1) for k in axes}
+
+    # --- 뉴스 ---
     news_items: list[dict] = []
     news_count = 0
     ncreds = await get_user_key(db, user_id, "naver_search")
     if ncreds:
-        try:
-            nc = NaverNewsClient(*ncreds)
-            news_items = await nc.search(theme.theme_name, display=5)
-            news_count = await nc.count(theme.theme_name)
-        except Exception as e:
-            logger.info("테마 뉴스 조회 실패(무시): %s", e)
+        nc = NaverNewsClient(*ncreds)
+        for q in (theme.theme_name, theme.theme_name.split("(")[0].split("/")[0].strip()):
+            try:
+                news_items = await nc.search(q, display=5)
+                news_count = await nc.count(q)
+            except Exception:
+                continue
+            if news_items:
+                break
 
-    phase = theme.attention_phase or QUIET
-    sd = theme.score_detail or {}
-    axes = sd.get("axes") if isinstance(sd, dict) else None
-    score_reason = (
-        f"관심점수 {theme.interest_score}점 — 가격추세(오늘 {theme.change_rate:+.1f}%), "
-        f"상승종목 {theme.up_count or 0}/{(theme.up_count or 0) + (theme.down_count or 0)}"
-        + (f", 뉴스 {news_count}건" if news_count else "")
-        + (f". 5축: 모멘텀 {axes['momentum']:.0f}·수급 {axes['supply']:.0f}·실적 {axes['fundamentals']:.0f}·관심 {axes['attention']:.0f}·밸류 {axes['valuation']:.0f}" if axes else "")
-    )
+    metrics = {
+        "period_returns": period_returns,
+        "index_chart": index_chart,
+        "investors": investors,
+        "contributions": contributions,
+        "axes": axes,
+        "prev_axes": prev_axes,
+        "axes_delta": axes_delta,
+        "news_count": news_count,
+        "news": news_items,
+        "sample_size": len(series),
+        "up_count": theme.up_count,
+        "down_count": theme.down_count,
+    }
 
-    return {
+    # --- LLM 9섹션 생성 ---
+    ai_input = {
+        "테마명": theme.theme_name,
+        "국면": _PHASE_LABEL.get(theme.attention_phase or QUIET),
+        "관심점수": theme.interest_score,
+        "오늘등락률(%)": theme.change_rate,
+        "상승종목수": theme.up_count, "하락종목수": theme.down_count,
+        "기간수익률(%)": period_returns,
+        "선택기간": period,
+        "투자자순매수(억원)": {"최근5일": investors["d5"], "최근20일": investors["d20"], "표본종목수": investors["sample"]},
+        "종목기여도(기간수익률%)": [{"종목": c["name"], "수익률": c["return_pct"]} for c in contributions],
+        "5축점수": axes, "5축_어제대비증감": axes_delta,
+        "뉴스건수": news_count,
+        "대표기사제목": [n.get("title", "") for n in news_items],
+    }
+    sections = await ai_report.generate_sections(db, ai_input)
+
+    payload = {
         "theme_id": theme.id,
         "theme_name": theme.theme_name,
-        "attention_phase": phase,
+        "attention_phase": theme.attention_phase or QUIET,
         "interest_score": theme.interest_score,
         "change_rate": theme.change_rate,
-        "basis_date": str(theme.basis_date) if theme.basis_date else None,
+        "basis_date": str(basis),
         "period": period,
-        "index_chart": index_chart,
-        "period_return": period_return,
-        "score_reason": score_reason,
-        "badge_reason": _PHASE_BADGE_REASON.get(phase, ""),
-        "members": [{"code": c, "name": n, "return_pct": member_returns.get(c)} for c, n in members],
-        "news": news_items,
-        "news_count": news_count,
-        "conclusion": _PHASE_CONCLUSION.get(phase, ""),
-        "data_source": "live" if index_chart else "mock",
+        "metrics": metrics,
+        "sections": sections,
+        "data_source": "live" if (index_chart or investors["sample"]) else ("partial" if sections else "mock"),
     }
+
+    # 캐시 저장(있으면 갱신)
+    try:
+        existing = (await db.execute(
+            select(ThemeReportCache).where(
+                ThemeReportCache.theme_name == theme.theme_name,
+                ThemeReportCache.period == period,
+                ThemeReportCache.basis_date == basis,
+            )
+        )).scalar_one_or_none()
+        if existing:
+            existing.payload = payload
+        else:
+            db.add(ThemeReportCache(theme_name=theme.theme_name, period=period, basis_date=basis, payload=payload))
+        await db.commit()
+    except Exception as e:
+        logger.info("보고서 캐시 저장 실패(무시): %s", e)
+        await db.rollback()
+
+    return payload
 
 
 async def analyze_flow(db: AsyncSession) -> dict:

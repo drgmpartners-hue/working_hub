@@ -139,9 +139,13 @@ async def score_all_themes(db: AsyncSession, user_id: str) -> dict:
             logger.info("테마 점수 실패(무시) %s: %s", theme.theme_name, e)
             continue
         if agg:
+            # 어제 5축을 prev_axes로 보존 → 보고서에서 증감(늘었다/줄었다) 해석
+            old = theme.score_detail
+            if isinstance(old, dict) and old.get("axes"):
+                agg["prev_axes"] = old["axes"]
             theme.ai_score = agg["score"]
             theme.phase = agg["phase"]
-            theme.score_detail = agg  # 5축 결과 저장 → 클릭 시 재계산 없이 즉시 표시
+            theme.score_detail = agg
             scored += 1
         else:
             # 미계산(배치 범위 밖) → placeholder 점수 제거해 목록 하위로 (실데이터 테마가 위로)

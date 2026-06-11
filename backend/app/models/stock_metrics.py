@@ -7,6 +7,7 @@ from datetime import datetime, date
 from typing import Optional
 
 from sqlalchemy import String, DateTime, Date, Float, BigInteger, Boolean, Integer, UniqueConstraint, Index
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy.sql import func
 
@@ -81,6 +82,21 @@ class ThemeDailySnapshot(Base):
     up_count: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)      # 상승 종목 수
     down_count: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)    # 하락 종목 수
     news_count: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)    # 최근 뉴스 건수(관심도)
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+
+
+class ThemeReportCache(Base):
+    """테마 보고서(LLM 생성) 일자별 캐시 — 같은 날·테마·기간이면 재생성 안 함."""
+    __tablename__ = "theme_report_cache"
+    __table_args__ = (
+        UniqueConstraint("theme_name", "period", "basis_date", name="uq_theme_report"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    theme_name: Mapped[str] = mapped_column(String(200), nullable=False, index=True)
+    period: Mapped[str] = mapped_column(String(4), nullable=False)
+    basis_date: Mapped[date] = mapped_column(Date, nullable=False)
+    payload: Mapped[dict] = mapped_column(JSONB, nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
 
 
