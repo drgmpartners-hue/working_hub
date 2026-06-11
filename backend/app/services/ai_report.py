@@ -14,6 +14,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.models.ai_setting import AIAPISetting
 from app.core.security import decrypt_api_key
 from app.services.ai_retirement_guide import call_gemini_api, call_claude_api
+from app.services.collectors.key_access import get_user_key
 
 logger = logging.getLogger(__name__)
 
@@ -48,15 +49,25 @@ _SYSTEM = """당신은 한국 주식시장 테마를 분석하는 증권사 리�
 }"""
 
 
-async def _call_active_ai(db: AsyncSession, prompt: str) -> str:
+async def _call_active_ai(db: AsyncSession, user_id: str, prompt: str) -> str:
+    """AI 키 우선순위: user_api_keys(gemini/claude) → ai_api_settings(레거시 은퇴설계용)."""
+    # 1) 주식 기능과 동일 소스(user_api_keys)에서 Gemini/Claude 키
+    gem = await get_user_key(db, user_id, "gemini")
+    if gem and gem[0]:
+        return await call_gemini_api(api_key=gem[0], prompt=prompt)
+    for prov in ("anthropic", "claude"):
+        cl = await get_user_key(db, user_id, prov)
+        if cl and cl[0]:
+            return await call_claude_api(api_key=cl[0], prompt=prompt)
+
+    # 2) 레거시 폴백: ai_api_settings(글로벌)
     setting = (await db.execute(
         select(AIAPISetting).where(AIAPISetting.is_active == True)  # noqa: E712
     )).scalar_one_or_none()
     if setting is None:
-        raise RuntimeError("활성 AI 설정 없음")
+        raise RuntimeError("AI 키 없음 (user_api_keys의 gemini/claude 또는 ai_api_settings 필요)")
     api_key = decrypt_api_key(setting.api_key_encrypted)
-    provider = (setting.provider or "").lower()
-    if provider in ("anthropic", "claude"):
+    if (setting.provider or "").lower() in ("anthropic", "claude"):
         return await call_claude_api(api_key=api_key, prompt=prompt)
     return await call_gemini_api(api_key=api_key, prompt=prompt)
 
@@ -72,11 +83,11 @@ def _strip_json(text: str) -> str:
     return t[s:e + 1] if s >= 0 and e > s else t
 
 
-async def generate_sections(db: AsyncSession, data: dict) -> dict:
+async def generate_sections(db: AsyncSession, user_id: str, data: dict) -> dict:
     """정량 데이터 → 9섹션 내러티브(dict). 실패 시 빈 dict(폴백은 호출측에서)."""
     prompt = f"{_SYSTEM}\n\n[정량 데이터(JSON)]\n{json.dumps(data, ensure_ascii=False)}"
     try:
-        raw = await _call_active_ai(db, prompt)
+        raw = await _call_active_ai(db, user_id, prompt)
     except Exception as e:
         logger.warning("AI 보고서 생성 실패: %s", e)
         return {}
@@ -85,4 +96,26 @@ async def generate_sections(db: AsyncSession, data: dict) -> dict:
     except Exception as e:
         logger.warning("AI 응답 JSON 파싱 실패: %s", e)
         return {"summary": raw[:1500]}  # 최소한 원문이라도
-    return {k: parsed.get(k, "") for k in _SECTION_KEYS}
+    return {k: _coerce(parsed.get(k, "")) for k in _SECTION_KEYS}
+
+
+_AXIS_KO = {"momentum": "모멘텀", "supply": "수급", "fundamentals": "실적", "attention": "관심도", "valuation": "밸류"}
+
+
+def _coerce(v) -> str:
+    """섹션 값이 dict/list로 와도 읽기 쉬운 문자열로 변환(프론트 깨짐 방지)."""
+    if isinstance(v, str):
+        return v
+    if isinstance(v, dict):
+        lines = []
+        for k, sub in v.items():
+            label = _AXIS_KO.get(k, k)
+            if isinstance(sub, dict):
+                body = " ".join(str(x) for x in sub.values() if x)
+                lines.append(f"■ {label}: {body}")
+            else:
+                lines.append(f"■ {label}: {sub}")
+        return "\n".join(lines)
+    if isinstance(v, list):
+        return "\n".join(str(x) for x in v)
+    return str(v) if v is not None else ""

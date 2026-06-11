@@ -337,7 +337,7 @@ async def build_report(db: AsyncSession, user_id: str, theme: StockTheme, period
         "뉴스건수": news_count,
         "대표기사제목": [n.get("title", "") for n in news_items],
     }
-    sections = await ai_report.generate_sections(db, ai_input)
+    sections = await ai_report.generate_sections(db, user_id, ai_input)
     if not sections.get("summary"):
         sections = _basic_sections(theme, metrics, period)  # AI 미설정/실패 시 안전망
 
