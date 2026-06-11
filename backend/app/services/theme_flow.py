@@ -156,6 +156,26 @@ _PHASE_CONCLUSION = {
 }
 
 
+def _basic_sections(theme: StockTheme, metrics: dict, period: str) -> dict:
+    """AI 미설정/실패 시 안전망 — 수집 데이터로 만든 기본 서술(AI 설정 시 더 풍부해짐)."""
+    phase = theme.attention_phase or QUIET
+    pr = metrics.get("period_returns") or {}
+    inv5 = (metrics.get("investors") or {}).get("d5") or {}
+    note = "※ AI(Gemini 등) API가 설정되지 않아 기본 요약을 표시합니다. [설정 > AI]에서 키 등록 시 상세 분석이 생성됩니다."
+    return {
+        "summary": f"'{theme.theme_name}'은 현재 {_PHASE_LABEL.get(phase)} 국면(관심점수 {theme.interest_score}). "
+                   f"기간수익률 1주 {pr.get('1w')}% · 1개월 {pr.get('1m')}% · 3개월 {pr.get('3m')}%. {note}",
+        "flow": f"기간별 수익률 — 1주 {pr.get('1w')}%, 1개월 {pr.get('1m')}%, 3개월 {pr.get('3m')}%, 6개월 {pr.get('6m')}%, 1년 {pr.get('1y')}%.",
+        "phase": _PHASE_BADGE_REASON.get(phase, ""),
+        "leaders": "기여도 상위: " + ", ".join(f"{c['name']} {c['return_pct']}%" for c in (metrics.get("contributions") or [])[:5] if c.get("return_pct") is not None),
+        "supply": f"최근 5일 순매수(억): 외국인 {inv5.get('foreign')}, 기관 {inv5.get('institution')}, 개인 {inv5.get('individual')}.",
+        "axes_interp": "5축 점수는 그래프 참고. " + note,
+        "catalyst": f"관련 기사 {metrics.get('news_count', 0):,}건.",
+        "risk": "추세·변동성은 위 흐름 차트와 수급을 함께 확인하세요.",
+        "verdict": _PHASE_CONCLUSION.get(phase, "") + " " + note,
+    }
+
+
 def _win_return(closes: list[float], w: int) -> Optional[float]:
     if len(closes) < 2:
         return None
@@ -254,11 +274,12 @@ async def build_report(db: AsyncSession, user_id: str, theme: StockTheme, period
             if not flows:
                 continue
             investors["sample"] += 1
+            # KIS _tr_pbmn 단위는 백만원 → 억원 = ÷100
             for n, key in ((5, "d5"), (20, "d20")):
                 for f in flows[:n]:
-                    investors[key]["foreign"] += (f.get("foreign") or 0) / 1e8
-                    investors[key]["institution"] += (f.get("institution") or 0) / 1e8
-                    investors[key]["individual"] += (f.get("individual") or 0) / 1e8
+                    investors[key]["foreign"] += (f.get("foreign") or 0) / 100
+                    investors[key]["institution"] += (f.get("institution") or 0) / 100
+                    investors[key]["individual"] += (f.get("individual") or 0) / 100
     for k in ("d5", "d20"):
         for inv in ("foreign", "institution", "individual"):
             investors[k][inv] = round(investors[k][inv], 1)
@@ -317,6 +338,8 @@ async def build_report(db: AsyncSession, user_id: str, theme: StockTheme, period
         "대표기사제목": [n.get("title", "") for n in news_items],
     }
     sections = await ai_report.generate_sections(db, ai_input)
+    if not sections.get("summary"):
+        sections = _basic_sections(theme, metrics, period)  # AI 미설정/실패 시 안전망
 
     payload = {
         "theme_id": theme.id,
