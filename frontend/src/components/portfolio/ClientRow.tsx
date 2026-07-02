@@ -552,10 +552,10 @@ export function ClientRow({ index, clients, data, onChange }: ClientRowProps) {
               <div ref={pasteZoneRef} tabIndex={0} onPaste={handlePaste}
                 onClick={() => pasteZoneRef.current?.focus()}
                 style={{ border: '2px dashed var(--border-strong)', borderRadius: 8, padding: '16px 12px', textAlign: 'center', cursor: 'default', backgroundColor: 'var(--bg-surface)', transition: 'border-color 0.15s, background-color 0.15s', userSelect: 'none' }}
-                onMouseEnter={(e) => { (e.currentTarget as HTMLDivElement).style.borderColor = '#1E3A5F'; (e.currentTarget as HTMLDivElement).style.backgroundColor = '#EEF2F7'; }}
-                onMouseLeave={(e) => { (e.currentTarget as HTMLDivElement).style.borderColor = '#CBD5E1'; (e.currentTarget as HTMLDivElement).style.backgroundColor = '#FAFBFC'; }}
-                onFocus={(e) => { (e.currentTarget as HTMLDivElement).style.borderColor = '#1E3A5F'; }}
-                onBlur={(e) => { (e.currentTarget as HTMLDivElement).style.borderColor = '#CBD5E1'; }}>
+                onMouseEnter={(e) => { (e.currentTarget as HTMLDivElement).style.borderColor = '#2E8B8B'; (e.currentTarget as HTMLDivElement).style.backgroundColor = 'rgba(46,139,139,0.08)'; }}
+                onMouseLeave={(e) => { (e.currentTarget as HTMLDivElement).style.borderColor = 'var(--border-strong)'; (e.currentTarget as HTMLDivElement).style.backgroundColor = 'var(--bg-surface)'; }}
+                onFocus={(e) => { (e.currentTarget as HTMLDivElement).style.borderColor = '#2E8B8B'; }}
+                onBlur={(e) => { (e.currentTarget as HTMLDivElement).style.borderColor = 'var(--border-strong)'; }}>
                 <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#9CA3AF" strokeWidth="1.5" style={{ margin: '0 auto 6px', display: 'block' }}>
                   <rect x="3" y="3" width="18" height="18" rx="2" ry="2" /><circle cx="8.5" cy="8.5" r="1.5" /><polyline points="21 15 16 10 5 21" />
                 </svg>
