@@ -2886,20 +2886,22 @@ function AddWrapProductModal({ onClose, onSaved }: { onClose: () => void; onSave
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
 
-  // 투자상품 관리(product-master)에서 상품 검색·선택
-  const [pmList, setPmList] = useState<Array<{ id: string; product_name: string; product_code?: string; product_type?: string; risk_level?: string; region?: string }>>([]);
+  // 투자상품 관리(retirement/wrap-accounts)에서 상품 검색·선택
+  const [pmList, setPmList] = useState<Array<{ id: string; product_name: string; category?: string | null; institution?: string | null }>>([]);
+  const [categoryOptions, setCategoryOptions] = useState<string[]>([]);
   const [pmOpen, setPmOpen] = useState(false);
   useEffect(() => {
     (async () => {
       try {
-        const res = await fetch(`${API_URL}/api/v1/product-master`, { headers: authLib.getAuthHeader() });
-        if (res.ok) { const d = await res.json(); setPmList(Array.isArray(d) ? d : d.items ?? []); }
+        const [pRes, cRes] = await Promise.all([
+          fetch(`${API_URL}/api/v1/retirement/wrap-accounts`, { headers: authLib.getAuthHeader() }),
+          fetch(`${API_URL}/api/v1/retirement/wrap-accounts/options?field_name=category`, { headers: authLib.getAuthHeader() }),
+        ]);
+        if (pRes.ok) { const d = await pRes.json(); setPmList(Array.isArray(d) ? d : d.items ?? []); }
+        if (cRes.ok) { const o = await cRes.json(); setCategoryOptions((Array.isArray(o) ? o : []).map((x: { option_value: string }) => x.option_value).filter(Boolean)); }
       } catch { /* ignore */ }
     })();
   }, []);
-
-  // 카테고리 옵션 = 투자상품 관리의 상품유형 목록(자동)
-  const categoryOptions = Array.from(new Set(pmList.map(p => p.product_type).filter(Boolean))) as string[];
 
   const handleSave = async () => {
     if (!productName.trim()) { setError('상품명을 입력해주세요.'); return; }
@@ -2922,7 +2924,9 @@ function AddWrapProductModal({ onClose, onSaved }: { onClose: () => void; onSave
   const lS: React.CSSProperties = { fontSize: 13, fontWeight: 600, color: 'var(--text-secondary)', display: 'block', marginBottom: 4 };
 
   const q = productName.trim().toLowerCase();
-  const matches = (q ? pmList.filter(p => p.product_name.toLowerCase().includes(q) || (p.product_code ?? '').toLowerCase().includes(q)) : pmList).slice(0, 40);
+  // 상품명 중복 제거(같은 이름 여러 건 방지)
+  const dedup = Array.from(new Map(pmList.filter(p => p.product_name).map(p => [p.product_name, p])).values());
+  const matches = (q ? dedup.filter(p => p.product_name.toLowerCase().includes(q)) : dedup).slice(0, 40);
 
   return (
     <div style={mS} onClick={onClose}>
@@ -2940,15 +2944,15 @@ function AddWrapProductModal({ onClose, onSaved }: { onClose: () => void; onSave
               autoComplete="off"
               placeholder="상품명 검색 또는 직접 입력" />
             {pmOpen && matches.length > 0 && (
-              <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 200, marginTop: 4, backgroundColor: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 8, maxHeight: 240, overflowY: 'auto', boxShadow: '0 8px 24px rgba(0,0,0,0.3)' }}>
+              <div style={{ position: 'absolute', top: 'calc(100% - 1px)', left: 0, right: 0, zIndex: 200, backgroundColor: 'var(--bg-card)', border: '1px solid var(--border-strong)', borderTop: 'none', borderRadius: '0 0 8px 8px', maxHeight: 240, overflowY: 'auto' }}>
                 {matches.map(p => (
                   <button key={p.id} type="button"
-                    onMouseDown={() => { setProductName(p.product_name); if (p.product_type) setCategory(p.product_type); setPmOpen(false); }}
+                    onMouseDown={() => { setProductName(p.product_name); if (p.category) setCategory(p.category); setPmOpen(false); }}
                     style={{ width: '100%', textAlign: 'left', padding: '8px 12px', border: 'none', borderBottom: '1px solid var(--border)', background: 'transparent', cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}
                     onMouseEnter={e => (e.currentTarget.style.backgroundColor = 'var(--bg-card-2)')}
                     onMouseLeave={e => (e.currentTarget.style.backgroundColor = 'transparent')}>
                     <span style={{ fontSize: 13, color: 'var(--text-primary)', fontWeight: 500 }}>{p.product_name}</span>
-                    <span style={{ fontSize: 11, color: 'var(--text-muted)', flexShrink: 0 }}>{[p.product_type, p.product_code].filter(Boolean).join(' · ')}</span>
+                    <span style={{ fontSize: 11, color: 'var(--text-muted)', flexShrink: 0 }}>{[p.category, p.institution].filter(Boolean).join(' · ')}</span>
                   </button>
                 ))}
               </div>
