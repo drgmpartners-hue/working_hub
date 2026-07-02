@@ -2959,13 +2959,15 @@ function AddWrapProductModal({ onClose, onSaved }: { onClose: () => void; onSave
             )}
           </div>
 
-          {/* 카테고리 — 투자상품 관리 유형 자동/선택 + 직접입력 */}
+          {/* 카테고리 — 투자상품 관리 카테고리 드롭다운(상품 선택 시 자동) */}
           <div>
-            <label style={lS}>카테고리 <span style={{ fontWeight: 400, fontSize: 11, color: 'var(--text-muted)' }}>· 상품 선택 시 자동 · 직접 선택/입력 가능</span></label>
-            <input style={iS} value={category} onChange={e => setCategory(e.target.value)} list="wrap-category-options" placeholder="예: ETF, 펀드, 랩어카운트" />
-            <datalist id="wrap-category-options">
-              {categoryOptions.map(c => <option key={c} value={c} />)}
-            </datalist>
+            <label style={lS}>카테고리 <span style={{ fontWeight: 400, fontSize: 11, color: 'var(--text-muted)' }}>· 상품 선택 시 자동 · 목록에서 선택</span></label>
+            <select style={{ ...iS, cursor: 'pointer' }} value={category} onChange={e => setCategory(e.target.value)}>
+              <option value="">선택하세요</option>
+              {(category && !categoryOptions.includes(category) ? [category, ...categoryOptions] : categoryOptions).map(c => (
+                <option key={c} value={c}>{c}</option>
+              ))}
+            </select>
           </div>
 
           {error && <div style={{ fontSize: 12, color: 'var(--danger)' }}>{error}</div>}
