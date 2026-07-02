@@ -2880,27 +2880,13 @@ export function InvestmentFlowTab() {
 /*  Wrap 상품 추가 모달                                                  */
 /* ------------------------------------------------------------------ */
 
-const NOTION_PRODUCT_KEY = 'notion_product_config';
-function saveNotionProductConfig(dbId: string, dbTitle: string, mapping: Record<string, string>) {
-  try { localStorage.setItem(NOTION_PRODUCT_KEY, JSON.stringify({ dbId, dbTitle, mapping })); } catch { /* ignore */ }
-}
-function loadNotionProductConfig(): { dbId: string; dbTitle: string; mapping: Record<string, string> } | null {
-  try { const r = localStorage.getItem(NOTION_PRODUCT_KEY); return r ? JSON.parse(r) : null; } catch { return null; }
-}
-function clearNotionProductConfig() {
-  try { localStorage.removeItem(NOTION_PRODUCT_KEY); } catch { /* ignore */ }
-}
-
 function AddWrapProductModal({ onClose, onSaved }: { onClose: () => void; onSaved: () => void }) {
   const [productName, setProductName] = useState('');
-  const [company, setCompany] = useState('');
-  const [investmentTarget, setInvestmentTarget] = useState('');
-  const [targetReturn, setTargetReturn] = useState('');
-  const [description, setDescription] = useState('');
+  const [category, setCategory] = useState('');
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
 
-  // 투자상품 관리(product-master)에서 상품 검색 — 직접입력 대신 DB에서 선택
+  // 투자상품 관리(product-master)에서 상품 검색·선택
   const [pmList, setPmList] = useState<Array<{ id: string; product_name: string; product_code?: string; product_type?: string; risk_level?: string; region?: string }>>([]);
   const [pmOpen, setPmOpen] = useState(false);
   useEffect(() => {
@@ -2912,116 +2898,17 @@ function AddWrapProductModal({ onClose, onSaved }: { onClose: () => void; onSave
     })();
   }, []);
 
-  // Notion — 마운트 시 저장된 설정 자동 로드
-  const [nStep, setNStep] = useState<'idle' | 'selectDb' | 'mapping'>('idle');
-  const [nAutoLoaded, setNAutoLoaded] = useState(false);
-  const [nDbs, setNDbs] = useState<{ id: string; title: string; icon: string | null }[]>([]);
-  const [nRows, setNRows] = useState<{ id: string; properties: Record<string, string> }[]>([]);
-  const [nCols, setNCols] = useState<string[]>([]);
-  const [nMap, setNMap] = useState<Record<string, string>>({ product_name: '', company: '', target: '', return_rate: '', desc: '' });
-  const [nLoading, setNLoading] = useState(false);
-  const [nError, setNError] = useState<string | null>(null);
-  const [nDbSearch, setNDbSearch] = useState('');
-  const [nRowSearch, setNRowSearch] = useState('');
-  const [nSelectedDbId, setNSelectedDbId] = useState('');
-  const [nSelectedDbTitle, setNSelectedDbTitle] = useState('');
-
-  async function fetchDbList() {
-    setNLoading(true); setNError(null);
-    try {
-      const res = await fetch(`${API_URL}/api/v1/notion/databases`, { headers: authLib.getAuthHeader() });
-      if (!res.ok) { const d = await res.json().catch(() => ({})); throw new Error(d?.detail ?? '조회 실패'); }
-      setNDbs(await res.json()); setNStep('selectDb');
-    } catch (e: unknown) { setNError(e instanceof Error ? e.message : '오류'); }
-    finally { setNLoading(false); }
-  }
-
-  async function loadDbs() {
-    const saved = loadNotionProductConfig();
-    if (saved) {
-      setNSelectedDbId(saved.dbId);
-      setNSelectedDbTitle(saved.dbTitle);
-      setNMap(saved.mapping);
-      await loadRows(saved.dbId, saved.mapping);
-      return;
-    }
-    await fetchDbList();
-  }
-
-  async function loadRows(dbId: string, savedMapping?: Record<string, string>) {
-    setNLoading(true); setNError(null);
-    setNSelectedDbId(dbId);
-    try {
-      const [pR, rR] = await Promise.all([
-        fetch(`${API_URL}/api/v1/notion/databases/${dbId}/properties`, { headers: authLib.getAuthHeader() }),
-        fetch(`${API_URL}/api/v1/notion/databases/${dbId}/rows`, { headers: authLib.getAuthHeader() }),
-      ]);
-      if (!pR.ok || !rR.ok) throw new Error('데이터 조회 실패');
-      const props: { name: string }[] = await pR.json();
-      const rows: { id: string; properties: Record<string, string> }[] = await rR.json();
-      const cols = props.map(p => p.name);
-      setNCols(cols); setNRows(rows);
-      let finalMap: Record<string, string>;
-      if (savedMapping) {
-        finalMap = savedMapping;
-      } else {
-        const m: Record<string, string> = { product_name: '', company: '', target: '', return_rate: '', desc: '' };
-        for (const c of cols) {
-          const l = c.toLowerCase();
-          if (!m.product_name && (l.includes('상품') || l.includes('product') || l.includes('이름') || l.includes('name'))) m.product_name = c;
-          if (!m.company && (l.includes('기관') || l.includes('증권') || l.includes('company') || l.includes('거래'))) m.company = c;
-          if (!m.target && (l.includes('자산구분') || l.includes('target') || l.includes('대상'))) m.target = c;
-          if (!m.return_rate && (l.includes('수익률') || l.includes('return') || l.includes('목표'))) m.return_rate = c;
-          if (!m.desc && (l.includes('설명') || l.includes('desc') || l.includes('메모') || l.includes('비고'))) m.desc = c;
-        }
-        finalMap = m;
-      }
-      setNMap(finalMap); setNStep('mapping');
-    } catch (e: unknown) { setNError(e instanceof Error ? e.message : '오류'); }
-    finally { setNLoading(false); }
-  }
-
-  // 모달 마운트 시 저장된 설정 복원 (데이터 로드는 버튼 클릭 시)
-  useEffect(() => {
-    if (nAutoLoaded) return;
-    setNAutoLoaded(true);
-    const saved = loadNotionProductConfig();
-    if (saved) {
-      setNSelectedDbId(saved.dbId);
-      setNSelectedDbTitle(saved.dbTitle);
-      setNMap(saved.mapping);
-    }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  function applyRow(row: { properties: Record<string, string> }) {
-    if (nMap.product_name && row.properties[nMap.product_name]) setProductName(row.properties[nMap.product_name]);
-    if (nMap.company && row.properties[nMap.company]) setCompany(row.properties[nMap.company]);
-    if (nMap.target && row.properties[nMap.target]) setInvestmentTarget(row.properties[nMap.target]);
-    if (nMap.return_rate && row.properties[nMap.return_rate]) setTargetReturn(row.properties[nMap.return_rate]);
-    if (nMap.desc && row.properties[nMap.desc]) setDescription(row.properties[nMap.desc]);
-    saveNotionProductConfig(nSelectedDbId, nSelectedDbTitle, nMap);
-    // mapping 상태 유지 (목록에서 다른 상품도 바로 선택 가능)
-    setNRowSearch('');
-  }
-
-  function resetN() { setNStep('idle'); setNDbs([]); setNRows([]); setNCols([]); setNError(null); setNDbSearch(''); setNRowSearch(''); clearNotionProductConfig(); }
+  // 카테고리 옵션 = 투자상품 관리의 상품유형 목록(자동)
+  const categoryOptions = Array.from(new Set(pmList.map(p => p.product_type).filter(Boolean))) as string[];
 
   const handleSave = async () => {
     if (!productName.trim()) { setError('상품명을 입력해주세요.'); return; }
-    if (!company.trim()) { setError('거래기관을 입력해주세요.'); return; }
     setSaving(true); setError('');
     try {
       const res = await fetch(`${API_URL}/api/v1/retirement/wrap-accounts`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', ...authLib.getAuthHeader() },
-        body: JSON.stringify({
-          product_name: productName.trim(),
-          securities_company: company.trim(),
-          investment_target: investmentTarget.trim() || null,
-          target_return_rate: targetReturn ? parseFloat(targetReturn) : null,
-          description: description.trim() || null,
-        }),
+        body: JSON.stringify({ product_name: productName.trim(), category: category.trim() || null }),
       });
       if (!res.ok) throw new Error();
       onSaved();
@@ -3030,164 +2917,60 @@ function AddWrapProductModal({ onClose, onSaved }: { onClose: () => void; onSave
   };
 
   const mS: React.CSSProperties = { position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.4)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 100 };
-  const cS: React.CSSProperties = { backgroundColor: 'var(--bg-card)', borderRadius: 12, padding: 28, width: 480, boxShadow: '0 8px 24px rgba(0,0,0,0.15)' };
-  const iS: React.CSSProperties = { width: '100%', padding: '10px 12px', fontSize: 14, border: '1px solid var(--border-strong)', borderRadius: 8, outline: 'none', boxSizing: 'border-box' };
+  const cS: React.CSSProperties = { backgroundColor: 'var(--bg-card)', borderRadius: 12, padding: 28, width: 460, boxShadow: '0 8px 24px rgba(0,0,0,0.25)' };
+  const iS: React.CSSProperties = { width: '100%', padding: '10px 12px', fontSize: 14, border: '1px solid var(--border-strong)', borderRadius: 8, outline: 'none', boxSizing: 'border-box', backgroundColor: 'var(--bg-card)', color: 'var(--text-primary)' };
   const lS: React.CSSProperties = { fontSize: 13, fontWeight: 600, color: 'var(--text-secondary)', display: 'block', marginBottom: 4 };
+
+  const q = productName.trim().toLowerCase();
+  const matches = (q ? pmList.filter(p => p.product_name.toLowerCase().includes(q) || (p.product_code ?? '').toLowerCase().includes(q)) : pmList).slice(0, 40);
 
   return (
     <div style={mS} onClick={onClose}>
       <div style={cS} onClick={e => e.stopPropagation()}>
         <h3 style={{ margin: '0 0 20px', fontSize: '1.1rem', fontWeight: 700, color: 'var(--blue-400)' }}>Wrap 은퇴 상품 등록</h3>
 
-        {/* Notion 가져오기 */}
-        <div style={{ marginBottom: 14 }}>
-          {nStep === 'idle' && (
-            <button onClick={loadDbs} disabled={nLoading}
-              style={{ width: '100%', padding: '9px', borderRadius: 8, border: '1px dashed var(--border-strong)', background: 'var(--bg-surface)', color: 'var(--text-secondary)', fontSize: 13, fontWeight: 500, cursor: nLoading ? 'wait' : 'pointer', opacity: nLoading ? 0.6 : 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
-              {nLoading ? <><span className="notion-spinner" style={{ marginRight: 6 }} />Notion 연결 중...</> : nSelectedDbId ? <>📝 Notion 불러오기 ({nSelectedDbTitle})</> : <>📝 Notion에서 가져오기</>}
-            </button>
-          )}
-          {nError && (
-            <div style={{ marginTop: 6, padding: '6px 10px', borderRadius: 6, background: 'var(--danger-bg)', border: '1px solid rgba(239,68,68,0.35)', fontSize: 12, color: 'var(--danger)' }}>
-              {nError} <button onClick={resetN} style={{ marginLeft: 6, background: 'none', border: 'none', color: 'var(--danger)', textDecoration: 'underline', cursor: 'pointer', fontSize: 12 }}>닫기</button>
-            </div>
-          )}
-          {nStep === 'selectDb' && (
-            <div style={{ border: '1px solid var(--border)', borderRadius: 8, overflow: 'hidden' }}>
-              <div style={{ padding: '7px 10px', background: 'var(--bg-card-2)', fontSize: 12, fontWeight: 600, color: 'var(--blue-400)', display: 'flex', justifyContent: 'space-between' }}>
-                <span>데이터베이스 선택</span><button onClick={resetN} style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', fontSize: 12 }}>취소</button>
-              </div>
-              <div style={{ padding: '6px 8px', borderBottom: '1px solid var(--border)' }}>
-                <input type="text" placeholder="검색..." value={nDbSearch} onChange={e => setNDbSearch(e.target.value)} style={{ width: '100%', padding: '5px 8px', borderRadius: 6, border: '1px solid var(--border-strong)', fontSize: 12, backgroundColor: 'var(--bg-card)', color: 'var(--text-primary)' }} />
-              </div>
-              {nLoading ? (
-                <div style={{ padding: 20, textAlign: 'center', color: 'var(--text-muted)', fontSize: 13 }}>불러오는 중...</div>
-              ) : (
-                <div style={{ maxHeight: 180, overflowY: 'auto' }}>
-                  {nDbs.filter(d => !nDbSearch || d.title.toLowerCase().includes(nDbSearch.toLowerCase())).map(d => (
-                    <button key={d.id} onClick={() => { setNDbSearch(''); setNSelectedDbTitle(d.title); loadRows(d.id); }}
-                      style={{ width: '100%', padding: '9px 10px', border: 'none', borderBottom: '1px solid var(--border)', background: 'var(--bg-card)', textAlign: 'left', cursor: 'pointer', fontSize: 13, display: 'flex', alignItems: 'center', gap: 8 }}
-                      onMouseOver={e => (e.currentTarget.style.background = 'var(--bg-card-2)')} onMouseOut={e => (e.currentTarget.style.background = 'var(--bg-card)')}>
-                      <span>{d.icon ?? '📄'}</span><span style={{ fontWeight: 500 }}>{d.title}</span>
-                    </button>
-                  ))}
-                </div>
-              )}
-            </div>
-          )}
-          {nStep === 'mapping' && (
-            <div style={{ border: '1px solid var(--border)', borderRadius: 8, overflow: 'hidden' }}>
-              <div style={{ padding: '7px 10px', background: 'var(--bg-card-2)', fontSize: 12, fontWeight: 600, color: 'var(--blue-400)', display: 'flex', justifyContent: 'space-between' }}>
-                <span>필드 매핑 → 상품 선택{nSelectedDbTitle ? ` (${nSelectedDbTitle})` : ''}</span>
-                <div style={{ display: 'flex', gap: 8 }}>
-                  <button onClick={() => { clearNotionProductConfig(); setNRows([]); setNCols([]); setNRowSearch(''); fetchDbList(); }} style={{ background: 'none', border: 'none', color: 'var(--blue-400)', cursor: 'pointer', fontSize: 11 }}>DB 변경</button>
-                  <button onClick={resetN} style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', fontSize: 12 }}>취소</button>
-                </div>
-              </div>
-              {nLoading ? (
-                <div style={{ padding: 20, textAlign: 'center', color: 'var(--text-muted)', fontSize: 13 }}>데이터 불러오는 중...</div>
-              ) : (<>
-                <div style={{ padding: '8px 10px', background: 'var(--bg-surface)', borderBottom: '1px solid var(--border)' }}>
-                  <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 4 }}>Notion → 상품 필드 매핑</div>
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 5 }}>
-                    {[{ k: 'product_name', l: '상품명 *' }, { k: 'company', l: '거래기관' }, { k: 'target', l: '자산구분' }, { k: 'return_rate', l: '수익률' }, { k: 'desc', l: '설명' }].map(f => (
-                      <div key={f.k} style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 12 }}>
-                        <span style={{ width: 58, color: 'var(--text-secondary)', fontWeight: 500, flexShrink: 0 }}>{f.l}</span>
-                        <select value={nMap[f.k] ?? ''} onChange={e => {
-                            const updated = { ...nMap, [f.k]: e.target.value };
-                            setNMap(updated);
-                            if (nSelectedDbId) saveNotionProductConfig(nSelectedDbId, nSelectedDbTitle, updated);
-                          }}
-                          style={{ flex: 1, padding: '3px 5px', borderRadius: 4, border: '1px solid var(--border-strong)', fontSize: 11, background: nMap[f.k] ? 'rgba(16,185,129,0.12)' : 'var(--bg-card)' }}>
-                          <option value="">--</option>{nCols.map(c => <option key={c} value={c}>{c}</option>)}
-                        </select>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-                <div style={{ padding: '6px 8px', borderBottom: '1px solid var(--border)' }}>
-                  <input type="text" placeholder="상품 검색..." value={nRowSearch} onChange={e => setNRowSearch(e.target.value)} style={{ width: '100%', padding: '5px 8px', borderRadius: 6, border: '1px solid var(--border-strong)', fontSize: 12, backgroundColor: 'var(--bg-card)', color: 'var(--text-primary)' }} />
-                </div>
-                <div style={{ maxHeight: 200, overflowY: 'auto' }}>
-                  {(() => {
-                    const q = nRowSearch.toLowerCase().trim();
-                    const f = q ? nRows.filter(r => Object.values(r.properties).some(v => v?.toLowerCase().includes(q))) : nRows;
-                    if (!f.length) return <div style={{ padding: 14, textAlign: 'center', color: 'var(--text-muted)', fontSize: 13 }}>{q ? '검색 결과 없음' : '데이터 없음'}</div>;
-                    return f.map(r => {
-                      const dn = nMap.product_name ? (r.properties[nMap.product_name] ?? '-') : Object.values(r.properties)[0] ?? '-';
-                      const dc = nMap.company ? (r.properties[nMap.company] ?? '') : '';
-                      return (
-                        <button key={r.id} onClick={() => applyRow(r)}
-                          style={{ width: '100%', padding: '8px 10px', border: 'none', borderBottom: '1px solid var(--border)', background: 'var(--bg-card)', textAlign: 'left', cursor: 'pointer', fontSize: 12, display: 'flex', gap: 10 }}
-                          onMouseOver={e => (e.currentTarget.style.background = 'var(--bg-card-2)')} onMouseOut={e => (e.currentTarget.style.background = 'var(--bg-card)')}>
-                          <span style={{ fontWeight: 600, color: 'var(--text-primary)' }}>{dn}</span>
-                          {dc && <span style={{ color: 'var(--text-muted)', fontSize: 11 }}>{dc}</span>}
-                        </button>
-                      );
-                    });
-                  })()}
-                </div>
-                <div style={{ padding: '5px 8px', background: 'var(--bg-surface)', borderTop: '1px solid var(--border)', fontSize: 10, color: 'var(--text-muted)' }}>총 {nRows.length}건 · 클릭하면 폼에 자동 입력</div>
-              </>)}
-            </div>
-          )}
-        </div>
-
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+          {/* 상품명 — 투자상품 관리 검색 + 직접입력 */}
           <div style={{ position: 'relative' }}>
-            <label style={lS}>상품명 <span style={{ color: 'var(--danger)' }}>*</span> <span style={{ fontWeight: 400, fontSize: 11, color: 'var(--text-muted)' }}>· 투자상품 관리에서 검색·선택</span></label>
+            <label style={lS}>상품명 <span style={{ color: 'var(--danger)' }}>*</span> <span style={{ fontWeight: 400, fontSize: 11, color: 'var(--text-muted)' }}>· 투자상품 관리에서 검색 또는 직접 입력</span></label>
             <input style={iS} value={productName}
               onChange={e => { setProductName(e.target.value); setPmOpen(true); }}
               onFocus={() => setPmOpen(true)}
               onBlur={() => setTimeout(() => setPmOpen(false), 150)}
               autoComplete="off"
-              placeholder="상품명 검색 (예: KODEX, 에드목표전환...)" />
-            {pmOpen && (() => {
-              const q = productName.trim().toLowerCase();
-              const matches = (q
-                ? pmList.filter(p => p.product_name.toLowerCase().includes(q) || (p.product_code ?? '').toLowerCase().includes(q))
-                : pmList).slice(0, 40);
-              return (
-                <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 200, marginTop: 4, backgroundColor: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 8, maxHeight: 240, overflowY: 'auto', boxShadow: '0 8px 24px rgba(0,0,0,0.3)' }}>
-                  {matches.length === 0 ? (
-                    <div style={{ padding: '10px 12px', fontSize: 12, color: 'var(--text-muted)' }}>
-                      {pmList.length === 0 ? '등록된 상품이 없습니다. (데이터 관리 &gt; 투자상품 관리에서 등록)' : '일치하는 상품이 없습니다.'}
-                    </div>
-                  ) : matches.map(p => (
-                    <button key={p.id} type="button"
-                      onMouseDown={() => { setProductName(p.product_name); if (!investmentTarget.trim() && p.product_type) setInvestmentTarget(p.product_type); setPmOpen(false); }}
-                      style={{ width: '100%', textAlign: 'left', padding: '8px 12px', border: 'none', borderBottom: '1px solid var(--border)', background: 'transparent', cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}
-                      onMouseEnter={e => (e.currentTarget.style.backgroundColor = 'var(--bg-card-2)')}
-                      onMouseLeave={e => (e.currentTarget.style.backgroundColor = 'transparent')}>
-                      <span style={{ fontSize: 13, color: 'var(--text-primary)', fontWeight: 500 }}>{p.product_name}</span>
-                      <span style={{ fontSize: 11, color: 'var(--text-muted)', flexShrink: 0 }}>{[p.product_type, p.product_code, p.region].filter(Boolean).join(' · ')}</span>
-                    </button>
-                  ))}
-                </div>
-              );
-            })()}
+              placeholder="상품명 검색 또는 직접 입력" />
+            {pmOpen && matches.length > 0 && (
+              <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 200, marginTop: 4, backgroundColor: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 8, maxHeight: 240, overflowY: 'auto', boxShadow: '0 8px 24px rgba(0,0,0,0.3)' }}>
+                {matches.map(p => (
+                  <button key={p.id} type="button"
+                    onMouseDown={() => { setProductName(p.product_name); if (p.product_type) setCategory(p.product_type); setPmOpen(false); }}
+                    style={{ width: '100%', textAlign: 'left', padding: '8px 12px', border: 'none', borderBottom: '1px solid var(--border)', background: 'transparent', cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}
+                    onMouseEnter={e => (e.currentTarget.style.backgroundColor = 'var(--bg-card-2)')}
+                    onMouseLeave={e => (e.currentTarget.style.backgroundColor = 'transparent')}>
+                    <span style={{ fontSize: 13, color: 'var(--text-primary)', fontWeight: 500 }}>{p.product_name}</span>
+                    <span style={{ fontSize: 11, color: 'var(--text-muted)', flexShrink: 0 }}>{[p.product_type, p.product_code].filter(Boolean).join(' · ')}</span>
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
+
+          {/* 카테고리 — 투자상품 관리 유형 자동/선택 + 직접입력 */}
           <div>
-            <label style={lS}>거래기관 <span style={{ color: 'var(--danger)' }}>*</span></label>
-            <input style={iS} value={company} onChange={e => setCompany(e.target.value)} placeholder="예: NH투자증권" />
+            <label style={lS}>카테고리 <span style={{ fontWeight: 400, fontSize: 11, color: 'var(--text-muted)' }}>· 상품 선택 시 자동 · 직접 선택/입력 가능</span></label>
+            <input style={iS} value={category} onChange={e => setCategory(e.target.value)} list="wrap-category-options" placeholder="예: ETF, 펀드, 랩어카운트" />
+            <datalist id="wrap-category-options">
+              {categoryOptions.map(c => <option key={c} value={c} />)}
+            </datalist>
           </div>
-          <div>
-            <label style={lS}>자산구분</label>
-            <input style={iS} value={investmentTarget} onChange={e => setInvestmentTarget(e.target.value)} placeholder="예: 랩어카운트" />
-          </div>
-          <div>
-            <label style={lS}>목표수익률 (%)</label>
-            <input style={iS} type="text" value={targetReturn} onChange={e => setTargetReturn(e.target.value.replace(/[^\d.]/g, ''))} placeholder="예: 6.0" />
-          </div>
-          <div>
-            <label style={lS}>설명</label>
-            <textarea style={{ ...iS, minHeight: 50, resize: 'vertical' }} value={description} onChange={e => setDescription(e.target.value)} placeholder="상품 설명 (선택)" />
-          </div>
+
+          {error && <div style={{ fontSize: 12, color: 'var(--danger)' }}>{error}</div>}
         </div>
-        {error && <p style={{ color: 'var(--danger)', fontSize: 13, marginTop: 8 }}>{error}</p>}
-        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 20 }}>
-          <button onClick={onClose} style={{ padding: '8px 18px', fontSize: 14, color: 'var(--text-muted)', backgroundColor: 'var(--bg-surface)', border: '1px solid var(--border)', borderRadius: 8, cursor: 'pointer' }}>취소</button>
-          <button onClick={handleSave} disabled={saving} style={{ padding: '8px 18px', fontSize: 14, fontWeight: 600, color: '#fff', backgroundColor: saving ? 'var(--bg-surface)' : 'var(--blue-600)', border: 'none', borderRadius: 8, cursor: saving ? 'not-allowed' : 'pointer' }}>
+
+        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 24 }}>
+          <button onClick={onClose} style={{ padding: '8px 18px', fontSize: 13, fontWeight: 600, color: 'var(--text-muted)', backgroundColor: 'var(--bg-surface)', border: '1px solid var(--border)', borderRadius: 8, cursor: 'pointer' }}>취소</button>
+          <button onClick={handleSave} disabled={saving || !productName.trim()}
+            style={{ padding: '8px 18px', fontSize: 13, fontWeight: 700, color: '#fff', backgroundColor: saving || !productName.trim() ? 'var(--bg-surface)' : 'var(--blue-600)', border: 'none', borderRadius: 8, cursor: saving || !productName.trim() ? 'not-allowed' : 'pointer' }}>
             {saving ? '등록 중...' : '등록'}
           </button>
         </div>
