@@ -136,8 +136,8 @@ const IS: React.CSSProperties = {
   backgroundColor: 'var(--bg-card)', border: '1px solid var(--border-strong)', borderRadius: '6px', outline: 'none', boxSizing: 'border-box', textAlign: 'right',
 };
 const US: React.CSSProperties = { position: 'absolute', right: '8px', top: '50%', transform: 'translateY(-50%)', fontSize: '11px', color: 'var(--text-muted)', pointerEvents: 'none' };
-const TC: React.CSSProperties = { padding: '6px 8px', textAlign: 'center', fontSize: '13px' };
-const TRs: React.CSSProperties = { padding: '6px 8px', textAlign: 'right', fontFamily: 'Inter, monospace', fontSize: '13px' };
+const TC: React.CSSProperties = { padding: '6px 8px', textAlign: 'center', fontSize: '13px', color: 'var(--text-primary)' };
+const TRs: React.CSSProperties = { padding: '6px 8px', textAlign: 'right', fontFamily: 'Inter, monospace', fontSize: '13px', color: 'var(--text-primary)' };
 
 /* ================================================================
    메인 컴포넌트
@@ -708,7 +708,7 @@ export function DesiredPlanTab() {
                   {['연도','연차','나이','구분','월적립(만)','거치(만)','연금인출','누적원금','평가금액'].map(h => (
                     <th key={h} style={{ padding: '8px', borderBottom: '2px solid var(--border)',
                       textAlign: ['연도','연차','나이','구분'].includes(h) ? 'center' : 'right',
-                      fontWeight: 600, color: h === '연금인출' ? '#DC2626' : '#6B7280', whiteSpace: 'nowrap',
+                      fontWeight: 600, color: h === '연금인출' ? '#F87171' : 'var(--text-muted)', whiteSpace: 'nowrap',
                       backgroundColor: 'var(--bg-surface)', fontSize: '12px' }}>{h}</th>
                   ))}
                 </tr>
@@ -721,14 +721,14 @@ export function DesiredPlanTab() {
                   const isRA = r.age === retAge;
                   const is100 = r.age === 100;
                   const isHL = isRA || is100;
-                  const pc = r.phase === 'saving' ? '#1E3A5F' : r.phase === 'holding' ? '#D4A847' : '#16A34A';
+                  const pc = r.phase === 'saving' ? '#60A5FA' : r.phase === 'holding' ? '#E0B44E' : '#34D399';
                   const pl = r.phase === 'saving' ? '적립' : r.phase === 'holding' ? '거치' : '은퇴후';
-                  const bg = isRA ? 'rgba(30,58,95,0.12)' : is100 ? 'rgba(220,38,38,0.08)' : r.phase === 'saving' ? '#EFF6FF' : r.phase === 'holding' ? '#FFFBEB' : '#F0FDF4';
+                  const bg = isRA ? 'rgba(96,165,250,0.14)' : is100 ? 'rgba(248,113,113,0.12)' : r.phase === 'saving' ? 'transparent' : r.phase === 'holding' ? 'rgba(224,180,78,0.08)' : 'rgba(52,211,153,0.08)';
                   return (
-                    <tr key={r.year} style={{ borderBottom: isHL ? '2px solid' : '1px solid #F3F4F6', borderBottomColor: isRA ? '#1E3A5F' : is100 ? '#DC2626' : undefined, backgroundColor: bg }}>
+                    <tr key={r.year} style={{ borderBottom: isHL ? '2px solid' : '1px solid var(--border)', borderBottomColor: isRA ? '#60A5FA' : is100 ? '#F87171' : undefined, backgroundColor: bg }}>
                       <td style={{ ...TC, fontSize: 11, color: 'var(--text-muted)' }}>{pSY + r.year - 1}</td>
                       <td style={TC}>{r.year}</td>
-                      <td style={{ ...TC, fontWeight: isHL ? 700 : 400, color: isRA ? '#1E3A5F' : is100 ? '#DC2626' : '#374151' }}>{r.age}세{isRA && ' ★'}{is100 && ' ★'}</td>
+                      <td style={{ ...TC, fontWeight: isHL ? 700 : 400, color: isRA ? '#60A5FA' : is100 ? '#F87171' : 'var(--text-primary)' }}>{r.age}세{isRA && ' ★'}{is100 && ' ★'}</td>
                       <td style={{ ...TC, color: pc, fontWeight: 600 }}>{pl}</td>
                       <td style={TRs}>
                         {r.phase !== 'retirement' ? (
@@ -752,7 +752,7 @@ export function DesiredPlanTab() {
                         {r.pension > 0 ? fmt(Math.round(r.pension / 1e4)) : '-'}
                       </td>
                       <td style={TRs}>{fmt(Math.round(r.cumulative_principal / 1e4))}</td>
-                      <td style={{ ...TRs, fontWeight: 700, color: isRA ? '#1E3A5F' : is100 ? '#DC2626' : '#1E3A5F', fontSize: isHL ? '14px' : '13px' }}>{fmt(Math.round(r.evaluation / 1e4))}</td>
+                      <td style={{ ...TRs, fontWeight: 700, color: isRA ? '#60A5FA' : is100 ? '#F87171' : 'var(--text-primary)', fontSize: isHL ? '14px' : '13px' }}>{fmt(Math.round(r.evaluation / 1e4))}</td>
                     </tr>
                   );
                 })}
