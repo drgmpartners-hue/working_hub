@@ -1000,7 +1000,7 @@ export default function CustomerManagementPage() {
 
             {/* 안내 메모 */}
             <p style={{ fontSize: '12px', color: 'var(--text-muted)', marginTop: '8px', marginBottom: '16px' }}>
-              ※ &apos;증권사 투자 상품 관리기&apos; 이용 시 전화번호와 이메일이 반드시 필요합니다.
+              ※ &apos;주식, 펀드 관리&apos; 이용 시 전화번호와 이메일이 반드시 필요합니다.
             </p>
 
             {/* Form error */}

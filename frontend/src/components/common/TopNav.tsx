@@ -75,8 +75,8 @@ const NAV: NavGroup[] = [
     label: '투자 분석',
     match: ['/portfolio/irp', '/retirement', '/investment'],
     items: [
-      { title: '증권사 투자 상품 관리기', desc: 'IRP/연금 수익률·리밸런싱', href: '/portfolio/irp', icon: ic.doc },
-      { title: 'Wrap 은퇴설계', desc: '현금흐름 시뮬레이션', href: '/retirement', icon: ic.shield },
+      { title: '주식, 펀드 관리', desc: 'IRP/연금 수익률·리밸런싱', href: '/portfolio/irp', icon: ic.doc },
+      { title: '은퇴플랜 관리', desc: '현금흐름 시뮬레이션', href: '/retirement', icon: ic.shield },
       { title: '주식·ETF 추천', desc: '테마별 AI 추천', href: '/investment/stock-recommend', icon: ic.trend },
     ],
   },

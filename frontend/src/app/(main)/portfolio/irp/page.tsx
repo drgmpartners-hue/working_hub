@@ -5470,7 +5470,7 @@ export default function IRPPage() {
                 letterSpacing: '-0.4px',
               }}
             >
-              증권사 투자 상품 관리기
+              주식, 펀드 관리
             </h1>
             <p style={{ margin: '5px 0 0', fontSize: '0.875rem', color: 'var(--text-muted)' }}>
               증권사 화면을 캡처해 붙여넣으면 AI가 데이터를 인식해 보고서를 생성합니다.

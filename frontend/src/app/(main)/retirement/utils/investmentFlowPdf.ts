@@ -53,7 +53,7 @@ let _totalPages = 0;
 function drawHeader(pdf: jsPDF, c: Customer) {
   setFont(pdf, 'bold');
   pdf.setFontSize(14); pdf.setTextColor(30, 58, 95);
-  pdf.text('Wrap 은퇴설계', M, M + 6);
+  pdf.text('은퇴플랜 관리', M, M + 6);
   setFont(pdf);
   pdf.setFontSize(7); pdf.setTextColor(107, 114, 128);
   pdf.text('투자흐름 보고서', M, M + 10);

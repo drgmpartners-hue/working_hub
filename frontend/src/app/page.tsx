@@ -50,7 +50,7 @@ const PROGRAMS = [
   { ic: I.doc, t: '투자 상품 관리기', d: '수익률·리밸런싱' },
   { ic: I.gear, t: 'Dr.GM 수당정산', d: '자동 계산' },
   { ic: I.receipt, t: '증권사 수당정산', d: '정산·검증' },
-  { ic: I.shield, t: 'Wrap 은퇴설계', d: '현금흐름 설계' },
+  { ic: I.shield, t: '은퇴플랜 관리', d: '현금흐름 설계' },
   { ic: I.trend, t: '주식·ETF 추천', d: 'AI 추천' },
   { ic: I.image, t: '콘텐츠 제작', d: '카드뉴스·보고서' },
 ];

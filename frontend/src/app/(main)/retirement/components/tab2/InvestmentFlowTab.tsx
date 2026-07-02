@@ -1324,7 +1324,7 @@ export function InvestmentFlowTab() {
       <div className="print-header" style={{ display: 'none', alignItems: 'center', justifyContent: 'space-between', padding: '12px 0', marginBottom: 12, borderBottom: '3px solid var(--blue-500)' }}>
         <div>
           <div style={{ fontSize: 18, fontWeight: 800, color: 'var(--blue-400)', letterSpacing: '-0.5px' }}>
-            Wrap 은퇴설계
+            은퇴플랜 관리
           </div>
           <div style={{ fontSize: 10, color: 'var(--text-muted)', marginTop: 2, fontWeight: 500 }}>
             투자흐름 보고서

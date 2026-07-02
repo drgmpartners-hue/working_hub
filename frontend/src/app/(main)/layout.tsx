@@ -21,8 +21,8 @@ const FULL_WIDTH_ROUTES = [
   '/customer-management',          // 고객 정보 관리
   '/portfolio/product-master',     // 증권사 상품 관리
   '/data-management',              // 투자상품 관리(wrap-accounts)
-  '/portfolio/irp',                // 증권사 투자 상품 관리기
-  '/retirement',                   // Wrap 은퇴설계
+  '/portfolio/irp',                // 주식, 펀드 관리
+  '/retirement',                   // 은퇴플랜 관리
   '/investment',                   // 주식·ETF 추천
 ];
 

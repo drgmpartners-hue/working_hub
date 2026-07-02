@@ -117,7 +117,7 @@ export default function RetirementPage() {
             letterSpacing: '-0.4px',
           }}
         >
-          Wrap 은퇴설계
+          은퇴플랜 관리
         </h1>
         <p style={{ margin: '5px 0 0', fontSize: '0.875rem', color: 'var(--text-muted)' }}>
           고객별 은퇴설계 플랜을 관리합니다.

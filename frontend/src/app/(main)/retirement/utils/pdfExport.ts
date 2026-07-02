@@ -101,7 +101,7 @@ export function printSections(sectionIds: string[]) {
     <!DOCTYPE html>
     <html>
     <head>
-      <title>Wrap 은퇴설계</title>
+      <title>은퇴플랜 관리</title>
       <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; padding: 20px; color: #111827; }

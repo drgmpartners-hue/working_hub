@@ -145,7 +145,7 @@ export function ExportButtons({ sectionGroups, filename, activeTab, customerInfo
         `<div style="${i > 0 ? 'page-break-before:always;' : ''}"><img src="${src}" style="width:100%;height:auto;" /></div>`
       ).join('');
 
-      printWindow.document.write(`<!DOCTYPE html><html><head><title>Wrap 은퇴설계</title>
+      printWindow.document.write(`<!DOCTYPE html><html><head><title>은퇴플랜 관리</title>
         <style>
           * { margin:0; padding:0; }
           body { background:#fff; }
