@@ -127,7 +127,7 @@ const SH: React.CSSProperties = {
 const SB: React.CSSProperties = {
   border: '1px solid var(--border-strong)', borderTop: 'none', borderRadius: '0 0 12px 12px', padding: '20px', backgroundColor: 'var(--bg-surface)',
 };
-const CARD: React.CSSProperties = { backgroundColor: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: '8px', padding: '12px 14px' };
+const CARD: React.CSSProperties = { backgroundColor: 'var(--bg-card)', border: '1px solid var(--border-soft)', borderRadius: '8px', padding: '12px 14px' };
 const CARD_G: React.CSSProperties = { background: 'linear-gradient(135deg, var(--success-bg) 0%, var(--success-bg) 100%)', border: '1px solid rgba(16,185,129,0.35)', borderRadius: '8px', padding: '12px 14px' };
 const CL: React.CSSProperties = { fontSize: '11px', color: 'var(--text-muted)', marginBottom: '6px', fontWeight: 500 };
 const CV: React.CSSProperties = { fontSize: '18px', fontWeight: 700, color: 'var(--blue-400)', fontFamily: 'Inter, monospace' };
@@ -636,7 +636,7 @@ export function DesiredPlanTab() {
 
       {/* ==================== 시뮬레이션 그래프 ==================== */}
       {gData.length > 0 && (
-        <div id="pdf-tab1-graph" style={{ backgroundColor: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: '12px', padding: '20px' }}>
+        <div id="pdf-tab1-graph" style={{ backgroundColor: 'var(--bg-card)', border: '1px solid var(--border-soft)', borderRadius: '12px', padding: '20px' }}>
           <h3 style={{ fontSize: '15px', fontWeight: 700, color: 'var(--blue-400)', margin: '0 0 12px' }}>시뮬레이션 그래프</h3>
           <div style={{ display: 'flex', gap: '20px', marginBottom: '12px', fontSize: '12px' }}>
             <LG color="#1E3A5F" label="기존 은퇴플랜" />
@@ -694,7 +694,7 @@ export function DesiredPlanTab() {
 
       {/* ==================== 은퇴플랜 시뮬레이션 ==================== */}
       {showTbl && dispTbl.length > 0 && (
-        <div id="pdf-tab1-sim" style={{ backgroundColor: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: '12px', padding: '20px' }}>
+        <div id="pdf-tab1-sim" style={{ backgroundColor: 'var(--bg-card)', border: '1px solid var(--border-soft)', borderRadius: '12px', padding: '20px' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px' }}>
             <h3 style={{ fontSize: '15px', fontWeight: 700, color: 'var(--blue-400)', margin: 0 }}>은퇴플랜 시뮬레이션</h3>
             <button onClick={() => setOv({})}
@@ -725,7 +725,7 @@ export function DesiredPlanTab() {
                   const pl = r.phase === 'saving' ? '적립' : r.phase === 'holding' ? '거치' : '은퇴후';
                   const bg = isRA ? 'rgba(96,165,250,0.14)' : is100 ? 'rgba(248,113,113,0.12)' : r.phase === 'saving' ? 'transparent' : r.phase === 'holding' ? 'rgba(224,180,78,0.08)' : 'rgba(52,211,153,0.08)';
                   return (
-                    <tr key={r.year} style={{ borderBottom: isHL ? '2px solid' : '1px solid var(--border-soft)', borderBottomColor: isRA ? '#60A5FA' : is100 ? '#F87171' : undefined, backgroundColor: bg }}>
+                    <tr key={r.year} style={{ borderBottom: isHL ? '2px solid' : '1px solid var(--bg-surface)', borderBottomColor: isRA ? '#60A5FA' : is100 ? '#F87171' : undefined, backgroundColor: bg }}>
                       <td style={{ ...TC, fontSize: 11, color: 'var(--text-muted)' }}>{pSY + r.year - 1}</td>
                       <td style={TC}>{r.year}</td>
                       <td style={{ ...TC, fontWeight: isHL ? 700 : 400, color: isRA ? '#60A5FA' : is100 ? '#F87171' : 'var(--text-primary)' }}>{r.age}세{isRA && ' ★'}{is100 && ' ★'}</td>
@@ -736,7 +736,7 @@ export function DesiredPlanTab() {
                             value={ov?.monthly !== undefined ? fi(String(ov.monthly)) : (mpM > 0 ? fmt(mpM) : '-')}
                             onChange={e => setOvF(r.year, 'monthly', e.target.value)}
                             style={{ ...IS, width: '90px', height: '28px', fontSize: '12px', padding: '0 6px',
-                              border: ov?.monthly !== undefined ? '2px solid #3B82F6' : '1px solid var(--border)' }} />
+                              border: ov?.monthly !== undefined ? '2px solid #3B82F6' : '1px solid var(--border-soft)' }} />
                         ) : '-'}
                       </td>
                       <td style={TRs}>
@@ -745,7 +745,7 @@ export function DesiredPlanTab() {
                             value={ov?.additional !== undefined ? fi(String(ov.additional)) : (adM > 0 ? fmt(adM) : '')}
                             onChange={e => setOvF(r.year, 'additional', e.target.value)}
                             style={{ ...IS, width: '90px', height: '28px', fontSize: '12px', padding: '0 6px',
-                              border: ov?.additional !== undefined ? '2px solid #3B82F6' : '1px solid var(--border)' }} />
+                              border: ov?.additional !== undefined ? '2px solid #3B82F6' : '1px solid var(--border-soft)' }} />
                         ) : '-'}
                       </td>
                       <td style={{ ...TRs, color: r.pension > 0 ? '#DC2626' : '#9CA3AF' }}>
