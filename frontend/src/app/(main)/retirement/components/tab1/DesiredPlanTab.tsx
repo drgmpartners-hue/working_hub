@@ -725,7 +725,7 @@ export function DesiredPlanTab() {
                   const pl = r.phase === 'saving' ? '적립' : r.phase === 'holding' ? '거치' : '은퇴후';
                   const bg = isRA ? 'rgba(96,165,250,0.14)' : is100 ? 'rgba(248,113,113,0.12)' : r.phase === 'saving' ? 'transparent' : r.phase === 'holding' ? 'rgba(224,180,78,0.08)' : 'rgba(52,211,153,0.08)';
                   return (
-                    <tr key={r.year} style={{ borderBottom: isHL ? '2px solid' : '1px solid var(--border)', borderBottomColor: isRA ? '#60A5FA' : is100 ? '#F87171' : undefined, backgroundColor: bg }}>
+                    <tr key={r.year} style={{ borderBottom: isHL ? '2px solid' : '1px solid var(--border-soft)', borderBottomColor: isRA ? '#60A5FA' : is100 ? '#F87171' : undefined, backgroundColor: bg }}>
                       <td style={{ ...TC, fontSize: 11, color: 'var(--text-muted)' }}>{pSY + r.year - 1}</td>
                       <td style={TC}>{r.year}</td>
                       <td style={{ ...TC, fontWeight: isHL ? 700 : 400, color: isRA ? '#60A5FA' : is100 ? '#F87171' : 'var(--text-primary)' }}>{r.age}세{isRA && ' ★'}{is100 && ' ★'}</td>
@@ -736,7 +736,7 @@ export function DesiredPlanTab() {
                             value={ov?.monthly !== undefined ? fi(String(ov.monthly)) : (mpM > 0 ? fmt(mpM) : '-')}
                             onChange={e => setOvF(r.year, 'monthly', e.target.value)}
                             style={{ ...IS, width: '90px', height: '28px', fontSize: '12px', padding: '0 6px',
-                              border: ov?.monthly !== undefined ? '2px solid #3B82F6' : '1px solid #E5E7EB' }} />
+                              border: ov?.monthly !== undefined ? '2px solid #3B82F6' : '1px solid var(--border)' }} />
                         ) : '-'}
                       </td>
                       <td style={TRs}>
@@ -745,7 +745,7 @@ export function DesiredPlanTab() {
                             value={ov?.additional !== undefined ? fi(String(ov.additional)) : (adM > 0 ? fmt(adM) : '')}
                             onChange={e => setOvF(r.year, 'additional', e.target.value)}
                             style={{ ...IS, width: '90px', height: '28px', fontSize: '12px', padding: '0 6px',
-                              border: ov?.additional !== undefined ? '2px solid #3B82F6' : '1px solid #E5E7EB' }} />
+                              border: ov?.additional !== undefined ? '2px solid #3B82F6' : '1px solid var(--border)' }} />
                         ) : '-'}
                       </td>
                       <td style={{ ...TRs, color: r.pension > 0 ? '#DC2626' : '#9CA3AF' }}>
