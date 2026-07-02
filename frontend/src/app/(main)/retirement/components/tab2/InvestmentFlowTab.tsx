@@ -2888,7 +2888,7 @@ function AddWrapProductModal({ onClose, onSaved }: { onClose: () => void; onSave
 
   // 투자상품 관리(retirement/wrap-accounts)에서 상품 검색·선택
   const [pmList, setPmList] = useState<Array<{ id: string; product_name: string; category?: string | null; institution?: string | null }>>([]);
-  const [categoryOptions, setCategoryOptions] = useState<string[]>([]);
+  const [catApiOpts, setCatApiOpts] = useState<string[]>([]);
   const [pmOpen, setPmOpen] = useState(false);
   useEffect(() => {
     (async () => {
@@ -2898,10 +2898,16 @@ function AddWrapProductModal({ onClose, onSaved }: { onClose: () => void; onSave
           fetch(`${API_URL}/api/v1/retirement/wrap-accounts/options?field_name=category`, { headers: authLib.getAuthHeader() }),
         ]);
         if (pRes.ok) { const d = await pRes.json(); setPmList(Array.isArray(d) ? d : d.items ?? []); }
-        if (cRes.ok) { const o = await cRes.json(); setCategoryOptions((Array.isArray(o) ? o : []).map((x: { option_value: string }) => x.option_value).filter(Boolean)); }
+        if (cRes.ok) { const o = await cRes.json(); setCatApiOpts((Array.isArray(o) ? o : []).map((x: { option_value: string }) => x.option_value).filter(Boolean)); }
       } catch { /* ignore */ }
     })();
   }, []);
+
+  // 카테고리 목록 = 투자상품 관리 상품들의 실제 카테고리(distinct) + 옵션 설정값
+  const categoryOptions = Array.from(new Set([
+    ...catApiOpts,
+    ...pmList.map(p => p.category).filter(Boolean) as string[],
+  ])).sort((a, b) => a.localeCompare(b, 'ko'));
 
   const handleSave = async () => {
     if (!productName.trim()) { setError('상품명을 입력해주세요.'); return; }
@@ -2931,7 +2937,7 @@ function AddWrapProductModal({ onClose, onSaved }: { onClose: () => void; onSave
   return (
     <div style={mS} onClick={onClose}>
       <div style={cS} onClick={e => e.stopPropagation()}>
-        <h3 style={{ margin: '0 0 20px', fontSize: '1.1rem', fontWeight: 700, color: 'var(--blue-400)' }}>Wrap 은퇴 상품 등록</h3>
+        <h3 style={{ margin: '0 0 20px', fontSize: '1.1rem', fontWeight: 700, color: 'var(--blue-400)' }}>은퇴플랜 상품등록</h3>
 
         <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
           {/* 상품명 — 투자상품 관리 검색 + 직접입력 */}
