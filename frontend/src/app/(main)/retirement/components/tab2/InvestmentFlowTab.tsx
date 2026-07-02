@@ -2900,6 +2900,18 @@ function AddWrapProductModal({ onClose, onSaved }: { onClose: () => void; onSave
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
 
+  // 투자상품 관리(product-master)에서 상품 검색 — 직접입력 대신 DB에서 선택
+  const [pmList, setPmList] = useState<Array<{ id: string; product_name: string; product_code?: string; product_type?: string; risk_level?: string; region?: string }>>([]);
+  const [pmOpen, setPmOpen] = useState(false);
+  useEffect(() => {
+    (async () => {
+      try {
+        const res = await fetch(`${API_URL}/api/v1/product-master`, { headers: authLib.getAuthHeader() });
+        if (res.ok) { const d = await res.json(); setPmList(Array.isArray(d) ? d : d.items ?? []); }
+      } catch { /* ignore */ }
+    })();
+  }, []);
+
   // Notion — 마운트 시 저장된 설정 자동 로드
   const [nStep, setNStep] = useState<'idle' | 'selectDb' | 'mapping'>('idle');
   const [nAutoLoaded, setNAutoLoaded] = useState(false);
@@ -3122,9 +3134,38 @@ function AddWrapProductModal({ onClose, onSaved }: { onClose: () => void; onSave
         </div>
 
         <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-          <div>
-            <label style={lS}>상품명 <span style={{ color: 'var(--danger)' }}>*</span></label>
-            <input style={iS} value={productName} onChange={e => setProductName(e.target.value)} placeholder="예: (올원)예드목표전환형30호" />
+          <div style={{ position: 'relative' }}>
+            <label style={lS}>상품명 <span style={{ color: 'var(--danger)' }}>*</span> <span style={{ fontWeight: 400, fontSize: 11, color: 'var(--text-muted)' }}>· 투자상품 관리에서 검색·선택</span></label>
+            <input style={iS} value={productName}
+              onChange={e => { setProductName(e.target.value); setPmOpen(true); }}
+              onFocus={() => setPmOpen(true)}
+              onBlur={() => setTimeout(() => setPmOpen(false), 150)}
+              autoComplete="off"
+              placeholder="상품명 검색 (예: KODEX, 에드목표전환...)" />
+            {pmOpen && (() => {
+              const q = productName.trim().toLowerCase();
+              const matches = (q
+                ? pmList.filter(p => p.product_name.toLowerCase().includes(q) || (p.product_code ?? '').toLowerCase().includes(q))
+                : pmList).slice(0, 40);
+              return (
+                <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 200, marginTop: 4, backgroundColor: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 8, maxHeight: 240, overflowY: 'auto', boxShadow: '0 8px 24px rgba(0,0,0,0.3)' }}>
+                  {matches.length === 0 ? (
+                    <div style={{ padding: '10px 12px', fontSize: 12, color: 'var(--text-muted)' }}>
+                      {pmList.length === 0 ? '등록된 상품이 없습니다. (데이터 관리 &gt; 투자상품 관리에서 등록)' : '일치하는 상품이 없습니다.'}
+                    </div>
+                  ) : matches.map(p => (
+                    <button key={p.id} type="button"
+                      onMouseDown={() => { setProductName(p.product_name); if (!investmentTarget.trim() && p.product_type) setInvestmentTarget(p.product_type); setPmOpen(false); }}
+                      style={{ width: '100%', textAlign: 'left', padding: '8px 12px', border: 'none', borderBottom: '1px solid var(--border)', background: 'transparent', cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}
+                      onMouseEnter={e => (e.currentTarget.style.backgroundColor = 'var(--bg-card-2)')}
+                      onMouseLeave={e => (e.currentTarget.style.backgroundColor = 'transparent')}>
+                      <span style={{ fontSize: 13, color: 'var(--text-primary)', fontWeight: 500 }}>{p.product_name}</span>
+                      <span style={{ fontSize: 11, color: 'var(--text-muted)', flexShrink: 0 }}>{[p.product_type, p.product_code, p.region].filter(Boolean).join(' · ')}</span>
+                    </button>
+                  ))}
+                </div>
+              );
+            })()}
           </div>
           <div>
             <label style={lS}>거래기관 <span style={{ color: 'var(--danger)' }}>*</span></label>
