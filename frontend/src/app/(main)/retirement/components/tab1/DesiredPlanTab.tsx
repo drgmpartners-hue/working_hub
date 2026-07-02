@@ -452,8 +452,20 @@ export function DesiredPlanTab() {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
 
-      {/* ==================== PDF 다운로드 버튼 ==================== */}
-      <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+      {/* ==================== 초기화 / PDF 다운로드 버튼 ==================== */}
+      <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px' }}>
+        <button
+          onClick={() => {
+            if (!window.confirm("'목표 은퇴자금'과 '투자조건'의 입력값을 모두 지울까요?")) return;
+            // 목표 은퇴자금
+            setPSY(''); setRaIn(''); setMIn(''); setInfIn(''); setPenRIn(''); setRpIn('');
+            // 투자조건
+            setSpIn(''); setExRIn(''); setAsIn(''); setRecPIn(''); setRecRIn(''); setHoldIn('');
+          }}
+          style={{ padding: '8px 16px', fontSize: '13px', fontWeight: 600, borderRadius: '8px', cursor: 'pointer', border: '1px solid var(--border-strong)', backgroundColor: 'var(--bg-card)', color: 'var(--text-secondary)', display: 'flex', alignItems: 'center', gap: '6px' }}
+        >
+          ↺ 초기화
+        </button>
         <button
           onClick={async () => {
             try {
