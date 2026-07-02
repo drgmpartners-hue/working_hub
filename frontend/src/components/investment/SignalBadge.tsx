@@ -66,7 +66,7 @@ export function SignalBadge({ signal, compact = false }: SignalBadgeProps) {
           borderRadius: 5,
           fontSize: compact ? '0.6875rem' : '0.75rem',
           backgroundColor: 'rgba(107,114,128,0.10)',
-          color: '#6B7280',
+          color: 'var(--text-muted)',
           border: '1px solid rgba(107,114,128,0.20)',
           fontWeight: 500,
         }}

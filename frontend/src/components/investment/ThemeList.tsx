@@ -43,7 +43,7 @@ const PHASE_META: Record<string, { label: string; color: string; bg: string }> =
   emerging: { label: '✨ 신규 관심', color: '#7C3AED', bg: 'rgba(124,58,237,0.14)' },
   hot: { label: '📈 고관심', color: '#059669', bg: 'rgba(5,150,105,0.14)' },
   fading: { label: '📉 시들', color: '#D97706', bg: 'rgba(217,119,6,0.14)' },
-  quiet: { label: '⚪ 무관심', color: '#6B7280', bg: 'rgba(107,114,128,0.12)' },
+  quiet: { label: '⚪ 무관심', color: 'var(--text-muted)', bg: 'rgba(107,114,128,0.12)' },
 };
 
 const FILTERS: Array<{ key: string; label: string }> = [
@@ -233,7 +233,7 @@ export function ThemeList({ basket, onAddToBasket, onRemoveFromBasket }: ThemeLi
     const v = s ?? 0;
     if (v >= 70) return '#059669';
     if (v >= 50) return '#D97706';
-    return '#6B7280';
+    return 'var(--text-muted)';
   };
   const scoreBg = (s: number | null | undefined) => {
     const v = s ?? 0;

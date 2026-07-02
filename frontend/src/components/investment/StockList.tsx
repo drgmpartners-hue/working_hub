@@ -112,7 +112,7 @@ export function StockList({ recommendationId, onAddToAllocation, allocationStock
         fontFamily: 'monospace',
         fontSize: '0.8125rem',
         fontWeight: 600,
-        color: value > 0 ? '#059669' : value < 0 ? '#DC2626' : '#6B7280',
+        color: value > 0 ? '#059669' : value < 0 ? '#DC2626' : 'var(--text-muted)',
       }}
     >
       {value > 0 ? '+' : ''}{value.toFixed(2)}%
@@ -155,7 +155,7 @@ export function StockList({ recommendationId, onAddToAllocation, allocationStock
 
   if (stocks.length === 0) {
     return (
-      <div style={{ textAlign: 'center', padding: '48px 0', color: '#6B7280', fontSize: '0.875rem' }}>
+      <div style={{ textAlign: 'center', padding: '48px 0', color: 'var(--text-muted)', fontSize: '0.875rem' }}>
         추천 종목이 없습니다.
       </div>
     );
@@ -173,7 +173,7 @@ export function StockList({ recommendationId, onAddToAllocation, allocationStock
 
       {/* Stock count / legend */}
       <div style={{ marginBottom: 12, display: 'flex', alignItems: 'center', gap: 10 }}>
-        <p style={{ margin: 0, fontSize: '0.875rem', color: '#6B7280' }}>
+        <p style={{ margin: 0, fontSize: '0.875rem', color: 'var(--text-muted)' }}>
           총 <strong style={{ color: 'var(--text-primary)' }}>{filteredStocks.length}</strong>개
           {filteredStocks.length !== stocks.length && (
             <span style={{ color: '#2E8B8B', marginLeft: 4 }}>
@@ -187,7 +187,7 @@ export function StockList({ recommendationId, onAddToAllocation, allocationStock
           </svg>
           TOP 5
         </span>
-        <span style={{ fontSize: '0.8125rem', color: '#6B7280', marginLeft: 'auto' }}>
+        <span style={{ fontSize: '0.8125rem', color: 'var(--text-muted)', marginLeft: 'auto' }}>
           * 행 클릭 → 근거 패널
         </span>
       </div>
@@ -204,7 +204,7 @@ export function StockList({ recommendationId, onAddToAllocation, allocationStock
                     textAlign: h === '순위' || h === '' ? 'center' : 'left',
                     fontWeight: 600,
                     fontSize: '0.75rem',
-                    color: 'var(--text-muted, #6B7280)',
+                    color: 'var(--text-muted, var(--text-muted))',
                     letterSpacing: '0.04em',
                     textTransform: 'uppercase',
                     borderBottom: '1px solid var(--border, #E1E5EB)',
@@ -253,7 +253,7 @@ export function StockList({ recommendationId, onAddToAllocation, allocationStock
                           <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" />
                         </svg>
                       )}
-                      <span style={{ fontWeight: stock.is_top5 ? 700 : 400, color: stock.is_top5 ? '#D97706' : '#6B7280' }}>
+                      <span style={{ fontWeight: stock.is_top5 ? 700 : 400, color: stock.is_top5 ? '#D97706' : 'var(--text-muted)' }}>
                         {stock.rank}
                       </span>
                     </div>

@@ -89,12 +89,12 @@ export function StockAnalysisPopup({ stock, open, onClose }: StockAnalysisPopupP
         flex: 1,
       }}
     >
-      <span style={{ fontSize: '0.6875rem', color: '#6B7280', marginBottom: 4 }}>{label}</span>
+      <span style={{ fontSize: '0.6875rem', color: 'var(--text-muted)', marginBottom: 4 }}>{label}</span>
       <span
         style={{
           fontSize: '1rem',
           fontWeight: 700,
-          color: value > 0 ? '#059669' : value < 0 ? '#DC2626' : '#6B7280',
+          color: value > 0 ? '#059669' : value < 0 ? '#DC2626' : 'var(--text-muted)',
           fontFamily: 'monospace',
         }}
       >
@@ -143,7 +143,7 @@ export function StockAnalysisPopup({ stock, open, onClose }: StockAnalysisPopupP
               alignItems: 'center',
               gap: 4,
               fontSize: '0.8125rem',
-              color: stock.is_top5 ? '#D97706' : '#6B7280',
+              color: stock.is_top5 ? '#D97706' : 'var(--text-muted)',
             }}
           >
             {stock.is_top5 && (
@@ -157,7 +157,7 @@ export function StockAnalysisPopup({ stock, open, onClose }: StockAnalysisPopupP
 
         {/* Returns */}
         <div>
-          <p style={{ margin: '0 0 8px', fontSize: '0.8125rem', fontWeight: 600, color: '#6B7280' }}>
+          <p style={{ margin: '0 0 8px', fontSize: '0.8125rem', fontWeight: 600, color: 'var(--text-muted)' }}>
             수익률
           </p>
           <div style={{ display: 'flex', gap: 8 }}>
@@ -170,7 +170,7 @@ export function StockAnalysisPopup({ stock, open, onClose }: StockAnalysisPopupP
         {/* Market cap */}
         {stock.market_cap != null && (
           <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-            <span style={{ fontSize: '0.8125rem', color: '#6B7280' }}>시가총액</span>
+            <span style={{ fontSize: '0.8125rem', color: 'var(--text-muted)' }}>시가총액</span>
             <span style={{ fontSize: '0.875rem', fontWeight: 600, color: '#1A1A2E', fontFamily: 'monospace' }}>
               {(stock.market_cap / 1e8).toFixed(0)}억원
             </span>
@@ -180,7 +180,7 @@ export function StockAnalysisPopup({ stock, open, onClose }: StockAnalysisPopupP
         {/* Analysis report */}
         {stock.analysis_report && (
           <div>
-            <p style={{ margin: '0 0 8px', fontSize: '0.8125rem', fontWeight: 600, color: '#6B7280' }}>
+            <p style={{ margin: '0 0 8px', fontSize: '0.8125rem', fontWeight: 600, color: 'var(--text-muted)' }}>
               AI 분석 리포트
             </p>
             <div
