@@ -423,7 +423,7 @@ export function ClientRow({ index, clients, data, onChange }: ClientRowProps) {
                       onClick={() => { handleClientSelect(''); setDropdownOpen(false); }}
                       style={{
                         width: '100%', padding: '6px 10px', fontSize: '0.75rem', textAlign: 'left',
-                        border: 'none', backgroundColor: !data.clientId ? '#EEF2F7' : 'transparent',
+                        border: 'none', backgroundColor: !data.clientId ? 'rgba(46,139,139,0.22)' : 'transparent',
                         cursor: 'pointer', color: 'var(--text-muted)',
                       }}>
                       -- 선택 해제 --
@@ -441,10 +441,10 @@ export function ClientRow({ index, clients, data, onChange }: ClientRowProps) {
                           style={{
                             width: '100%', padding: '6px 10px', fontSize: '0.75rem', textAlign: 'left',
                             border: 'none', cursor: 'pointer',
-                            backgroundColor: data.clientId === c.id ? '#EEF2F7' : 'transparent',
+                            backgroundColor: data.clientId === c.id ? 'rgba(46,139,139,0.22)' : 'transparent',
                             color: 'var(--text-primary)', display: 'flex', justifyContent: 'space-between',
                           }}
-                          onMouseEnter={(e) => { if (data.clientId !== c.id) (e.currentTarget).style.backgroundColor = '#F9FAFB'; }}
+                          onMouseEnter={(e) => { if (data.clientId !== c.id) (e.currentTarget).style.backgroundColor = 'rgba(46,139,139,0.12)'; }}
                           onMouseLeave={(e) => { if (data.clientId !== c.id) (e.currentTarget).style.backgroundColor = 'transparent'; }}>
                           <span>{c.unique_code ? `${c.name}(${c.unique_code})` : c.name}</span>
                           <span style={{ color: 'var(--text-muted)', fontSize: '0.6875rem' }}>
