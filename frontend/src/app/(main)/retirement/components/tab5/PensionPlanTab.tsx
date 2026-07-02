@@ -505,7 +505,7 @@ export function PensionPlanTab() {
         </div>
         <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px' }}>
           <thead>
-            <tr style={{ backgroundColor: '#F0F4FA' }}>
+            <tr style={{ backgroundColor: 'var(--bg-surface)' }}>
               {['구분', '고객', '예상수익률', '연금수령기간', '월 연금액', '상속재원'].map(h => (
                 <th key={h} style={{ padding: '10px 12px', textAlign: 'center', fontWeight: 600, color: 'var(--blue-400)', borderBottom: '2px solid var(--blue-500)', fontSize: '12px' }}>{h}</th>
               ))}
@@ -513,51 +513,51 @@ export function PensionPlanTab() {
           </thead>
           <tbody>
             {/* 종신형 */}
-            <tr style={{ borderBottom: '1px solid var(--border)', backgroundColor: 'var(--bg-surface)' }}>
-              <td rowSpan={recPenRate ? 2 : 1} style={{ padding: '12px', fontWeight: 600, color: 'var(--blue-400)', borderBottom: '1px solid var(--border)', verticalAlign: 'middle' }}>종신형</td>
+            <tr style={{ borderBottom: `1px solid var(--bg-surface)` }}>
+              <td rowSpan={recPenRate ? 2 : 1} style={{ padding: '12px', fontWeight: 600, color: 'var(--blue-400)', borderBottom: `1px solid var(--bg-surface)`, verticalAlign: 'middle' }}>종신형</td>
               <td style={{ padding: '10px 12px', textAlign: 'center', fontSize: '12px', color: 'var(--text-muted)' }}>A고객</td>
               <td style={{ padding: '10px 12px', textAlign: 'center', color: 'var(--text-muted)', fontSize: '12px' }}>연금수익률 ({(basePenRate * 100).toFixed(1)}%)</td>
-              <td rowSpan={recPenRate ? 2 : 1} style={{ padding: '10px 12px', textAlign: 'center', borderBottom: '1px solid var(--border)', verticalAlign: 'middle' }}>평생 (경험생명표 120세, {lifetimeYears}년)</td>
-              <td style={{ padding: '10px 12px', textAlign: 'right', fontWeight: 700, fontVariantNumeric: 'tabular-nums' }}>{fmtW(compareLifetimeMonthlyA)}</td>
-              <td rowSpan={recPenRate ? 2 : 1} style={{ padding: '10px 12px', textAlign: 'center', color: 'var(--text-muted)', borderBottom: '1px solid var(--border)', verticalAlign: 'middle' }}>잔존연금</td>
+              <td rowSpan={recPenRate ? 2 : 1} style={{ padding: '10px 12px', textAlign: 'center', borderBottom: `1px solid var(--bg-surface)`, verticalAlign: 'middle', color: 'var(--text-primary)' }}>평생 (경험생명표 120세, {lifetimeYears}년)</td>
+              <td style={{ padding: '10px 12px', textAlign: 'right', fontWeight: 700, fontVariantNumeric: 'tabular-nums', color: 'var(--text-primary)' }}>{fmtW(compareLifetimeMonthlyA)}</td>
+              <td rowSpan={recPenRate ? 2 : 1} style={{ padding: '10px 12px', textAlign: 'center', color: 'var(--text-muted)', borderBottom: `1px solid var(--bg-surface)`, verticalAlign: 'middle' }}>잔존연금</td>
             </tr>
             {recPenRate && (
-              <tr style={{ borderBottom: '1px solid var(--border)', backgroundColor: '#FFF7ED' }}>
-                <td style={{ padding: '10px 12px', textAlign: 'center', fontSize: '12px', fontWeight: 600, color: '#EA580C' }}>B고객</td>
-                <td style={{ padding: '10px 12px', textAlign: 'center', color: '#EA580C', fontSize: '12px', fontWeight: 500 }}>추천수익률 ({(recPenRate * 100).toFixed(1)}%)</td>
-                <td style={{ padding: '10px 12px', textAlign: 'right', fontWeight: 700, fontVariantNumeric: 'tabular-nums', color: '#EA580C' }}>{fmtW(compareLifetimeMonthlyB)}</td>
+              <tr style={{ borderBottom: `1px solid var(--bg-surface)`, backgroundColor: 'rgba(234,88,12,0.08)' }}>
+                <td style={{ padding: '10px 12px', textAlign: 'center', fontSize: '12px', fontWeight: 600, color: '#FB923C' }}>B고객</td>
+                <td style={{ padding: '10px 12px', textAlign: 'center', color: '#FB923C', fontSize: '12px', fontWeight: 500 }}>추천수익률 ({(recPenRate * 100).toFixed(1)}%)</td>
+                <td style={{ padding: '10px 12px', textAlign: 'right', fontWeight: 700, fontVariantNumeric: 'tabular-nums', color: '#FB923C' }}>{fmtW(compareLifetimeMonthlyB)}</td>
               </tr>
             )}
             {/* 확정형 */}
-            <tr style={{ borderBottom: '1px solid var(--border)', backgroundColor: 'var(--bg-surface)' }}>
-              <td rowSpan={recPenRate ? 2 : 1} style={{ padding: '12px', fontWeight: 600, color: 'var(--blue-400)', borderBottom: '1px solid var(--border)', verticalAlign: 'middle' }}>확정형</td>
+            <tr style={{ borderBottom: `1px solid var(--bg-surface)` }}>
+              <td rowSpan={recPenRate ? 2 : 1} style={{ padding: '12px', fontWeight: 600, color: 'var(--blue-400)', borderBottom: `1px solid var(--bg-surface)`, verticalAlign: 'middle' }}>확정형</td>
               <td style={{ padding: '10px 12px', textAlign: 'center', fontSize: '12px', color: 'var(--text-muted)' }}>A고객</td>
               <td style={{ padding: '10px 12px', textAlign: 'center', color: 'var(--text-muted)', fontSize: '12px' }}>연금수익률 ({(basePenRate * 100).toFixed(1)}%)</td>
-              <td rowSpan={recPenRate ? 2 : 1} style={{ padding: '10px 12px', textAlign: 'center', borderBottom: '1px solid var(--border)', verticalAlign: 'middle' }}>확정 {fixedCompareYears}년</td>
-              <td style={{ padding: '10px 12px', textAlign: 'right', fontWeight: 700, fontVariantNumeric: 'tabular-nums' }}>{fmtW(compareFixedMonthlyA)}</td>
-              <td rowSpan={recPenRate ? 2 : 1} style={{ padding: '10px 12px', textAlign: 'center', color: 'var(--text-muted)', borderBottom: '1px solid var(--border)', verticalAlign: 'middle' }}>잔존연금 또는 없음</td>
+              <td rowSpan={recPenRate ? 2 : 1} style={{ padding: '10px 12px', textAlign: 'center', borderBottom: `1px solid var(--bg-surface)`, verticalAlign: 'middle', color: 'var(--text-primary)' }}>확정 {fixedCompareYears}년</td>
+              <td style={{ padding: '10px 12px', textAlign: 'right', fontWeight: 700, fontVariantNumeric: 'tabular-nums', color: 'var(--text-primary)' }}>{fmtW(compareFixedMonthlyA)}</td>
+              <td rowSpan={recPenRate ? 2 : 1} style={{ padding: '10px 12px', textAlign: 'center', color: 'var(--text-muted)', borderBottom: `1px solid var(--bg-surface)`, verticalAlign: 'middle' }}>잔존연금 또는 없음</td>
             </tr>
             {recPenRate && (
-              <tr style={{ borderBottom: '1px solid var(--border)', backgroundColor: '#FFF7ED' }}>
-                <td style={{ padding: '10px 12px', textAlign: 'center', fontSize: '12px', fontWeight: 600, color: '#EA580C' }}>B고객</td>
-                <td style={{ padding: '10px 12px', textAlign: 'center', color: '#EA580C', fontSize: '12px', fontWeight: 500 }}>추천수익률 ({(recPenRate * 100).toFixed(1)}%)</td>
-                <td style={{ padding: '10px 12px', textAlign: 'right', fontWeight: 700, fontVariantNumeric: 'tabular-nums', color: '#EA580C' }}>{fmtW(compareFixedMonthlyB)}</td>
+              <tr style={{ borderBottom: `1px solid var(--bg-surface)`, backgroundColor: 'rgba(234,88,12,0.08)' }}>
+                <td style={{ padding: '10px 12px', textAlign: 'center', fontSize: '12px', fontWeight: 600, color: '#FB923C' }}>B고객</td>
+                <td style={{ padding: '10px 12px', textAlign: 'center', color: '#FB923C', fontSize: '12px', fontWeight: 500 }}>추천수익률 ({(recPenRate * 100).toFixed(1)}%)</td>
+                <td style={{ padding: '10px 12px', textAlign: 'right', fontWeight: 700, fontVariantNumeric: 'tabular-nums', color: '#FB923C' }}>{fmtW(compareFixedMonthlyB)}</td>
               </tr>
             )}
             {/* 무한지급형 */}
-            <tr style={{ backgroundColor: 'var(--bg-surface)' }}>
+            <tr>
               <td rowSpan={recPenRate ? 2 : 1} style={{ padding: '12px', fontWeight: 600, color: 'var(--success)', verticalAlign: 'middle' }}>무한지급형<br /><span style={{ fontSize: '11px', fontWeight: 400, color: 'var(--text-muted)' }}>(상속연금형)</span></td>
               <td style={{ padding: '10px 12px', textAlign: 'center', fontSize: '12px', color: 'var(--text-muted)' }}>A고객</td>
               <td style={{ padding: '10px 12px', textAlign: 'center', color: 'var(--text-muted)', fontSize: '12px' }}>연금수익률 ({(basePenRate * 100).toFixed(1)}%)</td>
-              <td rowSpan={recPenRate ? 2 : 1} style={{ padding: '10px 12px', textAlign: 'center', verticalAlign: 'middle' }}>평생</td>
-              <td style={{ padding: '10px 12px', textAlign: 'right', fontWeight: 700, fontVariantNumeric: 'tabular-nums' }}>{fmtW(compareInfiniteMonthlyA)}</td>
+              <td rowSpan={recPenRate ? 2 : 1} style={{ padding: '10px 12px', textAlign: 'center', verticalAlign: 'middle', color: 'var(--text-primary)' }}>평생</td>
+              <td style={{ padding: '10px 12px', textAlign: 'right', fontWeight: 700, fontVariantNumeric: 'tabular-nums', color: 'var(--text-primary)' }}>{fmtW(compareInfiniteMonthlyA)}</td>
               <td rowSpan={recPenRate ? 2 : 1} style={{ padding: '10px 12px', textAlign: 'center', fontWeight: 600, color: 'var(--success)', verticalAlign: 'middle' }}>연금재원 상당</td>
             </tr>
             {recPenRate && (
-              <tr style={{ backgroundColor: '#FFF7ED' }}>
-                <td style={{ padding: '10px 12px', textAlign: 'center', fontSize: '12px', fontWeight: 600, color: '#EA580C' }}>B고객</td>
-                <td style={{ padding: '10px 12px', textAlign: 'center', color: '#EA580C', fontSize: '12px', fontWeight: 500 }}>추천수익률 ({(recPenRate * 100).toFixed(1)}%)</td>
-                <td style={{ padding: '10px 12px', textAlign: 'right', fontWeight: 700, fontVariantNumeric: 'tabular-nums', color: '#EA580C' }}>{fmtW(compareInfiniteMonthlyB)}</td>
+              <tr style={{ backgroundColor: 'rgba(234,88,12,0.08)' }}>
+                <td style={{ padding: '10px 12px', textAlign: 'center', fontSize: '12px', fontWeight: 600, color: '#FB923C' }}>B고객</td>
+                <td style={{ padding: '10px 12px', textAlign: 'center', color: '#FB923C', fontSize: '12px', fontWeight: 500 }}>추천수익률 ({(recPenRate * 100).toFixed(1)}%)</td>
+                <td style={{ padding: '10px 12px', textAlign: 'right', fontWeight: 700, fontVariantNumeric: 'tabular-nums', color: '#FB923C' }}>{fmtW(compareInfiniteMonthlyB)}</td>
               </tr>
             )}
           </tbody>
@@ -575,7 +575,7 @@ export function PensionPlanTab() {
             <button key={label} onClick={() => setOptionTab(i)} style={{
               flex: 1, padding: '12px 16px', fontSize: '14px',
               fontWeight: optionTab === i ? 700 : 500,
-              color: optionTab === i ? tabColors[i] : '#9CA3AF',
+              color: optionTab === i ? tabColors[i] : 'var(--text-muted)',
               backgroundColor: 'transparent', border: 'none',
               borderBottom: optionTab === i ? `3px solid ${tabColors[i]}` : '3px solid transparent',
               cursor: 'pointer', marginBottom: '-2px',
@@ -594,10 +594,10 @@ export function PensionPlanTab() {
       <div id="pdf-tab3-goal" style={cardStyle}>
         <h3 style={sectionTitle}>목표달성 플랜</h3>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '16px', marginBottom: '20px', padding: '16px', backgroundColor: 'var(--bg-surface)', borderRadius: '8px' }}>
-          <InfoCell label="목표금액" value={fmtW(pensionFund)} color="#1E3A5F" />
-          <InfoCell label="은퇴나이" value={`${retireAge}세 (${savingYears + holdingYears}년)`} />
-          <InfoCell label="예상 수익률" value={`${(expectedRate * 100).toFixed(1)}%`} color="#16A34A" />
-          <InfoCell label="투자기간" value={`적립 ${savingYears}년 + 거치 ${holdingYears}년`} />
+          <InfoCell label="목표금액" value={fmtW(pensionFund)} color="#60A5FA" />
+          <InfoCell label="은퇴나이" value={`${retireAge}세 (${savingYears + holdingYears}년)`} color="var(--text-primary)" />
+          <InfoCell label="예상 수익률" value={`${(expectedRate * 100).toFixed(1)}%`} color="var(--success)" />
+          <InfoCell label="투자기간" value={`적립 ${savingYears}년 + 거치 ${holdingYears}년`} color="var(--text-primary)" />
         </div>
 
         <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '16px' }}>
@@ -606,9 +606,9 @@ export function PensionPlanTab() {
             <input type="text"
               value={baseLumpSum.replace(/\B(?=(\d{3})+(?!\d))/g, ',')}
               onChange={(e) => setBaseLumpSum(e.target.value.replace(/\D/g, ''))}
-              style={inputStyle}
-              onFocus={(e) => { e.currentTarget.style.borderColor = '#1E3A5F'; }}
-              onBlur={(e) => { e.currentTarget.style.borderColor = '#D1D5DB'; }}
+              style={{ ...inputStyle, backgroundColor: 'var(--bg-base)' }}
+              onFocus={(e) => { e.currentTarget.style.borderColor = '#3B82F6'; }}
+              onBlur={(e) => { e.currentTarget.style.borderColor = 'var(--border-strong)'; }}
             />
             <span style={unitSpan}>만원</span>
           </div>
@@ -622,19 +622,19 @@ export function PensionPlanTab() {
                 <th key={h} style={{
                   padding: '10px 16px', textAlign: 'center', fontWeight: 600, color: 'var(--blue-400)',
                   borderBottom: '2px solid var(--blue-500)', fontSize: '12px', width: '20%',
-                  backgroundColor: hi < 2 ? '#DBEAFE' : '#F0F4FA',
+                  backgroundColor: hi < 2 ? 'rgba(59,130,246,0.12)' : 'var(--bg-surface)',
                 }}>{h}</th>
               ))}
             </tr>
           </thead>
           <tbody>
             {goalRows.map((row, i) => (
-              <tr key={i} style={{ borderBottom: '1px solid var(--border)' }}>
-                <td style={{ padding: '10px 16px', textAlign: 'center', fontVariantNumeric: 'tabular-nums', backgroundColor: i % 2 === 0 ? '#EFF6FF' : '#DBEAFE' }}>{fmtW(row.lumpSum)}</td>
-                <td style={{ padding: '10px 16px', textAlign: 'center', fontWeight: 600, color: 'var(--blue-400)', fontVariantNumeric: 'tabular-nums', backgroundColor: i % 2 === 0 ? '#EFF6FF' : '#DBEAFE' }}>{fmtW(row.annualSavings)}</td>
-                <td style={{ padding: '10px 16px', textAlign: 'center', color: 'var(--text-muted)', backgroundColor: i % 2 === 0 ? '#fff' : '#FAFAFA' }}>{(row.pensionRate * 100).toFixed(0)}%</td>
-                <td style={{ padding: '10px 16px', textAlign: 'center', fontVariantNumeric: 'tabular-nums', backgroundColor: i % 2 === 0 ? '#fff' : '#FAFAFA' }}>{fmtW(row.monthlyPension)}/월</td>
-                <td style={{ padding: '10px 16px', textAlign: 'center', fontWeight: 600, fontVariantNumeric: 'tabular-nums', backgroundColor: i % 2 === 0 ? '#fff' : '#FAFAFA', color: row.inheritance100 >= 0 ? '#16A34A' : '#DC2626' }}>
+              <tr key={i} style={{ borderBottom: `1px solid var(--bg-surface)` }}>
+                <td style={{ padding: '10px 16px', textAlign: 'center', fontVariantNumeric: 'tabular-nums', color: 'var(--text-primary)', backgroundColor: i % 2 === 0 ? 'transparent' : 'rgba(59,130,246,0.08)' }}>{fmtW(row.lumpSum)}</td>
+                <td style={{ padding: '10px 16px', textAlign: 'center', fontWeight: 600, color: 'var(--blue-400)', fontVariantNumeric: 'tabular-nums', backgroundColor: i % 2 === 0 ? 'transparent' : 'rgba(59,130,246,0.08)' }}>{fmtW(row.annualSavings)}</td>
+                <td style={{ padding: '10px 16px', textAlign: 'center', color: 'var(--text-muted)', backgroundColor: 'transparent' }}>{(row.pensionRate * 100).toFixed(0)}%</td>
+                <td style={{ padding: '10px 16px', textAlign: 'center', fontVariantNumeric: 'tabular-nums', color: 'var(--text-primary)', backgroundColor: 'transparent' }}>{fmtW(row.monthlyPension)}/월</td>
+                <td style={{ padding: '10px 16px', textAlign: 'center', fontWeight: 600, fontVariantNumeric: 'tabular-nums', backgroundColor: 'transparent', color: row.inheritance100 >= 0 ? 'var(--success)' : '#F87171' }}>
                   {row.inheritance100 >= 0 ? fmtW(row.inheritance100) : `-${fmtW(Math.abs(row.inheritance100))}`}
                 </td>
               </tr>
@@ -671,11 +671,11 @@ function LifetimeSection({ pv, rate, setRate, retireAge, result, pensionRateFrom
     <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
       {/* 가로 카드 5개 - 가로 꽉 채움 */}
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1.3fr 1fr 1fr', gap: '10px' }}>
-        <ResultCard label="연금재원" value={fmtW(pv)} color="#1E3A5F" />
-        <ResultCard label="연금수익률" value={`${rateDisplay}%`} color="#16A34A" />
-        <ResultCard label="연금수령기간" value={`${years}년 (${retireAge}세~120세)`} color="#374151" />
-        <ResultCard label="연금액 (월)" value={fmtW(result.monthlyPension)} color="#1E3A5F" large />
-        <ResultCard label="연금액 (연)" value={fmtW(result.annualPension)} color="#1E3A5F" large />
+        <ResultCard label="연금재원" value={fmtW(pv)} color="#60A5FA" />
+        <ResultCard label="연금수익률" value={`${rateDisplay}%`} color="var(--success)" />
+        <ResultCard label="연금수령기간" value={`${years}년 (${retireAge}세~120세)`} color="var(--text-primary)" />
+        <ResultCard label="연금액 (월)" value={fmtW(result.monthlyPension)} color="#60A5FA" large />
+        <ResultCard label="연금액 (연)" value={fmtW(result.annualPension)} color="#60A5FA" large />
       </div>
 
       {/* 그래프: 매년 연금의 원금/이자 구성 */}
@@ -717,7 +717,7 @@ function LifetimeSection({ pv, rate, setRate, retireAge, result, pensionRateFrom
         </div>
       </div>
 
-      <Note bg="#FFF7ED" border="#FDBA74" color="#9A3412">
+      <Note bg="rgba(251,146,60,0.10)" border="rgba(251,146,60,0.35)" color="#FB923C">
         <strong>원리금 균등상환 방식</strong>: 매월 동일한 {fmtW(result.monthlyPension)}을 수령합니다. 초기에는 이자 비중이 높고, 후반으로 갈수록 원금 비중이 증가합니다.
       </Note>
     </div>
@@ -752,16 +752,16 @@ function FixedSection({ pv, rate, setRate, period, setPeriod, retireAge, result 
     <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
       {/* 가로 카드 */}
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1.3fr 1.2fr 1fr 1fr', gap: '10px' }}>
-        <ResultCard label="연금재원" value={fmtW(pv)} color="#1E3A5F" />
-        <ResultCard label="연금수익률" value={`${rateDisplay}%`} color="#16A34A" />
-        <ResultCard label="연금수령기간" value={`${p}년 (${retireAge}세~${retireAge + p}세)`} color="#374151" />
+        <ResultCard label="연금재원" value={fmtW(pv)} color="#60A5FA" />
+        <ResultCard label="연금수익률" value={`${rateDisplay}%`} color="var(--success)" />
+        <ResultCard label="연금수령기간" value={`${p}년 (${retireAge}세~${retireAge + p}세)`} color="var(--text-primary)" />
         <div style={{ padding: '12px 16px', backgroundColor: 'var(--bg-surface)', borderRadius: '8px', border: '1px solid var(--border)' }}>
           <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginBottom: '4px' }}>연금액 (월/연)</div>
           <div style={{ fontSize: '16px', fontWeight: 700, color: 'var(--blue-400)', fontVariantNumeric: 'tabular-nums' }}>{fmtW(result.monthlyPension)}</div>
           <div style={{ fontSize: '12px', color: 'var(--text-muted)', fontVariantNumeric: 'tabular-nums', marginTop: '2px' }}>연 {fmtW(result.annualPension)}</div>
         </div>
-        <ResultCard label="총 수령연금" value={fmtW(result.totalReceived)} color="#374151" />
-        <ResultCard label="총 수령이자" value={fmtW(result.totalInterest)} color="#16A34A" />
+        <ResultCard label="총 수령연금" value={fmtW(result.totalReceived)} color="var(--text-primary)" />
+        <ResultCard label="총 수령이자" value={fmtW(result.totalInterest)} color="var(--success)" />
       </div>
 
       {/* 그래프: 120세까지, 수령기간만 바 표시 */}
@@ -770,7 +770,7 @@ function FixedSection({ pv, rate, setRate, period, setPeriod, retireAge, result 
         <PensionOptionChart data={fullChartData} type="fixed" retireAge={retireAge} />
       </div>
 
-      <Note bg="#EFF6FF" border="#93C5FD" color="#1E40AF">
+      <Note bg="rgba(59,130,246,0.08)" border="rgba(59,130,246,0.30)" color="#93C5FD">
         <strong>확정기간 수령</strong>: {retireAge}세부터 {retireAge + p}세까지 {p}년간 확정 수령합니다. 수령 종료 후 연금재원은 소진되며, 중도 사망 시 잔존연금이 상속됩니다.
       </Note>
     </div>
@@ -795,27 +795,27 @@ function InfiniteSection({ pv, rate, setRate, period, setPeriod, retireAge, resu
     <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
       {/* 가로 카드 6개 - 가로 꽉 채움 */}
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1.2fr 1fr 1fr', gap: '10px' }}>
-        <ResultCard label="연금재원" value={fmtW(pv)} color="#1E3A5F" />
+        <ResultCard label="연금재원" value={fmtW(pv)} color="#60A5FA" />
         <div style={{ padding: '12px 16px', backgroundColor: 'var(--bg-surface)', borderRadius: '8px', border: '1px solid var(--border)' }}>
           <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginBottom: '4px' }}>연금수익률</div>
           <div style={{ position: 'relative' }}>
             <input type="text" value={rateDisplay}
               onChange={(e) => setRate(e.target.value.replace(/[^\d.]/g, ''))}
-              style={{ ...inputStyle, fontSize: '16px', fontWeight: 700, color: 'var(--success)', height: '32px', padding: '0 30px 0 8px' }}
-              onFocus={(e) => { e.currentTarget.style.borderColor = '#16A34A'; }}
-              onBlur={(e) => { e.currentTarget.style.borderColor = '#D1D5DB'; }}
+              style={{ ...inputStyle, backgroundColor: 'var(--bg-base)', fontSize: '16px', fontWeight: 700, color: 'var(--success)', height: '32px', padding: '0 30px 0 8px' }}
+              onFocus={(e) => { e.currentTarget.style.borderColor = '#3B82F6'; }}
+              onBlur={(e) => { e.currentTarget.style.borderColor = 'var(--border-strong)'; }}
             />
             <span style={{ ...unitSpan, fontSize: '13px' }}>%</span>
           </div>
         </div>
-        <ResultCard label="수령기간" value="평생" color="#374151" />
+        <ResultCard label="수령기간" value="평생" color="var(--text-primary)" />
         <div style={{ padding: '12px 16px', backgroundColor: 'var(--bg-surface)', borderRadius: '8px', border: '1px solid var(--border)' }}>
           <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginBottom: '4px' }}>연금액 (월/연)</div>
           <div style={{ fontSize: '16px', fontWeight: 700, color: 'var(--success)', fontVariantNumeric: 'tabular-nums' }}>{fmtW(result.monthlyPension)}</div>
           <div style={{ fontSize: '12px', color: 'var(--text-muted)', fontVariantNumeric: 'tabular-nums', marginTop: '2px' }}>연 {fmtW(result.annualPension)}</div>
         </div>
-        <ResultCard label="총 연금액" value={fmtW(result.totalPension)} color="#374151" />
-        <ResultCard label="상속재원" value={fmtW(result.inheritanceAmount)} color="#D97706" />
+        <ResultCard label="총 연금액" value={fmtW(result.totalPension)} color="var(--text-primary)" />
+        <ResultCard label="상속재원" value={fmtW(result.inheritanceAmount)} color="#F59E0B" />
       </div>
 
       {/* 그래프: 120세까지 */}
@@ -824,7 +824,7 @@ function InfiniteSection({ pv, rate, setRate, period, setPeriod, retireAge, resu
         <PensionOptionChart data={fullChartData} type="infinite" retireAge={retireAge} showBalance />
       </div>
 
-      <Note bg="#F0FDF4" border="#86EFAC" color="#166534">
+      <Note bg="rgba(34,197,94,0.08)" border="rgba(34,197,94,0.30)" color="#4ADE80">
         <strong>이자만 수령 (원금 보존)</strong>: 연금재원의 이자({rateDisplay}%)만 수령하여 원금 {fmtW(pv)}이 100% 보존됩니다. 사망 시 연금재원 전액이 상속됩니다.
       </Note>
     </div>
@@ -845,9 +845,9 @@ function InputField({ label, value, onChange, unit, disabled }: {
         <input type="text" value={value}
           onChange={onChange ? (e) => onChange(e.target.value.replace(/[^\d.]/g, '')) : undefined}
           disabled={disabled}
-          style={{ ...inputStyle, backgroundColor: disabled ? '#F3F4F6' : '#fff', color: disabled ? '#6B7280' : 'var(--text-primary)', textAlign: disabled ? 'left' : 'right', paddingRight: unit ? '40px' : '10px' }}
-          onFocus={(e) => { if (!disabled) e.currentTarget.style.borderColor = '#1E3A5F'; }}
-          onBlur={(e) => { e.currentTarget.style.borderColor = '#D1D5DB'; }}
+          style={{ ...inputStyle, backgroundColor: disabled ? 'var(--bg-surface)' : 'var(--bg-base)', color: disabled ? 'var(--text-muted)' : 'var(--text-primary)', textAlign: disabled ? 'left' : 'right', paddingRight: unit ? '40px' : '10px' }}
+          onFocus={(e) => { if (!disabled) e.currentTarget.style.borderColor = '#3B82F6'; }}
+          onBlur={(e) => { e.currentTarget.style.borderColor = 'var(--border-strong)'; }}
         />
         {unit && <span style={unitSpan}>{unit}</span>}
       </div>
@@ -865,7 +865,7 @@ function ResultCard({ label, value, color, large }: { label: string; value: stri
 }
 
 function InfoCell({ label, value, color }: { label: string; value: string; color?: string }) {
-  return (<div><div style={{ fontSize: '11px', color: 'var(--text-muted)', marginBottom: '4px' }}>{label}</div><div style={{ fontSize: '15px', fontWeight: 700, color: color ?? '#374151' }}>{value}</div></div>);
+  return (<div><div style={{ fontSize: '11px', color: 'var(--text-muted)', marginBottom: '4px' }}>{label}</div><div style={{ fontSize: '15px', fontWeight: 700, color: color ?? 'var(--text-primary)' }}>{value}</div></div>);
 }
 
 function Row({ label, value, c }: { label: string; value: string; c: string }) {

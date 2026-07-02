@@ -96,7 +96,7 @@ const inputStyle: React.CSSProperties = {
   padding: '0 48px 0 12px',
   fontSize: '14px',
   color: 'var(--text-primary)',
-  backgroundColor: 'var(--bg-card)',
+  backgroundColor: 'var(--bg-base)',
   border: '1px solid var(--border-strong)',
   borderRadius: '8px',
   outline: 'none',
@@ -168,11 +168,11 @@ function NumericInput({
           disabled={disabled}
           style={inputStyle}
           onFocus={(e) => {
-            e.currentTarget.style.borderColor = '#1E3A5F';
-            e.currentTarget.style.boxShadow = '0 0 0 3px rgba(30,58,95,0.12)';
+            e.currentTarget.style.borderColor = '#3B82F6';
+            e.currentTarget.style.boxShadow = '0 0 0 2px rgba(59,130,246,0.25)';
           }}
           onBlur={(e) => {
-            e.currentTarget.style.borderColor = '#D1D5DB';
+            e.currentTarget.style.borderColor = 'var(--border-strong)';
             e.currentTarget.style.boxShadow = 'none';
           }}
         />
@@ -279,7 +279,7 @@ function BasicInfoCard({
       </div>
 
       {/* 그룹3: 목표 */}
-      <div style={{ padding: '16px 20px', backgroundColor: '#F0F4FA', borderRadius: 10, border: '1px solid #D0DAE8' }}>
+      <div style={{ padding: '16px 20px', backgroundColor: 'var(--bg-surface)', borderRadius: 10, border: '1px solid var(--border)' }}>
         <div style={groupTitle}>목표</div>
         <div style={itemStyle}><span style={lbl}>예상 투자수익률</span><span style={{ ...val, color: 'var(--success)' }}>{investRate != null ? `${(investRate * 100).toFixed(1)}%` : '-'}</span></div>
         <div style={itemStyle}><span style={lbl}>예상 연금수익률</span><span style={{ ...val, color: 'var(--success)' }}>{pensionRate != null ? `${(pensionRate * 100).toFixed(1)}%` : '-'}</span></div>
@@ -287,7 +287,7 @@ function BasicInfoCard({
           <span style={lbl}>은퇴당시 연금액</span>
           <span style={{ display: 'flex', alignItems: 'center' }}>
             <span style={val}>{futureMonthly != null && futureMonthly > 0 ? `${Math.round(futureMonthly / 1e4).toLocaleString('ko-KR')}만원/월` : '-'}</span>
-            <span style={{ ...badge, backgroundColor: useInflInput ? '#DBEAFE' : '#F3F4F6', color: useInflInput ? '#1D4ED8' : '#6B7280' }}>
+            <span style={{ ...badge, backgroundColor: useInflInput ? 'rgba(59,130,246,0.15)' : 'rgba(255,255,255,0.05)', color: useInflInput ? '#60A5FA' : 'var(--text-muted)' }}>
               물가{useInflInput ? 'O' : 'X'}
             </span>
           </span>
@@ -296,14 +296,14 @@ function BasicInfoCard({
           <span style={lbl}>은퇴자금</span>
           <span style={{ display: 'flex', alignItems: 'center' }}>
             <span style={{ fontSize: 16, fontWeight: 800, color: 'var(--blue-400)' }}>{retireFund > 0 ? fmtOk(retireFund) : '-'}</span>
-            <span style={{ ...badge, backgroundColor: useInflCalc ? '#DBEAFE' : '#F3F4F6', color: useInflCalc ? '#1D4ED8' : '#6B7280' }}>
+            <span style={{ ...badge, backgroundColor: useInflCalc ? 'rgba(59,130,246,0.15)' : 'rgba(255,255,255,0.05)', color: useInflCalc ? '#60A5FA' : 'var(--text-muted)' }}>
               물가{useInflCalc ? 'O' : 'X'}
             </span>
           </span>
         </div>
         <div style={{ ...itemStyle, borderBottom: 'none' }}>
           <span style={lbl}>상속자금</span>
-          <span style={{ fontSize: 16, fontWeight: 800, color: inheritFund > 0 ? '#059669' : '#EF4444' }}>{fmtOk(inheritFund)}</span>
+          <span style={{ fontSize: 16, fontWeight: 800, color: inheritFund > 0 ? '#34D399' : '#F87171' }}>{fmtOk(inheritFund)}</span>
         </div>
       </div>
     </div>
@@ -740,7 +740,7 @@ export function RetirementPlanTab() {
               <thead>
                 <tr style={{ backgroundColor: 'var(--bg-surface)' }}>
                   {['연도', '연차', '나이', '구분', '월적립(만)', '거치금(만)', '누적원금', '운용수익', '연금인출', '누적인출', '총평가'].map(col => (
-                    <th key={col} style={{ padding: '10px 12px', textAlign: ['연도', '연차', '나이', '구분'].includes(col) ? 'center' : 'right', fontSize: '12px', fontWeight: 600, color: col === '연금인출' || col === '누적인출' ? '#DC2626' : '#6B7280', borderBottom: '1px solid var(--border)', whiteSpace: 'nowrap' }}>{col}</th>
+                    <th key={col} style={{ padding: '10px 12px', textAlign: ['연도', '연차', '나이', '구분'].includes(col) ? 'center' : 'right', fontSize: '12px', fontWeight: 600, color: col === '연금인출' || col === '누적인출' ? '#F87171' : 'var(--text-muted)', borderBottom: '1px solid var(--bg-surface)', whiteSpace: 'nowrap' }}>{col}</th>
                   ))}
                 </tr>
               </thead>
@@ -750,7 +750,7 @@ export function RetirementPlanTab() {
                   const age = Number(row.age ?? 0);
                   const rawPhase = String(row.phase ?? row.type ?? '-');
                   const phaseLabel = rawPhase === 'saving' ? '적립' : rawPhase === 'holding' ? '거치' : rawPhase === 'retirement' ? '은퇴후' : rawPhase;
-                  const phaseColor = rawPhase === 'saving' ? '#3B82F6' : rawPhase === 'holding' ? '#D4A847' : '#16A34A';
+                  const phaseColor = rawPhase === 'saving' ? '#60A5FA' : rawPhase === 'holding' ? '#FCD34D' : '#34D399';
                   const mp = Number(row.monthly_payment ?? 0);
                   const ad = Number(row.additional ?? 0);
                   const principal = Number(row.cumulative_principal ?? row.principal ?? 0);
@@ -764,19 +764,19 @@ export function RetirementPlanTab() {
                   const isRetirement = rawPhase === 'retirement';
                   const planStartYear = desiredPlanData.plan_start_year ?? new Date().getFullYear();
                   const calYear = planStartYear + year - 1;
-                  const bgColor = isRetAge ? 'rgba(30,58,95,0.06)' : isRetirement ? '#F0FDF4' : idx % 2 === 0 ? '#fff' : '#FAFAFA';
+                  const bgColor = isRetAge ? 'rgba(96,165,250,0.08)' : isRetirement ? 'rgba(22,163,74,0.06)' : 'transparent';
                   return (
-                    <tr key={year} style={{ backgroundColor: bgColor, borderBottom: '1px solid var(--border)' }}>
+                    <tr key={year} style={{ backgroundColor: bgColor, borderBottom: '1px solid var(--bg-surface)' }}>
                       <td style={{ padding: '8px 10px', textAlign: 'center', fontSize: 11, color: 'var(--text-muted)' }}>{calYear}</td>
                       <td style={{ padding: '8px 10px', textAlign: 'center' }}>{year}</td>
-                      <td style={{ padding: '8px 10px', textAlign: 'center', fontWeight: isRetAge ? 700 : 400, color: isRetAge ? '#1E3A5F' : '#374151' }}>
+                      <td style={{ padding: '8px 10px', textAlign: 'center', fontWeight: isRetAge ? 700 : 400, color: isRetAge ? '#60A5FA' : 'var(--text-primary)' }}>
                         {age}세{isRetAge && <span style={{ marginLeft: 4, fontSize: 10, color: 'var(--blue-400)' }}>★</span>}
                       </td>
                       <td style={{ padding: '8px 10px', textAlign: 'center', color: phaseColor, fontWeight: 600, fontSize: 12 }}>{phaseLabel}</td>
                       <td style={{ padding: '8px 10px', textAlign: 'right' }}>{mp > 0 ? formatCurrency(Math.round(mp / 1e4)) : '-'}</td>
                       <td style={{ padding: '8px 10px', textAlign: 'right' }}>{ad > 0 ? formatCurrency(Math.round(ad / 1e4)) : '-'}</td>
                       <td style={{ padding: '8px 10px', textAlign: 'right' }}>{formatCurrency(Math.round(principal / 1e4))}</td>
-                      <td style={{ padding: '8px 10px', textAlign: 'right', color: profit >= 0 ? '#16A34A' : '#DC2626' }}>{formatCurrency(Math.round(profit / 1e4))}</td>
+                      <td style={{ padding: '8px 10px', textAlign: 'right', color: profit >= 0 ? '#34D399' : '#F87171' }}>{formatCurrency(Math.round(profit / 1e4))}</td>
                       <td style={{ padding: '8px 10px', textAlign: 'right', color: 'var(--danger)' }}>{pension > 0 ? formatCurrency(Math.round(pension / 1e4)) : '-'}</td>
                       <td style={{ padding: '8px 10px', textAlign: 'right', color: 'var(--danger)' }}>{cumPension > 0 ? formatCurrency(Math.round(cumPension / 1e4)) : '-'}</td>
                       <td style={{ padding: '8px 10px', textAlign: 'right', fontWeight: 700 }}>{formatCurrency(Math.round(evaluation / 1e4))}</td>
@@ -837,7 +837,7 @@ function AmountCell({
       style={{
         padding: '8px 12px',
         textAlign: 'right',
-        color: highlight ? '#1E3A5F' : 'var(--text-primary)',
+        color: highlight ? '#60A5FA' : 'var(--text-primary)',
         fontWeight: bold || highlight ? 600 : 400,
         fontVariantNumeric: 'tabular-nums',
         whiteSpace: 'nowrap',

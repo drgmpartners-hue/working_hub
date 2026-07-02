@@ -72,18 +72,18 @@ export function AnnualFlowChart({ data, visibility, noAnimation }: FlowChartProp
     <ResponsiveContainer width="100%" height={320}>
       <ComposedChart data={chartData} margin={{ top: 10, right: 40, left: 10, bottom: 5 }}>
         <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#243049" />
-        <XAxis dataKey="year" fontSize={12} tickLine={false} axisLine={{ stroke: '#E5E7EB' }} />
-        <YAxis yAxisId="left" fontSize={11} tickLine={false} axisLine={false} tickFormatter={formatAmount} width={60} />
-        <YAxis yAxisId="right" orientation="right" fontSize={11} tickLine={false} axisLine={false} tickFormatter={(v: number) => `${v.toFixed(1)}%`} width={50} />
-        <Tooltip formatter={tooltipFmt} contentStyle={tooltipStyle} />
+        <XAxis dataKey="year" fontSize={12} tickLine={false} axisLine={{ stroke: '#2F3D5C' }} tick={{ fill: '#7A8FA6' }} />
+        <YAxis yAxisId="left" fontSize={11} tickLine={false} axisLine={false} tickFormatter={formatAmount} width={60} tick={{ fill: '#7A8FA6' }} />
+        <YAxis yAxisId="right" orientation="right" fontSize={11} tickLine={false} axisLine={false} tickFormatter={(v: number) => `${v.toFixed(1)}%`} width={50} tick={{ fill: '#7A8FA6' }} />
+        <Tooltip formatter={tooltipFmt} contentStyle={{ ...tooltipStyle, backgroundColor: '#16203A', border: '1px solid #2F3D5C', color: '#C9D6E3' }} />
         {visibility.depositIn && (
-          <Bar yAxisId="left" dataKey="입금액" fill="#8B5CF6" opacity={0.6} barSize={24} radius={[3, 3, 0, 0]} isAnimationActive={!noAnimation} />
+          <Bar yAxisId="left" dataKey="입금액" fill="#8B5CF6" opacity={0.7} barSize={24} radius={[3, 3, 0, 0]} isAnimationActive={!noAnimation} />
         )}
         {visibility.contribution && (
-          <Bar yAxisId="left" dataKey="총납입금액" fill="#4A90D9" opacity={0.7} barSize={24} radius={[3, 3, 0, 0]} isAnimationActive={!noAnimation} />
+          <Bar yAxisId="left" dataKey="총납입금액" fill="#4A90D9" opacity={0.8} barSize={24} radius={[3, 3, 0, 0]} isAnimationActive={!noAnimation} />
         )}
         {visibility.annualReturn && (
-          <Bar yAxisId="left" dataKey="연간총수익" fill="#10B981" opacity={0.75} barSize={24} radius={[3, 3, 0, 0]} isAnimationActive={!noAnimation} />
+          <Bar yAxisId="left" dataKey="연간총수익" fill="#10B981" opacity={0.8} barSize={24} radius={[3, 3, 0, 0]} isAnimationActive={!noAnimation} />
         )}
         {visibility.returnRate && (
           <Line yAxisId="right" type="monotone" dataKey="연수익률" stroke="#F59E0B" strokeWidth={2.5} dot={{ r: 4, fill: '#F59E0B' }} activeDot={{ r: 6 }} isAnimationActive={!noAnimation} />
@@ -128,10 +128,10 @@ export function NetAssetChart({ data, visibility, noAnimation }: NetAssetChartPr
     <ResponsiveContainer width="100%" height={320}>
       <ComposedChart data={chartData} margin={{ top: 10, right: 40, left: 10, bottom: 5 }}>
         <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#243049" />
-        <XAxis dataKey="year" fontSize={12} tickLine={false} axisLine={{ stroke: '#E5E7EB' }} />
-        <YAxis yAxisId="left" fontSize={11} tickLine={false} axisLine={false} tickFormatter={formatAmount} width={60} />
-        <YAxis yAxisId="right" orientation="right" fontSize={11} tickLine={false} axisLine={false} tickFormatter={(v: number) => `${v.toFixed(1)}%`} width={50} />
-        <Tooltip formatter={tooltipFmt} contentStyle={tooltipStyle} />
+        <XAxis dataKey="year" fontSize={12} tickLine={false} axisLine={{ stroke: '#2F3D5C' }} tick={{ fill: '#7A8FA6' }} />
+        <YAxis yAxisId="left" fontSize={11} tickLine={false} axisLine={false} tickFormatter={formatAmount} width={60} tick={{ fill: '#7A8FA6' }} />
+        <YAxis yAxisId="right" orientation="right" fontSize={11} tickLine={false} axisLine={false} tickFormatter={(v: number) => `${v.toFixed(1)}%`} width={50} tick={{ fill: '#7A8FA6' }} />
+        <Tooltip formatter={tooltipFmt} contentStyle={{ ...tooltipStyle, backgroundColor: '#16203A', border: '1px solid #2F3D5C', color: '#C9D6E3' }} />
         {visibility.cumulativeDeposit && (
           <Bar yAxisId="left" dataKey="누적입금액" fill="#4A90D9" opacity={0.5} barSize={28} radius={[3, 3, 0, 0]} isAnimationActive={!noAnimation} />
         )}

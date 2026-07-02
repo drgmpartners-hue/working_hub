@@ -259,7 +259,7 @@ function BasicInfoCard({
       </div>
 
       {/* 그룹3: 목표 */}
-      <div style={{ padding: '16px 20px', backgroundColor: '#F0F4FA', borderRadius: 10, border: '1px solid #D0DAE8' }}>
+      <div style={{ padding: '16px 20px', backgroundColor: 'var(--bg-card-2)', borderRadius: 10, border: '1px solid var(--border)' }}>
         <div style={groupTitle}>목표</div>
         <div style={itemStyle}><span style={lbl}>예상 투자수익률</span><span style={{ ...val, color: 'var(--success)' }}>{investRate != null ? `${(investRate * 100).toFixed(1)}%` : '-'}</span></div>
         <div style={itemStyle}><span style={lbl}>예상 연금수익률</span><span style={{ ...val, color: 'var(--success)' }}>{pensionRate != null ? `${(pensionRate * 100).toFixed(1)}%` : '-'}</span></div>
@@ -267,19 +267,19 @@ function BasicInfoCard({
           <span style={lbl}>은퇴당시 연금액</span>
           <span style={{ display: 'flex', alignItems: 'center' }}>
             <span style={val}>{futureMonthly != null && futureMonthly > 0 ? `${Math.round(futureMonthly / 1e4).toLocaleString('ko-KR')}만원/월` : '-'}</span>
-            <span style={{ ...bdg, backgroundColor: useInflInput ? '#DBEAFE' : '#F3F4F6', color: useInflInput ? '#1D4ED8' : '#6B7280' }}>물가{useInflInput ? 'O' : 'X'}</span>
+            <span style={{ ...bdg, backgroundColor: useInflInput ? 'rgba(59,130,246,0.15)' : 'var(--bg-surface)', color: useInflInput ? '#60A5FA' : 'var(--text-muted)' }}>물가{useInflInput ? 'O' : 'X'}</span>
           </span>
         </div>
         <div style={itemStyle}>
           <span style={lbl}>은퇴자금</span>
           <span style={{ display: 'flex', alignItems: 'center' }}>
             <span style={{ fontSize: 16, fontWeight: 800, color: 'var(--blue-400)' }}>{retireFund > 0 ? fmtOk(retireFund) : '-'}</span>
-            <span style={{ ...bdg, backgroundColor: useInflCalc ? '#DBEAFE' : '#F3F4F6', color: useInflCalc ? '#1D4ED8' : '#6B7280' }}>물가{useInflCalc ? 'O' : 'X'}</span>
+            <span style={{ ...bdg, backgroundColor: useInflCalc ? 'rgba(59,130,246,0.15)' : 'var(--bg-surface)', color: useInflCalc ? '#60A5FA' : 'var(--text-muted)' }}>물가{useInflCalc ? 'O' : 'X'}</span>
           </span>
         </div>
         <div style={{ ...itemStyle, borderBottom: 'none' }}>
           <span style={lbl}>상속자금</span>
-          <span style={{ fontSize: 16, fontWeight: 800, color: inheritFund > 0 ? '#059669' : '#EF4444' }}>{fmtOk(inheritFund)}</span>
+          <span style={{ fontSize: 16, fontWeight: 800, color: inheritFund > 0 ? '#34D399' : '#F87171' }}>{fmtOk(inheritFund)}</span>
         </div>
       </div>
     </div>
@@ -505,7 +505,7 @@ function EditableCell({
     borderRadius: 3,
     padding: '2px 4px',
     border: isOverridden ? '1.5px solid #3B82F6' : '1.5px solid transparent',
-    backgroundColor: isOverridden ? '#EFF6FF' : 'transparent',
+    backgroundColor: isOverridden ? 'rgba(59,130,246,0.15)' : 'transparent',
     minWidth: 60,
     display: 'inline-block',
     textAlign: 'right',
@@ -549,9 +549,9 @@ function EditableCell({
 /* ------------------------------------------------------------------ */
 
 const PHASE_BG: Record<string, string> = {
-  saving: '#EFF6FF',
-  holding: '#FFFBEB',
-  retirement: '#F0FDF4',
+  saving: 'rgba(59,130,246,0.07)',
+  holding: 'rgba(245,158,11,0.07)',
+  retirement: 'rgba(16,185,129,0.07)',
 };
 
 const PHASE_LABEL: Record<string, string> = {
@@ -561,9 +561,9 @@ const PHASE_LABEL: Record<string, string> = {
 };
 
 const PHASE_COLOR: Record<string, string> = {
-  saving: '#2563EB',
-  holding: '#D97706',
-  retirement: '#16A34A',
+  saving: '#60A5FA',
+  holding: '#FCD34D',
+  retirement: '#34D399',
 };
 
 function LifetimeTable({
@@ -630,11 +630,11 @@ function LifetimeTable({
             const isAge100 = row.age === 100;
             const isHighlight = isRetirementAge || isAge100;
             const bg = row.isAdjusted
-              ? '#FEF3C7'
+              ? 'rgba(245,158,11,0.12)'
               : isHighlight
                 ? '#1E3A5F'
-                : PHASE_BG[row.phase] ?? '#ffffff';
-            const hlText = isHighlight && !row.isAdjusted ? '#ffffff' : undefined;
+                : PHASE_BG[row.phase] ?? 'transparent';
+            const hlText = isHighlight && !row.isAdjusted ? '#E2EEFF' : undefined;
 
             const tdBase: React.CSSProperties = {
               padding: '7px 10px',
@@ -681,12 +681,12 @@ function LifetimeTable({
 
             return (
               <tr key={row.age} style={{ backgroundColor: bg }}>
-                <td style={{ ...tdCenter, fontSize: 11, color: hlText ?? '#9CA3AF' }}>{row.calendarYear}</td>
+                <td style={{ ...tdCenter, fontSize: 11, color: hlText ?? 'var(--text-muted)' }}>{row.calendarYear}</td>
                 <td style={{ ...tdFirst, color: hlText }}>{row.year}</td>
-                <td style={{ ...tdCenter, fontWeight: isHighlight ? 700 : 400, color: hlText ?? '#374151' }}>
+                <td style={{ ...tdCenter, fontWeight: isHighlight ? 700 : 400, color: hlText ?? 'var(--text-primary)' }}>
                   {row.age}세
                   {isHighlight && (
-                    <span style={{ marginLeft: 3, fontSize: 10, color: hlText ?? '#1E3A5F' }}>★</span>
+                    <span style={{ marginLeft: 3, fontSize: 10, color: hlText ?? '#60A5FA' }}>★</span>
                   )}
                 </td>
                 <td style={{ ...tdCenter, color: hlText ?? PHASE_COLOR[row.phase], fontWeight: 600 }}>
@@ -746,13 +746,13 @@ function LifetimeTable({
                   />
                 </td>
 
-                <td style={{ ...tdBase, color: hlText ?? (row.isAdjusted ? '#2563EB' : '#9CA3AF') }}>
+                <td style={{ ...tdBase, color: hlText ?? (row.isAdjusted ? '#60A5FA' : 'var(--text-muted)') }}>
                   {row.isAdjusted ? formatCurrency(Math.round(row.adjustedEvaluation)) : '-'}
                 </td>
                 <td style={{ ...tdBase, fontWeight: 600, color: hlText }}>{row.depositIn > 0 ? formatCurrency(Math.round(row.depositIn)) : '-'}</td>
 
                 {/* 연금액 (편집 가능: 은퇴후) */}
-                <td style={{ ...tdBase, color: hlText ?? (row.pension > 0 ? '#DC2626' : '#9CA3AF') }}>
+                <td style={{ ...tdBase, color: hlText ?? (row.pension > 0 ? '#F87171' : 'var(--text-muted)') }}>
                   <EditableCell
                     value={row.pension}
                     isEditable={pensionEditable}
@@ -764,19 +764,19 @@ function LifetimeTable({
                       const n = parseFloat(raw);
                       onOverrideChange(row.year, 'pension', isNaN(n) ? undefined : n);
                     }}
-                    style={{ color: hlText ?? (row.pension > 0 ? '#DC2626' : '#9CA3AF') }}
+                    style={{ color: hlText ?? (row.pension > 0 ? '#F87171' : 'var(--text-muted)') }}
                   />
                 </td>
 
-                <td style={{ ...tdBase, color: hlText ?? (row.cumulativePension > 0 ? '#DC2626' : '#9CA3AF') }}>
+                <td style={{ ...tdBase, color: hlText ?? (row.cumulativePension > 0 ? '#F87171' : 'var(--text-muted)') }}>
                   {row.cumulativePension > 0 ? formatCurrency(Math.round(row.cumulativePension)) : '-'}
                 </td>
-                <td style={{ ...tdBase, fontWeight: 700, color: hlText ?? (row.adjustedNetAsset >= row.totalEvaluation ? '#2563EB' : '#DC2626') }}>
+                <td style={{ ...tdBase, fontWeight: 700, color: hlText ?? (row.adjustedNetAsset >= row.totalEvaluation ? '#60A5FA' : '#F87171') }}>
                   {formatCurrency(Math.round(row.adjustedNetAsset))}
                 </td>
                 <td style={{
                   ...tdCenter,
-                  color: hlText ?? (row.netAssetReturnRate >= 0 ? '#16A34A' : '#DC2626'),
+                  color: hlText ?? (row.netAssetReturnRate >= 0 ? '#34D399' : '#F87171'),
                   fontWeight: 600,
                 }}>
                   {row.cumulativePrincipal > 0 ? `${row.netAssetReturnRate.toFixed(1)}%` : '-'}
@@ -826,7 +826,7 @@ function AccordionSection({
           alignItems: 'center',
           justifyContent: 'space-between',
           padding: '14px 20px',
-          backgroundColor: open ? '#F0F4FA' : '#F9FAFB',
+          backgroundColor: open ? 'var(--bg-card-2)' : 'var(--bg-surface)',
           border: 'none',
           cursor: 'pointer',
           textAlign: 'left',
@@ -1019,10 +1019,10 @@ export function LifetimeRetirementFlow({
               {/* 범례 */}
               <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap' }}>
                 {[
-                  { color: '#EFF6FF', border: 'rgba(56,189,248,0.35)', label: '적립기간', textColor: '#2563EB' },
-                  { color: '#FFFBEB', border: 'rgba(245,158,11,0.35)', label: '거치기간', textColor: '#D97706' },
-                  { color: '#F0FDF4', border: 'rgba(16,185,129,0.3)', label: '은퇴 후', textColor: '#16A34A' },
-                  { color: '#DBEAFE', border: 'var(--blue-400)', label: '보정된 행', textColor: '#1D4ED8', leftBar: true },
+                  { color: 'rgba(59,130,246,0.1)', border: 'rgba(96,165,250,0.35)', label: '적립기간', textColor: '#60A5FA' },
+                  { color: 'rgba(245,158,11,0.1)', border: 'rgba(252,211,77,0.35)', label: '거치기간', textColor: '#FCD34D' },
+                  { color: 'rgba(16,185,129,0.1)', border: 'rgba(52,211,153,0.3)', label: '은퇴 후', textColor: '#34D399' },
+                  { color: 'rgba(245,158,11,0.15)', border: 'rgba(245,158,11,0.5)', label: '보정된 행', textColor: '#FCD34D', leftBar: true },
                 ].map(({ color, border, label, textColor, leftBar }) => (
                   <div
                     key={label}
@@ -1059,9 +1059,9 @@ export function LifetimeRetirementFlow({
                   fontWeight: 600,
                   borderRadius: 6,
                   border: '1px solid',
-                  borderColor: overrideCount > 0 ? '#3B82F6' : '#D1D5DB',
-                  backgroundColor: overrideCount > 0 ? '#EFF6FF' : '#F9FAFB',
-                  color: overrideCount > 0 ? '#2563EB' : '#9CA3AF',
+                  borderColor: overrideCount > 0 ? 'rgba(59,130,246,0.5)' : 'var(--border-strong)',
+                  backgroundColor: overrideCount > 0 ? 'rgba(59,130,246,0.12)' : 'var(--bg-surface)',
+                  color: overrideCount > 0 ? '#60A5FA' : 'var(--text-muted)',
                   cursor: overrideCount > 0 ? 'pointer' : 'not-allowed',
                   whiteSpace: 'nowrap',
                   transition: 'all 0.15s',
