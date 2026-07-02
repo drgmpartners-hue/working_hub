@@ -6254,7 +6254,7 @@ export default function IRPPage() {
             return (
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
                 {/* 상시 링크 */}
-                <div style={{ backgroundColor: '#F0F4FF', border: '1px solid #C7D7F9', borderRadius: 10, padding: '14px 16px', display: 'flex', flexDirection: 'column', minWidth: 0 }}>
+                <div style={{ backgroundColor: 'rgba(59,130,246,0.10)', border: '1px solid rgba(59,130,246,0.35)', borderRadius: 10, padding: '14px 16px', display: 'flex', flexDirection: 'column', minWidth: 0 }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 8 }}>
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#3B82F6" strokeWidth="2">
                       <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71" />
@@ -6263,7 +6263,7 @@ export default function IRPPage() {
                     <span style={{ fontSize: '0.8125rem', fontWeight: 700, color: 'var(--blue-400)' }}>상시 조회 링크</span>
                   </div>
                   <div style={{ fontSize: '0.6875rem', color: 'var(--text-muted)', marginBottom: 6 }}>계좌정보 · 포트폴리오 · 분석표 · AI 보고서</div>
-                  <div style={{ padding: '6px 10px', backgroundColor: 'var(--bg-card)', border: '1px solid var(--border-strong)', borderRadius: 6, fontSize: '0.6875rem', color: portalToken ? '#374151' : '#9CA3AF', fontFamily: 'monospace', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', marginBottom: 8 }}>
+                  <div style={{ padding: '6px 10px', backgroundColor: 'var(--bg-card)', border: '1px solid var(--border-strong)', borderRadius: 6, fontSize: '0.6875rem', color: portalToken ? 'var(--text-secondary)' : 'var(--text-muted)', fontFamily: 'monospace', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', marginBottom: 8 }}>
                     {permanentLink ?? '포털 토큰 없음'}
                   </div>
                   <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
@@ -6289,7 +6289,7 @@ export default function IRPPage() {
                     <span style={{ fontSize: '0.8125rem', fontWeight: 700, color: 'var(--warning)' }}>변경 제안 링크</span>
                   </div>
                   <div style={{ fontSize: '0.6875rem', color: 'var(--text-muted)', marginBottom: 6 }}>위 항목 + 수정 포트폴리오 · AI 변경 분석</div>
-                  <div style={{ padding: '6px 10px', backgroundColor: 'var(--bg-card)', border: '1px solid rgba(245,158,11,0.35)', borderRadius: 6, fontSize: '0.6875rem', color: suggestLink ? '#92400E' : '#9CA3AF', fontFamily: 'monospace', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', marginBottom: 4 }}>
+                  <div style={{ padding: '6px 10px', backgroundColor: 'var(--bg-card)', border: '1px solid rgba(245,158,11,0.35)', borderRadius: 6, fontSize: '0.6875rem', color: suggestLink ? 'var(--text-secondary)' : 'var(--text-muted)', fontFamily: 'monospace', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', marginBottom: 4 }}>
                     {suggestLink ?? (reportSaved ? '생성 중...' : '보고서를 저장하면 링크가 생성됩니다')}
                   </div>
                   <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
