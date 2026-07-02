@@ -93,11 +93,11 @@ export default function ProductMasterPage() {
   const [submitting, setSubmitting] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
 
-  /* Stock search autocomplete */
-  const [stockQuery, setStockQuery] = useState('');
-  const [stockResults, setStockResults] = useState<Array<{ code: string; name: string; nav: number; price: number; type: string }>>([]);
-  const [stockSearching, setStockSearching] = useState(false);
-  const stockSearchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  /* Stock search autocomplete for add modal */
+  const [addMasterStockQuery, setAddMasterStockQuery] = useState('');
+  const [addMasterStockResults, setAddMasterStockResults] = useState<Array<{ code: string; name: string; nav?: number; price?: number; type?: string; exchange?: string; currency?: string }>>([]);
+  const [addMasterStockSearching, setAddMasterStockSearching] = useState(false);
+  const addMasterStockTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   /* ---------------------------------------------------------------- */
   /*  Debounce search                                                   */
@@ -214,46 +214,66 @@ export default function ProductMasterPage() {
     }
   }
 
-  /* Stock search handler */
-  function handleStockSearch(query: string) {
-    setStockQuery(query);
+  /* 상품유형 → stock_type API 파라미터 매핑 */
+  function productTypeToStockType(pt: string): string {
+    const p = (pt || '').toLowerCase();
+    if (p === 'etf') return 'etf';
+    if (p === '국내주식') return 'kr_stock';
+    if (p === '미국주식' || p === '해외주식') return 'foreign';
+    if (p === '해외etf') return 'foreign';
+    return '';
+  }
+
+  /* Stock search handler for add modal */
+  function handleMasterStockSearch(query: string) {
+    setAddMasterStockQuery(query);
     setForm((s) => ({ ...s, product_name: query }));
-    if (stockSearchTimer.current) clearTimeout(stockSearchTimer.current);
+    if (addMasterStockTimer.current) clearTimeout(addMasterStockTimer.current);
     if (!query.trim() || query.trim().length < 2) {
-      setStockResults([]);
+      setAddMasterStockResults([]);
       return;
     }
-    stockSearchTimer.current = setTimeout(async () => {
-      setStockSearching(true);
+    addMasterStockTimer.current = setTimeout(async () => {
+      setAddMasterStockSearching(true);
       try {
-        const res = await fetch(`${API_URL}/api/v1/stock-search?q=${encodeURIComponent(query)}&limit=10`, {
+        const stockType = productTypeToStockType(form.product_type);
+        const params = new URLSearchParams({ q: query, limit: '10' });
+        if (stockType) params.set('stock_type', stockType);
+        const res = await fetch(`${API_URL}/api/v1/stock-search?${params}`, {
           headers: authLib.getAuthHeader(),
         });
         if (res.ok) {
           const data = await res.json();
-          setStockResults(data.results ?? []);
+          setAddMasterStockResults(data.results ?? []);
         }
       } catch { /* silent */ }
-      finally { setStockSearching(false); }
+      finally { setAddMasterStockSearching(false); }
     }, 400);
   }
 
-  function handleStockSelect(item: { code: string; name: string; type: string }) {
+  function handleMasterStockSelect(item: { code: string; name: string; type?: string; region?: string }) {
+    const autoType = item.type || '';
+    const autoRegion = (() => {
+      if (autoType === '미국주식' || autoType === '해외ETF') return '미국';
+      if (autoType === '국내주식' || autoType === 'ETF') return '국내';
+      return item.region || '';
+    })();
     setForm((s) => ({
       ...s,
       product_name: item.name,
       product_code: item.code,
-      product_type: item.type,
+      product_type: autoType || s.product_type,
+      region: autoRegion || s.region,
     }));
-    setStockQuery(item.name);
-    setStockResults([]);
+    setAddMasterStockQuery(item.name);
+    setAddMasterStockResults([]);
   }
 
   function openModal() {
     setForm(EMPTY_FORM);
     setFormError(null);
-    setStockQuery('');
-    setStockResults([]);
+    setAddMasterStockQuery('');
+    setAddMasterStockResults([]);
     setModalOpen(true);
   }
 
@@ -311,7 +331,7 @@ export default function ProductMasterPage() {
             증권사 상품 관리
           </h1>
           <p style={{ margin: '4px 0 0', fontSize: '0.875rem', color: 'var(--text-muted)' }}>
-            상품명과 위험도 · 지역을 매핑하는 마스터 데이터를 관리합니다.
+            증권사 투자 상품 중 주식, ETF, 펀드를 관리합니다.
           </p>
         </div>
       </div>
@@ -474,155 +494,144 @@ export default function ProductMasterPage() {
       {/* Add Modal */}
       <Modal
         open={modalOpen}
-        onClose={() => { setModalOpen(false); setForm(EMPTY_FORM); setFormError(null); }}
+        onClose={() => { setModalOpen(false); setForm(EMPTY_FORM); setFormError(null); setAddMasterStockQuery(''); setAddMasterStockResults([]); }}
         title="신규 상품 등록"
-        maxWidth={480}
+        maxWidth={440}
       >
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-          {/* 상품명 (with stock search autocomplete) */}
-          <div style={{ position: 'relative' }}>
-            <label style={labelStyle}>
-              상품명 <span style={{ color: 'var(--danger)' }}>*</span>
-              <span style={{ fontWeight: 400, textTransform: 'none', letterSpacing: 0, marginLeft: 8, color: 'var(--text-muted)' }}>
-                2글자 이상 입력 시 ETF 자동 검색 |{' '}
-                <a
-                  href="https://www.nhsec.com/index.jsp"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  title="NH투자증권 > 금융상품 > 펀드 > 펀드검색"
-                  style={{ color: 'var(--blue-500)', textDecoration: 'underline', fontWeight: 500 }}
-                >
-                  펀드 검색(NH투자증권)
-                </a>
-              </span>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+          {/* 1. 상품유형 먼저 */}
+          <div>
+            <label style={{ fontSize: '0.8125rem', fontWeight: 600, color: 'var(--text-secondary)', display: 'block', marginBottom: 4 }}>
+              상품유형 <span style={{ color: 'var(--danger)' }}>*</span>
             </label>
-            <input
-              type="text"
-              placeholder="상품명을 입력하세요 (예: KODEX, TIGER, 미국배당...)"
-              value={stockQuery || form.product_name}
-              onChange={(e) => handleStockSearch(e.target.value)}
-              style={inputStyle}
-              autoFocus
-            />
-            {stockSearching && (
-              <div style={{ position: 'absolute', right: 10, top: 28, color: 'var(--text-muted)', fontSize: '0.75rem' }}>검색 중...</div>
-            )}
-            {stockResults.length > 0 && (
-              <div
-                style={{
-                  position: 'absolute',
-                  top: '100%',
-                  left: 0,
-                  right: 0,
-                  zIndex: 100,
-                  backgroundColor: 'var(--bg-card)',
-                  border: '1px solid var(--border)',
-                  borderRadius: 8,
-                  boxShadow: '0 8px 24px rgba(0,0,0,0.12)',
-                  maxHeight: 260,
-                  overflowY: 'auto',
-                  marginTop: 4,
-                }}
-              >
-                {stockResults.map((item) => (
-                  <button
-                    key={item.code}
-                    type="button"
-                    onClick={() => handleStockSelect(item)}
-                    style={{
-                      width: '100%',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'space-between',
-                      padding: '8px 12px',
-                      border: 'none',
-                      background: 'none',
-                      cursor: 'pointer',
-                      textAlign: 'left',
-                      borderBottom: '1px solid var(--border)',
-                      fontSize: '0.8125rem',
-                    }}
-                    onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = '#F5F7FA'; }}
-                    onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = 'transparent'; }}
-                  >
-                    <div>
-                      <div style={{ fontWeight: 600, color: 'var(--text-primary)' }}>{item.name}</div>
-                      <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
-                        <span style={{ fontFamily: 'monospace' }}>{item.code}</span>
-                        <span style={{ margin: '0 6px', color: '#D1D5DB' }}>|</span>
-                        <span>{item.type}</span>
-                      </div>
-                    </div>
-                    <div style={{ textAlign: 'right', flexShrink: 0 }}>
-                      <div style={{ fontWeight: 600, color: 'var(--blue-400)', fontSize: '0.8125rem' }}>
-                        {item.price?.toLocaleString('ko-KR')}
-                      </div>
-                      <div style={{ fontSize: '0.6875rem', color: 'var(--text-muted)' }}>
-                        NAV {item.nav?.toLocaleString('ko-KR')}
-                      </div>
-                    </div>
-                  </button>
-                ))}
-              </div>
-            )}
-          </div>
-
-          {/* 위험도 */}
-          <div>
-            <label style={labelStyle}>위험도</label>
             <select
-              value={form.risk_level}
-              onChange={(e) => setForm((s) => ({ ...s, risk_level: e.target.value }))}
-              style={{ ...inputStyle, cursor: 'pointer' }}
+              value={form.product_type}
+              onChange={(e) => {
+                setForm((s) => ({ ...s, product_type: e.target.value, product_name: '', product_code: '' }));
+                setAddMasterStockQuery('');
+                setAddMasterStockResults([]);
+              }}
+              style={{ width: '100%', padding: '7px 10px', fontSize: '0.8125rem', border: '1px solid var(--border)', borderRadius: 7, outline: 'none', backgroundColor: 'var(--bg-card)', color: 'var(--text-primary)', boxSizing: 'border-box', cursor: 'pointer' }}
             >
-              <option value="">선택 안 함</option>
-              {RISK_LEVELS.map((r) => (
-                <option key={r} value={r}>{r}</option>
-              ))}
+              <option value="">상품유형을 먼저 선택하세요</option>
+              {PRODUCT_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}
             </select>
           </div>
 
-          {/* 지역 */}
-          <div>
-            <label style={labelStyle}>지역</label>
-            <select
-              value={form.region}
-              onChange={(e) => setForm((s) => ({ ...s, region: e.target.value }))}
-              style={{ ...inputStyle, cursor: 'pointer' }}
-            >
-              <option value="">선택 안 함</option>
-              {REGIONS.map((r) => (
-                <option key={r} value={r}>{r}</option>
-              ))}
-            </select>
-          </div>
-
-          {/* 2-col: 상품유형 + 종목코드 */}
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-            <div>
-              <label style={labelStyle}>상품유형</label>
-              <select
-                value={form.product_type}
-                onChange={(e) => setForm((s) => ({ ...s, product_type: e.target.value }))}
-                style={{ ...inputStyle, cursor: 'pointer' }}
-              >
-                <option value="">선택 안 함</option>
-                {PRODUCT_TYPES.map((t) => (
-                  <option key={t} value={t}>{t}</option>
-                ))}
-              </select>
+          {/* 2. 상품명 — ETF/주식류: 자동검색, 그 외: 직접입력 */}
+          {form.product_type && (
+            <div style={{ position: 'relative' }}>
+              <label style={{ fontSize: '0.8125rem', fontWeight: 600, color: 'var(--text-secondary)', display: 'block', marginBottom: 4 }}>
+                상품명 <span style={{ color: 'var(--danger)' }}>*</span>
+                {(form.product_type === 'ETF' || form.product_type === 'MMF') ? (
+                  <span style={{ fontWeight: 400, marginLeft: 8, color: 'var(--text-muted)', fontSize: '0.6875rem' }}>2글자 이상 입력 시 자동 검색</span>
+                ) : ['해외ETF', '국내주식', '미국주식', '해외주식'].includes(form.product_type) ? (
+                  <span style={{ fontWeight: 400, marginLeft: 8, color: 'var(--text-muted)', fontSize: '0.6875rem' }}>종목명 또는 티커로 자동 검색</span>
+                ) : (
+                  <span style={{ fontWeight: 400, marginLeft: 8, color: 'var(--text-muted)', fontSize: '0.6875rem' }}>
+                    직접 입력 |{' '}
+                    <a href="https://www.nhsec.com/index.jsp" target="_blank" rel="noopener noreferrer" style={{ color: 'var(--blue-500)', textDecoration: 'underline' }}>펀드 검색(NH투자증권)</a>
+                  </span>
+                )}
+              </label>
+              {['ETF', '해외ETF', 'MMF', '국내주식', '미국주식', '해외주식'].includes(form.product_type) ? (
+                <>
+                  <input
+                    type="text"
+                    placeholder={form.product_type.includes('주식') || form.product_type === '해외ETF' ? '종목명 또는 티커를 입력하세요 (예: AAPL, 삼성전자...)' : '상품명을 입력하세요 (예: KODEX, TIGER...)'}
+                    value={addMasterStockQuery || form.product_name}
+                    onChange={(e) => handleMasterStockSearch(e.target.value)}
+                    style={{ width: '100%', padding: '7px 10px', fontSize: '0.8125rem', border: '1px solid var(--border)', borderRadius: 7, outline: 'none', backgroundColor: 'var(--bg-card)', color: 'var(--text-primary)', boxSizing: 'border-box' }}
+                    autoFocus
+                  />
+                  {addMasterStockSearching && (
+                    <div style={{ position: 'absolute', right: 10, top: 30, color: 'var(--text-muted)', fontSize: '0.6875rem' }}>검색 중...</div>
+                  )}
+                  {addMasterStockResults.length > 0 && (
+                    <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 100, backgroundColor: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 8, boxShadow: '0 8px 24px rgba(0,0,0,0.18)', maxHeight: 200, overflowY: 'auto', marginTop: 4 }}>
+                      {addMasterStockResults.map((item) => (
+                        <button
+                          key={item.code}
+                          type="button"
+                          onClick={() => handleMasterStockSelect(item)}
+                          style={{ width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '7px 10px', border: 'none', background: 'none', cursor: 'pointer', textAlign: 'left', borderBottom: '1px solid var(--border)', fontSize: '0.8125rem' }}
+                          onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = 'var(--bg-card-2)'; }}
+                          onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = 'transparent'; }}
+                        >
+                          <div style={{ flex: 1, minWidth: 0 }}>
+                            <div style={{ fontWeight: 600, color: 'var(--text-primary)' }}>{item.name}</div>
+                            <div style={{ fontSize: '0.6875rem', color: 'var(--text-muted)' }}>
+                              {item.code}
+                              {item.type && (
+                                <span style={{ marginLeft: 6, padding: '1px 4px', borderRadius: 3, backgroundColor: item.type === 'ETF' ? 'rgba(56,189,248,0.12)' : item.type === '해외ETF' ? 'rgba(236,72,153,0.14)' : item.type === '국내주식' ? 'rgba(16,185,129,0.12)' : 'rgba(245,158,11,0.16)', color: item.type === 'ETF' ? '#2563EB' : item.type === '해외ETF' ? '#DB2777' : item.type === '국내주식' ? '#059669' : '#D97706', fontSize: '0.625rem', fontWeight: 600 }}>{item.type}</span>
+                              )}
+                              {item.exchange && <span style={{ marginLeft: 4, fontSize: '0.625rem', color: 'var(--text-muted)' }}>{item.exchange}</span>}
+                            </div>
+                          </div>
+                          <div style={{ textAlign: 'right', flexShrink: 0 }}>
+                            {item.price != null && <div style={{ fontWeight: 600, color: 'var(--blue-400)', fontSize: '0.8125rem' }}>{item.currency === 'USD' ? `$${item.price}` : item.price?.toLocaleString('ko-KR')}</div>}
+                            {item.nav != null && <div style={{ fontSize: '0.6875rem', color: 'var(--text-muted)' }}>NAV {item.nav?.toLocaleString('ko-KR')}</div>}
+                          </div>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </>
+              ) : (
+                <input
+                  type="text"
+                  placeholder="상품명을 직접 입력하세요"
+                  value={form.product_name}
+                  onChange={(e) => setForm((s) => ({ ...s, product_name: e.target.value }))}
+                  style={{ width: '100%', padding: '7px 10px', fontSize: '0.8125rem', border: '1px solid var(--border)', borderRadius: 7, outline: 'none', backgroundColor: 'var(--bg-card)', color: 'var(--text-primary)', boxSizing: 'border-box' }}
+                  autoFocus
+                />
+              )}
             </div>
+          )}
+
+          {/* 3. 종목코드 */}
+          {form.product_type && (
             <div>
-              <label style={labelStyle}>종목코드</label>
+              <label style={{ fontSize: '0.8125rem', fontWeight: 600, color: 'var(--text-secondary)', display: 'block', marginBottom: 4 }}>종목코드</label>
               <input
                 type="text"
-                placeholder="예: 069500"
+                placeholder="종목코드"
                 value={form.product_code}
                 onChange={(e) => setForm((s) => ({ ...s, product_code: e.target.value }))}
-                style={inputStyle}
+                readOnly={form.product_type === 'ETF' || form.product_type === 'MMF'}
+                style={{ width: '100%', padding: '7px 10px', fontSize: '0.8125rem', border: '1px solid var(--border)', borderRadius: 7, outline: 'none', boxSizing: 'border-box', fontFamily: 'monospace', color: 'var(--text-primary)', backgroundColor: (form.product_type === 'ETF' || form.product_type === 'MMF') ? 'var(--bg-surface)' : 'var(--bg-card)' }}
               />
             </div>
-          </div>
+          )}
+
+          {/* 4. 위험도 + 지역 */}
+          {form.product_type && (
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+              <div>
+                <label style={{ fontSize: '0.8125rem', fontWeight: 600, color: 'var(--text-secondary)', display: 'block', marginBottom: 4 }}>위험도</label>
+                <select
+                  value={form.risk_level}
+                  onChange={(e) => setForm((s) => ({ ...s, risk_level: e.target.value }))}
+                  style={{ width: '100%', padding: '7px 10px', fontSize: '0.8125rem', border: '1px solid var(--border)', borderRadius: 7, outline: 'none', backgroundColor: 'var(--bg-card)', color: 'var(--text-primary)', boxSizing: 'border-box', cursor: 'pointer' }}
+                >
+                  <option value="">선택</option>
+                  {RISK_LEVELS.map((r) => <option key={r} value={r}>{r}</option>)}
+                </select>
+              </div>
+              <div>
+                <label style={{ fontSize: '0.8125rem', fontWeight: 600, color: 'var(--text-secondary)', display: 'block', marginBottom: 4 }}>지역</label>
+                <select
+                  value={form.region}
+                  onChange={(e) => setForm((s) => ({ ...s, region: e.target.value }))}
+                  style={{ width: '100%', padding: '7px 10px', fontSize: '0.8125rem', border: '1px solid var(--border)', borderRadius: 7, outline: 'none', backgroundColor: 'var(--bg-card)', color: 'var(--text-primary)', boxSizing: 'border-box', cursor: 'pointer' }}
+                >
+                  <option value="">선택</option>
+                  {REGIONS.map((rg) => <option key={rg} value={rg}>{rg}</option>)}
+                </select>
+              </div>
+            </div>
+          )}
 
           {/* Form Error */}
           {formError && (
@@ -641,23 +650,21 @@ export default function ProductMasterPage() {
           )}
 
           {/* Actions */}
-          <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end', paddingTop: 4 }}>
-            <Button
-              variant="ghost"
-              size="md"
-              onClick={() => { setModalOpen(false); setForm(EMPTY_FORM); setFormError(null); }}
+          <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 6 }}>
+            <button
+              onClick={() => { setModalOpen(false); setForm(EMPTY_FORM); setFormError(null); setAddMasterStockQuery(''); setAddMasterStockResults([]); }}
               disabled={submitting}
+              style={{ padding: '7px 16px', fontSize: '0.8125rem', fontWeight: 600, color: 'var(--text-muted)', backgroundColor: 'var(--bg-surface)', border: '1px solid var(--border)', borderRadius: 7, cursor: submitting ? 'not-allowed' : 'pointer' }}
             >
               취소
-            </Button>
-            <Button
-              variant="primary"
-              size="md"
-              loading={submitting}
+            </button>
+            <button
               onClick={handleAdd}
+              disabled={submitting || !form.product_name.trim()}
+              style={{ padding: '7px 16px', fontSize: '0.8125rem', fontWeight: 700, color: '#fff', backgroundColor: submitting || !form.product_name.trim() ? '#9CA3AF' : '#3B82F6', border: 'none', borderRadius: 7, cursor: submitting || !form.product_name.trim() ? 'not-allowed' : 'pointer' }}
             >
-              등록
-            </Button>
+              {submitting ? '등록 중...' : '등록'}
+            </button>
           </div>
         </div>
       </Modal>
