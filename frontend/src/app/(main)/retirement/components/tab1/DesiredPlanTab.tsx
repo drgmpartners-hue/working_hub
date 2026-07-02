@@ -581,9 +581,9 @@ export function DesiredPlanTab() {
         <div style={SH}><span>투자조건</span></div>
         <div style={SB}>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '12px', marginBottom: '12px' }}>
+            <InC label="기존 투자수익률" u="%" v={exRIn} f={v => setExRIn(v.replace(/[^\d.]/g, ''))} />
             <InC label="적립기간" u="년" v={spIn} f={v => setSpIn(v.replace(/\D/g, ''))}
               sub={holdYrs > 0 ? `거치기간: ${holdYrs}년` : ''} subC="#D4A847" />
-            <InC label="기존 투자수익률" u="%" v={exRIn} f={v => setExRIn(v.replace(/[^\d.]/g, ''))} />
             <InC label="적립 가능금액(연)" u="만원/연" v={asIn} f={v => setAsIn(fi(v))} cur />
             <div style={recRetR > 0 ? { ...CARD_G, background: 'linear-gradient(135deg, #FFF7ED 0%, #FFEDD5 100%)', border: '1px solid #FDBA74' } : CARD_G}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
