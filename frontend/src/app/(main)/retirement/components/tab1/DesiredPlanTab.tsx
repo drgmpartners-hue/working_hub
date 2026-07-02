@@ -735,8 +735,8 @@ export function DesiredPlanTab() {
                           <input type="text" inputMode="numeric"
                             value={ov?.monthly !== undefined ? fi(String(ov.monthly)) : (mpM > 0 ? fmt(mpM) : '-')}
                             onChange={e => setOvF(r.year, 'monthly', e.target.value)}
-                            style={{ ...IS, width: '90px', height: '28px', fontSize: '12px', padding: '0 6px',
-                              border: ov?.monthly !== undefined ? '2px solid #3B82F6' : '1px solid var(--border-soft)' }} />
+                            style={{ ...IS, width: '90px', height: '28px', fontSize: '12px', padding: '0 6px', backgroundColor: 'var(--bg-base)',
+                              border: ov?.monthly !== undefined ? '2px solid #3B82F6' : '1px solid var(--border-strong)' }} />
                         ) : '-'}
                       </td>
                       <td style={TRs}>
@@ -744,8 +744,8 @@ export function DesiredPlanTab() {
                           <input type="text" inputMode="numeric"
                             value={ov?.additional !== undefined ? fi(String(ov.additional)) : (adM > 0 ? fmt(adM) : '')}
                             onChange={e => setOvF(r.year, 'additional', e.target.value)}
-                            style={{ ...IS, width: '90px', height: '28px', fontSize: '12px', padding: '0 6px',
-                              border: ov?.additional !== undefined ? '2px solid #3B82F6' : '1px solid var(--border-soft)' }} />
+                            style={{ ...IS, width: '90px', height: '28px', fontSize: '12px', padding: '0 6px', backgroundColor: 'var(--bg-base)',
+                              border: ov?.additional !== undefined ? '2px solid #3B82F6' : '1px solid var(--border-strong)' }} />
                         ) : '-'}
                       </td>
                       <td style={{ ...TRs, color: r.pension > 0 ? '#DC2626' : '#9CA3AF' }}>
