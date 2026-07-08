@@ -27,10 +27,10 @@ class CustomerRetirementProfile(Base):
     id: Mapped[str] = mapped_column(
         String(36), primary_key=True, default=lambda: str(uuid.uuid4())
     )
-    # FK -> users.id (UUID String)
+    # FK -> clients.id (고객별 은퇴 프로필). 과거엔 users.id를 가리켜 고객 저장이 실패했음.
     customer_id: Mapped[str] = mapped_column(
         String(36),
-        ForeignKey("users.id", ondelete="CASCADE"),
+        ForeignKey("clients.id", ondelete="CASCADE"),
         nullable=False,
         unique=True,
         index=True,
