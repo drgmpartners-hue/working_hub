@@ -8,7 +8,7 @@ from sqlalchemy.sql import func
 from app.db.base import Base
 
 if TYPE_CHECKING:
-    from app.models.user import User
+    from app.models.client import Client
     from app.models.investment_record import InvestmentRecord
     from app.models.desired_plan import DesiredPlan
     from app.models.retirement_plan import RetirementPlan
@@ -54,8 +54,8 @@ class CustomerRetirementProfile(Base):
     )
 
     # Relationships
-    customer: Mapped[Optional["User"]] = relationship(
-        "User", back_populates="retirement_profile", lazy="select"
+    customer: Mapped[Optional["Client"]] = relationship(
+        "Client", back_populates="retirement_profile", lazy="select"
     )
     desired_plans: Mapped[list["DesiredPlan"]] = relationship(
         "DesiredPlan", back_populates="profile", cascade="all, delete-orphan", lazy="select"

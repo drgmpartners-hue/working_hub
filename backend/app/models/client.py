@@ -10,6 +10,7 @@ from app.db.base import Base
 if TYPE_CHECKING:
     from app.models.user import User
     from app.models.snapshot import PortfolioSnapshot
+    from app.models.customer_retirement_profile import CustomerRetirementProfile
 
 
 class Client(Base):
@@ -45,6 +46,9 @@ class Client(Base):
     user: Mapped["User"] = relationship("User", back_populates="clients")
     accounts: Mapped[list["ClientAccount"]] = relationship(
         "ClientAccount", back_populates="client", cascade="all, delete-orphan"
+    )
+    retirement_profile: Mapped[Optional["CustomerRetirementProfile"]] = relationship(
+        "CustomerRetirementProfile", back_populates="customer", uselist=False, lazy="select"
     )
 
 

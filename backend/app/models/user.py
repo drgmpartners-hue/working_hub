@@ -48,6 +48,4 @@ class User(Base):
     clients: Mapped[list["Client"]] = relationship(
         "Client", back_populates="user", lazy="select"
     )
-    retirement_profile: Mapped[Optional["CustomerRetirementProfile"]] = relationship(
-        "CustomerRetirementProfile", back_populates="customer", uselist=False, lazy="select"
-    )
+    # 은퇴 프로필은 이제 Client(고객)에 귀속 → Client.retirement_profile 참조
