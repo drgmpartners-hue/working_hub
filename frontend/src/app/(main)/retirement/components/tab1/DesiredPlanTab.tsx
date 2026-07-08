@@ -705,7 +705,7 @@ export function DesiredPlanTab() {
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px' }}>
               <thead>
                 <tr style={{ backgroundColor: 'var(--bg-surface)', position: 'sticky', top: 0, zIndex: 1 }}>
-                  {['연도','연차','나이','구분','월적립(만)','거치(만)','연금인출','누적원금','평가금액'].map(h => (
+                  {['연도','연차','나이','구분','월적립(만)','거치(만)','연금인출','누적원금(만)','평가금액(만)'].map(h => (
                     <th key={h} style={{ padding: '8px', borderBottom: '2px solid var(--border)',
                       textAlign: ['연도','연차','나이','구분'].includes(h) ? 'center' : 'right',
                       fontWeight: 600, color: h === '연금인출' ? '#F87171' : 'var(--text-muted)', whiteSpace: 'nowrap',
