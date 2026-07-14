@@ -392,6 +392,11 @@ export function InvestmentFlowTab() {
   // 투자기록 상태
   const [records, setRecords] = useState<InvestmentRecord[]>([]);
   const [recordsLoading, setRecordsLoading] = useState(false);
+  const [selectedRecordIds, setSelectedRecordIds] = useState<Set<number>>(new Set());
+  const [bulkDeleting, setBulkDeleting] = useState(false);
+  const [notionSyncing, setNotionSyncing] = useState(false);
+  const [bulkAccountId, setBulkAccountId] = useState<string>('');  // '' 미선택 · 'none' 해제 · 그 외 계좌id
+  const [bulkAssigning, setBulkAssigning] = useState(false);
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
   const [accountFilter, setAccountFilter] = useState<number | 'all'>('all');
 
@@ -457,6 +462,7 @@ export function InvestmentFlowTab() {
   const [showAddDepositAccountModal, setShowAddDepositAccountModal] = useState(false);
   const [editingAccount, setEditingAccount] = useState<DepositAccount | null>(null);
   const [showAddProductModal, setShowAddProductModal] = useState(false);
+  const [showNotionImportModal, setShowNotionImportModal] = useState(false);
 
   /* ---- 예수금 거래 인라인 편집 상태 ---- */
   const [newTxAccountId, setNewTxAccountId] = useState<number | null>(null);
@@ -473,6 +479,7 @@ export function InvestmentFlowTab() {
   const [addingRecord, setAddingRecord] = useState(false);
   const [editingRecordId, setEditingRecordId] = useState<number | null>(null);
   const [recEditProduct, setRecEditProduct] = useState<number | ''>('');
+  const [recEditProductName, setRecEditProductName] = useState('');
   const [recEditAccount, setRecEditAccount] = useState<number | ''>('');
   const [recEditAmount, setRecEditAmount] = useState('');
   const [recEditEval, setRecEditEval] = useState('');
@@ -836,6 +843,7 @@ export function InvestmentFlowTab() {
     setAddingRecord(true);
     setEditingRecordId(null);
     setRecEditProduct('');
+    setRecEditProductName('');
     setRecEditAccount('');
     setRecEditAmount('');
     setRecEditEval('');
@@ -852,6 +860,13 @@ export function InvestmentFlowTab() {
     setEditingRecordId(record.id);
     setAddingRecord(false);
     setRecEditProduct(record.wrap_account_id ?? '');
+    // 상품명: 저장된 product_name 우선, 없으면 wrap 계좌명으로 채워 '선택 안함' 방지
+    setRecEditProductName(
+      record.product_name ||
+        (record.wrap_account_id
+          ? wrapAccounts.find((a) => a.id === record.wrap_account_id)?.product_name ?? ''
+          : '')
+    );
     setRecEditAccount(record.deposit_account_id ?? '');
     setRecEditAmount(record.investment_amount > 0 ? record.investment_amount.toLocaleString() : '');
     setRecEditEval(record.evaluation_amount != null ? record.evaluation_amount.toLocaleString() : '');
@@ -877,6 +892,7 @@ export function InvestmentFlowTab() {
         profile_id: selectedCustomerId,
         record_type: 'investment',
         wrap_account_id: recEditProduct || null,
+        product_name: recEditProductName.trim() || null,
         deposit_account_id: recEditAccount || null,
         investment_amount: parseInt(recEditAmount.replace(/\D/g, ''), 10) || 0,
         status: 'ing',
@@ -909,6 +925,7 @@ export function InvestmentFlowTab() {
     try {
       const body: Record<string, unknown> = {
         wrap_account_id: recEditProduct || null,
+        product_name: recEditProductName.trim() || null,
         deposit_account_id: recEditAccount || null,
         investment_amount: parseInt(recEditAmount.replace(/\D/g, ''), 10) || 0,
         start_date: recEditJoinDate,
@@ -918,6 +935,8 @@ export function InvestmentFlowTab() {
         original_maturity_date: recEditOrigMaturity || null,
         memo: recEditMemo.trim() || null,
       };
+      // 실제만기일이 있으면 종결 처리 (없으면 상태 변경하지 않음)
+      if (recEditActMaturity) body.status = 'exit';
       if (recEditEval) body.evaluation_amount = parseInt(recEditEval.replace(/\D/g, ''), 10);
       else body.evaluation_amount = null;
       const res = await fetch(`${API_URL}/api/v1/retirement/investment-records/${recordId}`, {
@@ -1031,6 +1050,141 @@ export function InvestmentFlowTab() {
       return recSortDir === 'asc' ? cmp : -cmp;
     });
   })();
+
+  /* ---- 투자기록 일괄 선택/삭제 ---- */
+  const toggleRecordSelect = (id: number) => {
+    setSelectedRecordIds(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  };
+  const toggleAllRecords = () => {
+    const ids = filteredRecords.map(r => r.id);
+    const allSelected = ids.length > 0 && ids.every(id => selectedRecordIds.has(id));
+    setSelectedRecordIds(prev => {
+      const next = new Set(prev);
+      if (allSelected) ids.forEach(id => next.delete(id));
+      else ids.forEach(id => next.add(id));
+      return next;
+    });
+  };
+  const bulkDeleteRecords = async () => {
+    if (selectedRecordIds.size === 0) return;
+    if (!confirm(`선택한 ${selectedRecordIds.size}건의 투자기록을 정말 삭제하시겠습니까?\n삭제 후에는 되돌릴 수 없습니다.`)) return;
+    setBulkDeleting(true);
+    const ids = Array.from(selectedRecordIds);
+    await Promise.all(ids.map(id =>
+      fetch(`${API_URL}/api/v1/retirement/investment-records/${id}`, {
+        method: 'DELETE', headers: authLib.getAuthHeader(),
+      }).catch(() => { /* silent */ })
+    ));
+    setSelectedRecordIds(new Set());
+    setBulkDeleting(false);
+    fetchRecords();
+    fetchAnnualFlow();
+    fetchDepositAccounts();
+    expandedAccountIds.forEach(id => fetchTransactions(id));
+  };
+
+  /* ---- 선택 행 계좌별명 일괄 지정 ---- */
+  const bulkAssignAccount = async () => {
+    if (selectedRecordIds.size === 0 || bulkAccountId === '') return;
+    const clear = bulkAccountId === 'none';
+    const acctId = clear ? null : Number(bulkAccountId);
+    const acct = clear ? null : depositAccounts.find(a => a.id === acctId);
+    const label = clear ? '계좌 없음(해제)' : (acct ? (acct.nickname || `${acct.securities_company} ${acct.account_number || ''}`) : '');
+    if (!confirm(`선택한 ${selectedRecordIds.size}건의 계좌별명을 '${label}'(으)로 일괄 변경하시겠습니까?`)) return;
+    setBulkAssigning(true);
+    const ids = Array.from(selectedRecordIds);
+    await Promise.all(ids.map(id =>
+      fetch(`${API_URL}/api/v1/retirement/investment-records/${id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json', ...authLib.getAuthHeader() },
+        body: JSON.stringify({ deposit_account_id: acctId }),
+      }).catch(() => { /* silent */ })
+    ));
+    setBulkAssigning(false);
+    setSelectedRecordIds(new Set());
+    setBulkAccountId('');
+    fetchRecords();
+    fetchAnnualFlow();
+    fetchDepositAccounts();
+    expandedAccountIds.forEach(id => fetchTransactions(id));
+  };
+
+  /* ---- Notion 동기화: 저장된 매핑으로 이 고객의 증권사투자 상품을 최신화(추가+업데이트) ---- */
+  const handleNotionSync = async () => {
+    if (!selectedCustomerId) return;
+    let saved: { dbId: string; dbTitle: string; mapping: Record<string, string> } | null = null;
+    try { const r = localStorage.getItem(NOTION_IR_CONFIG_KEY); saved = r ? JSON.parse(r) : null; } catch { saved = null; }
+    if (!saved || !saved.dbId) {
+      alert('먼저 📝 Notion 불러오기에서 DB를 연결하고 필드를 매핑해 주세요.');
+      return;
+    }
+    const custCol = saved.mapping['customer_name'];
+    const catCol = saved.mapping['category'];
+    if (!custCol || !catCol) {
+      alert('고객명·카테고리 매핑이 필요합니다. 📝 Notion 불러오기에서 매핑해 주세요.');
+      return;
+    }
+    if (!confirm(
+      `Notion "${saved.dbTitle}"와 '${selectedCustomer?.name ?? ''}'의 ${NOTION_IR_TARGET_CATEGORY} 상품을 동기화합니다.\n\n` +
+      `• Notion에만 있는 상품 → 추가\n` +
+      `• 이미 있는 상품 → Notion 기준으로 업데이트 (평가금액·만기일 등)\n` +
+      `• 여기에만 있는 상품 → 그대로 유지\n\n진행하시겠습니까?`
+    )) return;
+
+    setNotionSyncing(true);
+    try {
+      const res = await fetch(`${API_URL}/api/v1/notion/databases/${saved.dbId}/rows`, { headers: authLib.getAuthHeader() });
+      if (!res.ok) throw new Error('Notion 데이터 조회 실패');
+      const rows: { id: string; properties: Record<string, string> }[] = await res.json();
+      const target = notionNormName(selectedCustomer?.name);
+      const matched = rows.filter(r =>
+        notionNormName(r.properties[custCol]) === target &&
+        (r.properties[catCol] ?? '').trim() === NOTION_IR_TARGET_CATEGORY
+      );
+      if (matched.length === 0) {
+        alert(`'${selectedCustomer?.name ?? ''}' 고객의 ${NOTION_IR_TARGET_CATEGORY} 상품을 Notion에서 찾지 못했습니다.`);
+        return;
+      }
+      // 기존 투자기록: 상품명|가입일 → id
+      const existMap = new Map<string, number>();
+      records.forEach(r => existMap.set(`${getProductName(r).trim()}|${(r.join_date || r.start_date || '').slice(0, 10)}`, r.id));
+
+      let added = 0, updated = 0, skipped = 0;
+      for (const row of matched) {
+        const body = notionRowToRecordBody(row, saved.mapping, selectedCustomerId);
+        if (!body) { skipped++; continue; }
+        const key = `${(body.product_name as string) ?? ''}|${(body.join_date as string) ?? ''}`;
+        const existingId = existMap.get(key);
+        try {
+          if (existingId != null) {
+            const r2 = await fetch(`${API_URL}/api/v1/retirement/investment-records/${existingId}`, {
+              method: 'PUT', headers: { 'Content-Type': 'application/json', ...authLib.getAuthHeader() }, body: JSON.stringify(body),
+            });
+            if (r2.ok) updated++;
+          } else {
+            const r2 = await fetch(`${API_URL}/api/v1/retirement/investment-records`, {
+              method: 'POST', headers: { 'Content-Type': 'application/json', ...authLib.getAuthHeader() }, body: JSON.stringify(body),
+            });
+            if (r2.ok) added++;
+          }
+        } catch { /* 개별 실패 무시 */ }
+      }
+      alert(`동기화 완료\n· 추가 ${added}건\n· 업데이트 ${updated}건${skipped > 0 ? `\n· 스킵 ${skipped}건 (가입일 누락)` : ''}`);
+      setSelectedRecordIds(new Set());
+      fetchRecords();
+      fetchAnnualFlow();
+      fetchDepositAccounts();
+      expandedAccountIds.forEach(id => fetchTransactions(id));
+    } catch (e) {
+      alert(`동기화 실패: ${e instanceof Error ? e.message : '오류'}`);
+    } finally {
+      setNotionSyncing(false);
+    }
+  };
 
   /* ---- 고객 미선택 ---- */
   if (!selectedCustomerId) {
@@ -2329,6 +2483,75 @@ export function InvestmentFlowTab() {
           </div>
 
           <div style={{ display: 'flex', gap: 8 }}>
+            {selectedRecordIds.size > 0 && (
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '3px 8px 3px 10px', borderRadius: 8, backgroundColor: 'var(--bg-surface)', border: '1px solid var(--border-strong)' }}>
+                <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--blue-400)' }}>{selectedRecordIds.size}건 선택</span>
+                <span style={{ width: 1, height: 18, backgroundColor: 'var(--border)' }} />
+                <select
+                  value={bulkAccountId}
+                  onChange={e => setBulkAccountId(e.target.value)}
+                  style={{ padding: '5px 8px', fontSize: 12, borderRadius: 6, border: '1px solid var(--border-strong)', backgroundColor: 'var(--bg-base)', color: 'var(--text-primary)', cursor: 'pointer' }}
+                >
+                  <option value="">계좌 선택…</option>
+                  <option value="none">— 계좌 해제 —</option>
+                  {depositAccounts.filter(a => a.is_active).map(a => (
+                    <option key={a.id} value={String(a.id)}>{a.nickname || `${a.securities_company} ${a.account_number || ''}`}</option>
+                  ))}
+                </select>
+                <button
+                  onClick={bulkAssignAccount}
+                  disabled={bulkAssigning || bulkAccountId === ''}
+                  style={{
+                    padding: '6px 12px', fontSize: 12, fontWeight: 700, borderRadius: 6, border: 'none',
+                    backgroundColor: (bulkAssigning || bulkAccountId === '') ? 'var(--bg-card)' : 'var(--blue-600)',
+                    color: (bulkAssigning || bulkAccountId === '') ? 'var(--text-muted)' : '#fff',
+                    cursor: (bulkAssigning || bulkAccountId === '') ? 'not-allowed' : 'pointer',
+                  }}
+                >
+                  {bulkAssigning ? '지정 중...' : '계좌 일괄지정'}
+                </button>
+                <span style={{ width: 1, height: 18, backgroundColor: 'var(--border)' }} />
+                <button
+                  onClick={bulkDeleteRecords}
+                  disabled={bulkDeleting}
+                  style={{
+                    padding: '6px 12px', fontSize: 12, fontWeight: 700, borderRadius: 6, border: '1px solid rgba(239,68,68,0.5)',
+                    backgroundColor: 'var(--danger-bg)', color: 'var(--danger)',
+                    cursor: bulkDeleting ? 'wait' : 'pointer', opacity: bulkDeleting ? 0.6 : 1,
+                  }}
+                >
+                  🗑 삭제
+                </button>
+              </div>
+            )}
+            <button
+              onClick={() => selectedCustomerId && setShowNotionImportModal(true)}
+              disabled={!selectedCustomerId}
+              title={selectedCustomerId ? undefined : '고객을 먼저 선택하세요'}
+              style={{
+                display: 'flex', alignItems: 'center', gap: 4, padding: '7px 14px',
+                fontSize: 13, fontWeight: 600, borderRadius: 7, border: '1px solid var(--border-strong)',
+                backgroundColor: 'var(--bg-card)', color: 'var(--text-secondary)',
+                cursor: selectedCustomerId ? 'pointer' : 'not-allowed',
+                opacity: selectedCustomerId ? 1 : 0.5,
+              }}
+            >
+              📝 Notion 불러오기
+            </button>
+            <button
+              onClick={handleNotionSync}
+              disabled={!selectedCustomerId || notionSyncing}
+              title={selectedCustomerId ? 'Notion 기준으로 추가+업데이트' : '고객을 먼저 선택하세요'}
+              style={{
+                display: 'flex', alignItems: 'center', gap: 4, padding: '7px 14px',
+                fontSize: 13, fontWeight: 600, borderRadius: 7, border: '1px solid var(--blue-500)',
+                backgroundColor: notionSyncing ? 'var(--bg-surface)' : 'var(--bg-card)', color: 'var(--blue-400)',
+                cursor: (!selectedCustomerId || notionSyncing) ? 'not-allowed' : 'pointer',
+                opacity: (!selectedCustomerId || notionSyncing) ? 0.5 : 1,
+              }}
+            >
+              {notionSyncing ? '동기화 중...' : '🔄 Notion 동기화'}
+            </button>
             <button
               onClick={startNewRecord}
               style={{
@@ -2352,10 +2575,25 @@ export function InvestmentFlowTab() {
           </div>
         </div>
 
+        {/* 투자상품 관리(wrapAccounts) 기반 상품명 자동완성 목록 */}
+        <datalist id="wrap-products-datalist">
+          {wrapAccounts.map(a => (
+            <option key={a.id} value={a.product_name}>{a.securities_company}</option>
+          ))}
+        </datalist>
         <div ref={recScrollRef} style={{ overflowX: 'auto', overflowY: 'auto', maxHeight: 520 }}>
           <table style={{ minWidth: 1300, borderCollapse: 'collapse', fontSize: 13, whiteSpace: 'nowrap' }}>
             <thead style={{ position: 'sticky', top: 0, zIndex: 2 }}>
               <tr style={{ backgroundColor: 'var(--bg-surface)' }}>
+                <th style={{ padding: '9px 8px', textAlign: 'center', borderBottom: '1px solid var(--border)', backgroundColor: 'var(--bg-surface)', width: 34 }}>
+                  <input
+                    type="checkbox"
+                    checked={filteredRecords.length > 0 && filteredRecords.every(r => selectedRecordIds.has(r.id))}
+                    onChange={toggleAllRecords}
+                    title="전체 선택/해제"
+                    style={{ width: 15, height: 15, cursor: 'pointer' }}
+                  />
+                </th>
                 {[
                   { label: '#', align: 'left', sortKey: 'id' },
                   { label: '상품명', align: 'left', sortKey: 'product_name' },
@@ -2396,19 +2634,23 @@ export function InvestmentFlowTab() {
               {/* 신규 투자기록 입력 행 */}
               {addingRecord && (
                 <tr style={{ backgroundColor: 'rgba(245,158,11,0.08)', borderBottom: '1px solid rgba(245,158,11,0.35)' }}>
+                  <td style={{ ...tdBase, textAlign: 'center' }}></td>
                   <td style={{ ...tdBase, color: 'var(--text-muted)' }}>-</td>
-                  {/* 상품 */}
-                  <td style={{ padding: '6px 8px', minWidth: 160 }}>
-                    <select
-                      value={recEditProduct}
-                      onChange={e => setRecEditProduct(e.target.value ? Number(e.target.value) : '')}
-                      style={inlineSelect}
-                    >
-                      <option value="">선택 안함</option>
-                      {wrapAccounts.map(a => (
-                        <option key={a.id} value={a.id}>{a.product_name} ({a.securities_company})</option>
-                      ))}
-                    </select>
+                  {/* 상품 - 직접 입력/검색 콤보박스 */}
+                  <td style={{ padding: '6px 8px', minWidth: 180 }}>
+                    <input
+                      type="text"
+                      list="wrap-products-datalist"
+                      value={recEditProductName}
+                      onChange={e => {
+                        const v = e.target.value;
+                        setRecEditProductName(v);
+                        const m = wrapAccounts.find(a => a.product_name === v);
+                        setRecEditProduct(m ? m.id : '');
+                      }}
+                      placeholder="상품명 입력/검색"
+                      style={inlineInput}
+                    />
                   </td>
                   {/* 계좌별명 */}
                   <td style={{ padding: '6px 8px', minWidth: 130 }}>
@@ -2490,13 +2732,13 @@ export function InvestmentFlowTab() {
 
               {recordsLoading ? (
                 <tr>
-                  <td colSpan={17} style={{ textAlign: 'center', padding: 24, color: 'var(--text-muted)', fontSize: 13 }}>
+                  <td colSpan={18} style={{ textAlign: 'center', padding: 24, color: 'var(--text-muted)', fontSize: 13 }}>
                     불러오는 중...
                   </td>
                 </tr>
               ) : filteredRecords.length === 0 && !addingRecord ? (
                 <tr>
-                  <td colSpan={17} style={{ textAlign: 'center', padding: 24, color: 'var(--text-muted)', fontSize: 13 }}>
+                  <td colSpan={18} style={{ textAlign: 'center', padding: 24, color: 'var(--text-muted)', fontSize: 13 }}>
                     투자기록이 없습니다.
                   </td>
                 </tr>
@@ -2504,12 +2746,21 @@ export function InvestmentFlowTab() {
                 filteredRecords.map((record, idx) => {
                   const isEditingThis = editingRecordId === record.id;
                   const isHighlighted = highlightedId === record.id;
-                  const statusStyle = STATUS_STYLES[record.status] ?? STATUS_STYLES.ing;
-                  const returnColor =
+                  // 실제만기일이 있으면 종결로 간주 (저장 상태가 운용중이어도 표시상 종결)
+                  const effectiveStatus = record.actual_maturity_date ? 'exit' : record.status;
+                  const statusStyle = STATUS_STYLES[effectiveStatus] ?? STATUS_STYLES.ing;
+                  // 수익률: 저장값 우선, 없으면 (평가금액-투자금액)/투자금액 로 자동계산
+                  const effectiveRate =
                     record.return_rate != null
-                      ? record.return_rate > 0
+                      ? Number(record.return_rate)
+                      : record.evaluation_amount != null && record.investment_amount > 0
+                      ? ((record.evaluation_amount - record.investment_amount) / record.investment_amount) * 100
+                      : null;
+                  const returnColor =
+                    effectiveRate != null
+                      ? effectiveRate > 0
                         ? '#34D399'
-                        : record.return_rate < 0
+                        : effectiveRate < 0
                         ? '#F87171'
                         : 'var(--text-primary)'
                       : 'var(--text-muted)';
@@ -2524,19 +2775,23 @@ export function InvestmentFlowTab() {
                         }}
                         style={{ backgroundColor: 'rgba(245,158,11,0.08)', borderBottom: '1px solid rgba(245,158,11,0.35)' }}
                       >
+                        <td style={{ ...tdBase, textAlign: 'center' }}></td>
                         <td style={{ ...tdBase, color: 'var(--text-muted)' }}>{idx + 1}</td>
-                        {/* 상품 */}
-                        <td style={{ padding: '6px 8px', minWidth: 160 }}>
-                          <select
-                            value={recEditProduct}
-                            onChange={e => setRecEditProduct(e.target.value ? Number(e.target.value) : '')}
-                            style={inlineSelect}
-                          >
-                            <option value="">선택 안함</option>
-                            {wrapAccounts.map(a => (
-                              <option key={a.id} value={a.id}>{a.product_name} ({a.securities_company})</option>
-                            ))}
-                          </select>
+                        {/* 상품 - 직접 입력/검색 콤보박스 (원래 상품명 유지) */}
+                        <td style={{ padding: '6px 8px', minWidth: 180 }}>
+                          <input
+                            type="text"
+                            list="wrap-products-datalist"
+                            value={recEditProductName}
+                            onChange={e => {
+                              const v = e.target.value;
+                              setRecEditProductName(v);
+                              const m = wrapAccounts.find(a => a.product_name === v);
+                              setRecEditProduct(m ? m.id : '');
+                            }}
+                            placeholder="상품명 입력/검색"
+                            style={inlineInput}
+                          />
                         </td>
                         {/* 계좌별명 */}
                         <td style={{ padding: '6px 8px', minWidth: 130 }}>
@@ -2669,10 +2924,20 @@ export function InvestmentFlowTab() {
                       }}
                       style={{
                         borderBottom: '1px solid var(--border)',
-                        backgroundColor: isHighlighted ? 'rgba(250,204,21,0.12)' : idx % 2 === 0 ? 'transparent' : 'rgba(255,255,255,0.02)',
+                        backgroundColor: selectedRecordIds.has(record.id)
+                          ? 'rgba(239,68,68,0.10)'
+                          : isHighlighted ? 'rgba(250,204,21,0.12)' : idx % 2 === 0 ? 'transparent' : 'rgba(255,255,255,0.02)',
                         transition: 'background-color 0.4s ease',
                       }}
                     >
+                      <td style={{ ...tdBase, textAlign: 'center', width: 34 }}>
+                        <input
+                          type="checkbox"
+                          checked={selectedRecordIds.has(record.id)}
+                          onChange={() => toggleRecordSelect(record.id)}
+                          style={{ width: 14, height: 14, cursor: 'pointer' }}
+                        />
+                      </td>
                       <td style={{ ...tdBase, color: 'var(--text-muted)', width: 36 }}>{idx + 1}</td>
                       <td style={tdBase}>{getProductName(record)}</td>
                       {/* 계좌별명 */}
@@ -2691,7 +2956,7 @@ export function InvestmentFlowTab() {
                         {record.evaluation_amount != null ? formatCurrency(record.evaluation_amount) : '-'}
                       </td>
                       <td style={{ ...tdRight, color: returnColor, fontWeight: 600 }}>
-                        {record.return_rate != null ? `${Number(record.return_rate).toFixed(2)}%` : '-'}
+                        {effectiveRate != null ? `${effectiveRate.toFixed(2)}%` : '-'}
                       </td>
 
                       {/* 상태 배지 */}
@@ -2716,11 +2981,11 @@ export function InvestmentFlowTab() {
                               backgroundColor: statusStyle.dot,
                               flexShrink: 0,
                             }} />
-                            {STATUS_LABELS[record.status]}
+                            {STATUS_LABELS[effectiveStatus]}
                           </span>
 
                           {/* ing → exit 전환 버튼 */}
-                          {record.status === 'ing' && (<>
+                          {effectiveStatus === 'ing' && (<>
                             <button
                               onClick={() => setStatusChangeRecord({ ...record, product_name: getProductName(record) })}
                               title="종결 처리"
@@ -2865,6 +3130,22 @@ export function InvestmentFlowTab() {
         />
       )}
 
+      {/* Notion 투자기록 불러오기 모달 */}
+      {showNotionImportModal && selectedCustomerId && (
+        <NotionImportRecordsModal
+          customerId={selectedCustomerId}
+          customerName={selectedCustomer?.name ?? ''}
+          existingKeys={new Set(records.map(r => `${getProductName(r).trim()}|${(r.join_date || r.start_date || '').slice(0, 10)}`))}
+          onClose={() => setShowNotionImportModal(false)}
+          onImported={() => {
+            fetchRecords();
+            fetchAnnualFlow();
+            fetchDepositAccounts();
+            expandedAccountIds.forEach(id => fetchTransactions(id));
+          }}
+        />
+      )}
+
       {editingAccount && (
         <EditDepositAccountModal
           account={editingAccount}
@@ -2988,6 +3269,507 @@ function AddWrapProductModal({ onClose, onSaved }: { onClose: () => void; onSave
         </div>
       </div>
     </div>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/*  Notion 투자기록 불러오기 모달                                         */
+/* ------------------------------------------------------------------ */
+
+/** Notion 컬럼 ↔ 투자기록 필드 매핑 대상 (필터용 2개 + 실제 저장 필드 8개) */
+const NOTION_IR_MAP_FIELDS: { k: string; l: string; filterHint?: boolean }[] = [
+  { k: 'customer_name', l: '고객명', filterHint: true },
+  { k: 'category', l: '카테고리', filterHint: true },
+  { k: 'asset_class_1', l: '자산구분(1)' },
+  { k: 'asset_class_2', l: '자산구분(2)' },
+  { k: 'product_name', l: '상품명' },
+  { k: 'investment_amount', l: '납입원금' },
+  { k: 'evaluation_amount', l: '평가금액' },
+  { k: 'join_date', l: '가입일' },
+  { k: 'expected_maturity_date', l: '예상만기일' },
+  { k: 'actual_maturity_date', l: '실제만기일' },
+  { k: 'original_maturity_date', l: '원만기일' },
+  { k: 'memo', l: '메모' },
+];
+
+const NOTION_IR_CONFIG_KEY = 'notion_investment_record_config_v2';
+const NOTION_IR_TARGET_CATEGORY = '증권사투자';
+
+/** Notion 텍스트 → YYYY-MM-DD 정규화 (실패 시 null) */
+function normalizeNotionDate(raw: string | undefined | null): string | null {
+  if (!raw) return null;
+  const trimmed = raw.trim();
+  if (!trimmed) return null;
+  const isoMatch = trimmed.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/);
+  if (isoMatch) {
+    const [, y, m, d] = isoMatch;
+    return `${y}-${m.padStart(2, '0')}-${d.padStart(2, '0')}`;
+  }
+  const dotMatch = trimmed.match(/^(\d{4})[.\/](\d{1,2})[.\/](\d{1,2})/);
+  if (dotMatch) {
+    const [, y, m, d] = dotMatch;
+    return `${y}-${m.padStart(2, '0')}-${d.padStart(2, '0')}`;
+  }
+  const parsed = new Date(trimmed);
+  if (!isNaN(parsed.getTime())) {
+    const y = parsed.getFullYear();
+    const m = String(parsed.getMonth() + 1).padStart(2, '0');
+    const d = String(parsed.getDate()).padStart(2, '0');
+    return `${y}-${m}-${d}`;
+  }
+  return null;
+}
+
+/** 고객명 정규화 (괄호·공백 제거) — Notion 관계형 값과 견고하게 매칭 */
+function notionNormName(s: string | undefined | null): string {
+  return (s ?? '').replace(/\(.*?\)/g, '').replace(/\s+/g, '').toLowerCase();
+}
+
+/** Notion 행 + 매핑 → 투자기록 body (가입일 파싱 실패 시 null). 불러오기·동기화 공통 사용 */
+function notionRowToRecordBody(
+  row: { properties: Record<string, string> },
+  mapping: Record<string, string>,
+  profileId: string,
+): Record<string, unknown> | null {
+  const g = (k: string) => (mapping[k] ? row.properties[mapping[k]] : undefined);
+  const productName = mapping['product_name'] ? row.properties[mapping['product_name']]?.trim() : '';
+  const startDate = normalizeNotionDate(g('join_date'));
+  if (!startDate) return null;
+  const actDate = normalizeNotionDate(g('actual_maturity_date'));
+  return {
+    profile_id: profileId,
+    record_type: 'investment',
+    product_name: productName || null,
+    investment_amount: parseNotionAmountToWon(g('investment_amount')) ?? 0,
+    evaluation_amount: parseNotionAmountToWon(g('evaluation_amount')),
+    // 실제만기일이 있으면 종결, 없으면 운용중
+    status: actDate ? 'exit' : 'ing',
+    start_date: startDate,
+    join_date: startDate,
+    expected_maturity_date: normalizeNotionDate(g('expected_maturity_date')),
+    actual_maturity_date: actDate,
+    original_maturity_date: normalizeNotionDate(g('original_maturity_date')),
+    memo: mapping['memo'] ? (row.properties[mapping['memo']]?.trim() || null) : null,
+  };
+}
+
+/** Notion 금액 문자열 → 원 단위 정수. '만원/만' 표기가 있으면 ×10000, 그 외는 원 그대로 (원단위 보존). */
+function parseNotionAmountToWon(raw: string | undefined | null): number | null {
+  if (!raw) return null;
+  const trimmed = raw.trim();
+  if (!trimmed) return null;
+  const hasManwon = /만\s*원|만$/.test(trimmed);
+  const numStr = trimmed.replace(/[^0-9.\-]/g, '');
+  if (!numStr) return null;
+  let num = parseFloat(numStr);
+  if (isNaN(num)) return null;
+  if (hasManwon) num = num * 10000;
+  return Math.round(num);
+}
+
+interface NotionImportRecordsModalProps {
+  customerId: string;
+  customerName: string;
+  existingKeys: Set<string>;
+  onClose: () => void;
+  onImported: () => void;
+}
+
+function NotionImportRecordsModal({ customerId, customerName, existingKeys, onClose, onImported }: NotionImportRecordsModalProps) {
+  const [irStep, setIrStep] = useState<'idle' | 'selectDb' | 'mapping'>('idle');
+  const [irDbs, setIrDbs] = useState<{ id: string; title: string; icon: string | null }[]>([]);
+  const [irRows, setIrRows] = useState<{ id: string; properties: Record<string, string> }[]>([]);
+  const [irCols, setIrCols] = useState<string[]>([]);
+  const [irMap, setIrMap] = useState<Record<string, string>>({});
+  const [irLoading, setIrLoading] = useState(false);
+  const [irError, setIrError] = useState<string | null>(null);
+  const [irDbSearch, setIrDbSearch] = useState('');
+  const [irRowSearch, setIrRowSearch] = useState('');
+  const [irSelectedDbId, setIrSelectedDbId] = useState('');
+  const [irSelectedDbTitle, setIrSelectedDbTitle] = useState('');
+  const [irSelectedRows, setIrSelectedRows] = useState<Set<string>>(new Set());
+  const [irBulkLoading, setIrBulkLoading] = useState(false);
+  const [irLoaded, setIrLoaded] = useState(false);  // '불러오기' 클릭 시 true → 조건 맞는 행 표시
+
+  function saveIrConfig(dbId: string, dbTitle: string, mapping: Record<string, string>) {
+    try { localStorage.setItem(NOTION_IR_CONFIG_KEY, JSON.stringify({ dbId, dbTitle, mapping })); } catch { /* ignore */ }
+  }
+  function loadIrConfig(): { dbId: string; dbTitle: string; mapping: Record<string, string> } | null {
+    try { const r = localStorage.getItem(NOTION_IR_CONFIG_KEY); return r ? JSON.parse(r) : null; } catch { return null; }
+  }
+  function clearIrConfig() {
+    try { localStorage.removeItem(NOTION_IR_CONFIG_KEY); } catch { /* ignore */ }
+  }
+
+  function guessColumn(cols: string[], keywords: string[]): string {
+    const found = cols.find(c => {
+      const cl = c.toLowerCase();
+      return keywords.some(k => cl.includes(k));
+    });
+    return found ?? '';
+  }
+
+  function autoGuessMapping(cols: string[]): Record<string, string> {
+    // 정확한 컬럼명이 있으면 그것을, 없으면 키워드 추측. (상품가입정보 DB 실제 컬럼명 우선)
+    const pick = (exact: string, guesses: string[]) => (cols.includes(exact) ? exact : guessColumn(cols, guesses));
+    return {
+      customer_name: pick('고객명(관계형)', ['고객명(관계', '고객명', '고객', 'customer', '이름']),
+      category: pick('카테고리', ['카테고리', 'category']),
+      asset_class_1: pick('자산구분(1)', ['자산구분(1)', '자산구분1']),
+      asset_class_2: pick('자산구분(2)', ['자산구분(2)', '자산구분2']),
+      product_name: pick('상품명', ['상품명', '상품', 'product']),
+      investment_amount: pick('일시납입금액', ['일시납입', '납입원금', '원금', '납입', '투자금액']),
+      evaluation_amount: pick('평가금액', ['평가금액', '평가', 'eval']),
+      join_date: pick('가입일', ['가입일', '가입', 'join']),
+      expected_maturity_date: pick('예상만기일', ['예상만기']),
+      actual_maturity_date: pick('실제만기일', ['실제만기']),
+      original_maturity_date: pick('원 만기일', ['원 만기', '원만기']),
+      memo: pick('비고', ['비고', '메모', 'note', 'memo']),
+    };
+  }
+
+  async function irFetchDbList() {
+    setIrLoading(true); setIrError(null);
+    try {
+      const res = await fetch(`${API_URL}/api/v1/notion/databases`, { headers: authLib.getAuthHeader() });
+      if (!res.ok) { const d = await res.json().catch(() => ({})); throw new Error(d?.detail ?? '조회 실패'); }
+      setIrDbs(await res.json());
+      setIrStep('selectDb');
+    } catch (e: unknown) { setIrError(e instanceof Error ? e.message : '오류'); }
+    finally { setIrLoading(false); }
+  }
+
+  async function irLoadRows(dbId: string, dbTitle: string, savedMapping?: Record<string, string>) {
+    setIrLoading(true); setIrError(null);
+    setIrSelectedDbId(dbId);
+    setIrSelectedDbTitle(dbTitle);
+    try {
+      const [pR, rR] = await Promise.all([
+        fetch(`${API_URL}/api/v1/notion/databases/${dbId}/properties`, { headers: authLib.getAuthHeader() }),
+        fetch(`${API_URL}/api/v1/notion/databases/${dbId}/rows`, { headers: authLib.getAuthHeader() }),
+      ]);
+      if (!pR.ok || !rR.ok) throw new Error('데이터 조회 실패');
+      const props: { name: string }[] = await pR.json();
+      const rows: { id: string; properties: Record<string, string> }[] = await rR.json();
+      const cols = props.map(p => p.name);
+      setIrCols(cols);
+      setIrRows(rows);
+      setIrMap(savedMapping ?? autoGuessMapping(cols));
+      setIrStep('mapping');
+    } catch (e: unknown) { setIrError(e instanceof Error ? e.message : '오류'); }
+    finally { setIrLoading(false); }
+  }
+
+  async function irOpenSelector() {
+    const saved = loadIrConfig();
+    if (saved) {
+      await irLoadRows(saved.dbId, saved.dbTitle, saved.mapping);
+    } else {
+      await irFetchDbList();
+    }
+  }
+
+  useEffect(() => {
+    irOpenSelector();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  function irReset() {
+    setIrStep('idle'); setIrDbs([]); setIrRows([]); setIrCols([]);
+    setIrError(null); setIrDbSearch(''); setIrRowSearch('');
+    setIrSelectedRows(new Set());
+    clearIrConfig();
+  }
+
+  function irUpdateMap(key: string, value: string) {
+    const updated = { ...irMap, [key]: value };
+    setIrMap(updated);
+    setIrLoaded(false);  // 매핑 바뀌면 다시 '불러오기' 눌러야 함
+    if (irSelectedDbId) saveIrConfig(irSelectedDbId, irSelectedDbTitle, updated);
+  }
+
+  /* ---- 필터: 고객명 일치 + 카테고리 = 증권사투자, '불러오기' 클릭 시 적용 ---- */
+  const customerNameCol = irMap['customer_name'];
+  const categoryCol = irMap['category'];
+  const filterReady = !!customerNameCol && !!categoryCol;
+
+  const matchedRows = (filterReady && irLoaded)
+    ? irRows.filter(r =>
+        notionNormName(r.properties[customerNameCol]) === notionNormName(customerName) &&
+        (r.properties[categoryCol] ?? '').trim() === NOTION_IR_TARGET_CATEGORY
+      )
+    : [];
+
+  const q = irRowSearch.toLowerCase().trim();
+  const displayRows = q
+    ? matchedRows.filter(r => Object.values(r.properties).some(v => v?.toLowerCase().includes(q)))
+    : matchedRows;
+
+  function irToggleRow(id: string) {
+    setIrSelectedRows(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  }
+
+  /** Notion 행의 중복 판정 키: 상품명|가입일 (투자기록의 키와 동일 형식) */
+  function irRowKey(row: { properties: Record<string, string> }): string {
+    const pn = irMap['product_name'] ? (row.properties[irMap['product_name']]?.trim() ?? '') : '';
+    const jd = normalizeNotionDate(irMap['join_date'] ? row.properties[irMap['join_date']] : undefined) ?? '';
+    return `${pn}|${jd}`;
+  }
+  function irIsExisting(row: { properties: Record<string, string> }): boolean {
+    return existingKeys.has(irRowKey(row));
+  }
+
+  function irToggleAll() {
+    // 이미 등록된 행은 제외하고, 신규 행만 전체 선택/해제
+    const newIds = displayRows.filter(r => !irIsExisting(r)).map(r => r.id);
+    const allSelected = newIds.length > 0 && newIds.every(id => irSelectedRows.has(id));
+    setIrSelectedRows(prev => {
+      const next = new Set(prev);
+      if (allSelected) newIds.forEach(id => next.delete(id));
+      else newIds.forEach(id => next.add(id));
+      return next;
+    });
+  }
+
+  /** Notion 행 → 투자기록 생성 body (가입일 파싱 실패 시 null 반환) */
+  function irMapRowToBody(row: { properties: Record<string, string> }): Record<string, unknown> | null {
+    return notionRowToRecordBody(row, irMap, customerId);
+  }
+
+  async function irBulkImport() {
+    if (irSelectedRows.size === 0) return;
+    setIrBulkLoading(true);
+    let success = 0, fail = 0, skipped = 0;
+    const items = displayRows.filter(r => irSelectedRows.has(r.id));
+    for (const row of items) {
+      const body = irMapRowToBody(row);
+      if (!body) { skipped++; continue; }
+      try {
+        const res = await fetch(`${API_URL}/api/v1/retirement/investment-records`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', ...authLib.getAuthHeader() },
+          body: JSON.stringify(body),
+        });
+        if (res.ok) success++; else fail++;
+      } catch { fail++; }
+    }
+    setIrBulkLoading(false);
+    setIrSelectedRows(new Set());
+    saveIrConfig(irSelectedDbId, irSelectedDbTitle, irMap);
+    alert(`${success}건 등록 완료${fail > 0 ? `, ${fail}건 실패` : ''}${skipped > 0 ? `, ${skipped}건 가입일 누락으로 스킵` : ''}`);
+    onImported();
+    onClose();
+  }
+
+  /* ---- 목록 불러오기 = 이 고객의 '증권사투자' 상품을 리스트로 표시 (신규만 자동 체크) ---- */
+  function irLoadList() {
+    if (!filterReady) return;
+    const target = notionNormName(customerName);
+    const matched = irRows.filter(r =>
+      notionNormName(r.properties[customerNameCol]) === target &&
+      (r.properties[categoryCol] ?? '').trim() === NOTION_IR_TARGET_CATEGORY
+    );
+    if (matched.length === 0) {
+      alert(`'${customerName}' 고객의 '${NOTION_IR_TARGET_CATEGORY}' 상품을 Notion에서 찾지 못했습니다.\n(Notion의 고객명·카테고리 값을 확인하세요)`);
+      return;
+    }
+    // 기존 투자기록에 없는 신규 상품만 미리 체크
+    const preselect = new Set<string>();
+    for (const r of matched) {
+      if (!irIsExisting(r)) preselect.add(r.id);
+    }
+    setIrSelectedRows(preselect);
+    setIrLoaded(true);
+    saveIrConfig(irSelectedDbId, irSelectedDbTitle, irMap);
+  }
+
+  return (
+    <Modal open onClose={onClose} title="Notion에서 투자기록 불러오기" maxWidth={720}>
+      <div style={{ marginBottom: 8, padding: '8px 12px', borderRadius: 8, backgroundColor: 'var(--bg-surface)', fontSize: 12, color: 'var(--text-muted)' }}>
+        고객 <strong style={{ color: 'var(--text-primary)' }}>{customerName || '(선택된 고객)'}</strong> · 카테고리 <strong style={{ color: 'var(--text-primary)' }}>{NOTION_IR_TARGET_CATEGORY}</strong> 조건에 맞는 행만 표시·등록됩니다.
+      </div>
+
+      {irStep === 'idle' && (
+        <button
+          onClick={irOpenSelector}
+          disabled={irLoading}
+          style={{ width: '100%', padding: 9, borderRadius: 8, border: '1px dashed var(--border-strong)', background: 'var(--bg-surface)', color: 'var(--text-secondary)', fontSize: 13, fontWeight: 500, cursor: irLoading ? 'wait' : 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}
+        >
+          {irLoading ? '연결 중...' : (
+            <>
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+                <polyline points="14 2 14 8 20 8" />
+              </svg>
+              Notion에서 데이터 가져오기
+            </>
+          )}
+        </button>
+      )}
+
+      {irError && (
+        <div style={{ marginTop: 6, padding: '6px 10px', borderRadius: 6, background: 'var(--danger-bg)', border: '1px solid rgba(239,68,68,0.35)', fontSize: 12, color: 'var(--danger)', display: 'flex', justifyContent: 'space-between' }}>
+          <span>{irError}</span>
+          <button onClick={irReset} style={{ background: 'none', border: 'none', color: 'var(--danger)', textDecoration: 'underline', cursor: 'pointer', fontSize: 12 }}>닫기</button>
+        </div>
+      )}
+
+      {irStep === 'selectDb' && (
+        <div style={{ border: '1px solid var(--border)', borderRadius: 8, overflow: 'hidden' }}>
+          <div style={{ padding: '7px 10px', background: 'var(--bg-surface)', fontSize: 12, fontWeight: 600, color: 'var(--blue-400)', display: 'flex', justifyContent: 'space-between' }}>
+            <span>데이터베이스 선택</span>
+            <button onClick={irReset} style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', fontSize: 12 }}>취소</button>
+          </div>
+          <div style={{ padding: '6px 8px', borderBottom: '1px solid var(--border)' }}>
+            <input type="text" placeholder="검색..." value={irDbSearch} onChange={e => setIrDbSearch(e.target.value)}
+              style={{ width: '100%', padding: '5px 8px', borderRadius: 6, border: '1px solid var(--border-strong)', fontSize: 12, outline: 'none', boxSizing: 'border-box', backgroundColor: 'var(--bg-card)', color: 'var(--text-primary)' }} />
+          </div>
+          {irLoading ? (
+            <div style={{ padding: 20, textAlign: 'center', color: 'var(--text-muted)', fontSize: 13 }}>불러오는 중...</div>
+          ) : (
+            <div style={{ maxHeight: 180, overflowY: 'auto' }}>
+              {irDbs.filter(d => !irDbSearch || d.title.toLowerCase().includes(irDbSearch.toLowerCase())).map(d => (
+                <button key={d.id}
+                  onClick={() => { setIrDbSearch(''); irLoadRows(d.id, d.title); }}
+                  style={{ width: '100%', padding: '9px 10px', border: 'none', borderBottom: '1px solid var(--border)', background: 'var(--bg-card)', textAlign: 'left', cursor: 'pointer', fontSize: 13, display: 'flex', alignItems: 'center', gap: 8, color: 'var(--text-primary)' }}
+                  onMouseOver={e => (e.currentTarget.style.background = 'var(--bg-card-2)')}
+                  onMouseOut={e => (e.currentTarget.style.background = 'var(--bg-card)')}
+                >
+                  <span>{d.icon ?? '📄'}</span>
+                  <span style={{ fontWeight: 500 }}>{d.title}</span>
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {irStep === 'mapping' && (
+        <div style={{ border: '1px solid var(--border)', borderRadius: 8, overflow: 'hidden' }}>
+          <div style={{ padding: '7px 10px', background: 'var(--bg-surface)', fontSize: 12, fontWeight: 600, color: 'var(--blue-400)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <span>필드 매핑 + 투자기록 선택 {irSelectedDbTitle ? `(${irSelectedDbTitle})` : ''}</span>
+            <div style={{ display: 'flex', gap: 8 }}>
+              <button onClick={() => { clearIrConfig(); setIrRows([]); setIrCols([]); irFetchDbList(); }}
+                style={{ background: 'none', border: 'none', color: 'var(--blue-400)', cursor: 'pointer', fontSize: 11 }}>DB 변경</button>
+              <button onClick={irReset} style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', fontSize: 12 }}>취소</button>
+            </div>
+          </div>
+          {irLoading ? (
+            <div style={{ padding: 20, textAlign: 'center', color: 'var(--text-muted)', fontSize: 13 }}>데이터 불러오는 중...</div>
+          ) : (
+            <>
+              <div style={{ padding: '8px 10px', background: 'var(--bg-surface)', borderBottom: '1px solid var(--border)' }}>
+                <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 6 }}>Notion 컬럼 → 투자기록 필드 매핑 (고객명·카테고리는 필터에도 사용됩니다)</div>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 6 }}>
+                  {NOTION_IR_MAP_FIELDS.map(f => (
+                    <div key={f.k} style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 11 }}>
+                      <span style={{ width: 84, color: f.filterHint ? 'var(--blue-400)' : 'var(--text-secondary)', fontWeight: 600, flexShrink: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        {f.l}{f.filterHint ? ' *' : ''}
+                      </span>
+                      <select
+                        value={irMap[f.k] ?? ''}
+                        onChange={e => irUpdateMap(f.k, e.target.value)}
+                        style={{ flex: 1, padding: '2px 4px', borderRadius: 4, border: '1px solid var(--border-strong)', fontSize: 11, backgroundColor: irMap[f.k] ? 'rgba(16,185,129,0.12)' : 'var(--bg-card)', color: 'var(--text-primary)' }}
+                      >
+                        <option value="">--</option>
+                        {irCols.map(c => <option key={c} value={c}>{c}</option>)}
+                      </select>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {!filterReady && (
+                <div style={{ padding: '10px 14px', fontSize: 12, color: 'var(--warning)', backgroundColor: 'rgba(245,158,11,0.1)', borderBottom: '1px solid var(--border)' }}>
+                  ‘고객명’과 ‘카테고리’ 필드를 먼저 매핑하세요.
+                </div>
+              )}
+
+              {/* 불러오기 버튼 + 검색 */}
+              <div style={{ padding: '8px 10px', borderBottom: '1px solid var(--border)', display: 'flex', gap: 8, alignItems: 'center' }}>
+                <button
+                  onClick={irLoadList}
+                  disabled={!filterReady}
+                  title={filterReady ? '' : '고객명·카테고리 매핑 필요'}
+                  style={{ flex: 1, padding: '9px 16px', borderRadius: 7, border: 'none', fontSize: 13, fontWeight: 700, whiteSpace: 'nowrap',
+                    cursor: !filterReady ? 'not-allowed' : 'pointer',
+                    backgroundColor: !filterReady ? 'var(--bg-surface)' : 'var(--blue-600)',
+                    color: !filterReady ? 'var(--text-muted)' : '#fff' }}
+                >{`🔍 ‘${customerName || '고객'}’의 ${NOTION_IR_TARGET_CATEGORY} 상품 목록 불러오기`}</button>
+              </div>
+
+              <div style={{ maxHeight: 300, overflowY: 'auto' }}>
+                {!irLoaded ? (
+                  <div style={{ padding: 14, textAlign: 'center', color: 'var(--text-muted)', fontSize: 13 }}>
+                    {filterReady ? '위 ‘목록 불러오기’ 버튼을 누르면 이 고객의 증권사투자 상품 목록을 보여줍니다. 기존에 없는 신규 상품만 자동 체크되며, 빼고 싶은 상품은 체크를 해제하세요.' : '고객명·카테고리 필드를 매핑하세요.'}
+                  </div>
+                ) : displayRows.length === 0 ? (
+                  <div style={{ padding: 14, textAlign: 'center', color: 'var(--text-muted)', fontSize: 13 }}>
+                    {q ? '검색 결과 없음' : '조건에 맞는 상품이 없습니다.'}
+                  </div>
+                ) : (
+                  <>
+                    <div style={{ padding: '6px 10px', borderBottom: '1px solid var(--border)', background: 'var(--bg-surface)', display: 'flex', alignItems: 'center', gap: 8, position: 'sticky', top: 0, zIndex: 1 }}>
+                      {(() => {
+                        const newRows = displayRows.filter(r => !irIsExisting(r));
+                        const allNewChecked = newRows.length > 0 && newRows.every(r => irSelectedRows.has(r.id));
+                        return (
+                          <>
+                            <input type="checkbox" checked={allNewChecked} onChange={irToggleAll} disabled={newRows.length === 0}
+                              style={{ width: 15, height: 15, cursor: newRows.length === 0 ? 'default' : 'pointer' }} />
+                            <span style={{ fontSize: 11, color: 'var(--text-muted)', fontWeight: 600 }}>신규 전체선택 ({irSelectedRows.size}/{newRows.length})</span>
+                            <span style={{ marginLeft: 'auto', fontSize: 11, color: 'var(--text-muted)' }}>총 {displayRows.length}건 · 기존 {displayRows.length - newRows.length}건</span>
+                          </>
+                        );
+                      })()}
+                    </div>
+                    {displayRows.map(r => {
+                      const dn = irMap['product_name'] ? (r.properties[irMap['product_name']] ?? '-') : '-';
+                      const rawAmt = irMap['investment_amount'] ? (r.properties[irMap['investment_amount']] ?? '') : '';
+                      const wonAmt = parseNotionAmountToWon(rawAmt);
+                      const jd = normalizeNotionDate(irMap['join_date'] ? r.properties[irMap['join_date']] : undefined);
+                      const existing = irIsExisting(r);
+                      const checked = irSelectedRows.has(r.id);
+                      return (
+                        <div key={r.id}
+                          style={{ width: '100%', padding: '7px 10px', borderBottom: '1px solid var(--border)', background: existing ? 'var(--bg-surface)' : checked ? 'rgba(16,185,129,0.1)' : 'var(--bg-card)', display: 'flex', gap: 8, alignItems: 'center', fontSize: 12, cursor: existing ? 'default' : 'pointer', opacity: existing ? 0.6 : 1 }}
+                          onClick={existing ? undefined : () => irToggleRow(r.id)}
+                        >
+                          <input type="checkbox" checked={checked && !existing} disabled={existing}
+                            onChange={() => irToggleRow(r.id)} onClick={e => e.stopPropagation()}
+                            style={{ width: 14, height: 14, cursor: existing ? 'default' : 'pointer', flexShrink: 0 }} />
+                          <span style={{ fontWeight: 600, color: 'var(--text-primary)', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{dn}</span>
+                          {jd && <span style={{ color: 'var(--text-muted)', fontSize: 11, flexShrink: 0 }}>{jd}</span>}
+                          {wonAmt != null && <span style={{ color: 'var(--text-secondary)', fontSize: 11, flexShrink: 0, minWidth: 90, textAlign: 'right' }}>{wonAmt.toLocaleString()}원</span>}
+                          {existing && <span style={{ flexShrink: 0, fontSize: 10, fontWeight: 700, color: 'var(--text-muted)', background: 'var(--bg-card-2)', border: '1px solid var(--border)', padding: '1px 6px', borderRadius: 10 }}>이미 등록됨</span>}
+                        </div>
+                      );
+                    })}
+                  </>
+                )}
+              </div>
+
+              {irLoaded && displayRows.length > 0 && (
+                <div style={{ padding: '8px 10px', background: 'var(--bg-surface)', borderTop: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                  <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>{irSelectedRows.size > 0 ? `${irSelectedRows.size}건 추가 예정` : '추가할 상품을 선택하세요'}</span>
+                  <button onClick={irBulkImport} disabled={irBulkLoading || irSelectedRows.size === 0}
+                    style={{ padding: '7px 18px', borderRadius: 7, border: 'none', fontSize: 13, fontWeight: 700,
+                      background: (irBulkLoading || irSelectedRows.size === 0) ? 'var(--bg-card)' : 'var(--blue-600)',
+                      color: (irBulkLoading || irSelectedRows.size === 0) ? 'var(--text-muted)' : '#fff',
+                      cursor: (irBulkLoading || irSelectedRows.size === 0) ? 'not-allowed' : 'pointer' }}>
+                    {irBulkLoading ? '추가 중...' : `선택 ${irSelectedRows.size}건 투자기록에 추가`}
+                  </button>
+                </div>
+              )}
+            </>
+          )}
+        </div>
+      )}
+    </Modal>
   );
 }
 
