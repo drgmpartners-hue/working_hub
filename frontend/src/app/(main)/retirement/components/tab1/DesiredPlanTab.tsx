@@ -147,6 +147,12 @@ export function DesiredPlanTab() {
   const cid = selectedCustomer?.id ?? null;
   const curAge = selectedCustomer?.currentAge ?? 0;
 
+  // 생년월일 미등록 경고 팝업: 나이(0)가 없으면 시뮬레이션 그래프가 그려지지 않음
+  const [showBirthWarn, setShowBirthWarn] = useState(false);
+  useEffect(() => {
+    if (cid && curAge <= 0) setShowBirthWarn(true);
+  }, [cid, curAge]);
+
   // 목표 은퇴자금
   const [planStartYear, setPSY] = useState(String(new Date().getFullYear()));
   const [raIn, setRaIn] = useState('60');
@@ -156,6 +162,7 @@ export function DesiredPlanTab() {
   const [rpIn, setRpIn] = useState('40');
   const [tog1, setTog1] = useState(false);
   const [tog2, setTog2] = useState(false);
+  const [newPlan, setNewPlan] = useState(false); // 신규 플랜 모드: 수정 플랜만 설계 (기존 플랜 기준 미사용)
 
   // 투자조건
   const [spIn, setSpIn] = useState('');
@@ -318,8 +325,9 @@ export function DesiredPlanTab() {
       m[r.age].principal = Math.round(r.cumulative_principal / 1e4);
     }
     // 가로축을 maxAge까지 채우기 (빈 age도 포함)
-    const startAge = simOrig.length ? simOrig[0].age : 0;
-    for (let age = startAge; age <= maxAge; age++) {
+    // 기존 플랜이 없으면(신규 플랜 모드 등) 수정 플랜 시작 나이를 축 시작점으로 사용 → 0세부터 그려지는 문제 방지
+    const axisStart = simOrig.length ? simOrig[0].age : (simMod.length ? simMod[0].age : 0);
+    for (let age = axisStart; age <= maxAge; age++) {
       if (!m[age]) m[age] = {};
     }
     return Object.entries(m).map(([a, d]) => ({ age: parseInt(a), ...d })).sort((a, b) => a.age - b.age);
@@ -552,24 +560,38 @@ export function DesiredPlanTab() {
       <div id="pdf-tab1-target">
         <div style={SH}>
           <span>목표 은퇴자금</span>
-          <div style={{ display: 'flex', gap: '16px' }}>
+          <div style={{ display: 'flex', gap: '16px', alignItems: 'center' }}>
+            <button
+              type="button"
+              onClick={() => setNewPlan(v => !v)}
+              title="신규 플랜: 기존 은퇴플랜 없이 수정 플랜만 설계. 필요한 입력 카드만 강조됩니다."
+              style={{
+                padding: '5px 12px', fontSize: '12px', fontWeight: 700, borderRadius: '6px', cursor: 'pointer',
+                transition: 'all 0.15s', whiteSpace: 'nowrap',
+                border: newPlan ? '1.5px solid #fff' : '1.5px solid rgba(255,255,255,0.5)',
+                backgroundColor: newPlan ? '#fff' : 'rgba(255,255,255,0.12)',
+                color: newPlan ? 'var(--blue-600)' : '#fff',
+              }}
+            >
+              {newPlan ? '✓ 신규 플랜' : '신규 플랜'}
+            </button>
             <Tog label="연금액 물가반영" c={tog1} f={() => setTog1(!tog1)} />
             <Tog label="목표 물가반영" c={tog2} f={() => setTog2(!tog2)} />
           </div>
         </div>
         <div style={SB}>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '12px' }}>
-            <InC label="플랜 시작연도" u="년" v={planStartYear} f={v => setPSY(v.replace(/\D/g, ''))} />
+            <InC label="플랜 시작연도" u="년" v={planStartYear} f={v => setPSY(v.replace(/\D/g, ''))} hl={newPlan} />
             <InC label="희망 은퇴나이" u="세" v={raIn} f={v => setRaIn(v.replace(/\D/g, ''))}
-              sub={invYrs > 0 ? `총 투자기간: ${invYrs}년` : ''} />
-            <InC label="현재가치 연금액(월)" u="만원/월" v={mIn} f={v => setMIn(fi(v))} cur />
+              sub={invYrs > 0 ? `총 투자기간: ${invYrs}년` : ''} hl={newPlan} />
+            <InC label="현재가치 연금액(월)" u="만원/월" v={mIn} f={v => setMIn(fi(v))} cur hl={newPlan} />
             <IfC label="은퇴당시 연금액(월)" v={futureM > 0 ? `${fmt(futureM)}만원/월` : '-'}
               sub={tog1 ? `물가 ${infRate}% × ${yrsToRet}년 반영` : '물가 미반영'} g />
 
             <InC label="물가상승률" u="%" v={infIn} f={v => setInfIn(v.replace(/[^\d.]/g, ''))}
-              sub={`한국은행 기준 ${ecos.toFixed(1)}%`} />
-            <InC label="연금 수익률" u="%" v={penRIn} f={v => setPenRIn(v.replace(/[^\d.]/g, ''))} />
-            <InC label="연금 수령기간" u="년" v={rpIn} f={v => setRpIn(v.replace(/\D/g, ''))} />
+              sub={`한국은행 기준 ${ecos.toFixed(1)}%`} hl={newPlan} />
+            <InC label="연금 수익률" u="%" v={penRIn} f={v => setPenRIn(v.replace(/[^\d.]/g, ''))} dim={newPlan} />
+            <InC label="연금 수령기간" u="년" v={rpIn} f={v => setRpIn(v.replace(/\D/g, ''))} hl={newPlan} />
             <IfC label="목표 은퇴자금" v={targetFund > 0 ? fmtW(targetFund) : '-'}
               sub={tog2 ? '물가반영 계산' : '물가 미반영'} g hl />
           </div>
@@ -581,10 +603,10 @@ export function DesiredPlanTab() {
         <div style={SH}><span>투자조건</span></div>
         <div style={SB}>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '12px', marginBottom: '12px' }}>
-            <InC label="기존 투자수익률" u="%" v={exRIn} f={v => setExRIn(v.replace(/[^\d.]/g, ''))} />
+            <InC label="기존 투자수익률" u="%" v={exRIn} f={v => setExRIn(v.replace(/[^\d.]/g, ''))} dim={newPlan} />
             <InC label="적립기간" u="년" v={spIn} f={v => setSpIn(v.replace(/\D/g, ''))}
-              sub={holdYrs > 0 ? `거치기간: ${holdYrs}년` : ''} subC="#D4A847" />
-            <InC label="적립 가능금액(연)" u="만원/연" v={asIn} f={v => setAsIn(fi(v))} cur />
+              sub={holdYrs > 0 ? `거치기간: ${holdYrs}년` : ''} subC="#D4A847" hl={newPlan} />
+            <InC label="적립 가능금액(연)" u="만원/연" v={asIn} f={v => setAsIn(fi(v))} cur hl={newPlan} />
             <div style={recRetR > 0 ? { ...CARD_G, background: 'linear-gradient(135deg, #FFF7ED 0%, #FFEDD5 100%)', border: '1px solid #FDBA74' } : CARD_G}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <div style={CL}>필요 거치금액</div>
@@ -610,9 +632,9 @@ export function DesiredPlanTab() {
             </div>
           </div>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '12px' }}>
-            <InC label="추천 연금수익률" u="%" v={recPIn} f={v => setRecPIn(v.replace(/[^\d.]/g, ''))} ph="미입력시 기존" />
-            <InC label="추천 투자수익률" u="%" v={recRIn} f={v => setRecRIn(v.replace(/[^\d.]/g, ''))} ph="미입력시 기존" />
-            <InC label="거치 가능금액" u="만원" v={holdIn} f={v => { setHoldIn(fi(v)); setApplyReqHold(false); }} cur />
+            <InC label="추천 연금수익률" u="%" v={recPIn} f={v => setRecPIn(v.replace(/[^\d.]/g, ''))} ph="미입력시 기존" hl={newPlan} />
+            <InC label="추천 투자수익률" u="%" v={recRIn} f={v => setRecRIn(v.replace(/[^\d.]/g, ''))} ph="미입력시 기존" hl={newPlan} />
+            <InC label="거치 가능금액" u="만원" v={holdIn} f={v => { setHoldIn(fi(v)); setApplyReqHold(false); }} cur hl={newPlan} />
             {extraHolding > 0 ? (
               <IfC label="추가 거치금액" v={fmtW(extraHolding)} sub="필요 거치금액 - 거치 가능금액" g />
             ) : recPenR > 0 ? (
@@ -639,7 +661,7 @@ export function DesiredPlanTab() {
         <div id="pdf-tab1-graph" style={{ backgroundColor: 'var(--bg-card)', border: '1px solid var(--border-soft)', borderRadius: '12px', padding: '20px' }}>
           <h3 style={{ fontSize: '15px', fontWeight: 700, color: 'var(--blue-400)', margin: '0 0 12px' }}>시뮬레이션 그래프</h3>
           <div style={{ display: 'flex', gap: '20px', marginBottom: '12px', fontSize: '12px' }}>
-            <LG color="#1E3A5F" label="기존 은퇴플랜" />
+            {simOrig.length > 0 && <LG color="#1E3A5F" label="기존 은퇴플랜" />}
             {hasMod && <LG color="#E85D04" label="수정 은퇴플랜" />}
             <LG color="#9CA3AF" label="투자원금" dash />
           </div>
@@ -777,6 +799,41 @@ export function DesiredPlanTab() {
       {toast && <div style={{ position: 'fixed', bottom: 32, left: '50%', transform: 'translateX(-50%)', zIndex: 9999,
         padding: '12px 24px', borderRadius: 8, backgroundColor: toast.t === 'success' ? '#1E3A5F' : '#EF4444',
         color: '#fff', fontSize: 14, fontWeight: 500, boxShadow: '0 4px 16px rgba(0,0,0,0.18)' }}>{toast.m}</div>}
+
+      {/* ==================== 생년월일 미등록 경고 팝업 ==================== */}
+      {showBirthWarn && (
+        <div
+          onClick={() => setShowBirthWarn(false)}
+          style={{ position: 'fixed', inset: 0, zIndex: 10000, backgroundColor: 'rgba(0,0,0,0.55)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}
+        >
+          <div
+            onClick={e => e.stopPropagation()}
+            style={{ width: '100%', maxWidth: 420, backgroundColor: 'var(--bg-card)', border: '1px solid var(--border-strong)',
+              borderRadius: 12, padding: '24px', boxShadow: '0 12px 40px rgba(0,0,0,0.35)' }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12 }}>
+              <span style={{ fontSize: 22 }}>⚠️</span>
+              <h3 style={{ margin: 0, fontSize: 16, fontWeight: 700, color: 'var(--text-primary)' }}>생년월일이 등록되지 않았습니다</h3>
+            </div>
+            <p style={{ margin: '0 0 6px', fontSize: 13.5, lineHeight: 1.6, color: 'var(--text-secondary)' }}>
+              {selectedCustomer?.name ? <strong>{selectedCustomer.name}</strong> : '선택한 고객'} 님의 <strong>생년월일</strong>이 없어 현재 나이를 계산할 수 없습니다.
+            </p>
+            <p style={{ margin: '0 0 20px', fontSize: 13.5, lineHeight: 1.6, color: 'var(--text-secondary)' }}>
+              현재 나이가 없으면 <strong>시뮬레이션 그래프가 생성되지 않습니다.</strong> 고객 정보에서 생년월일을 먼저 등록해주세요.
+            </p>
+            <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+              <button
+                onClick={() => setShowBirthWarn(false)}
+                style={{ padding: '9px 20px', fontSize: 13, fontWeight: 600, borderRadius: 8, border: 'none',
+                  backgroundColor: 'var(--blue-600)', color: '#fff', cursor: 'pointer' }}
+              >
+                확인
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -784,12 +841,17 @@ export function DesiredPlanTab() {
 /* ================================================================
    서브 컴포넌트
    ================================================================ */
-function InC({ label, u, v, f, cur, sub, subC, ph }: {
+function InC({ label, u, v, f, cur, sub, subC, ph, hl, dim }: {
   label: string; u: string; v: string; f: (v: string) => void;
-  cur?: boolean; sub?: string; subC?: string; ph?: string;
+  cur?: boolean; sub?: string; subC?: string; ph?: string; hl?: boolean; dim?: boolean;
 }) {
+  const cardStyle: React.CSSProperties = hl
+    ? { ...CARD, border: '1.5px solid var(--blue-400)', boxShadow: '0 0 0 1px var(--blue-400), 0 0 10px rgba(59,130,246,0.22)' }
+    : dim
+    ? { ...CARD, opacity: 0.35 }
+    : CARD;
   return (
-    <div style={CARD}>
+    <div style={cardStyle}>
       <div style={CL}>{label}</div>
       <div style={{ position: 'relative' }}>
         <input type="text" inputMode={cur ? 'numeric' : undefined} value={v} onChange={e => f(e.target.value)}
