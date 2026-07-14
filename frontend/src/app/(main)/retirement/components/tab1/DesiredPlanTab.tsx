@@ -44,7 +44,8 @@ function calcTargetFund(fmWon: number, penR: number, infR: number, period: numbe
 }
 
 function calcRequiredHolding(target: number, annR: number, savP: number, holdP: number, annSav: number) {
-  if (target <= 0 || annR <= 0 || savP <= 0) return 0;
+  // 적립기간(savP)이 0이어도 거치기간(holdP)만 있으면 계산 가능 (거치만 케이스)
+  if (target <= 0 || annR <= 0 || (savP <= 0 && holdP <= 0)) return 0;
   const r = annR / 12;
   const innerPV = excelPV(r, holdP * 12, 0, -target);
   return -excelPV(r, savP * 12, -annSav / 12, innerPV);
@@ -61,6 +62,8 @@ function fmtW(n: number) {
 }
 function pn(s: string) { return parseInt(s.replace(/\D/g, ''), 10) || 0; }
 function fi(s: string) { const n = pn(s); return n > 0 ? fmt(n) : ''; }
+// 0을 명시적으로 입력·표시할 수 있는 포맷터 (적립 안 함 = 0 입력 허용)
+function fi0(s: string) { const c = s.replace(/\D/g, ''); return c === '' ? '' : fmt(parseInt(c, 10)); }
 
 /* ================================================================
    시뮬레이션 빌더
@@ -213,7 +216,7 @@ export function DesiredPlanTab() {
     [fmWon, penRate, infRate, retPeriod, tog2]);
 
   const reqHold = useMemo(() => {
-    if (targetFund <= 0 || exRate <= 0 || invYrs <= 0 || savYrs <= 0) return 0;
+    if (targetFund <= 0 || exRate <= 0 || invYrs <= 0) return 0; // 적립기간 0(거치만)도 허용
     return Math.max(0, calcRequiredHolding(targetFund, exRate / 100, savYrs, holdYrs, annSav * 1e4));
   }, [targetFund, exRate, savYrs, holdYrs, annSav, invYrs]);
 
@@ -242,7 +245,7 @@ export function DesiredPlanTab() {
 
   // Step 2: 수정 플랜 필요 거치금액 = 추천 투자수익률로 수정 기본 목표 도달
   const modReqHold = useMemo(() => {
-    if (recRetR <= 0 || modBaseTarget <= 0 || invYrs <= 0 || savYrs <= 0) return reqHold;
+    if (recRetR <= 0 || modBaseTarget <= 0 || invYrs <= 0) return reqHold; // 적립기간 0(거치만)도 허용
     return Math.max(0, calcRequiredHolding(modBaseTarget, recRetR / 100, savYrs, holdYrs, annSav * 1e4));
   }, [recRetR, modBaseTarget, savYrs, holdYrs, annSav, invYrs, reqHold]);
 
@@ -592,8 +595,11 @@ export function DesiredPlanTab() {
               sub={`한국은행 기준 ${ecos.toFixed(1)}%`} hl={newPlan} />
             <InC label="연금 수익률" u="%" v={penRIn} f={v => setPenRIn(v.replace(/[^\d.]/g, ''))} dim={newPlan} />
             <InC label="연금 수령기간" u="년" v={rpIn} f={v => setRpIn(v.replace(/\D/g, ''))} hl={newPlan} />
-            <IfC label="목표 은퇴자금" v={targetFund > 0 ? fmtW(targetFund) : '-'}
-              sub={tog2 ? '물가반영 계산' : '물가 미반영'} g hl />
+            {/* 신규 플랜 모드에서는 기존 플랜 기준 '목표 은퇴자금' 카드 숨김 (수정 목표와 혼동 방지) */}
+            {!newPlan && (
+              <IfC label="목표 은퇴자금" v={targetFund > 0 ? fmtW(targetFund) : '-'}
+                sub={tog2 ? '물가반영 계산' : '물가 미반영'} g hl />
+            )}
           </div>
         </div>
       </div>
@@ -606,7 +612,8 @@ export function DesiredPlanTab() {
             <InC label="기존 투자수익률" u="%" v={exRIn} f={v => setExRIn(v.replace(/[^\d.]/g, ''))} dim={newPlan} />
             <InC label="적립기간" u="년" v={spIn} f={v => setSpIn(v.replace(/\D/g, ''))}
               sub={holdYrs > 0 ? `거치기간: ${holdYrs}년` : ''} subC="#D4A847" hl={newPlan} />
-            <InC label="적립 가능금액(연)" u="만원/연" v={asIn} f={v => setAsIn(fi(v))} cur hl={newPlan} />
+            <InC label="적립 가능금액(연)" u="만원/연" v={asIn} f={v => setAsIn(fi0(v))} cur hl={newPlan}
+              sub={pn(asIn) === 0 && asIn !== '' ? '적립 없음 · 거치만' : ''} subC="#D4A847" />
             <div style={recRetR > 0 ? { ...CARD_G, background: 'linear-gradient(135deg, #FFF7ED 0%, #FFEDD5 100%)', border: '1px solid #FDBA74' } : CARD_G}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <div style={CL}>필요 거치금액</div>
