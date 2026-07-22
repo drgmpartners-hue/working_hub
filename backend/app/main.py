@@ -101,7 +101,8 @@ async def global_exception_handler(request: Request, exc: Exception):
         headers["Access-Control-Allow-Credentials"] = "true"
     return JSONResponse(
         status_code=500,
-        content={"detail": str(exc)},
+        # 일부 예외(InvalidToken 등)는 str(exc)가 빈 문자열 → 프런트에서 빈 에러로 보임
+        content={"detail": str(exc) or f"서버 내부 오류: {type(exc).__name__}"},
         headers=headers,
     )
 

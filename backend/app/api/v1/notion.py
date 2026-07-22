@@ -69,7 +69,15 @@ async def _get_notion_token(user_id: str, db: AsyncSession) -> str:
     key = result.scalar_one_or_none()
     if not key:
         raise HTTPException(404, "Notion API 키가 설정되지 않았습니다. 설정 > API 관리에서 등록해주세요.")
-    return _decrypt(key.api_key)
+    try:
+        return _decrypt(key.api_key)
+    except Exception:
+        # 서버 SECRET_KEY 변경 등으로 저장된 키를 복호화할 수 없는 경우 (InvalidToken)
+        raise HTTPException(
+            400,
+            "저장된 Notion 키를 복호화할 수 없습니다(서버 암호화 키 불일치). "
+            "설정 > API 관리에서 Notion 키를 다시 등록해주세요.",
+        )
 
 
 def _headers(token: str) -> dict:

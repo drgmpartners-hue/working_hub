@@ -3432,7 +3432,7 @@ function NotionImportRecordsModal({ customerId, customerName, existingKeys, onCl
     setIrLoading(true); setIrError(null);
     try {
       const res = await fetch(`${API_URL}/api/v1/notion/databases`, { headers: authLib.getAuthHeader() });
-      if (!res.ok) { const d = await res.json().catch(() => ({})); throw new Error(d?.detail ?? '조회 실패'); }
+      if (!res.ok) { const d = await res.json().catch(() => ({})); throw new Error(d?.detail || `조회 실패 (HTTP ${res.status})`); }
       setIrDbs(await res.json());
       setIrStep('selectDb');
     } catch (e: unknown) { setIrError(e instanceof Error ? e.message : '오류'); }

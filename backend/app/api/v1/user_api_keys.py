@@ -37,6 +37,17 @@ def _mask(value: str) -> str:
     return value[:4] + "*" * (len(value) - 8) + value[-4:]
 
 
+def _safe_mask(enc: Optional[str]) -> Optional[str]:
+    """암호화된 값을 복호화·마스킹. 복호화 실패(SECRET_KEY 변경 등) 시 목록 전체가
+    500 나지 않도록 안내 문구로 대체한다 → 프런트가 '재등록(PUT)' 경로를 탈 수 있음."""
+    if not enc:
+        return None
+    try:
+        return _mask(_decrypt(enc))
+    except Exception:
+        return "복호화 실패 · 재등록 필요"
+
+
 # --- Schemas ---
 
 VALID_PROVIDERS = ["kiwoom", "claude", "gemini", "solapi", "notion", "kis", "dart", "naver_search"]
@@ -83,8 +94,8 @@ async def list_api_keys(
         ApiKeyResponse(
             id=k.id,
             provider=k.provider,
-            api_key_masked=_mask(_decrypt(k.api_key)),
-            api_secret_masked=_mask(_decrypt(k.api_secret)) if k.api_secret else None,
+            api_key_masked=_safe_mask(k.api_key) or "",
+            api_secret_masked=_safe_mask(k.api_secret),
             is_active=k.is_active,
             last_verified_at=k.last_verified_at.isoformat() if k.last_verified_at else None,
             created_at=k.created_at.isoformat(),
@@ -104,7 +115,7 @@ async def create_api_key(
     if body.provider not in VALID_PROVIDERS:
         raise HTTPException(400, f"Invalid provider. Must be one of: {VALID_PROVIDERS}")
 
-    # Check if already exists for this provider
+    # Upsert: 이미 존재하면 덮어쓰기 (복호화 불능 키 재등록 시 409 데드락 방지)
     existing = await db.execute(
         select(UserApiKey).where(
             and_(
@@ -113,16 +124,19 @@ async def create_api_key(
             )
         )
     )
-    if existing.scalar_one_or_none():
-        raise HTTPException(409, f"API key for '{body.provider}' already exists. Use PUT to update.")
-
-    key = UserApiKey(
-        user_id=current_user.id,
-        provider=body.provider,
-        api_key=_encrypt(body.api_key),
-        api_secret=_encrypt(body.api_secret) if body.api_secret else None,
-    )
-    db.add(key)
+    key = existing.scalar_one_or_none()
+    if key:
+        key.api_key = _encrypt(body.api_key)
+        key.api_secret = _encrypt(body.api_secret) if body.api_secret else None
+        key.is_active = True
+    else:
+        key = UserApiKey(
+            user_id=current_user.id,
+            provider=body.provider,
+            api_key=_encrypt(body.api_key),
+            api_secret=_encrypt(body.api_secret) if body.api_secret else None,
+        )
+        db.add(key)
     await db.commit()
     await db.refresh(key)
 
@@ -255,8 +269,8 @@ async def update_api_key(
     return ApiKeyResponse(
         id=key.id,
         provider=key.provider,
-        api_key_masked=_mask(_decrypt(key.api_key)),
-        api_secret_masked=_mask(_decrypt(key.api_secret)) if key.api_secret else None,
+        api_key_masked=_safe_mask(key.api_key) or "",
+        api_secret_masked=_safe_mask(key.api_secret),
         is_active=key.is_active,
         last_verified_at=key.last_verified_at.isoformat() if key.last_verified_at else None,
         created_at=key.created_at.isoformat(),
