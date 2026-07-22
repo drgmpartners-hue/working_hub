@@ -19,18 +19,29 @@ MAX_RETRIES = 3
 
 
 async def _notion_request(method: str, url: str, token: str, json: dict | None = None) -> httpx.Response:
-    """Notion API 호출 with 재시도 (503 등 일시적 오류 대응)."""
+    """Notion API 호출 with 재시도 (503 등 일시적 오류 대응).
+
+    네트워크 오류/타임아웃은 HTTPException(504)으로 변환한다. 이렇게 해야
+    CORS 헤더가 포함된 정상 오류 응답이 나가서 프런트가 'Failed to fetch' 대신
+    실제 사유를 표시할 수 있다.
+    """
+    res: httpx.Response | None = None
     for attempt in range(MAX_RETRIES):
-        async with httpx.AsyncClient(timeout=20) as client:
-            if method == "GET":
-                res = await client.get(url, headers=_headers(token))
-            else:
-                res = await client.post(url, headers=_headers(token), json=json or {})
-        if res.status_code != 503:
-            return res
+        try:
+            async with httpx.AsyncClient(timeout=20) as client:
+                if method == "GET":
+                    res = await client.get(url, headers=_headers(token))
+                else:
+                    res = await client.post(url, headers=_headers(token), json=json or {})
+            if res.status_code != 503:
+                return res
+        except httpx.HTTPError:  # Timeout, ConnectError 등 네트워크 계열
+            res = None
         if attempt < MAX_RETRIES - 1:
             await asyncio.sleep(1 * (attempt + 1))
-    return res  # 마지막 응답 반환
+    if res is not None:
+        return res  # 마지막 응답(503 등) 반환
+    raise HTTPException(504, "Notion 서버에 연결하지 못했습니다(응답 지연/네트워크 오류). 잠시 후 다시 시도해주세요.")
 
 
 def _handle_error(res: httpx.Response):

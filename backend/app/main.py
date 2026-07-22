@@ -38,9 +38,11 @@ from app.api.v1 import notion as notion_router
 
 app = FastAPI(title="API", version="0.1.0")
 
+ALLOWED_ORIGINS = ["http://localhost:3000", "http://127.0.0.1:3000", "https://working-hub.vercel.app"]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000", "http://127.0.0.1:3000", "https://working-hub.vercel.app"],
+    allow_origins=ALLOWED_ORIGINS,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -90,9 +92,17 @@ app.include_router(market_router.router, prefix="/api/v1")
 @app.exception_handler(Exception)
 async def global_exception_handler(request: Request, exc: Exception):
     logger.error("Unhandled error: %s\n%s", exc, traceback.format_exc())
+    # 예외 핸들러가 만든 500 응답은 CORSMiddleware를 거치지 않아 CORS 헤더가 누락된다.
+    # → 브라우저에서 실제 오류 메시지 대신 "Failed to fetch"로 보임. 허용 오리진이면 수동으로 부착.
+    headers: dict[str, str] = {}
+    origin = request.headers.get("origin")
+    if origin is not None and origin in ALLOWED_ORIGINS:
+        headers["Access-Control-Allow-Origin"] = origin
+        headers["Access-Control-Allow-Credentials"] = "true"
     return JSONResponse(
         status_code=500,
         content={"detail": str(exc)},
+        headers=headers,
     )
 
 
