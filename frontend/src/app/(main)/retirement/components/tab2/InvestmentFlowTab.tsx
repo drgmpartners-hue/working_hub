@@ -3476,6 +3476,7 @@ const NOTION_DTX_MAP_FIELDS: { k: string; l: string; req?: boolean }[] = [
   { k: 'transaction_type', l: '거래유형' },
   { k: 'related_product', l: '관련상품' },
   { k: 'credit_amount', l: '입금액' },
+  { k: 'credit_amount_2', l: '자동이체(입금)' },
   { k: 'debit_amount', l: '출금액' },
   { k: 'memo', l: '메모' },
 ];
@@ -3493,6 +3494,7 @@ function autoGuessDtxMapping(cols: string[]): Record<string, string> {
     transaction_type: pick('거래유형', ['거래유형', '유형', '구분', 'type']),
     related_product: pick('관련상품', ['관련상품', '상품명', '상품', 'product']),
     credit_amount: pick('입금액', ['입금액', '입금', 'credit']),
+    credit_amount_2: pick('자동이체', ['자동이체', '이체']),
     debit_amount: pick('출금액', ['출금액', '출금', 'debit']),
     memo: pick('비고', ['비고', '메모', 'note', 'memo']),
   };
@@ -3519,7 +3521,8 @@ function notionRowToTxBody(
   const g = (k: string) => (mapping[k] ? row.properties[mapping[k]] : undefined);
   const date = normalizeNotionDate(g('transaction_date'));
   if (!date) return null;
-  const credit = parseNotionAmountToWon(g('credit_amount')) ?? 0;
+  // 입금액 = '입금액' + '자동이체(입금)' 두 컬럼 합산
+  const credit = (parseNotionAmountToWon(g('credit_amount')) ?? 0) + (parseNotionAmountToWon(g('credit_amount_2')) ?? 0);
   const debit = parseNotionAmountToWon(g('debit_amount')) ?? 0;
   // 거래유형 미매핑 시 입/출금액으로 추론
   const ttype = mapping['transaction_type']
@@ -4195,7 +4198,7 @@ function NotionImportDepositTxModal({ accounts, onClose, onImported }: {
           ) : (
             <>
               <div style={{ padding: '8px 10px', background: 'var(--bg-surface)', borderBottom: '1px solid var(--border)' }}>
-                <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 6 }}>Notion 컬럼 → 예수금 거래 필드 매핑 (거래일 * 은 필수)</div>
+                <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 6 }}>Notion 컬럼 → 예수금 거래 필드 매핑 (거래일 * 은 필수 · 입금액 = ‘입금액’ + ‘자동이체(입금)’ 합산)</div>
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 6 }}>
                   {NOTION_DTX_MAP_FIELDS.map(f => (
                     <div key={f.k} style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 11 }}>
