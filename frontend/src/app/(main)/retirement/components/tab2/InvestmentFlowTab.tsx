@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
+import { createPortal } from 'react-dom';
 import dynamic from 'next/dynamic';
 import { Modal } from '@/components/common/Modal';
 import { useRetirementStore } from '../../hooks/useRetirementStore';
@@ -3546,6 +3547,110 @@ function depositTxKey(t: DepositTransaction): string {
   return `${t.transaction_date}|${t.credit_amount}|${t.debit_amount}|${t.transaction_type}`;
 }
 
+/* ------------------------------------------------------------------ */
+/*  다크 커스텀 드롭다운 (네이티브 select의 OS 밝은 팝업 문제 해결)      */
+/*  Modal이 overflow:hidden이라 portal + fixed 위치로 렌더            */
+/* ------------------------------------------------------------------ */
+function MapSelect({ value, onChange, options, placeholder = '--', highlight = false, minWidth }: {
+  value: string;
+  onChange: (v: string) => void;
+  options: { value: string; label: string }[];
+  placeholder?: string;
+  highlight?: boolean;
+  minWidth?: number;
+}) {
+  const [open, setOpen] = useState(false);
+  const [pos, setPos] = useState<{ left: number; width: number; top?: number; bottom?: number } | null>(null);
+  const btnRef = useRef<HTMLButtonElement>(null);
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => { setMounted(true); }, []);
+
+  const openMenu = () => {
+    const r = btnRef.current?.getBoundingClientRect();
+    if (r) {
+      const belowSpace = window.innerHeight - r.bottom;
+      const openUp = belowSpace < 240 && r.top > belowSpace;
+      setPos({
+        left: r.left,
+        width: r.width,
+        top: openUp ? undefined : r.bottom + 2,
+        bottom: openUp ? window.innerHeight - r.top + 2 : undefined,
+      });
+    }
+    setOpen(true);
+  };
+
+  useEffect(() => {
+    if (!open) return;
+    const onDown = (e: MouseEvent) => {
+      if (btnRef.current && !btnRef.current.contains(e.target as Node)) setOpen(false);
+    };
+    const onScroll = () => setOpen(false);
+    document.addEventListener('mousedown', onDown, true);
+    window.addEventListener('scroll', onScroll, true);
+    window.addEventListener('resize', onScroll);
+    return () => {
+      document.removeEventListener('mousedown', onDown, true);
+      window.removeEventListener('scroll', onScroll, true);
+      window.removeEventListener('resize', onScroll);
+    };
+  }, [open]);
+
+  const selected = options.find(o => o.value === value);
+  const items = [{ value: '', label: placeholder }, ...options];
+
+  return (
+    <div style={{ position: 'relative', flex: 1, minWidth }}>
+      <button
+        ref={btnRef}
+        type="button"
+        onClick={() => (open ? setOpen(false) : openMenu())}
+        style={{
+          width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 4,
+          padding: '4px 8px', borderRadius: 4, fontSize: 11, cursor: 'pointer', textAlign: 'left',
+          border: '1px solid var(--border-strong)',
+          backgroundColor: highlight ? 'rgba(16,185,129,0.12)' : 'var(--bg-card)',
+          color: selected ? 'var(--text-primary)' : 'var(--text-muted)',
+        }}
+      >
+        <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{selected ? selected.label : placeholder}</span>
+        <span style={{ fontSize: 9, color: 'var(--text-muted)', flexShrink: 0 }}>▼</span>
+      </button>
+      {mounted && open && pos && createPortal(
+        <div
+          style={{
+            position: 'fixed', left: pos.left, width: pos.width, top: pos.top, bottom: pos.bottom,
+            zIndex: 2000, maxHeight: 240, overflowY: 'auto',
+            backgroundColor: '#1a2332', border: '1px solid #2d3a4f', borderRadius: 6,
+            boxShadow: '0 8px 28px rgba(0,0,0,0.45)', padding: '4px 0',
+          }}
+        >
+          {items.map(o => {
+            const isSel = o.value === value;
+            return (
+              <div
+                key={o.value || '__empty'}
+                onClick={() => { onChange(o.value); setOpen(false); }}
+                style={{
+                  padding: '6px 10px', fontSize: 11, cursor: 'pointer',
+                  color: isSel ? '#60A5FA' : '#e5e7eb',
+                  backgroundColor: isSel ? 'rgba(59,130,246,0.15)' : 'transparent',
+                  whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+                }}
+                onMouseEnter={e => { (e.currentTarget as HTMLDivElement).style.backgroundColor = 'rgba(255,255,255,0.07)'; }}
+                onMouseLeave={e => { (e.currentTarget as HTMLDivElement).style.backgroundColor = isSel ? 'rgba(59,130,246,0.15)' : 'transparent'; }}
+              >
+                {o.label}
+              </div>
+            );
+          })}
+        </div>,
+        document.body
+      )}
+    </div>
+  );
+}
+
 interface NotionImportRecordsModalProps {
   customerId: string;
   customerName: string;
@@ -3852,14 +3957,12 @@ function NotionImportRecordsModal({ customerId, customerName, existingKeys, onCl
                       <span style={{ width: 84, color: f.filterHint ? 'var(--blue-400)' : 'var(--text-secondary)', fontWeight: 600, flexShrink: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                         {f.l}{f.filterHint ? ' *' : ''}
                       </span>
-                      <select
+                      <MapSelect
                         value={irMap[f.k] ?? ''}
-                        onChange={e => irUpdateMap(f.k, e.target.value)}
-                        style={{ flex: 1, padding: '2px 4px', borderRadius: 4, border: '1px solid var(--border-strong)', fontSize: 11, backgroundColor: irMap[f.k] ? 'rgba(16,185,129,0.12)' : 'var(--bg-card)', color: 'var(--text-primary)', colorScheme: 'dark' }}
-                      >
-                        <option value="" style={{ backgroundColor: '#1a2332', color: '#e5e7eb' }}>--</option>
-                        {irCols.map(c => <option key={c} value={c} style={{ backgroundColor: '#1a2332', color: '#e5e7eb' }}>{c}</option>)}
-                      </select>
+                        onChange={v => irUpdateMap(f.k, v)}
+                        options={irCols.map(c => ({ value: c, label: c }))}
+                        highlight={!!irMap[f.k]}
+                      />
                     </div>
                   ))}
                 </div>
@@ -4173,20 +4276,17 @@ function NotionImportDepositTxModal({ customerId, accounts, onClose, onImported,
       <div style={{ marginBottom: 8, padding: '8px 12px', borderRadius: 8, backgroundColor: 'var(--bg-surface)' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
           <span style={{ fontSize: 12, color: 'var(--text-muted)', fontWeight: 600 }}>대상 예수금 계좌</span>
-          <select
+          <MapSelect
             value={targetAccountId === '' ? '' : String(targetAccountId)}
-            onChange={e => {
-              const v = e.target.value ? Number(e.target.value) : '';
-              setTargetAccountId(v);
-              if (selDbId) saveCfg(selDbId, selDbTitle, map, v);   // 대상 계좌도 저장
+            onChange={v => {
+              const acctId = v ? Number(v) : '';
+              setTargetAccountId(acctId);
+              if (selDbId) saveCfg(selDbId, selDbTitle, map, acctId);   // 대상 계좌도 저장
             }}
-            style={{ flex: 1, minWidth: 160, padding: '5px 8px', borderRadius: 6, border: '1px solid var(--border-strong)', fontSize: 12, backgroundColor: 'var(--bg-card)', color: 'var(--text-primary)', colorScheme: 'dark' }}
-          >
-            <option value="" style={{ backgroundColor: '#1a2332', color: '#e5e7eb' }}>
-              {allAccounts.length === 0 ? '계좌 없음 — 새로 만드세요' : '계좌 선택…'}
-            </option>
-            {allAccounts.map(a => <option key={a.id} value={String(a.id)} style={{ backgroundColor: '#1a2332', color: '#e5e7eb' }}>{acctLabel(a)}</option>)}
-          </select>
+            options={allAccounts.map(a => ({ value: String(a.id), label: acctLabel(a) }))}
+            placeholder={allAccounts.length === 0 ? '계좌 없음 — 새로 만드세요' : '계좌 선택…'}
+            minWidth={160}
+          />
           <button
             type="button"
             onClick={() => setCreatingAcct(v => !v)}
@@ -4281,14 +4381,12 @@ function NotionImportDepositTxModal({ customerId, accounts, onClose, onImported,
                       <span style={{ width: 72, color: f.req ? 'var(--blue-400)' : 'var(--text-secondary)', fontWeight: 600, flexShrink: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                         {f.l}{f.req ? ' *' : ''}
                       </span>
-                      <select
+                      <MapSelect
                         value={map[f.k] ?? ''}
-                        onChange={e => updateMap(f.k, e.target.value)}
-                        style={{ flex: 1, padding: '2px 4px', borderRadius: 4, border: '1px solid var(--border-strong)', fontSize: 11, backgroundColor: map[f.k] ? 'rgba(16,185,129,0.12)' : 'var(--bg-card)', color: 'var(--text-primary)', colorScheme: 'dark' }}
-                      >
-                        <option value="" style={{ backgroundColor: '#1a2332', color: '#e5e7eb' }}>--</option>
-                        {cols.map(c => <option key={c} value={c} style={{ backgroundColor: '#1a2332', color: '#e5e7eb' }}>{c}</option>)}
-                      </select>
+                        onChange={v => updateMap(f.k, v)}
+                        options={cols.map(c => ({ value: c, label: c }))}
+                        highlight={!!map[f.k]}
+                      />
                     </div>
                   ))}
                 </div>
