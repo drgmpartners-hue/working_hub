@@ -1960,14 +1960,12 @@ export function InvestmentFlowTab() {
             </label>
             <button
               onClick={() => setShowDepositNotionModal(true)}
-              disabled={depositAccounts.filter(a => a.is_active).length === 0}
-              title={depositAccounts.filter(a => a.is_active).length === 0 ? '예수금 계좌를 먼저 추가하세요' : undefined}
+              title="Notion에서 예수금 거래 불러오기 (계좌가 없으면 모달에서 바로 생성)"
               style={{
                 display: 'flex', alignItems: 'center', gap: 4, padding: '7px 14px',
                 fontSize: 13, fontWeight: 600, borderRadius: 7, border: '1px solid var(--border-strong)',
                 backgroundColor: 'var(--bg-card)', color: 'var(--text-secondary)',
-                cursor: depositAccounts.filter(a => a.is_active).length === 0 ? 'not-allowed' : 'pointer',
-                opacity: depositAccounts.filter(a => a.is_active).length === 0 ? 0.5 : 1,
+                cursor: 'pointer',
               }}
             >
               📝 Notion 불러오기
@@ -3242,8 +3240,10 @@ export function InvestmentFlowTab() {
       {/* Notion 예수금 거래 불러오기 모달 */}
       {showDepositNotionModal && (
         <NotionImportDepositTxModal
+          customerId={selectedCustomerId}
           accounts={depositAccounts.filter(a => a.is_active)}
           onClose={() => setShowDepositNotionModal(false)}
+          onAccountCreated={fetchDepositAccounts}
           onImported={() => {
             fetchDepositAccounts();
             expandedAccountIds.forEach(id => fetchTransactions(id));
@@ -3633,7 +3633,10 @@ function NotionImportRecordsModal({ customerId, customerName, existingKeys, onCl
       const cols = props.map(p => p.name);
       setIrCols(cols);
       setIrRows(rows);
-      setIrMap(savedMapping ?? autoGuessMapping(cols));
+      const resolvedMap = savedMapping ?? autoGuessMapping(cols);
+      setIrMap(resolvedMap);
+      // 매핑 화면 진입 즉시 저장 → 다음에 열면 DB·매핑 자동 복원(재매칭 불필요)
+      saveIrConfig(dbId, dbTitle, resolvedMap);
       setIrStep('mapping');
     } catch (e: unknown) { setIrError(e instanceof Error ? e.message : '오류'); }
     finally { setIrLoading(false); }
@@ -3852,10 +3855,10 @@ function NotionImportRecordsModal({ customerId, customerName, existingKeys, onCl
                       <select
                         value={irMap[f.k] ?? ''}
                         onChange={e => irUpdateMap(f.k, e.target.value)}
-                        style={{ flex: 1, padding: '2px 4px', borderRadius: 4, border: '1px solid var(--border-strong)', fontSize: 11, backgroundColor: irMap[f.k] ? 'rgba(16,185,129,0.12)' : 'var(--bg-card)', color: 'var(--text-primary)' }}
+                        style={{ flex: 1, padding: '2px 4px', borderRadius: 4, border: '1px solid var(--border-strong)', fontSize: 11, backgroundColor: irMap[f.k] ? 'rgba(16,185,129,0.12)' : 'var(--bg-card)', color: 'var(--text-primary)', colorScheme: 'dark' }}
                       >
-                        <option value="">--</option>
-                        {irCols.map(c => <option key={c} value={c}>{c}</option>)}
+                        <option value="" style={{ backgroundColor: '#1a2332', color: '#e5e7eb' }}>--</option>
+                        {irCols.map(c => <option key={c} value={c} style={{ backgroundColor: '#1a2332', color: '#e5e7eb' }}>{c}</option>)}
                       </select>
                     </div>
                   ))}
@@ -3956,10 +3959,12 @@ function NotionImportRecordsModal({ customerId, customerName, existingKeys, onCl
 /*  예수금 거래 Notion 불러오기 모달                                     */
 /* ------------------------------------------------------------------ */
 
-function NotionImportDepositTxModal({ accounts, onClose, onImported }: {
+function NotionImportDepositTxModal({ customerId, accounts, onClose, onImported, onAccountCreated }: {
+  customerId: string;
   accounts: DepositAccount[];
   onClose: () => void;
   onImported: () => void;
+  onAccountCreated: () => void;
 }) {
   const [step, setStep] = useState<'idle' | 'selectDb' | 'mapping'>('idle');
   const [dbs, setDbs] = useState<{ id: string; title: string; icon: string | null }[]>([]);
@@ -3977,6 +3982,43 @@ function NotionImportDepositTxModal({ accounts, onClose, onImported }: {
   const [loaded, setLoaded] = useState(false);
   const [targetAccountId, setTargetAccountId] = useState<number | ''>(accounts[0]?.id ?? '');
   const [existingKeys, setExistingKeys] = useState<Set<string>>(new Set());
+
+  /* ---- 계좌가 없을 때 모달 내에서 바로 생성 ---- */
+  const [extraAccounts, setExtraAccounts] = useState<DepositAccount[]>([]);
+  const [creatingAcct, setCreatingAcct] = useState(false);
+  const [newAcctCompany, setNewAcctCompany] = useState('');
+  const [newAcctNumber, setNewAcctNumber] = useState('');
+  const [newAcctNick, setNewAcctNick] = useState('');
+  const [acctSaving, setAcctSaving] = useState(false);
+  const allAccounts = useMemo(() => {
+    const ids = new Set(accounts.map(a => a.id));
+    return [...accounts, ...extraAccounts.filter(a => !ids.has(a.id))];
+  }, [accounts, extraAccounts]);
+
+  const createDepositAccount = async () => {
+    if (!newAcctCompany.trim()) { alert('증권사를 입력하세요.'); return; }
+    setAcctSaving(true);
+    try {
+      const res = await fetch(`${API_URL}/api/v1/retirement/deposit-accounts`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...authLib.getAuthHeader() },
+        body: JSON.stringify({
+          customer_id: customerId,
+          securities_company: newAcctCompany.trim(),
+          account_number: newAcctNumber.trim() || null,
+          nickname: newAcctNick.trim() || null,
+        }),
+      });
+      if (!res.ok) throw new Error();
+      const created: DepositAccount = await res.json();
+      setExtraAccounts(prev => [...prev, created]);
+      setTargetAccountId(created.id);
+      setCreatingAcct(false);
+      setNewAcctCompany(''); setNewAcctNumber(''); setNewAcctNick('');
+      onAccountCreated();
+    } catch { alert('계좌 생성에 실패했습니다.'); }
+    finally { setAcctSaving(false); }
+  };
 
   function saveCfg(dbId: string, dbTitle: string, mapping: Record<string, string>, acctId: number | '') {
     try { localStorage.setItem(NOTION_DTX_CONFIG_KEY, JSON.stringify({ dbId, dbTitle, mapping, acctId })); } catch { /* ignore */ }
@@ -4011,7 +4053,10 @@ function NotionImportDepositTxModal({ accounts, onClose, onImported }: {
       const colNames = props.map(p => p.name);
       setCols(colNames);
       setRows(rws);
-      setMap(savedMapping ?? autoGuessDtxMapping(colNames));
+      const resolvedMap = savedMapping ?? autoGuessDtxMapping(colNames);
+      setMap(resolvedMap);
+      // 매핑 화면 진입 즉시 저장 → 다음에 열면 DB·매핑 자동 복원(재매칭 불필요)
+      saveCfg(dbId, dbTitle, resolvedMap, targetAccountId);
       setStep('mapping');
     } catch (e: unknown) { setError(e instanceof Error ? e.message : '오류'); }
     finally { setLoading(false); }
@@ -4124,18 +4169,49 @@ function NotionImportDepositTxModal({ accounts, onClose, onImported }: {
 
   return (
     <Modal open onClose={onClose} title="Notion에서 예수금 거래 불러오기" maxWidth={760}>
-      {/* 대상 계좌 선택 (항상 표시) */}
-      <div style={{ marginBottom: 8, padding: '8px 12px', borderRadius: 8, backgroundColor: 'var(--bg-surface)', display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-        <span style={{ fontSize: 12, color: 'var(--text-muted)', fontWeight: 600 }}>대상 예수금 계좌</span>
-        <select
-          value={targetAccountId === '' ? '' : String(targetAccountId)}
-          onChange={e => setTargetAccountId(e.target.value ? Number(e.target.value) : '')}
-          style={{ flex: 1, minWidth: 180, padding: '5px 8px', borderRadius: 6, border: '1px solid var(--border-strong)', fontSize: 12, backgroundColor: 'var(--bg-card)', color: 'var(--text-primary)' }}
-        >
-          <option value="">계좌 선택…</option>
-          {accounts.map(a => <option key={a.id} value={String(a.id)}>{acctLabel(a)}</option>)}
-        </select>
-        <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>선택 계좌에 이미 있는 거래(거래일·입출금액·유형 동일)는 자동 제외됩니다.</span>
+      {/* 대상 계좌 선택 (항상 표시) — 계좌가 없으면 바로 생성 가능 */}
+      <div style={{ marginBottom: 8, padding: '8px 12px', borderRadius: 8, backgroundColor: 'var(--bg-surface)' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+          <span style={{ fontSize: 12, color: 'var(--text-muted)', fontWeight: 600 }}>대상 예수금 계좌</span>
+          <select
+            value={targetAccountId === '' ? '' : String(targetAccountId)}
+            onChange={e => {
+              const v = e.target.value ? Number(e.target.value) : '';
+              setTargetAccountId(v);
+              if (selDbId) saveCfg(selDbId, selDbTitle, map, v);   // 대상 계좌도 저장
+            }}
+            style={{ flex: 1, minWidth: 160, padding: '5px 8px', borderRadius: 6, border: '1px solid var(--border-strong)', fontSize: 12, backgroundColor: 'var(--bg-card)', color: 'var(--text-primary)', colorScheme: 'dark' }}
+          >
+            <option value="" style={{ backgroundColor: '#1a2332', color: '#e5e7eb' }}>
+              {allAccounts.length === 0 ? '계좌 없음 — 새로 만드세요' : '계좌 선택…'}
+            </option>
+            {allAccounts.map(a => <option key={a.id} value={String(a.id)} style={{ backgroundColor: '#1a2332', color: '#e5e7eb' }}>{acctLabel(a)}</option>)}
+          </select>
+          <button
+            type="button"
+            onClick={() => setCreatingAcct(v => !v)}
+            style={{ padding: '5px 10px', fontSize: 12, fontWeight: 600, borderRadius: 6, border: '1px solid var(--blue-500)', backgroundColor: 'var(--bg-card)', color: 'var(--blue-400)', cursor: 'pointer', whiteSpace: 'nowrap' }}
+          >
+            {creatingAcct ? '취소' : '➕ 새 계좌'}
+          </button>
+        </div>
+
+        {creatingAcct && (
+          <div style={{ marginTop: 8, display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
+            <input type="text" value={newAcctCompany} onChange={e => setNewAcctCompany(e.target.value)} placeholder="증권사 *"
+              style={{ width: 140, padding: '5px 8px', borderRadius: 6, border: '1px solid var(--border-strong)', fontSize: 12, backgroundColor: 'var(--bg-card)', color: 'var(--text-primary)' }} />
+            <input type="text" value={newAcctNumber} onChange={e => setNewAcctNumber(e.target.value)} placeholder="계좌번호"
+              style={{ width: 140, padding: '5px 8px', borderRadius: 6, border: '1px solid var(--border-strong)', fontSize: 12, backgroundColor: 'var(--bg-card)', color: 'var(--text-primary)' }} />
+            <input type="text" value={newAcctNick} onChange={e => setNewAcctNick(e.target.value)} placeholder="별명"
+              style={{ width: 120, padding: '5px 8px', borderRadius: 6, border: '1px solid var(--border-strong)', fontSize: 12, backgroundColor: 'var(--bg-card)', color: 'var(--text-primary)' }} />
+            <button type="button" onClick={createDepositAccount} disabled={acctSaving}
+              style={{ padding: '5px 12px', fontSize: 12, fontWeight: 700, borderRadius: 6, border: 'none', backgroundColor: 'var(--blue-600)', color: '#fff', cursor: acctSaving ? 'wait' : 'pointer' }}>
+              {acctSaving ? '생성 중...' : '계좌 만들기'}
+            </button>
+          </div>
+        )}
+
+        <div style={{ marginTop: 6, fontSize: 11, color: 'var(--text-muted)' }}>선택 계좌에 이미 있는 거래(거래일·입출금액·유형 동일)는 자동 제외됩니다.</div>
       </div>
 
       {step === 'idle' && (
@@ -4208,10 +4284,10 @@ function NotionImportDepositTxModal({ accounts, onClose, onImported }: {
                       <select
                         value={map[f.k] ?? ''}
                         onChange={e => updateMap(f.k, e.target.value)}
-                        style={{ flex: 1, padding: '2px 4px', borderRadius: 4, border: '1px solid var(--border-strong)', fontSize: 11, backgroundColor: map[f.k] ? 'rgba(16,185,129,0.12)' : 'var(--bg-card)', color: 'var(--text-primary)' }}
+                        style={{ flex: 1, padding: '2px 4px', borderRadius: 4, border: '1px solid var(--border-strong)', fontSize: 11, backgroundColor: map[f.k] ? 'rgba(16,185,129,0.12)' : 'var(--bg-card)', color: 'var(--text-primary)', colorScheme: 'dark' }}
                       >
-                        <option value="">--</option>
-                        {cols.map(c => <option key={c} value={c}>{c}</option>)}
+                        <option value="" style={{ backgroundColor: '#1a2332', color: '#e5e7eb' }}>--</option>
+                        {cols.map(c => <option key={c} value={c} style={{ backgroundColor: '#1a2332', color: '#e5e7eb' }}>{c}</option>)}
                       </select>
                     </div>
                   ))}
