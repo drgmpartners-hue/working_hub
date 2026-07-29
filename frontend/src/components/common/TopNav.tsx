@@ -84,9 +84,7 @@ const NAV: NavGroup[] = [
     label: '콘텐츠 제작',
     match: ['/content'],
     items: [
-      { title: '카드뉴스 제작', desc: 'AI 카드뉴스 생성', href: '/content/card-news', icon: ic.image },
-      { title: '보고서 제작', desc: 'AI 브랜드 보고서', href: '/content/report', icon: ic.doc },
-      { title: '표지/홍보 디자인', desc: 'AI 표지·홍보 생성', href: '/content/cover-promo', icon: ic.image },
+      { title: '테마 ETF 추천&관리', desc: '테마 ETF 리서치·시그널 추적', href: '/content/etf-radar', icon: ic.trend },
     ],
   },
 ];

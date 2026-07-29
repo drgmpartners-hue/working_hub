@@ -85,7 +85,7 @@ export default function DashboardPage() {
               <button className={period === 'week' ? 'active' : ''} onClick={() => setPeriod('week')}>이번 주</button>
               <button className={period === 'month' ? 'active' : ''} onClick={() => setPeriod('month')}>이번 달</button>
             </div>
-            <button className="wh-btn wh-btn-primary wh-btn-sm" type="button" onClick={() => router.push('/content/report')}>주간 리포트 생성</button>
+            <button className="wh-btn wh-btn-primary wh-btn-sm" type="button" onClick={() => router.push('/content/etf-radar')}>테마 ETF 리포트</button>
           </div>
         </div>
 
