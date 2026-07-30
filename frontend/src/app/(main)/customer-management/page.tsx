@@ -78,6 +78,8 @@ export default function CustomerManagementPage() {
   const [notionError, setNotionError] = useState<string | null>(null);
   const [notionDbSearch, setNotionDbSearch] = useState('');
   const [notionRowSearch, setNotionRowSearch] = useState('');
+  const [notionSelectedRows, setNotionSelectedRows] = useState<Set<string>>(new Set());
+  const [notionBulkLoading, setNotionBulkLoading] = useState(false);
 
   /* ---------------------------------------------------------------- */
   /*  Fetch                                                            */
@@ -124,6 +126,14 @@ export default function CustomerManagementPage() {
         const cmp = a.name.localeCompare(b.name, 'ko');
         return nameSort === 'asc' ? cmp : -cmp;
       });
+
+  // Notion 행 검색 필터 (복수 선택·일괄 추가용)
+  const notionFilteredRows = (() => {
+    const q = notionRowSearch.toLowerCase().trim();
+    return q
+      ? notionRows.filter(row => Object.values(row.properties).some(v => v && v.toLowerCase().includes(q)))
+      : notionRows;
+  })();
 
   /* ---------------------------------------------------------------- */
   /*  Modal helpers                                                    */
@@ -220,12 +230,50 @@ export default function CustomerManagementPage() {
     setNotionStep('idle');
   }
 
+  function toggleNotionRow(id: string) {
+    setNotionSelectedRows(prev => { const n = new Set(prev); if (n.has(id)) n.delete(id); else n.add(id); return n; });
+  }
+
+  // 선택한 Notion 행들을 고객으로 일괄 생성
+  async function bulkAddNotionRows(rows: { id: string; properties: Record<string, string> }[]) {
+    const selected = rows.filter(r => notionSelectedRows.has(r.id));
+    if (selected.length === 0) return;
+    setNotionBulkLoading(true);
+    const token = authLib.getToken();
+    let ok = 0, fail = 0, skipped = 0;
+    for (const row of selected) {
+      const name = (row.properties[notionMapping.name] ?? '').trim();
+      if (!name) { skipped++; continue; }
+      const body = {
+        name,
+        birth_date: (row.properties[notionMapping.birth_date] ?? '').trim() || null,
+        phone: (row.properties[notionMapping.phone] ?? '').trim() || null,
+        email: (row.properties[notionMapping.email] ?? '').trim() || null,
+      };
+      try {
+        const res = await fetch(`${API_URL}/api/v1/clients`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+          body: JSON.stringify(body),
+        });
+        if (res.ok) ok++; else fail++;
+      } catch { fail++; }
+    }
+    setNotionBulkLoading(false);
+    saveNotionCustomerConfig(notionSelectedDb, notionSelectedDbTitle, notionMapping);
+    setNotionSelectedRows(new Set());
+    alert(`${ok}명 추가 완료${fail > 0 ? `, ${fail}명 실패(생년월일 형식 등)` : ''}${skipped > 0 ? `, ${skipped}명 스킵(고객명 없음)` : ''}`);
+    closeModal();
+    await fetchCustomers();
+  }
+
   function resetNotion() {
     setNotionStep('idle');
     setNotionDbs([]);
     setNotionRows([]);
     setNotionColumns([]);
     setNotionError(null);
+    setNotionSelectedRows(new Set());
     clearNotionCustomerConfig();
   }
 
@@ -720,7 +768,7 @@ export default function CustomerManagementPage() {
               borderRadius: '14px',
               padding: '28px',
               width: '100%',
-              maxWidth: '480px',
+              maxWidth: '720px',
               boxShadow: '0 20px 60px rgba(0,0,0,0.18)',
               maxHeight: '90vh',
               overflowY: 'auto',
@@ -885,45 +933,77 @@ export default function CustomerManagementPage() {
                         />
                       </div>
 
-                      {/* 행 목록 */}
+                      {/* 전체 선택 헤더 */}
+                      {notionFilteredRows.length > 0 && (
+                        <div style={{ padding: '6px 12px', borderBottom: '1px solid var(--border)', background: 'var(--bg-surface)', display: 'flex', alignItems: 'center', gap: '8px', position: 'sticky', top: 0, zIndex: 1 }}>
+                          <input
+                            type="checkbox"
+                            checked={notionFilteredRows.length > 0 && notionFilteredRows.every(r => notionSelectedRows.has(r.id))}
+                            onChange={() => {
+                              const allSel = notionFilteredRows.every(r => notionSelectedRows.has(r.id));
+                              setNotionSelectedRows(prev => {
+                                const n = new Set(prev);
+                                if (allSel) notionFilteredRows.forEach(r => n.delete(r.id));
+                                else notionFilteredRows.forEach(r => n.add(r.id));
+                                return n;
+                              });
+                            }}
+                            style={{ width: 15, height: 15, cursor: 'pointer' }}
+                          />
+                          <span style={{ fontSize: '11px', color: 'var(--text-muted)', fontWeight: 600 }}>전체 선택 ({notionSelectedRows.size}/{notionFilteredRows.length})</span>
+                        </div>
+                      )}
+
+                      {/* 행 목록 (체크박스 복수 선택) */}
                       <div style={{ maxHeight: '220px', overflowY: 'auto' }}>
                         {notionRows.length === 0 ? (
                           <div style={{ padding: '16px', textAlign: 'center', color: 'var(--text-muted)', fontSize: '13px' }}>데이터가 없습니다.</div>
-                        ) : (() => {
-                          const q = notionRowSearch.toLowerCase().trim();
-                          const filtered = q
-                            ? notionRows.filter(row => Object.values(row.properties).some(v => v && v.toLowerCase().includes(q)))
-                            : notionRows;
-                          if (filtered.length === 0) return <div style={{ padding: '16px', textAlign: 'center', color: 'var(--text-muted)', fontSize: '13px' }}>검색 결과가 없습니다.</div>;
-                          return filtered.map(row => {
-                            const dn = notionMapping.name ? (row.properties[notionMapping.name] ?? '-') : Object.values(row.properties)[0] ?? '-';
-                            const db2 = notionMapping.birth_date ? (row.properties[notionMapping.birth_date] ?? '') : '';
-                            const dp = notionMapping.phone ? (row.properties[notionMapping.phone] ?? '') : '';
-                            const de = notionMapping.email ? (row.properties[notionMapping.email] ?? '') : '';
-                            return (
-                              <button
-                                key={row.id}
-                                onClick={() => { applyNotionRow(row); setNotionRowSearch(''); }}
-                                style={{
-                                  width: '100%', padding: '9px 12px', border: 'none',
-                                  borderBottom: '1px solid var(--border)', background: 'var(--bg-card)',
-                                  textAlign: 'left', cursor: 'pointer', fontSize: '12px',
-                                  display: 'flex', alignItems: 'center', gap: '10px',
-                                }}
-                                onMouseOver={e => (e.currentTarget.style.background = 'var(--bg-surface)')}
-                                onMouseOut={e => (e.currentTarget.style.background = 'var(--bg-card)')}
-                              >
-                                <span style={{ fontWeight: 600, color: 'var(--text-primary)', minWidth: '70px' }}>{dn}</span>
-                                {db2 && <span style={{ color: 'var(--text-muted)', fontSize: '11px' }}>{db2}</span>}
-                                {dp && <span style={{ color: 'var(--text-muted)', fontSize: '11px' }}>{dp}</span>}
-                                {de && <span style={{ color: 'var(--text-muted)', fontSize: '11px' }}>{de}</span>}
-                              </button>
-                            );
-                          });
-                        })()}
+                        ) : notionFilteredRows.length === 0 ? (
+                          <div style={{ padding: '16px', textAlign: 'center', color: 'var(--text-muted)', fontSize: '13px' }}>검색 결과가 없습니다.</div>
+                        ) : notionFilteredRows.map(row => {
+                          const dn = notionMapping.name ? (row.properties[notionMapping.name] ?? '-') : Object.values(row.properties)[0] ?? '-';
+                          const db2 = notionMapping.birth_date ? (row.properties[notionMapping.birth_date] ?? '') : '';
+                          const dp = notionMapping.phone ? (row.properties[notionMapping.phone] ?? '') : '';
+                          const de = notionMapping.email ? (row.properties[notionMapping.email] ?? '') : '';
+                          const checked = notionSelectedRows.has(row.id);
+                          return (
+                            <div
+                              key={row.id}
+                              onClick={() => toggleNotionRow(row.id)}
+                              style={{
+                                width: '100%', padding: '9px 12px',
+                                borderBottom: '1px solid var(--border)',
+                                background: checked ? 'rgba(16,185,129,0.1)' : 'var(--bg-card)',
+                                cursor: 'pointer', fontSize: '12px',
+                                display: 'flex', alignItems: 'center', gap: '10px',
+                              }}
+                              onMouseOver={e => { if (!checked) (e.currentTarget as HTMLDivElement).style.background = 'var(--bg-surface)'; }}
+                              onMouseOut={e => { (e.currentTarget as HTMLDivElement).style.background = checked ? 'rgba(16,185,129,0.1)' : 'var(--bg-card)'; }}
+                            >
+                              <input type="checkbox" checked={checked} onChange={() => toggleNotionRow(row.id)} onClick={e => e.stopPropagation()}
+                                style={{ width: 14, height: 14, cursor: 'pointer', flexShrink: 0 }} />
+                              <span style={{ fontWeight: 600, color: 'var(--text-primary)', minWidth: '70px' }}>{dn}</span>
+                              {db2 && <span style={{ color: 'var(--text-muted)', fontSize: '11px' }}>{db2}</span>}
+                              {dp && <span style={{ color: 'var(--text-muted)', fontSize: '11px' }}>{dp}</span>}
+                              {de && <span style={{ color: 'var(--text-muted)', fontSize: '11px' }}>{de}</span>}
+                            </div>
+                          );
+                        })}
                       </div>
-                      <div style={{ padding: '6px 10px', background: 'var(--bg-surface)', borderTop: '1px solid var(--border)', fontSize: '10px', color: 'var(--text-muted)' }}>
-                        총 {notionRows.length}건 · 클릭하면 폼에 자동 입력됩니다
+                      <div style={{ padding: '8px 12px', background: 'var(--bg-surface)', borderTop: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px' }}>
+                        <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>
+                          총 {notionRows.length}건 · {notionSelectedRows.size > 0 ? `${notionSelectedRows.size}명 추가 예정` : '체크하여 여러 명 한번에 추가'}
+                        </span>
+                        <button
+                          onClick={() => bulkAddNotionRows(notionFilteredRows)}
+                          disabled={notionBulkLoading || notionSelectedRows.size === 0}
+                          style={{ padding: '7px 16px', borderRadius: '7px', border: 'none', fontSize: '12px', fontWeight: 700, whiteSpace: 'nowrap',
+                            background: (notionBulkLoading || notionSelectedRows.size === 0) ? 'var(--bg-card)' : 'var(--blue-600)',
+                            color: (notionBulkLoading || notionSelectedRows.size === 0) ? 'var(--text-muted)' : '#fff',
+                            cursor: (notionBulkLoading || notionSelectedRows.size === 0) ? 'not-allowed' : 'pointer' }}
+                        >
+                          {notionBulkLoading ? '추가 중...' : `선택 ${notionSelectedRows.size}명 추가`}
+                        </button>
                       </div>
                     </>)}
                   </div>
