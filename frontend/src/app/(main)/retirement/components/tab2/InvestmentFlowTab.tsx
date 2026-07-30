@@ -1193,8 +1193,8 @@ export function InvestmentFlowTab() {
   const handleDepositNotionSync = async () => {
     let saved: { dbId: string; dbTitle: string; mapping: Record<string, string>; acctId?: number } | null = null;
     try { const r = localStorage.getItem(NOTION_DTX_CONFIG_KEY); saved = r ? JSON.parse(r) : null; } catch { saved = null; }
-    if (!saved || !saved.dbId || !saved.mapping?.['transaction_date']) {
-      alert('먼저 📝 Notion 불러오기에서 DB·거래일 필드를 매핑해 주세요.');
+    if (!saved || !saved.dbId || !saved.mapping?.['transaction_date'] || !saved.mapping?.['customer_name'] || !saved.mapping?.['category']) {
+      alert('먼저 📝 Notion 불러오기에서 DB와 고객명·카테고리·거래일 필드를 매핑해 주세요.');
       return;
     }
     const acctId = saved.acctId;
@@ -1218,11 +1218,18 @@ export function InvestmentFlowTab() {
       ]);
       if (!rowsRes.ok) { const d = await rowsRes.json().catch(() => ({})); throw new Error(d?.detail || 'Notion 데이터 조회 실패'); }
       const rows: { id: string; properties: Record<string, string> }[] = await rowsRes.json();
+      // 고객명 + 카테고리(증권사투자)로 이 고객의 상품만 필터 (투자기록 동기화와 동일)
+      const custCol = saved.mapping['customer_name'];
+      const catCol = saved.mapping['category'];
+      const target = notionNormName(selectedCustomer?.name);
+      const matched = rows.filter(r =>
+        notionNormName(r.properties[custCol]) === target &&
+        (r.properties[catCol] ?? '').trim() === NOTION_IR_TARGET_CATEGORY);
       const existTx = txRes.ok ? await txRes.json() : [];
       const existKeys = new Set<string>((Array.isArray(existTx) ? existTx : []).map(depositTxKey));
 
       let added = 0, skipped = 0, fail = 0;
-      for (const row of rows) {
+      for (const row of matched) {
         const body = notionRowToTxBody(row, saved.mapping);
         if (!body) { skipped++; continue; }
         if (existKeys.has(notionTxBodyKey(body))) { skipped++; continue; }
@@ -3242,6 +3249,7 @@ export function InvestmentFlowTab() {
       {showDepositNotionModal && (
         <NotionImportDepositTxModal
           customerId={selectedCustomerId}
+          customerName={selectedCustomer?.name ?? ''}
           accounts={depositAccounts.filter(a => a.is_active)}
           onClose={() => setShowDepositNotionModal(false)}
           onAccountCreated={fetchDepositAccounts}
@@ -3470,15 +3478,19 @@ function parseNotionAmountToWon(raw: string | undefined | null): number | null {
 /*  예수금 거래 Notion 불러오기 — 상수·헬퍼                            */
 /* ================================================================== */
 
-const NOTION_DTX_CONFIG_KEY = 'notion_deposit_tx_config_v1';
+const NOTION_DTX_CONFIG_KEY = 'notion_deposit_tx_config_v3';   // v3: 고객명 매핑 '고객명(관계형)'→'고객명' 교정
 
-const NOTION_DTX_MAP_FIELDS: { k: string; l: string; req?: boolean }[] = [
+const NOTION_DTX_TARGET_DB = '상품가입정보';   // 고정 대상 Notion DB (제목 부분일치)
+
+const NOTION_DTX_MAP_FIELDS: { k: string; l: string; req?: boolean; filter?: boolean }[] = [
+  { k: 'customer_name', l: '고객명', filter: true },
+  { k: 'category', l: '카테고리', filter: true },
   { k: 'transaction_date', l: '거래일', req: true },
-  { k: 'transaction_type', l: '거래유형' },
   { k: 'related_product', l: '관련상품' },
   { k: 'credit_amount', l: '입금액' },
   { k: 'credit_amount_2', l: '자동이체(입금)' },
   { k: 'debit_amount', l: '출금액' },
+  { k: 'transaction_type', l: '거래유형' },
   { k: 'memo', l: '메모' },
 ];
 
@@ -3491,12 +3503,14 @@ function notionGuessColumn(cols: string[], keywords: string[]): string {
 function autoGuessDtxMapping(cols: string[]): Record<string, string> {
   const pick = (exact: string, guesses: string[]) => (cols.includes(exact) ? exact : notionGuessColumn(cols, guesses));
   return {
-    transaction_date: pick('거래일', ['거래일', '거래일자', '일자', '날짜', 'date']),
-    transaction_type: pick('거래유형', ['거래유형', '유형', '구분', 'type']),
-    related_product: pick('관련상품', ['관련상품', '상품명', '상품', 'product']),
+    customer_name: pick('고객명', ['고객명', '고객', 'customer', '이름']),
+    category: pick('카테고리', ['카테고리', 'category']),
+    transaction_date: pick('가입일', ['가입일', '거래일', '거래일자', '일자', '날짜', 'date']),
+    related_product: pick('상품명', ['상품명', '관련상품', '상품', 'product']),
     credit_amount: pick('입금액', ['입금액', '입금', 'credit']),
     credit_amount_2: pick('자동이체', ['자동이체', '이체']),
     debit_amount: pick('출금액', ['출금액', '출금', 'debit']),
+    transaction_type: pick('거래유형', ['거래유형', '유형', '구분', 'type']),
     memo: pick('비고', ['비고', '메모', 'note', 'memo']),
   };
 }
@@ -3562,6 +3576,7 @@ function MapSelect({ value, onChange, options, placeholder = '--', highlight = f
   const [open, setOpen] = useState(false);
   const [pos, setPos] = useState<{ left: number; width: number; top?: number; bottom?: number } | null>(null);
   const btnRef = useRef<HTMLButtonElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
   const [mounted, setMounted] = useState(false);
   useEffect(() => { setMounted(true); }, []);
 
@@ -3583,7 +3598,11 @@ function MapSelect({ value, onChange, options, placeholder = '--', highlight = f
   useEffect(() => {
     if (!open) return;
     const onDown = (e: MouseEvent) => {
-      if (btnRef.current && !btnRef.current.contains(e.target as Node)) setOpen(false);
+      const t = e.target as Node;
+      // 트리거 버튼 안이나 포털 메뉴 안 클릭은 닫지 않음 (옵션 선택이 취소되지 않도록)
+      if (btnRef.current?.contains(t)) return;
+      if (menuRef.current?.contains(t)) return;
+      setOpen(false);
     };
     const onScroll = () => setOpen(false);
     document.addEventListener('mousedown', onDown, true);
@@ -3618,6 +3637,7 @@ function MapSelect({ value, onChange, options, placeholder = '--', highlight = f
       </button>
       {mounted && open && pos && createPortal(
         <div
+          ref={menuRef}
           style={{
             position: 'fixed', left: pos.left, width: pos.width, top: pos.top, bottom: pos.bottom,
             zIndex: 2000, maxHeight: 240, overflowY: 'auto',
@@ -3697,7 +3717,7 @@ function NotionImportRecordsModal({ customerId, customerName, existingKeys, onCl
     // 정확한 컬럼명이 있으면 그것을, 없으면 키워드 추측. (상품가입정보 DB 실제 컬럼명 우선)
     const pick = (exact: string, guesses: string[]) => (cols.includes(exact) ? exact : guessColumn(cols, guesses));
     return {
-      customer_name: pick('고객명(관계형)', ['고객명(관계', '고객명', '고객', 'customer', '이름']),
+      customer_name: pick('고객명', ['고객명', '고객', 'customer', '이름']),
       category: pick('카테고리', ['카테고리', 'category']),
       asset_class_1: pick('자산구분(1)', ['자산구분(1)', '자산구분1']),
       asset_class_2: pick('자산구분(2)', ['자산구분(2)', '자산구분2']),
@@ -4062,8 +4082,9 @@ function NotionImportRecordsModal({ customerId, customerName, existingKeys, onCl
 /*  예수금 거래 Notion 불러오기 모달                                     */
 /* ------------------------------------------------------------------ */
 
-function NotionImportDepositTxModal({ customerId, accounts, onClose, onImported, onAccountCreated }: {
+function NotionImportDepositTxModal({ customerId, customerName, accounts, onClose, onImported, onAccountCreated }: {
   customerId: string;
+  customerName: string;
   accounts: DepositAccount[];
   onClose: () => void;
   onImported: () => void;
@@ -4165,13 +4186,32 @@ function NotionImportDepositTxModal({ customerId, accounts, onClose, onImported,
     finally { setLoading(false); }
   }
 
+  // 대상 DB('상품가입정보')를 목록에서 찾아 자동 선택. 없으면 수동 선택으로 폴백
+  async function autoSelectDb() {
+    setError(null); setLoading(true);
+    let list: { id: string; title: string; icon: string | null }[];
+    try {
+      const res = await fetch(`${API_URL}/api/v1/notion/databases`, { headers: authLib.getAuthHeader() });
+      if (!res.ok) { const d = await res.json().catch(() => ({})); throw new Error(d?.detail || `조회 실패 (HTTP ${res.status})`); }
+      list = await res.json();
+      setDbs(list);
+    } catch (e: unknown) { setError(e instanceof Error ? e.message : '오류'); setLoading(false); return; }
+    const target = list.find(d => d.title.includes(NOTION_DTX_TARGET_DB));
+    if (target) {
+      await loadRows(target.id, target.title);   // loadRows가 loading 처리
+    } else {
+      setLoading(false);
+      setStep('selectDb');   // 대상 DB를 못 찾으면 수동 선택
+    }
+  }
+
   async function openSelector() {
     const saved = loadCfg();
     if (saved && saved.dbId) {
       if (saved.acctId != null && accounts.some(a => a.id === saved.acctId)) setTargetAccountId(saved.acctId);
       await loadRows(saved.dbId, saved.dbTitle, saved.mapping);
     } else {
-      await fetchDbList();
+      await autoSelectDb();
     }
   }
 
@@ -4205,12 +4245,20 @@ function NotionImportDepositTxModal({ customerId, accounts, onClose, onImported,
     if (selDbId) saveCfg(selDbId, selDbTitle, updated, targetAccountId);
   }
 
-  const mapReady = !!map['transaction_date'];
+  const customerNameCol = map['customer_name'];
+  const categoryCol = map['category'];
+  // 고객명·카테고리·거래일 매핑돼야 목록 불러오기 가능 (투자기록 팝업과 동일)
+  const filterReady = !!map['transaction_date'] && !!customerNameCol && !!categoryCol;
 
-  const q = rowSearch.toLowerCase().trim();
-  const displayRows = loaded
-    ? (q ? rows.filter(r => Object.values(r.properties).some(v => v?.toLowerCase().includes(q))) : rows)
+  const matchedRows = (filterReady && loaded)
+    ? rows.filter(r =>
+        notionNormName(r.properties[customerNameCol]) === notionNormName(customerName) &&
+        (r.properties[categoryCol] ?? '').trim() === NOTION_IR_TARGET_CATEGORY)
     : [];
+  const q = rowSearch.toLowerCase().trim();
+  const displayRows = q
+    ? matchedRows.filter(r => Object.values(r.properties).some(v => v?.toLowerCase().includes(q)))
+    : matchedRows;
 
   function rowKey(row: { properties: Record<string, string> }): string {
     const body = notionRowToTxBody(row, map);
@@ -4234,10 +4282,16 @@ function NotionImportDepositTxModal({ customerId, accounts, onClose, onImported,
   }
 
   function loadList() {
-    if (!mapReady) return;
-    if (rows.length === 0) { alert('선택한 Notion DB에 행이 없습니다.'); return; }
+    if (!filterReady) return;
+    const matched = rows.filter(r =>
+      notionNormName(r.properties[customerNameCol]) === notionNormName(customerName) &&
+      (r.properties[categoryCol] ?? '').trim() === NOTION_IR_TARGET_CATEGORY);
+    if (matched.length === 0) {
+      alert(`'${customerName}' 고객의 ${NOTION_IR_TARGET_CATEGORY} 상품을 Notion에서 찾지 못했습니다.\n(Notion의 고객명·카테고리 값을 확인하세요)`);
+      return;
+    }
     const preselect = new Set<string>();
-    for (const r of rows) { if (notionRowToTxBody(r, map) && !isExisting(r)) preselect.add(r.id); }
+    for (const r of matched) { if (notionRowToTxBody(r, map) && !isExisting(r)) preselect.add(r.id); }
     setSelectedRows(preselect);
     setLoaded(true);
     saveCfg(selDbId, selDbTitle, map, targetAccountId);
@@ -4374,12 +4428,14 @@ function NotionImportDepositTxModal({ customerId, accounts, onClose, onImported,
           ) : (
             <>
               <div style={{ padding: '8px 10px', background: 'var(--bg-surface)', borderBottom: '1px solid var(--border)' }}>
-                <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 6 }}>Notion 컬럼 → 예수금 거래 필드 매핑 (거래일 * 은 필수 · 입금액 = ‘입금액’ + ‘자동이체(입금)’ 합산)</div>
+                <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 6 }}>Notion 컬럼 → 예수금 거래 필드 매핑 (고객명·카테고리·거래일 * 필수 · 거래일은 보통 ‘가입일’ · 입금액 = ‘입금액’ + ‘자동이체(입금)’ 합산)</div>
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 6 }}>
-                  {NOTION_DTX_MAP_FIELDS.map(f => (
+                  {NOTION_DTX_MAP_FIELDS.map(f => {
+                    const hint = f.req || f.filter;
+                    return (
                     <div key={f.k} style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 11 }}>
-                      <span style={{ width: 72, color: f.req ? 'var(--blue-400)' : 'var(--text-secondary)', fontWeight: 600, flexShrink: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                        {f.l}{f.req ? ' *' : ''}
+                      <span style={{ width: 72, color: hint ? 'var(--blue-400)' : 'var(--text-secondary)', fontWeight: 600, flexShrink: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        {f.l}{hint ? ' *' : ''}
                       </span>
                       <MapSelect
                         value={map[f.k] ?? ''}
@@ -4388,26 +4444,27 @@ function NotionImportDepositTxModal({ customerId, accounts, onClose, onImported,
                         highlight={!!map[f.k]}
                       />
                     </div>
-                  ))}
+                    );
+                  })}
                 </div>
               </div>
 
-              {!mapReady && (
+              {!filterReady && (
                 <div style={{ padding: '10px 14px', fontSize: 12, color: 'var(--warning)', backgroundColor: 'rgba(245,158,11,0.1)', borderBottom: '1px solid var(--border)' }}>
-                  ‘거래일’ 필드를 먼저 매핑하세요.
+                  ‘고객명’·‘카테고리’·‘거래일’ 필드를 먼저 매핑하세요.
                 </div>
               )}
 
               <div style={{ padding: '8px 10px', borderBottom: '1px solid var(--border)', display: 'flex', gap: 8, alignItems: 'center' }}>
                 <button
                   onClick={loadList}
-                  disabled={!mapReady}
-                  title={mapReady ? '' : '거래일 매핑 필요'}
+                  disabled={!filterReady}
+                  title={filterReady ? '' : '고객명·카테고리·거래일 매핑 필요'}
                   style={{ flex: 1, padding: '9px 16px', borderRadius: 7, border: 'none', fontSize: 13, fontWeight: 700, whiteSpace: 'nowrap',
-                    cursor: !mapReady ? 'not-allowed' : 'pointer',
-                    backgroundColor: !mapReady ? 'var(--bg-surface)' : 'var(--blue-600)',
-                    color: !mapReady ? 'var(--text-muted)' : '#fff' }}
-                >🔍 거래 목록 불러오기</button>
+                    cursor: !filterReady ? 'not-allowed' : 'pointer',
+                    backgroundColor: !filterReady ? 'var(--bg-surface)' : 'var(--blue-600)',
+                    color: !filterReady ? 'var(--text-muted)' : '#fff' }}
+                >{`🔍 ‘${customerName || '고객'}’의 ${NOTION_IR_TARGET_CATEGORY} 상품 불러오기`}</button>
                 {loaded && (
                   <input type="text" placeholder="행 검색..." value={rowSearch} onChange={e => setRowSearch(e.target.value)}
                     style={{ width: 140, padding: '7px 8px', borderRadius: 6, border: '1px solid var(--border-strong)', fontSize: 12, outline: 'none', boxSizing: 'border-box', backgroundColor: 'var(--bg-card)', color: 'var(--text-primary)' }} />
@@ -4417,7 +4474,7 @@ function NotionImportDepositTxModal({ customerId, accounts, onClose, onImported,
               <div style={{ maxHeight: 300, overflowY: 'auto' }}>
                 {!loaded ? (
                   <div style={{ padding: 14, textAlign: 'center', color: 'var(--text-muted)', fontSize: 13 }}>
-                    {mapReady ? '위 ‘거래 목록 불러오기’를 누르면 이 DB의 거래 목록을 보여줍니다. 대상 계좌에 없는 신규 거래만 자동 체크됩니다.' : '거래일 필드를 매핑하세요.'}
+                    {filterReady ? `위 버튼을 누르면 ‘${customerName || '고객'}’의 ${NOTION_IR_TARGET_CATEGORY} 상품 목록을 보여줍니다. 대상 계좌에 없는 신규 거래만 자동 체크됩니다.` : '고객명·카테고리·거래일 필드를 매핑하세요.'}
                   </div>
                 ) : displayRows.length === 0 ? (
                   <div style={{ padding: 14, textAlign: 'center', color: 'var(--text-muted)', fontSize: 13 }}>
