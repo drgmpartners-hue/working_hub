@@ -1028,7 +1028,7 @@ export default function CustomerManagementPage() {
                           총 {notionRows.length}건 · {notionSelectedRows.size > 0 ? `${notionSelectedRows.size}명 추가 예정` : '체크하여 여러 명 한번에 추가'}
                         </span>
                         <button
-                          onClick={() => bulkAddNotionRows(notionFilteredRows)}
+                          onClick={() => bulkAddNotionRows(notionRows)}
                           disabled={notionBulkLoading || notionSelectedRows.size === 0}
                           style={{ padding: '7px 16px', borderRadius: '7px', border: 'none', fontSize: '12px', fontWeight: 700, whiteSpace: 'nowrap',
                             background: (notionBulkLoading || notionSelectedRows.size === 0) ? 'var(--bg-card)' : 'var(--blue-600)',
