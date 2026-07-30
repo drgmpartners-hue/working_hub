@@ -46,6 +46,7 @@ export default function CustomerManagementPage() {
 
   /* search */
   const [searchQuery, setSearchQuery] = useState('');
+  const [nameSort, setNameSort] = useState<'none' | 'asc' | 'desc'>('none'); // 기본 No. 순서, 고객명 정렬 토글
 
   /* modal */
   const [modalOpen, setModalOpen] = useState(false);
@@ -108,7 +109,7 @@ export default function CustomerManagementPage() {
   /*  Filtered list                                                    */
   /* ---------------------------------------------------------------- */
 
-  const filtered = customers.filter((c) => {
+  const filteredBase = customers.filter((c) => {
     const q = searchQuery.trim().toLowerCase();
     if (!q) return true;
     return (
@@ -116,6 +117,13 @@ export default function CustomerManagementPage() {
       c.unique_code.toLowerCase().includes(q)
     );
   });
+  // 기본은 No.(원래) 순서, 고객명 정렬 선택 시 이름순
+  const filtered = nameSort === 'none'
+    ? filteredBase
+    : [...filteredBase].sort((a, b) => {
+        const cmp = a.name.localeCompare(b.name, 'ko');
+        return nameSort === 'asc' ? cmp : -cmp;
+      });
 
   /* ---------------------------------------------------------------- */
   /*  Modal helpers                                                    */
@@ -569,21 +577,28 @@ export default function CustomerManagementPage() {
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.875rem' }}>
               <thead>
                 <tr style={{ background: 'var(--bg-surface)', borderBottom: '1px solid var(--border)' }}>
-                  {['No.', '고객명', '고유번호', '생년월일', '전화번호', '이메일', '관리'].map((h) => (
+                  {['No.', '고객명', '고유번호', '생년월일', '전화번호', '이메일', '관리'].map((h) => {
+                    const sortable = h === '고객명';
+                    return (
                     <th
                       key={h}
+                      onClick={sortable ? () => setNameSort(s => (s === 'none' ? 'asc' : s === 'asc' ? 'desc' : 'none')) : undefined}
+                      title={sortable ? '클릭하여 고객명 정렬 (오름차순 → 내림차순 → 기본)' : undefined}
                       style={{
                         padding: '12px 14px',
                         textAlign: h === '관리' ? 'center' : 'left',
                         fontWeight: 600,
                         fontSize: '0.8125rem',
-                        color: 'var(--text-secondary)',
+                        color: sortable && nameSort !== 'none' ? 'var(--blue-400)' : 'var(--text-secondary)',
                         whiteSpace: 'nowrap',
+                        cursor: sortable ? 'pointer' : 'default',
+                        userSelect: 'none',
                       }}
                     >
-                      {h}
+                      {h}{sortable && (nameSort === 'asc' ? ' ▲' : nameSort === 'desc' ? ' ▼' : ' ↕')}
                     </th>
-                  ))}
+                    );
+                  })}
                 </tr>
               </thead>
               <tbody>
@@ -609,7 +624,7 @@ export default function CustomerManagementPage() {
                         borderBottom: '1px solid var(--border)',
                         transition: 'background 0.12s',
                       }}
-                      onMouseEnter={(e) => (e.currentTarget.style.background = '#F9FAFB')}
+                      onMouseEnter={(e) => (e.currentTarget.style.background = 'var(--bg-surface)')}
                       onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
                     >
                       <td style={{ padding: '12px 14px', color: 'var(--text-muted)', fontSize: '0.8125rem' }}>
@@ -762,7 +777,7 @@ export default function CustomerManagementPage() {
                 {/* Step 1: DB 선택 */}
                 {notionStep === 'selectDb' && (
                   <div style={{ border: '1px solid var(--border)', borderRadius: '8px', overflow: 'hidden' }}>
-                    <div style={{ padding: '8px 12px', background: '#F0F4FA', fontSize: '12px', fontWeight: 600, color: 'var(--blue-400)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <div style={{ padding: '8px 12px', background: 'var(--bg-surface)', fontSize: '12px', fontWeight: 600, color: 'var(--blue-400)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                       <span>Notion 데이터베이스 선택</span>
                       <button onClick={resetNotion} style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', fontSize: '12px' }}>취소</button>
                     </div>
@@ -773,7 +788,7 @@ export default function CustomerManagementPage() {
                         placeholder="데이터베이스 검색..."
                         value={notionDbSearch}
                         onChange={e => setNotionDbSearch(e.target.value)}
-                        style={{ width: '100%', padding: '6px 10px', borderRadius: '6px', border: '1px solid var(--border-strong)', fontSize: '12px', outline: 'none' }}
+                        style={{ width: '100%', padding: '6px 10px', borderRadius: '6px', border: '1px solid var(--border-strong)', fontSize: '12px', outline: 'none', backgroundColor: 'var(--bg-card)', color: 'var(--text-primary)' }}
                       />
                     </div>
                     {notionLoading ? (
@@ -801,8 +816,8 @@ export default function CustomerManagementPage() {
                               textAlign: 'left', cursor: 'pointer', fontSize: '13px',
                               display: 'flex', alignItems: 'center', gap: '8px',
                             }}
-                            onMouseOver={e => (e.currentTarget.style.background = '#F9FAFB')}
-                            onMouseOut={e => (e.currentTarget.style.background = '#fff')}
+                            onMouseOver={e => (e.currentTarget.style.background = 'var(--bg-surface)')}
+                            onMouseOut={e => (e.currentTarget.style.background = 'var(--bg-card)')}
                           >
                             <span>{db.icon ?? '📄'}</span>
                             <span style={{ fontWeight: 500, color: 'var(--text-primary)' }}>{db.title}</span>
@@ -816,7 +831,7 @@ export default function CustomerManagementPage() {
                 {/* Step 2: 필드 매핑 + 행 선택 */}
                 {notionStep === 'mapping' && (
                   <div style={{ border: '1px solid var(--border)', borderRadius: '8px', overflow: 'hidden' }}>
-                    <div style={{ padding: '8px 12px', background: '#F0F4FA', fontSize: '12px', fontWeight: 600, color: 'var(--blue-400)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <div style={{ padding: '8px 12px', background: 'var(--bg-surface)', fontSize: '12px', fontWeight: 600, color: 'var(--blue-400)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                       <span>필드 매핑 → 고객 선택{notionSelectedDbTitle ? ` (${notionSelectedDbTitle})` : ''}</span>
                       <div style={{ display: 'flex', gap: '8px' }}>
                         <button onClick={() => { clearNotionCustomerConfig(); setNotionRows([]); setNotionColumns([]); setNotionRowSearch(''); fetchNotionDbList(); }} style={{ background: 'none', border: 'none', color: 'var(--blue-400)', cursor: 'pointer', fontSize: '11px' }}>DB 변경</button>
@@ -849,10 +864,10 @@ export default function CustomerManagementPage() {
                                   setNotionMapping(updated);
                                   if (notionSelectedDb) saveNotionCustomerConfig(notionSelectedDb, notionSelectedDbTitle, updated);
                                 }}
-                                style={{ flex: 1, padding: '4px 6px', borderRadius: '4px', border: '1px solid var(--border-strong)', fontSize: '11px', background: notionMapping[f.key] ? '#ECFDF5' : '#fff' }}
+                                style={{ flex: 1, padding: '4px 6px', borderRadius: '4px', border: '1px solid var(--border-strong)', fontSize: '11px', color: 'var(--text-primary)', colorScheme: 'dark', backgroundColor: notionMapping[f.key] ? 'rgba(16,185,129,0.12)' : 'var(--bg-card)' }}
                               >
-                                <option value="">-- 선택 --</option>
-                                {notionColumns.map(c => <option key={c} value={c}>{c}</option>)}
+                                <option value="" style={{ backgroundColor: '#1a2332', color: '#e5e7eb' }}>-- 선택 --</option>
+                                {notionColumns.map(c => <option key={c} value={c} style={{ backgroundColor: '#1a2332', color: '#e5e7eb' }}>{c}</option>)}
                               </select>
                             </div>
                           ))}
@@ -866,7 +881,7 @@ export default function CustomerManagementPage() {
                           placeholder="고객 검색 (이름, 전화번호 등)..."
                           value={notionRowSearch}
                           onChange={e => setNotionRowSearch(e.target.value)}
-                          style={{ width: '100%', padding: '6px 10px', borderRadius: '6px', border: '1px solid var(--border-strong)', fontSize: '12px', outline: 'none' }}
+                          style={{ width: '100%', padding: '6px 10px', borderRadius: '6px', border: '1px solid var(--border-strong)', fontSize: '12px', outline: 'none', backgroundColor: 'var(--bg-card)', color: 'var(--text-primary)' }}
                         />
                       </div>
 
@@ -895,8 +910,8 @@ export default function CustomerManagementPage() {
                                   textAlign: 'left', cursor: 'pointer', fontSize: '12px',
                                   display: 'flex', alignItems: 'center', gap: '10px',
                                 }}
-                                onMouseOver={e => (e.currentTarget.style.background = '#F0FFF4')}
-                                onMouseOut={e => (e.currentTarget.style.background = '#fff')}
+                                onMouseOver={e => (e.currentTarget.style.background = 'var(--bg-surface)')}
+                                onMouseOut={e => (e.currentTarget.style.background = 'var(--bg-card)')}
                               >
                                 <span style={{ fontWeight: 600, color: 'var(--text-primary)', minWidth: '70px' }}>{dn}</span>
                                 {db2 && <span style={{ color: 'var(--text-muted)', fontSize: '11px' }}>{db2}</span>}
