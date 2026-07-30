@@ -172,7 +172,30 @@ export default function CustomerManagementPage() {
       await loadNotionRows(saved.dbId, saved.mapping);
       return;
     }
-    await fetchNotionDbList();
+    // '고객 DB' 자동 선택 (제목에 '고객 DB' 포함 우선, 없으면 '고객' 포함·상품가입정보 제외)
+    setNotionLoading(true);
+    setNotionError(null);
+    let dbs: { id: string; title: string; icon: string | null }[];
+    try {
+      const token = authLib.getToken();
+      const res = await fetch(`${API_URL}/api/v1/notion/databases`, { headers: { Authorization: `Bearer ${token}` } });
+      if (!res.ok) { const d = await res.json().catch(() => ({})); throw new Error(d?.detail ?? 'Notion 데이터베이스 목록 조회 실패'); }
+      dbs = await res.json();
+      setNotionDbs(dbs);
+    } catch (e: unknown) {
+      setNotionError(e instanceof Error ? e.message : '오류 발생');
+      setNotionLoading(false);
+      return;
+    }
+    const target = dbs.find(d => d.title.includes('고객 DB'))
+      ?? dbs.find(d => d.title.includes('고객') && !d.title.includes('상품가입정보'));
+    if (target) {
+      setNotionSelectedDbTitle(target.title);
+      await loadNotionRows(target.id);   // loadNotionRows가 로딩·매핑·단계 처리
+    } else {
+      setNotionLoading(false);
+      setNotionStep('selectDb');   // 고객 DB를 못 찾으면 수동 선택
+    }
   }
 
   async function loadNotionRows(dbId: string, savedMapping?: Record<string, string>) {
@@ -198,16 +221,18 @@ export default function CustomerManagementPage() {
         // Use saved mapping if provided
         finalMapping = savedMapping;
       } else {
-        // 자동 매핑 시도 (컬럼명으로 추측)
-        const autoMap: Record<string, string> = { name: '', birth_date: '', phone: '', email: '' };
-        for (const col of cols) {
-          const lower = col.toLowerCase();
-          if (!autoMap.name && (lower.includes('이름') || lower.includes('name') || lower.includes('고객명'))) autoMap.name = col;
-          if (!autoMap.birth_date && (lower.includes('생년') || lower.includes('birth') || lower.includes('생일'))) autoMap.birth_date = col;
-          if (!autoMap.phone && (lower.includes('전화') || lower.includes('phone') || lower.includes('연락처') || lower.includes('핸드폰'))) autoMap.phone = col;
-          if (!autoMap.email && (lower.includes('이메일') || lower.includes('email') || lower.includes('메일'))) autoMap.email = col;
-        }
-        finalMapping = autoMap;
+        // 자동 매핑: 표준 컬럼명(고객명·생년월일·연락처·이메일) 정확일치 우선, 없으면 키워드 추측
+        const pickCol = (exact: string, keywords: string[]) => {
+          if (cols.includes(exact)) return exact;
+          const found = cols.find(c => keywords.some(k => c.toLowerCase().includes(k)));
+          return found ?? '';
+        };
+        finalMapping = {
+          name: pickCol('고객명', ['고객명', '이름', 'name']),
+          birth_date: pickCol('생년월일', ['생년월일', '생년', 'birth', '생일']),
+          phone: pickCol('연락처', ['연락처', '전화', 'phone', '핸드폰']),
+          email: pickCol('이메일', ['이메일', 'email', '메일']),
+        };
       }
       setNotionMapping(finalMapping);
       setNotionStep('mapping');
@@ -240,10 +265,15 @@ export default function CustomerManagementPage() {
     if (selected.length === 0) return;
     setNotionBulkLoading(true);
     const token = authLib.getToken();
+    // 기존 고객: 고객명 + 생년월일(YYYY-MM-DD) 로 중복 판정
+    const existKeys = new Set(customers.map(c => `${(c.name || '').trim()}|${(c.birth_date || '').slice(0, 10)}`));
     let ok = 0, fail = 0, skipped = 0;
+    const dupNames: string[] = [];
     for (const row of selected) {
       const name = (row.properties[notionMapping.name] ?? '').trim();
       if (!name) { skipped++; continue; }
+      const birth = (row.properties[notionMapping.birth_date] ?? '').slice(0, 10);
+      if (existKeys.has(`${name}|${birth}`)) { dupNames.push(name); continue; }   // 이미 등록된 고객 제외
       const body = {
         name,
         birth_date: (row.properties[notionMapping.birth_date] ?? '').trim() || null,
@@ -256,13 +286,16 @@ export default function CustomerManagementPage() {
           headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
           body: JSON.stringify(body),
         });
-        if (res.ok) ok++; else fail++;
+        if (res.ok) { ok++; existKeys.add(`${name}|${birth}`); } else fail++;
       } catch { fail++; }
     }
     setNotionBulkLoading(false);
     saveNotionCustomerConfig(notionSelectedDb, notionSelectedDbTitle, notionMapping);
     setNotionSelectedRows(new Set());
-    alert(`${ok}명 추가 완료${fail > 0 ? `, ${fail}명 실패(생년월일 형식 등)` : ''}${skipped > 0 ? `, ${skipped}명 스킵(고객명 없음)` : ''}`);
+    const dupMsg = dupNames.length > 0
+      ? `\n\n중복 제외 ${dupNames.length}명(이름·생년월일 일치):\n${dupNames.join(', ')}`
+      : '';
+    alert(`${ok}명 추가 완료${fail > 0 ? `, ${fail}명 실패` : ''}${skipped > 0 ? `, ${skipped}명 스킵(고객명 없음)` : ''}${dupMsg}`);
     closeModal();
     await fetchCustomers();
   }
