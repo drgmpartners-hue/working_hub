@@ -337,7 +337,8 @@ export function DesiredPlanTab() {
   }, [simOrig, simMod, hasMod]);
 
   // ECOS & Load
-  useEffect(() => { fetchInflation().then(r => { setEcos(r); setInfIn(r.toFixed(1)); }); }, []);
+  // ECOS 물가율은 저장값이 아직 초기값('2.5')일 때만 적용 — load()가 넣은 고객 저장값을 덮지 않도록
+  useEffect(() => { fetchInflation().then(r => { setEcos(r); setInfIn(prev => (prev === '2.5' ? r.toFixed(1) : prev)); }); }, []);
 
   const load = useCallback(async () => {
     if (!cid) return;

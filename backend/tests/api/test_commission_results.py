@@ -55,9 +55,13 @@ async def create_tables():
     from sqlalchemy import JSON
     from sqlalchemy.dialects.postgresql import JSONB
 
+    # 공유 Base.metadata 제자리 변형은 이후 모듈의 JSONB 타입 검증을
+    # 순서 의존적으로 깨뜨리므로, 원본 타입을 저장 후 teardown에서 복원한다.
+    patched_cols = []
     for table in Base.metadata.tables.values():
         for col in table.columns:
             if isinstance(col.type, JSONB):
+                patched_cols.append((col, col.type))
                 col.type = JSON()
 
     async with test_engine.begin() as conn:
@@ -65,6 +69,9 @@ async def create_tables():
     yield
     async with test_engine.begin() as conn:
         await conn.run_sync(Base.metadata.drop_all)
+    # JSONB 원복 — 테스트 순서 의존성 제거
+    for col, original_type in patched_cols:
+        col.type = original_type
 
 
 @pytest_asyncio.fixture

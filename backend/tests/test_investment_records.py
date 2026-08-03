@@ -256,9 +256,14 @@ class TestAnnualFlowCalcService:
             },
         ]
         result = calculate_annual_flow(records=records, year=2024)
-        assert result["lump_sum_amount"] == 5000
-        assert result["annual_savings_amount"] == 1200
+        # 새 계산 방식: 일시납/적립은 예수금 거래 기반으로 별도 집계 → 여기선 0
+        assert result["lump_sum_amount"] == 0
+        assert result["annual_savings_amount"] == 0
+        # 총납입금액 = 당해 활성 투자금액 합
         assert result["total_payment"] == 6200
+        # 미종결·중간평가 없음 → 평가금액 = 원금, 수익 0
+        assert result["annual_evaluation_amount"] == 6200
+        assert result["annual_total_profit"] == 0
 
     def test_annual_flow_with_exit(self):
         from app.services.annual_flow_calc import calculate_annual_flow

@@ -40,11 +40,17 @@ async def create_commission_calculation(
     """Run the commission calculation for the provided input data and persist
     the results.  Requires a valid Bearer token.
     """
-    calculation = await commission_service.create_calculation(
-        db=db,
-        user_id=current_user.id,
-        data=payload,
-    )
+    try:
+        calculation = await commission_service.create_calculation(
+            db=db,
+            user_id=current_user.id,
+            data=payload,
+        )
+    except ValueError as exc:
+        # 직원 데이터 미발견/잘못된 calc_type 등 → 500 대신 명확한 422
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)
+        ) from exc
     return CommissionCalculationResponse.model_validate(calculation)
 
 

@@ -56,6 +56,19 @@ def make_mock_wrap_account(**kwargs):
     account.investment_target = kwargs.get("investment_target", "글로벌 주식")
     account.target_return_rate = kwargs.get("target_return_rate", Decimal("5.50"))
     account.description = kwargs.get("description", "글로벌 주식 투자 랩")
+    # 확장된 상품 카탈로그 필드 (WrapAccountResponse 스키마 요구)
+    account.in_out = kwargs.get("in_out", None)
+    account.category = kwargs.get("category", None)
+    account.asset_class_1 = kwargs.get("asset_class_1", None)
+    account.asset_class_2 = kwargs.get("asset_class_2", None)
+    account.institution = kwargs.get("institution", None)
+    account.period = kwargs.get("period", None)
+    account.risk_level = kwargs.get("risk_level", None)
+    account.currency = kwargs.get("currency", "₩")
+    account.total_expected_return = kwargs.get("total_expected_return", None)
+    account.annual_expected_return = kwargs.get("annual_expected_return", None)
+    for i in range(1, 11):
+        setattr(account, f"port_{i}", kwargs.get(f"port_{i}", None))
     account.is_active = kwargs.get("is_active", True)
     account.created_at = kwargs.get("created_at", datetime(2025, 1, 1))
     account.updated_at = kwargs.get("updated_at", datetime(2025, 1, 1))
@@ -183,7 +196,7 @@ class TestCreateWrapAccount:
         assert response.status_code == 422
 
     def test_create_requires_securities_company(self):
-        """Should return 422 when securities_company is missing."""
+        """securities_company는 이제 선택 필드 — 빈 product_name만 422."""
         mock_db = AsyncMock(spec=AsyncSession)
         mock_user = make_mock_user()
         app = make_test_app(mock_db, mock_user)
@@ -191,7 +204,7 @@ class TestCreateWrapAccount:
         with TestClient(app) as client:
             response = client.post(
                 "/api/v1/retirement/wrap-accounts",
-                json={"product_name": "테스트 랩"},
+                json={"product_name": "   "},  # 공백만 → validator가 거부
             )
 
         assert response.status_code == 422
@@ -250,11 +263,12 @@ class TestDeleteWrapAccount:
     """Tests for DELETE /api/v1/retirement/wrap-accounts/{id}."""
 
     def test_delete_deactivates_account(self):
-        """Should soft-delete (deactivate) the wrap account and return 204."""
+        """현재 앱 계약: 하드 삭제(db.delete) 후 204."""
         mock_account = make_mock_wrap_account(id=1, is_active=True)
 
         mock_db = AsyncMock(spec=AsyncSession)
         mock_db.get = AsyncMock(return_value=mock_account)
+        mock_db.delete = AsyncMock()
         mock_db.commit = AsyncMock()
 
         mock_user = make_mock_user()
@@ -264,8 +278,8 @@ class TestDeleteWrapAccount:
             response = client.delete("/api/v1/retirement/wrap-accounts/1")
 
         assert response.status_code == 204
-        # Verify soft delete: is_active set to False
-        assert mock_account.is_active is False
+        # 하드 삭제 검증
+        mock_db.delete.assert_awaited_once_with(mock_account)
         mock_db.commit.assert_awaited_once()
 
     def test_delete_returns_404_when_not_found(self):

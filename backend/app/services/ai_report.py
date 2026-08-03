@@ -95,7 +95,9 @@ async def generate_sections(db: AsyncSession, user_id: str, data: dict) -> dict:
         parsed = json.loads(_strip_json(raw))
     except Exception as e:
         logger.warning("AI 응답 JSON 파싱 실패: %s", e)
-        return {"summary": raw[:1500]}  # 최소한 원문이라도
+        # 빈 dict 반환 → 호출측 안전망(_basic_sections) 발동.
+        # (잘린 원문을 summary로 넘기면 안전망이 발동하지 않아 캐시가 오염됐음)
+        return {}
     return {k: _coerce(parsed.get(k, "")) for k in _SECTION_KEYS}
 
 

@@ -54,27 +54,6 @@ interface ProviderDef {
 
 const API_PROVIDERS: ProviderDef[] = [
   {
-    key: 'kiwoom',
-    label: '키움증권 Open API',
-    description: 'ETF/펀드 기준가 자동 조회에 사용됩니다.',
-    icon: '📈',
-    color: '#E8400A',
-    fields: [
-      { name: 'api_key', label: 'APP Key', placeholder: 'APP Key를 입력하세요' },
-      { name: 'api_secret', label: 'APP Secret', placeholder: 'APP Secret를 입력하세요' },
-    ],
-    guide: {
-      title: '키움증권 REST API 키 발급 방법',
-      steps: [
-        '키움증권 REST API 사이트(https://rest.kiwoom.com)에 접속합니다.',
-        '키움증권 계좌가 있는 경우 로그인합니다. (없으면 계좌 개설 필요)',
-        'API 신청 메뉴에서 서비스를 등록합니다.',
-        '발급된 APP Key와 APP Secret을 복사합니다.',
-        '실전투자/모의투자 구분에 유의하세요. 조회 전용은 모의투자도 가능합니다.',
-      ],
-    },
-  },
-  {
     key: 'claude',
     label: 'Claude API (Anthropic)',
     description: 'AI 분석 및 리포트 생성에 사용됩니다.',
@@ -768,7 +747,15 @@ export default function SettingsPage() {
                                     backgroundColor: 'var(--bg-surface)',
                                     padding: '2px 8px',
                                     borderRadius: 4,
+                                    // 긴 키가 칸을 벗어나지 않도록 말줄임 처리
+                                    flex: 1,
+                                    minWidth: 0,
+                                    maxWidth: 420,
+                                    overflow: 'hidden',
+                                    textOverflow: 'ellipsis',
+                                    whiteSpace: 'nowrap',
                                   }}
+                                  title={val}
                                 >
                                   {val}
                                 </code>

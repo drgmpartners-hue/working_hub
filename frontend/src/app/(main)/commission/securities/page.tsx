@@ -377,8 +377,20 @@ export default function SecuritiesPage() {
         headers: authLib.getAuthHeader(),
       });
       if (!resp.ok) return;
-      const data: CommissionResult[] = await resp.json();
-      setResults(data);
+      // 백엔드는 {items, total} 봉투로 반환 — items를 꺼내고 detail_data를 평탄화
+      const data = await resp.json();
+      const rows = (Array.isArray(data) ? data : data.items ?? []).map(
+        (r: Record<string, unknown>) => {
+          const detail = (r.detail_data ?? {}) as Record<string, unknown>;
+          return {
+            ...detail,
+            ...r,
+            total_amount: Number(detail.commission_amount ?? r.total_amount ?? 0),
+            base_amount: Number(detail.sales_amount ?? detail.base_salary ?? r.base_amount ?? 0),
+          } as unknown as CommissionResult;
+        }
+      );
+      setResults(rows);
     } catch {
       // ignore
     }

@@ -41,6 +41,20 @@ async def get_portal_client_id(authorization: Optional[str] = Header(None)) -> s
     return payload["sub"]
 
 
+async def _verify_suggestion_owner(db: AsyncSession, suggestion, client_id: str) -> None:
+    """제안의 계좌가 이 포털 고객 소유인지 검증 (IDOR 방지). 아니면 404."""
+    from app.models.client import ClientAccount
+
+    owner_res = await db.execute(
+        select(ClientAccount.id).where(
+            ClientAccount.id == suggestion.account_id,
+            ClientAccount.client_id == client_id,
+        ).limit(1)
+    )
+    if not owner_res.scalars().first():
+        raise HTTPException(status_code=404, detail="Suggestion not found")
+
+
 # ---------------------------------------------------------------------------
 # Public endpoints (no JWT required)
 # ---------------------------------------------------------------------------
@@ -174,15 +188,7 @@ async def get_suggestion(
         raise HTTPException(status_code=404, detail="Suggestion not found")
 
     # 소유권 검증: 이 제안이 현재 포털 고객의 계좌에 속하는지 확인 (IDOR 방지)
-    from app.models.client import ClientAccount
-    owner_res = await db.execute(
-        select(ClientAccount).where(
-            ClientAccount.id == suggestion.account_id,
-            ClientAccount.client_id == client_id,
-        )
-    )
-    if not owner_res.scalar_one_or_none():
-        raise HTTPException(status_code=404, detail="Suggestion not found")
+    await _verify_suggestion_owner(db, suggestion, client_id)
 
     expired = datetime.utcnow() > suggestion.expires_at
 
@@ -434,15 +440,7 @@ async def create_call_reservation(
         raise HTTPException(status_code=404, detail="Suggestion not found")
 
     # 소유권 검증: 자기 계좌의 제안에만 예약 가능
-    from app.models.client import ClientAccount
-    owner_res = await db.execute(
-        select(ClientAccount).where(
-            ClientAccount.id == suggestion.account_id,
-            ClientAccount.client_id == client_id,
-        )
-    )
-    if not owner_res.scalar_one_or_none():
-        raise HTTPException(status_code=404, detail="Suggestion not found")
+    await _verify_suggestion_owner(db, suggestion, client_id)
 
     reservation = await client_portal_service.create_call_reservation(
         db,

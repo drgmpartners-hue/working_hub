@@ -4,15 +4,20 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any, Optional
 
-from pydantic import BaseModel, field_validator
+from pydantic import BaseModel, Field, field_validator
 
 
 class CommissionCalculationCreate(BaseModel):
-    """Payload for creating a new commission calculation."""
+    """Payload for creating a new commission calculation.
+
+    - source_file_path: 엑셀 경로. 크롤링 기반 계산은 파일이 없으므로 빈 값 허용.
+    - input_data: 선택. employees가 없으면 서버가 source_file_path(엑셀 파싱 결과)
+      또는 crawling_job_id(크롤링 결과)에서 자동 도출한다.
+    """
 
     calc_type: str
-    source_file_path: str
-    input_data: dict[str, Any]
+    source_file_path: str = ""
+    input_data: dict[str, Any] = Field(default_factory=dict)
 
     @field_validator("calc_type")
     @classmethod
@@ -25,8 +30,6 @@ class CommissionCalculationCreate(BaseModel):
     @field_validator("source_file_path")
     @classmethod
     def validate_source_file_path(cls, v: str) -> str:
-        if not v.strip():
-            raise ValueError("source_file_path must not be empty")
         return v.strip()
 
 

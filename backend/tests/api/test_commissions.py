@@ -62,9 +62,14 @@ async def create_tables():
     from sqlalchemy import JSON
     from sqlalchemy.dialects.postgresql import JSONB
 
+    # 공유 Base.metadata를 제자리에서 변형하면 이후 실행되는 다른 테스트 모듈
+    # (예: test_interactive_calc의 JSONB 타입 검증)이 순서 의존적으로 깨진다.
+    # → 원본 타입을 저장했다가 모듈 teardown에서 복원한다.
+    patched_cols = []
     for table in Base.metadata.tables.values():
         for col in table.columns:
             if isinstance(col.type, JSONB):
+                patched_cols.append((col, col.type))
                 col.type = JSON()
 
     async with test_engine.begin() as conn:
@@ -72,6 +77,9 @@ async def create_tables():
     yield
     async with test_engine.begin() as conn:
         await conn.run_sync(Base.metadata.drop_all)
+    # JSONB 원복 — 테스트 순서 의존성 제거
+    for col, original_type in patched_cols:
+        col.type = original_type
 
 
 @pytest_asyncio.fixture
@@ -194,8 +202,10 @@ class TestCreateCommissionCalculation:
         )
         assert resp.status_code == 422
 
-    async def test_create_empty_employees_returns_201(self, client: AsyncClient):
-        """Empty employees list is valid — results in zero commission."""
+    async def test_create_empty_employees_returns_422(self, client: AsyncClient):
+        """P1-13 의도된 동작 변경: employees가 비어 있고 엑셀 업로드/크롤링에서도
+        직원 데이터를 파생하지 못하면, 기존처럼 0건으로 조용히 '완료' 처리하지 않고
+        422 + 명확한 에러 메시지를 반환한다 (무의미한 빈 결과 저장 방지)."""
         token = await _register_and_login(client)
         payload = {
             "calc_type": "dr_gm",
@@ -207,10 +217,9 @@ class TestCreateCommissionCalculation:
             json=payload,
             headers={"Authorization": f"Bearer {token}"},
         )
-        assert resp.status_code == 201, resp.text
+        assert resp.status_code == 422, resp.text
         body = resp.json()
-        assert body["result_data"]["total_employees"] == 0
-        assert body["result_data"]["total_commission"] == 0
+        assert "계산할 직원 데이터를 찾지 못했습니다" in body["detail"]
 
 
 # ---------------------------------------------------------------------------

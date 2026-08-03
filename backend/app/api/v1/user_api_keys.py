@@ -31,10 +31,10 @@ def _decrypt(value: str) -> str:
 
 
 def _mask(value: str) -> str:
-    """Show first 4 and last 4 chars, mask middle."""
+    """Show first 4 and last 4 chars, mask middle (별표는 최대 12개 — 긴 키가 UI 칸을 넘지 않도록)."""
     if len(value) <= 10:
-        return value[:2] + "*" * (len(value) - 2)
-    return value[:4] + "*" * (len(value) - 8) + value[-4:]
+        return value[:2] + "*" * min(len(value) - 2, 12)
+    return value[:4] + "*" * min(len(value) - 8, 12) + value[-4:]
 
 
 def _safe_mask(enc: Optional[str]) -> Optional[str]:

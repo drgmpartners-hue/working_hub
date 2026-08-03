@@ -55,6 +55,23 @@ async def create_snapshot(
     # Extract data via Gemini Vision (with product name reference)
     extracted = await extract_portfolio_from_image(image_bytes, mime_type, known_names or None)
 
+    # Vision 실패/빈 결과 시 스냅샷 생성 차단 — 이전엔 holdings 0건짜리 빈
+    # 스냅샷이 201로 생성되어 정상 저장처럼 보이는 문제가 있었음.
+    if extracted.get("error") or not extracted.get("holdings"):
+        try:
+            os.remove(image_path)  # 고아 이미지 파일 정리
+        except OSError:
+            pass
+        from fastapi import HTTPException  # noqa: PLC0415
+        raise HTTPException(
+            status_code=422,
+            detail=(
+                "이미지에서 포트폴리오를 인식하지 못했습니다. "
+                "선명한 계좌 화면 캡처인지 확인 후 다시 업로드해주세요."
+                + (f" (원인: {extracted.get('error')})" if extracted.get("error") else "")
+            ),
+        )
+
     # Apply product name change mappings to extracted holdings
     if name_changes:
         for holding in extracted.get("holdings", []):

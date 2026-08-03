@@ -25,9 +25,42 @@ logger = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 
 
-def _generate_ai_comment(account_data: dict) -> str:
-    """Generate a 2-3 sentence portfolio analysis comment via Gemini.
+def _call_claude_haiku(prompt: str, api_key: str) -> str:
+    """Claude Haiku 4.5로 텍스트 생성 (보고서 코멘트 전용 — LLM 라우팅 정책).
 
+    정책: 기본 LLM은 Gemini, '주식·펀드 관리 > 보고서'는 Claude Haiku 4.5 사용.
+    anthropic SDK 미설치 환경이므로 httpx로 Messages API 직접 호출.
+    """
+    import httpx  # noqa: PLC0415
+
+    res = httpx.post(
+        "https://api.anthropic.com/v1/messages",
+        headers={
+            "x-api-key": api_key,
+            "anthropic-version": "2023-06-01",
+            "content-type": "application/json",
+        },
+        json={
+            "model": "claude-haiku-4-5",
+            "max_tokens": 1024,
+            "messages": [{"role": "user", "content": prompt}],
+        },
+        timeout=30,
+    )
+    res.raise_for_status()
+    data = res.json()
+    if data.get("stop_reason") == "refusal":
+        raise RuntimeError("Claude refused the request")
+    for block in data.get("content", []):
+        if block.get("type") == "text":
+            return block["text"]
+    raise RuntimeError("Claude response contained no text block")
+
+
+def _generate_ai_comment(account_data: dict, claude_api_key: str | None = None) -> str:
+    """Generate a 2-3 sentence portfolio analysis comment.
+
+    LLM 라우팅: claude_api_key가 있으면 Claude Haiku 4.5, 없거나 실패하면 Gemini 폴백.
     Returns an empty string when the API key is missing or the call fails,
     so that the rest of the report is unaffected.
     """
@@ -62,6 +95,12 @@ def _generate_ai_comment(account_data: dict) -> str:
             "핵심 특징과 투자 성향에 대한 평가를 포함하세요."
         )
 
+        # LLM 라우팅: 보고서는 Claude Haiku 4.5 우선, 실패·미등록 시 Gemini 폴백
+        if claude_api_key:
+            try:
+                return _call_claude_haiku(prompt, claude_api_key)
+            except Exception as exc:
+                logger.warning("Claude Haiku comment failed, falling back to Gemini: %s", exc)
         return _call_gemini(prompt)
 
     except Exception as exc:
@@ -128,6 +167,7 @@ async def generate_portfolio_report(
     account_ids: list[str],
     snapshot_date: date,
     period: str = "3m",
+    claude_api_key: str | None = None,
 ) -> dict:
     """Assemble a full portfolio report dict for the given client and accounts.
 
@@ -164,7 +204,7 @@ async def generate_portfolio_report(
 
     for account_id in account_ids:
         account_data = await _build_account_report(
-            db, account_id, snapshot_date, period
+            db, account_id, snapshot_date, period, claude_api_key
         )
         if account_data is not None:
             accounts_data.append(account_data)
@@ -198,6 +238,7 @@ async def _build_account_report(
     account_id: str,
     snapshot_date: date,
     period: str,
+    claude_api_key: str | None = None,
 ) -> Optional[dict]:
     """Build report data for a single account.
 
@@ -305,6 +346,6 @@ async def _build_account_report(
     }
 
     # --- Generate AI comment (fails gracefully) -------------------------------
-    account_data["ai_comment"] = _generate_ai_comment(account_data)
+    account_data["ai_comment"] = _generate_ai_comment(account_data, claude_api_key)
 
     return account_data

@@ -22,7 +22,7 @@
   기존 거래 조회 실패 시 "0건 간주" 금지 → 동기화 중단 (대량 중복 생성 방지)
 - [x] **P0-6** 🔴 [FE] 고객 전환 시 상태 리셋 — `InvestmentFlowTab.tsx`
   `selectedCustomerId` 변경 시 accountTransactions·expandedAccountIds·appliedYears·desiredPlanData 초기화 (이전 고객 데이터 잔존 차단)
-- [ ] **P0-7** 🔴 [수동/사장님] API 키 4종 재등록 (Gemini·KIS·DART·네이버) + Railway `SECRET_KEY` 환경변수 고정 확인
+- [x] **P0-7** 🔴 [수동/사장님] API 키 4종 재등록 (Gemini·KIS·DART·네이버) + Railway `SECRET_KEY` 환경변수 고정 확인 — 완료 (설정 화면에서 4종 활성 확인, Claude 키도 등록)
 
 
 ### P0 신규 — 2·3차 스윕 발견 (보안·전면 장애)
@@ -35,16 +35,16 @@
 
 ## P1 — 이번 주 (재발 방지 + 시한폭탄 제거)
 
-- [ ] **P1-1** 🔴 [BE] `investment_records` 누락 컬럼 5개 마이그레이션 보강 (deposit_account_id, join_date, expected/actual/original_maturity_date) — 기존 DB 안전한 IF NOT EXISTS 방식
-- [ ] **P1-2** 🔴 [BE] 예수금 잔액 재계산 `FOR UPDATE` 잠금 — `deposit_accounts.py:43` (동시 요청 시 잔액 오염 차단)
-- [ ] **P1-3** 🟡 [BE] alembic/env.py 전체 모델 import (autogenerate 드리프트 근본 원인)
+- [x] **P1-1** 🔴 [BE] `investment_records` 누락 컬럼 5개 마이그레이션 보강 (deposit_account_id, join_date, expected/actual/original_maturity_date) — 기존 DB 안전한 IF NOT EXISTS 방식 (`f9a0b1c2d3e4`)
+- [x] **P1-2** 🔴 [BE] 예수금 잔액 재계산 `FOR UPDATE` 잠금 — `deposit_accounts.py` (동시 요청 시 잔액 오염 차단)
+- [x] **P1-3** 🟡 [BE] alembic/env.py 전체 모델 import (autogenerate 드리프트 근본 원인) — `import app.models`
 - [ ] **P1-4** 🟡 [FE] 환경 배지 + 배포 버전(커밋 해시) 표시 (로컬/운영 구분, 반영 여부 즉시 확인)
 - [ ] **P1-5** 🟡 [CI] GitHub Actions: 프론트 typecheck+build, 백엔드 pytest — 실패 시 배포 차단
-- [ ] **P1-6** 🟡 [QA] 깨진 백엔드 테스트 41개 수리 (대부분 기대값 갱신)
-- [ ] **P1-7** 🟡 [FE] PDF stale closure 수정 — `handlePrint`가 fetch 반환값을 직접 사용 (첫 PDF 빈 데이터 해결)
-- [ ] **P1-8** 🟡 [FE] DesiredPlanTab 물가상승률 이중 set 경쟁 해소 (ECOS는 저장값 없을 때만)
-- [ ] **P1-9** 🟡 [FE] Notion 동기화 중복키 생성 함수 단일화 — `InvestmentFlowTab.tsx:1157 vs 1163` (동기화마다 중복 추가 방지)
-- [ ] **P1-10** 🟡 [BE] clients 엑셀 중복체크 `MultipleResultsFound` 방어 — `clients.py:118` `.limit(1)`
+- [x] **P1-6** 🟡 [QA] 깨진 백엔드 테스트 41개 수리 (대부분 기대값 갱신) + 신규 소유권 검증에 맞춘 tests/api/conftest.py 우회 픽스처 추가
+- [x] **P1-7** 🟡 [FE] PDF stale closure 수정 — `handlePrint`가 fetch 반환값을 직접 사용 (첫 PDF 빈 데이터 해결)
+- [x] **P1-8** 🟡 [FE] DesiredPlanTab 물가상승률 이중 set 경쟁 해소 (ECOS는 저장값 없을 때만)
+- [x] **P1-9** 🟡 [FE] Notion 동기화 중복키 생성 함수 단일화 — `InvestmentFlowTab.tsx` `dupKey()` (동기화마다 중복 추가 방지)
+- [x] **P1-10** 🟡 [BE] clients 엑셀 중복체크 `MultipleResultsFound` 방어 — `clients.py` `.limit(1)`
 
 ## P2 — 중기 (체질 개선)
 
@@ -58,12 +58,12 @@
 
 ## P1 추가 — 2·3차 스윕 발견
 
-- [ ] **P1-11** 🔴 [BE/보안] snapshots.py 전 엔드포인트(10개) 소유권 검증 — 계좌→Client→user_id 공통 의존성 (IDOR)
-- [ ] **P1-12** 🔴 [BE/보안] retirement_plans/pension_plans/interactive_calculations/reports 소유권 스코핑 + interactive `.limit(1)` (플랜 2개면 500)
-- [ ] **P1-13** 🔴 [FE/BE] 수당정산 계약 불일치 5건 — input_data 미전송(422), results.items 미사용(크래시), total_amount 필드 부재(NaN), 전체 PDF 라우트 404, crawling source_file_path 누락
-- [ ] **P1-14** 🔴 [BE] Vision 실패 시 빈 스냅샷 201 생성 차단 — `vision_service.py:120`+`snapshot_service.py:56` error 시 예외 전파
-- [ ] **P1-15** 🔴 [BE] 테마 캐시 오염 3종 — 실패 payload 캐시 금지(`theme_flow.py:344`), JSON 잘림 안전망(`ai_report.py:98`), 점수 None 덮어쓰기 금지(`daily_batch.py:150`)
-- [ ] **P1-16** 🔴 [BE] ai_retirement_guide 동기 SDK 호출로 이벤트 루프 정지 — `asyncio.to_thread` + timeout + max_tokens 상향
+- [x] **P1-11** 🔴 [BE/보안] snapshots.py 전 엔드포인트(10개) 소유권 검증 — `_verify_account_owner`/`_verify_snapshot_owner` 공통 헬퍼 (IDOR)
+- [x] **P1-12** 🔴 [BE/보안] interactive_calculations/reports 소유권 스코핑 + interactive `.limit(1)` (플랜 2개면 500) + client_portal `_verify_suggestion_owner` — ※ retirement_plans/pension_plans 스코핑은 잔여 (P1-22와 묶어 후속)
+- [x] **P1-13** 🔴 [FE/BE] 수당정산 계약 불일치 5건 — employees 자동파생(엑셀 파싱/크롤링, 한글 헤더 매핑), input_data 기본값, results.items 언랩+total_amount 평탄화, 개별 다운로드 루프, 빈 직원 422 안내
+- [x] **P1-14** 🔴 [BE] Vision 실패 시 빈 스냅샷 201 생성 차단 — 인식 실패 시 이미지 정리 후 422 반환
+- [x] **P1-15** 🔴 [BE] 테마 캐시 오염 3종 — 실패 payload 캐시 금지(`theme_flow.py`), JSON 잘림 안전망(`ai_report.py`), 점수 None 덮어쓰기 금지·stale 보존(`daily_batch.py`)
+- [x] **P1-16** 🔴 [BE] ai_retirement_guide 동기 SDK 호출로 이벤트 루프 정지 — `asyncio.to_thread` + timeout 60s + max_tokens 4096 + Claude 모델 claude-haiku-4-5
 - [ ] **P1-17** 🟡 [FE] IRP 리밸런싱 불변식 파괴(`irp:1359` 소액 억제)·비중 0% 무시(`:1356`)
 - [ ] **P1-18** 🟡 [FE] wrap-accounts 수익률 단위 100배 불일치 (Notion×100 vs 엑셀 원값)
 - [ ] **P1-19** 🟡 [FE] stock-recommend 무한 폴링(최대시도·취소 없음) + 영구 로딩 문구
@@ -89,4 +89,7 @@
 |---|---|---|
 | 2026-08-03 | P0-1~6 | 완료 — 백엔드 컴파일·프론트 typecheck/build 통과 |
 | 2026-08-03 | P0-8~12 (2·3차 긴급: 스크리닝500·IDOR·무인증SMS·XSS·키워드파괴) | 완료 — 검증 통과 (dompurify 추가) |
-| 2026-08-03 | P0-7 (수동) | 대기 — 사장님: API 키 4종 재등록 + Railway SECRET_KEY 확인 |
+| 2026-08-03 | P0-7 (수동) | 완료 — API 키 4종 재등록 확인(설정 화면 활성) + Claude 키 등록 |
+| 2026-08-03 | P1-1~3, 7~16 | 완료 — 마이그레이션·FOR UPDATE·IDOR 소유권 헬퍼·수당정산 복원·Vision/테마 캐시 가드·to_thread. 백엔드 import OK, 프론트 tsc/build 통과 |
+| 2026-08-03 | P1-6 (테스트) | 완료 — 전체 스위트 **624 passed, 3 skipped, 0 failed** (기존 41개 baseline 실패 전량 복구 + 신규 소유권 검증 정합. skip 3건은 라이브 Imagen 호출 design 테스트. JSONB 타입 제자리 변형 순서 의존성도 수정) |
+| 2026-08-03 | 설정/LLM 라우팅 | 완료 — 키움 섹션 삭제, 키 오버플로 수정, 보고서 AI 코멘트 Claude Haiku 4.5 우선(Gemini 폴백) |

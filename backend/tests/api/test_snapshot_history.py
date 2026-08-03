@@ -64,8 +64,9 @@ def _history_item(
         "snapshot_date": snapshot_date,
         "total_evaluation": total_evaluation,
         "total_return_rate": total_return_rate,
-        "region_weights": region_weights or {"국내": 0.4, "미국": 0.6},
-        "risk_weights": risk_weights or {"성장형": 0.6, "안정형": 0.4},
+        # `or` 사용 시 빈 dict({})가 기본값으로 대체되는 버그 → is None 비교
+        "region_weights": region_weights if region_weights is not None else {"국내": 0.4, "미국": 0.6},
+        "risk_weights": risk_weights if risk_weights is not None else {"성장형": 0.6, "안정형": 0.4},
     }
 
 

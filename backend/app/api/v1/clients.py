@@ -115,8 +115,9 @@ async def upload_excel(
         )
         if phone_str:
             dup_query = dup_query.where(Client.phone == phone_str)
-        dup_result = await db.execute(dup_query)
-        if dup_result.scalar_one_or_none():
+        # limit(1)+first(): 동명이인 2건 이상이어도 MultipleResultsFound 500 방지
+        dup_result = await db.execute(dup_query.limit(1))
+        if dup_result.scalars().first():
             skipped += 1
             skipped_names.append(f"{row_idx}행: {name}")
             continue

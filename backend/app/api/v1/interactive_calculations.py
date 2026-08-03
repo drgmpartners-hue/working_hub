@@ -29,14 +29,23 @@ router = APIRouter(prefix="/retirement", tags=["retirement-interactive"])
 async def _get_profile_by_customer_or_404(
     customer_id: str,
     db: AsyncSession,
+    user_id: str | None = None,
 ) -> CustomerRetirementProfile:
-    """고객 ID로 은퇴 설계 프로필 조회 헬퍼."""
-    result = await db.execute(
-        select(CustomerRetirementProfile).where(
-            CustomerRetirementProfile.customer_id == customer_id
-        )
+    """고객 ID로 은퇴 설계 프로필 조회 헬퍼.
+
+    user_id가 주어지면 해당 담당자의 고객인지 소유권을 검증한다(IDOR 방지).
+    """
+    from app.models.client import Client  # noqa: PLC0415
+
+    query = select(CustomerRetirementProfile).where(
+        CustomerRetirementProfile.customer_id == customer_id
     )
-    profile = result.scalar_one_or_none()
+    if user_id is not None:
+        query = query.join(
+            Client, Client.id == CustomerRetirementProfile.customer_id
+        ).where(Client.user_id == user_id)
+    result = await db.execute(query.limit(1))
+    profile = result.scalars().first()
     if not profile:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -66,16 +75,20 @@ async def run_interactive_calculation(
     - 2번탭(investment_records)에서 연간 투자 흐름을 실제 데이터로 사용
     - 이격률 계산 후 수정 예측 시뮬레이션 수행
     """
-    # 1. 고객 프로필 조회
-    profile = await _get_profile_by_customer_or_404(payload.customer_id, db)
+    # 1. 고객 프로필 조회 (담당자 소유권 검증 포함)
+    profile = await _get_profile_by_customer_or_404(
+        payload.customer_id, db, user_id=current_user.id
+    )
 
     # 2. retirement_plan 조회 (가장 최근 플랜 사용)
+    # limit(1): 플랜이 2건 이상이어도 MultipleResultsFound 500 방지
     result = await db.execute(
         select(RetirementPlan)
         .where(RetirementPlan.profile_id == profile.id)
         .order_by(RetirementPlan.created_at.desc())
+        .limit(1)
     )
-    plan = result.scalar_one_or_none()
+    plan = result.scalars().first()
     if not plan:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -162,7 +175,9 @@ async def list_interactive_calculations(
     current_user: CurrentUser = None,
 ):
     """고객의 저장된 인터랙티브 계산 결과를 모두 조회합니다."""
-    profile = await _get_profile_by_customer_or_404(customer_id, db)
+    profile = await _get_profile_by_customer_or_404(
+        customer_id, db, user_id=current_user.id
+    )
 
     result = await db.execute(
         select(InteractiveCalculation)

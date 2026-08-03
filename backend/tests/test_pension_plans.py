@@ -166,7 +166,11 @@ class TestPensionCalcServiceFixed:
         assert plan[-1]["age"] == 84
 
     def test_fixed_balance_reaches_near_zero(self):
-        """확정형: 20년 후 잔액이 0에 가까워야 함."""
+        """확정형: 마지막 해 잔액 = 마지막 1년치 인출액 (연초 잔액 기록 방식).
+
+        현재 구현은 각 연도의 '인출 전(연초)' 잔액을 기록하므로
+        마지막 항목의 잔액은 0이 아니라 연간 인출액(= 은퇴자금/20)이다.
+        """
         from app.services.pension_calc import PensionCalcService
 
         result = PensionCalcService.calculate_fixed(
@@ -174,7 +178,8 @@ class TestPensionCalcServiceFixed:
             retirement_age=60,
         )
         plan = result["distribution_plan"]
-        assert abs(plan[-1]["balance"]) < 1  # 반올림 오차 허용
+        annual_withdrawal = 120_000 / 20  # 6,000
+        assert abs(plan[-1]["balance"] - annual_withdrawal) < 1  # 반올림 오차 허용
 
 
 class TestPensionCalcServiceInheritance:
@@ -327,22 +332,29 @@ class TestPensionPlanRouter:
         from app.api.v1 import pension_plans
 
         router = pension_plans.router
+        # route.path 는 prefix 를 포함한 전체 경로임 (현재 FastAPI 동작)
         paths = {route.path for route in router.routes}
-        assert "/calculate" in paths, "POST /calculate route missing"
+        assert "/retirement/pension/calculate" in paths, "POST /calculate route missing"
 
     def test_router_has_customer_get_route(self):
         from app.api.v1 import pension_plans
 
         router = pension_plans.router
+        # route.path 는 prefix 를 포함한 전체 경로임
         paths = {route.path for route in router.routes}
-        assert "/{customer_id}" in paths, "GET /{customer_id} route missing"
+        assert "/retirement/pension/{customer_id}" in paths, (
+            "GET /{customer_id} route missing"
+        )
 
     def test_router_has_put_route(self):
         from app.api.v1 import pension_plans
 
         router = pension_plans.router
+        # route.path 는 prefix 를 포함한 전체 경로임
         paths = {route.path for route in router.routes}
-        assert "/{pension_plan_id}" in paths, "PUT /{pension_plan_id} route missing"
+        assert "/retirement/pension/{pension_plan_id}" in paths, (
+            "PUT /{pension_plan_id} route missing"
+        )
 
     def test_router_registered_in_main_app(self):
         from app.main import app

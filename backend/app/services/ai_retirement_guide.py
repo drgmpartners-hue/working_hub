@@ -30,8 +30,10 @@ logger = logging.getLogger(__name__)
 
 
 async def call_gemini_api(api_key: str, prompt: str) -> str:
-    """Gemini API를 비동기로 호출하여 텍스트 응답 반환."""
-    try:
+    """Gemini API 호출 (동기 SDK를 to_thread로 감싸 이벤트 루프 블로킹 방지)."""
+    import asyncio  # noqa: PLC0415
+
+    def _sync_call() -> str:
         from google import genai
         client = genai.Client(api_key=api_key)
         response = client.models.generate_content(
@@ -39,22 +41,34 @@ async def call_gemini_api(api_key: str, prompt: str) -> str:
             contents=prompt,
         )
         return response.text
+
+    try:
+        return await asyncio.to_thread(_sync_call)
     except Exception as e:
         logger.error("Gemini API error: %s", e)
         raise
 
 
 async def call_claude_api(api_key: str, prompt: str) -> str:
-    """Anthropic Claude API를 비동기로 호출하여 텍스트 응답 반환."""
-    try:
+    """Claude API 호출 (동기 SDK를 to_thread로 감싸 이벤트 루프 블로킹 방지).
+
+    max_tokens 4096: 한국어 9섹션 보고서가 1024에서 상시 잘려
+    JSON 파싱 실패 → 캐시 오염으로 이어지던 문제 방지.
+    """
+    import asyncio  # noqa: PLC0415
+
+    def _sync_call() -> str:
         import anthropic
-        client = anthropic.Anthropic(api_key=api_key)
+        client = anthropic.Anthropic(api_key=api_key, timeout=60.0)
         message = client.messages.create(
-            model="claude-opus-4-5",
-            max_tokens=1024,
+            model="claude-haiku-4-5",
+            max_tokens=4096,
             messages=[{"role": "user", "content": prompt}],
         )
         return message.content[0].text
+
+    try:
+        return await asyncio.to_thread(_sync_call)
     except Exception as e:
         logger.error("Claude API error: %s", e)
         raise

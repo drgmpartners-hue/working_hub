@@ -81,78 +81,107 @@ class TestDesiredPlanModelImport:
 # ---------------------------------------------------------------------------
 
 class TestCompoundCalcService:
-    """Verify compound calculation (복리 역산) service logic."""
+    """Verify compound calculation service logic.
+
+    리팩터링으로 구 API(calculate_target_total_fund/calculate_required_lump_sum,
+    단리식 연산)가 엑셀 PV/FV 기반(월복리·기초납) 신규 API로 교체됨.
+    현재 앱 계약(수식)에 맞춰 기대값을 재계산해 갱신했다.
+    """
 
     def test_import_service(self):
         from app.services.compound_calc import CompoundCalcService
         assert CompoundCalcService is not None
 
     def test_calculate_target_total_fund(self):
-        """목표 은퇴자금 = 월 희망 수령액 × 12 × 은퇴기간(년)."""
+        """목표 은퇴자금 = 은퇴기간 월수령액 연금의 현재가치 (월복리, 기초납 PV)."""
         from app.services.compound_calc import CompoundCalcService
 
-        # 월 200만 원, 20년 은퇴기간
-        result = CompoundCalcService.calculate_target_total_fund(
-            monthly_desired_amount=2_000_000,
+        # 월 200만 원, 연금수익률 5%, 20년 수령 (물가 미반영)
+        result = CompoundCalcService.calculate_target_fund(
+            future_monthly=2_000_000,
+            pension_return_rate=0.05,
+            inflation_rate=0.021,
             retirement_period_years=20,
+            with_inflation=False,
         )
-        assert result == 2_000_000 * 12 * 20  # 480,000,000
+        # 기대값: 엑셀 PV(r/12, n*12, pmt, type=1)와 동일한 기초납 연금 현가
+        r = 0.05 / 12
+        n = 20 * 12
+        pvif = (1 + r) ** n
+        expected = 2_000_000 * (pvif - 1) / r * (1 + r) / pvif
+        assert abs(result - expected) < 1  # within 1 won
 
     def test_calculate_required_lump_sum(self):
-        """필요 일시납 역산: PV = FV / (1+r)^n."""
+        """필요 거치금 역산: 적립 0원일 때 PV = FV / (1+r/12)^(n*12) (월복리 할인)."""
         from app.services.compound_calc import CompoundCalcService
 
-        # FV=480,000,000, r=7%, n=20 years
-        result = CompoundCalcService.calculate_required_lump_sum(
-            target_total_fund=480_000_000,
-            years_to_retirement=20,
-            annual_rate=0.07,
+        # FV=480,000,000, r=7%, 총 20년 (적립 20년 + 거치 0년, 연적립 0원)
+        result = CompoundCalcService.calculate_required_holding(
+            target_fund=480_000_000,
+            expected_return_rate=0.07,
+            savings_period=20,
+            holding_period=0,
+            annual_savings=0,
         )
-        # PV = 480_000_000 / (1.07^20) ≈ 124,294,XXX
-        expected = 480_000_000 / (1.07 ** 20)
+        # 구 버전은 연복리(1.07^20)였으나 현재는 월복리 할인
+        expected = 480_000_000 / ((1 + 0.07 / 12) ** (20 * 12))
         assert abs(result - expected) < 1  # within 1 won
 
     def test_calculate_required_annual_savings(self):
-        """필요 연간 적립액 역산: PMT from FV formula."""
+        """필요 연간 적립액 역산: 월납 PMT = FV * (r/12) / ((1+r/12)^(n*12) - 1), 연액 = ×12."""
         from app.services.compound_calc import CompoundCalcService
 
-        # FV=480,000,000, r=7%, n=20 years
-        # PMT = FV * r / ((1+r)^n - 1)
+        # FV=480,000,000, r=7%, 적립 20년, 거치 0년
         result = CompoundCalcService.calculate_required_annual_savings(
-            target_total_fund=480_000_000,
-            years_to_retirement=20,
-            annual_rate=0.07,
+            target_fund=480_000_000,
+            expected_return_rate=0.07,
+            savings_period=20,
+            holding_period=0,
         )
-        expected = 480_000_000 * 0.07 / ((1.07 ** 20) - 1)
+        # 구 버전은 연복리 PMT였으나 현재는 월복리 월납 PMT × 12
+        r = 0.07 / 12
+        pvif = (1 + r) ** (20 * 12)
+        expected = 480_000_000 * r / (pvif - 1) * 12
         assert abs(result - expected) < 1  # within 1 won
 
     def test_calculate_all_returns_dict(self):
         """calculate_all returns a dict with all computed fields."""
         from app.services.compound_calc import CompoundCalcService
 
+        # 시그니처 변경: retirement_age/current_age/savings_period/annual_savings 필수
         result = CompoundCalcService.calculate_all(
             monthly_desired_amount=2_000_000,
+            retirement_age=60,
+            current_age=40,
             retirement_period_years=20,
-            years_to_retirement=20,
-            annual_rate=0.07,
+            savings_period=10,
+            annual_savings=12_000_000,
         )
         assert isinstance(result, dict)
+        # 신규 키 + 하위 호환 키 모두 존재해야 함
+        assert "target_fund" in result
+        assert "required_holding" in result
+        assert "simulation_table" in result
         assert "target_total_fund" in result
         assert "required_lump_sum" in result
         assert "required_annual_savings" in result
         assert "calculation_params" in result
 
     def test_default_rate_is_7_percent(self):
-        """Default annual rate should be 7%."""
+        """Default expected_return_rate should be 7%."""
         from app.services.compound_calc import CompoundCalcService
 
         result = CompoundCalcService.calculate_all(
             monthly_desired_amount=1_000_000,
+            retirement_age=55,
+            current_age=45,
             retirement_period_years=10,
-            years_to_retirement=10,
+            savings_period=10,
+            annual_savings=0,
         )
         params = result["calculation_params"]
-        assert params["annual_rate"] == 0.07
+        # 파라미터 키가 annual_rate → expected_return_rate 로 변경됨
+        assert params["expected_return_rate"] == 0.07
 
     def test_calculation_params_stored(self):
         """calculation_params must record the inputs used."""
@@ -160,28 +189,34 @@ class TestCompoundCalcService:
 
         result = CompoundCalcService.calculate_all(
             monthly_desired_amount=3_000_000,
+            retirement_age=60,
+            current_age=45,
             retirement_period_years=25,
-            years_to_retirement=15,
-            annual_rate=0.05,
+            savings_period=10,
+            annual_savings=24_000_000,
+            expected_return_rate=0.05,
         )
         params = result["calculation_params"]
         assert params["monthly_desired_amount"] == 3_000_000
         assert params["retirement_period_years"] == 25
-        assert params["years_to_retirement"] == 15
-        assert params["annual_rate"] == 0.05
+        assert params["savings_period"] == 10
+        # annual_savings 는 자동 보정될 수 있으므로 원본은 original_annual_savings 에 저장됨
+        assert params["original_annual_savings"] == 24_000_000
+        assert params["expected_return_rate"] == 0.05
 
     def test_zero_years_to_retirement(self):
-        """years_to_retirement=0 means lump sum equals target fund."""
+        """현재 계약: 은퇴나이 <= 현재나이(투자기간 0)면 ValueError (라우터가 422로 변환)."""
         from app.services.compound_calc import CompoundCalcService
 
-        result = CompoundCalcService.calculate_all(
-            monthly_desired_amount=1_000_000,
-            retirement_period_years=10,
-            years_to_retirement=0,
-            annual_rate=0.07,
-        )
-        # PV when n=0 → FV itself
-        assert result["required_lump_sum"] == result["target_total_fund"]
+        with pytest.raises(ValueError):
+            CompoundCalcService.calculate_all(
+                monthly_desired_amount=1_000_000,
+                retirement_age=60,
+                current_age=60,
+                retirement_period_years=10,
+                savings_period=1,
+                annual_savings=0,
+            )
 
 
 # ---------------------------------------------------------------------------
@@ -207,16 +242,20 @@ class TestDesiredPlanSchemas:
         assert "retirement_period_years" in fields
 
     def test_upsert_schema_optional_fields(self):
-        """Only monthly_desired_amount and retirement_period_years are required."""
+        """현재 계약: 필수는 monthly_desired_amount/retirement_age/current_age/savings_period.
+
+        retirement_period_years 는 기본값 40인 선택 필드로 변경됨.
+        """
         from app.schemas.desired_plan import DesiredPlanUpsert
 
-        # Should succeed with just the two required fields
         schema = DesiredPlanUpsert(
             monthly_desired_amount=2_000_000,
-            retirement_period_years=20,
+            retirement_age=60,
+            current_age=40,
+            savings_period=10,
         )
         assert schema.monthly_desired_amount == 2_000_000
-        assert schema.retirement_period_years == 20
+        assert schema.retirement_period_years == 40  # 기본값
 
     def test_response_schema_has_computed_fields(self):
         from app.schemas.desired_plan import DesiredPlanResponse
@@ -246,10 +285,13 @@ class TestDesiredPlanSchemas:
         from app.schemas.desired_plan import DesiredPlanUpsert
         import pydantic
 
+        # 필수 필드를 채워서 monthly_desired_amount=-1 자체가 실패 원인이 되도록 함
         with pytest.raises((pydantic.ValidationError, ValueError)):
             DesiredPlanUpsert(
                 monthly_desired_amount=-1,
-                retirement_period_years=20,
+                retirement_age=60,
+                current_age=40,
+                savings_period=10,
             )
 
     def test_upsert_retirement_period_positive(self):
@@ -257,9 +299,13 @@ class TestDesiredPlanSchemas:
         from app.schemas.desired_plan import DesiredPlanUpsert
         import pydantic
 
+        # 필수 필드를 채워서 retirement_period_years=0 자체가 실패 원인이 되도록 함
         with pytest.raises((pydantic.ValidationError, ValueError)):
             DesiredPlanUpsert(
                 monthly_desired_amount=1_000_000,
+                retirement_age=60,
+                current_age=40,
+                savings_period=10,
                 retirement_period_years=0,
             )
 
@@ -287,8 +333,11 @@ class TestDesiredPlansRouter:
         from app.api.v1 import desired_plans
 
         router = desired_plans.router
+        # route.path 는 prefix 를 포함한 전체 경로임 (현재 FastAPI 동작)
         paths = {route.path for route in router.routes}
-        assert "/{customer_id}" in paths, "GET/PUT /{customer_id} route missing"
+        assert "/retirement/desired-plans/{customer_id}" in paths, (
+            "GET/PUT /{customer_id} route missing"
+        )
 
     def test_router_registered_in_main_app(self):
         from app.main import app
@@ -310,9 +359,10 @@ class TestDesiredPlansRouter:
         from app.api.v1 import desired_plans
 
         router = desired_plans.router
+        # route.path 는 prefix 포함 전체 경로
         get_routes = [
             r for r in router.routes
-            if r.path == "/{customer_id}" and "GET" in r.methods
+            if r.path == "/retirement/desired-plans/{customer_id}" and "GET" in r.methods
         ]
         assert len(get_routes) == 1, "GET /{customer_id} route missing"
 
@@ -320,8 +370,9 @@ class TestDesiredPlansRouter:
         from app.api.v1 import desired_plans
 
         router = desired_plans.router
+        # route.path 는 prefix 포함 전체 경로
         put_routes = [
             r for r in router.routes
-            if r.path == "/{customer_id}" and "PUT" in r.methods
+            if r.path == "/retirement/desired-plans/{customer_id}" and "PUT" in r.methods
         ]
         assert len(put_routes) == 1, "PUT /{customer_id} route missing"

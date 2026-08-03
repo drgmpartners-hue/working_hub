@@ -8,7 +8,7 @@ from __future__ import annotations
 import logging
 from typing import Any, Dict
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -20,6 +20,31 @@ from app.services import report_service
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/reports", tags=["reports"])
+
+
+async def _verify_client_owner(db: AsyncSession, client_id: str, user_id: str) -> None:
+    """client가 담당자(user) 소유인지 검증 (IDOR 방지). 아니면 404."""
+    from sqlalchemy import select
+    from app.models.client import Client
+
+    owner_res = await db.execute(
+        select(Client.id).where(
+            Client.id == client_id, Client.user_id == user_id
+        ).limit(1)
+    )
+    if not owner_res.scalars().first():
+        raise HTTPException(status_code=404, detail="Client not found")
+
+
+async def _get_claude_key(db: AsyncSession, user_id: str) -> str | None:
+    """보고서 AI 코멘트용 Claude API 키 조회 (미등록/오류 시 None → Gemini 폴백)."""
+    try:
+        from app.services.collectors.key_access import get_user_key
+
+        claude_key = await get_user_key(db, user_id, "claude")
+        return claude_key[0] if claude_key else None
+    except Exception:
+        return None
 
 
 @router.post("/portfolio", response_model=PortfolioReportResponse)
@@ -36,12 +61,19 @@ async def generate_portfolio_report(
 
     PDF generation is delegated to the frontend.
     """
+    # 소유권 검증: 요청한 client가 현재 담당자의 고객인지 확인 (IDOR 방지)
+    await _verify_client_owner(db, body.client_id, current_user.id)
+
+    # LLM 라우팅: 보고서 AI 코멘트는 Claude Haiku 4.5 사용 (키 미등록 시 Gemini 폴백)
+    claude_api_key = await _get_claude_key(db, current_user.id)
+
     data = await report_service.generate_portfolio_report(
         db=db,
         client_id=body.client_id,
         account_ids=body.account_ids,
         snapshot_date=body.snapshot_date,
         period=body.period,
+        claude_api_key=claude_api_key,
     )
     return data
 

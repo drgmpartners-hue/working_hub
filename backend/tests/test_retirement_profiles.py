@@ -42,7 +42,9 @@ class TestRetirementProfileModelImport:
         customer_id_col = table.columns["customer_id"]
         assert customer_id_col.unique, "customer_id must have a UNIQUE constraint"
 
-    def test_customer_id_fk_to_users(self):
+    def test_customer_id_fk_to_clients(self):
+        # 리팩터링으로 FK 대상이 users → clients 로 변경됨
+        # (users.id 를 가리키면 고객 저장이 실패하던 문제를 고친 의도된 변경)
         from app.db.base import Base
         import app.models  # noqa: F401
 
@@ -52,7 +54,7 @@ class TestRetirementProfileModelImport:
             for col in table.columns
             for fk in col.foreign_keys
         }
-        assert "users" in fk_targets, "customer_id must FK to users table"
+        assert "clients" in fk_targets, "customer_id must FK to clients table"
 
     def test_package_exports_model(self):
         import app.models as models
@@ -150,11 +152,14 @@ class TestRetirementProfileRouter:
         from app.api.v1 import retirement_profiles
 
         router = retirement_profiles.router
+        # route.path 는 prefix 를 포함한 전체 경로임 (현재 FastAPI 동작)
         paths = {route.path for route in router.routes}
-        # GET list (prefix already contains /retirement/profiles, so route path is "")
-        assert "" in paths or "/" in paths, "GET list route missing"
+        # GET list
+        assert "/retirement/profiles" in paths, "GET list route missing"
         # GET by customer_id
-        assert "/{customer_id}" in paths, "GET /{customer_id} route missing"
+        assert "/retirement/profiles/{customer_id}" in paths, (
+            "GET /{customer_id} route missing"
+        )
 
     def test_router_registered_in_main_app(self):
         from app.main import app
@@ -197,10 +202,12 @@ class TestRetirementProfileCRUD:
         )
 
         # Simulate what the DB response would look like
+        # Create 스키마에 customer_id(기본 None) 필드가 추가되어
+        # model_dump() 가 customer_id 를 None 으로 덮어쓰지 않도록 제외한다
         response_data = {
             "id": "abc123",
             "customer_id": "user-uuid-1234",
-            **create_data.model_dump(),
+            **create_data.model_dump(exclude={"customer_id"}),
             "created_at": datetime.now(),
             "updated_at": datetime.now(),
         }

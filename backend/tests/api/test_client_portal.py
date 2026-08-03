@@ -31,6 +31,15 @@ def make_test_app(mock_db: AsyncSession, mock_user: User = None) -> FastAPI:
     return app
 
 
+def _empty_exec_result() -> MagicMock:
+    """db.execute 결과 mock: 빈 목록/None을 돌려주는 안전한 기본값."""
+    r = MagicMock()
+    r.scalars.return_value.all.return_value = []
+    r.scalars.return_value.first.return_value = None
+    r.scalar_one_or_none.return_value = None
+    return r
+
+
 def make_mock_user() -> User:
     user = MagicMock(spec=User)
     user.id = "test-user-id"
@@ -272,6 +281,7 @@ class TestGetSnapshots:
     def test_returns_account_snapshots(self):
         """Valid portal JWT should return snapshot dates."""
         mock_db = MagicMock(spec=AsyncSession)
+        mock_db.execute = AsyncMock(return_value=_empty_exec_result())
         jwt_token = self._make_portal_jwt()
 
         with patch.object(
@@ -313,6 +323,7 @@ class TestGetSuggestion:
     def test_returns_active_suggestion(self):
         """Should return suggestion with expired=False for future expires_at."""
         mock_db = MagicMock(spec=AsyncSession)
+        mock_db.execute = AsyncMock(return_value=_empty_exec_result())
         jwt_token = self._make_portal_jwt()
         suggestion = make_mock_suggestion(expires_at=datetime.utcnow() + timedelta(days=5))
 
@@ -329,12 +340,13 @@ class TestGetSuggestion:
                 )
             assert resp.status_code == 200
             data = resp.json()
-            assert data["expired"] is False
+            assert data["is_expired"] is False
             assert data["id"] == "suggest-uuid-001"
 
     def test_returns_expired_flag_for_old_suggestion(self):
         """Should return expired=True for past expires_at."""
         mock_db = MagicMock(spec=AsyncSession)
+        mock_db.execute = AsyncMock(return_value=_empty_exec_result())
         jwt_token = self._make_portal_jwt()
         suggestion = make_mock_suggestion(expires_at=datetime.utcnow() - timedelta(days=1))
 
@@ -351,7 +363,7 @@ class TestGetSuggestion:
                 )
             assert resp.status_code == 200
             data = resp.json()
-            assert data["expired"] is True
+            assert data["is_expired"] is True
 
     def test_returns_404_for_missing_suggestion(self):
         """Should return 404 when suggestion not found."""
@@ -377,11 +389,15 @@ class TestGetSuggestion:
 # ---------------------------------------------------------------------------
 
 class TestCallReservation:
-    """Tests for call reservation endpoint."""
+    """Tests for call reservation endpoint (P0-10: 포털 JWT 인증 필수)."""
+
+    def _make_portal_jwt(self, client_id: str = "client-uuid-001") -> str:
+        return client_portal_service.create_portal_jwt(client_id, "test-token")
 
     def test_creates_reservation_successfully(self):
         """Should create and return a reservation."""
         mock_db = MagicMock(spec=AsyncSession)
+        jwt_token = self._make_portal_jwt()
         suggestion = make_mock_suggestion()
         reservation = make_mock_reservation()
 
@@ -398,6 +414,7 @@ class TestCallReservation:
             with TestClient(app) as tc:
                 resp = tc.post(
                     "/api/v1/client-portal/suggestion/suggest-uuid-001/call-reserve",
+                    headers={"Authorization": f"Bearer {jwt_token}"},
                     json={
                         "preferred_date": "2026-03-20",
                         "preferred_time": "10:00",
@@ -412,6 +429,7 @@ class TestCallReservation:
     def test_returns_404_for_invalid_suggestion(self):
         """Should return 404 when suggestion doesn't exist."""
         mock_db = MagicMock(spec=AsyncSession)
+        jwt_token = self._make_portal_jwt()
 
         with patch.object(
             client_portal_service,
@@ -422,6 +440,19 @@ class TestCallReservation:
             with TestClient(app) as tc:
                 resp = tc.post(
                     "/api/v1/client-portal/suggestion/nonexistent/call-reserve",
+                    headers={"Authorization": f"Bearer {jwt_token}"},
                     json={"preferred_date": "2026-03-20", "preferred_time": "10:00"},
                 )
             assert resp.status_code == 404
+
+    def test_returns_401_without_portal_token(self):
+        """P0-10: 포털 JWT 없이 예약 시도하면 401."""
+        mock_db = MagicMock(spec=AsyncSession)
+
+        app = make_test_app(mock_db)
+        with TestClient(app) as tc:
+            resp = tc.post(
+                "/api/v1/client-portal/suggestion/suggest-uuid-001/call-reserve",
+                json={"preferred_date": "2026-03-20", "preferred_time": "10:00"},
+            )
+        assert resp.status_code == 401

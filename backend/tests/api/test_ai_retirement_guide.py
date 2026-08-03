@@ -195,10 +195,12 @@ class TestAIRetirementGuideServiceAI:
 
         with patch.object(svc, "_call_ai_api", new_callable=AsyncMock) as mock_ai:
             mock_ai.return_value = "AI 분석 결과입니다."
+            # P1-16 리팩터링 후 get_ai_explanation은 db가 None이면 AI 호출 전에
+            # 조기 반환(None)하므로, mock된 _call_ai_api에 도달하도록 더미 db를 전달한다.
             result = await svc.get_ai_explanation(
                 deviation_rate=-15.5,
                 adjustments=adjustments,
-                db=None,
+                db=MagicMock(),
             )
 
         assert result == "AI 분석 결과입니다."

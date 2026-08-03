@@ -44,6 +44,7 @@ def _make_user(email: str = _EMAIL, nickname: str = _NICKNAME, is_active: bool =
     user.nickname = nickname
     user.hashed_password = _HASHED_PW
     user.profile_image = None
+    user.phone = None  # UserResponse에 phone 필드 추가됨 (MagicMock 자식 방지)
     user.is_active = is_active
     user.created_at = datetime(2024, 1, 1, 0, 0, 0)
     user.updated_at = datetime(2024, 1, 1, 0, 0, 0)

@@ -5,15 +5,10 @@ from sqlalchemy.ext.asyncio import async_engine_from_config
 from alembic import context
 from app.db.base import Base
 from app.core.config import settings
-# Import all models so Base.metadata is populated
-from app.models import (  # noqa: F401
-    User, CommissionCalculation, CommissionResult, CrawlingJob,
-    PortfolioAnalysis, PortfolioItem, StockTheme, StockRecommendation,
-    RecommendedStock, CompanyStockPool, ContentProject, ContentVersion,
-    BrandSetting, AIAPISetting, FileUpload,
-)
-from app.models.client import Client, ClientAccount  # noqa: F401
-from app.models.snapshot import PortfolioSnapshot, PortfolioHolding  # noqa: F401
+# Import the whole models package so Base.metadata is fully populated.
+# (일부만 import하면 autogenerate가 나머지 테이블 변경을 감지 못해
+#  스키마 드리프트의 근본 원인이 된다 — investment_records 컬럼 누락 사건)
+import app.models  # noqa: F401
 
 config = context.config
 config.set_main_option("sqlalchemy.url", settings.ASYNC_DATABASE_URL)

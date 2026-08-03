@@ -269,11 +269,18 @@ class TestApplyMaster:
         assert "미등록상품A" in data["not_found"]
 
     def test_returns_404_when_snapshot_not_found(self):
-        """Returns 404 when the snapshot does not exist."""
+        """Returns 404 when the snapshot does not exist.
+
+        존재/소유권 검증은 _verify_snapshot_owner 헬퍼로 통합됨(P1-11) —
+        미존재 시 헬퍼가 404를 던지는 계약을 검증한다.
+        """
+        from fastapi import HTTPException
+
         with patch(
-            "app.api.v1.snapshots.snapshot_service.get_snapshot_with_holdings",
-            new_callable=AsyncMock,
-            return_value=None,
+            "app.api.v1.snapshots._verify_snapshot_owner",
+            new=AsyncMock(
+                side_effect=HTTPException(status_code=404, detail="Snapshot not found")
+            ),
         ):
             client = TestClient(_make_app())
             response = client.post(

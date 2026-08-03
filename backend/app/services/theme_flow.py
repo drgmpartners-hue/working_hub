@@ -354,7 +354,10 @@ async def build_report(db: AsyncSession, user_id: str, theme: StockTheme, period
         "data_source": "live" if (index_chart or investors["sample"]) else ("partial" if sections else "mock"),
     }
 
-    # 캐시 저장(있으면 갱신)
+    # 캐시 저장(있으면 갱신) — 실데이터(live)일 때만.
+    # 장애 시각에 걸린 빈 payload가 캐시로 굳어 종일 빈 보고서가 고정되던 문제 방지.
+    if payload["data_source"] != "live":
+        return payload
     try:
         existing = (await db.execute(
             select(ThemeReportCache).where(

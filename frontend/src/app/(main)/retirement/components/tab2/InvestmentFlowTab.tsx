@@ -633,19 +633,22 @@ export function InvestmentFlowTab() {
     }
   }, [selectedCustomerId, showHidden]);
 
-  /* ---- API: 예수금 거래내역 ---- */
-  const fetchTransactions = useCallback(async (accountId: number) => {
+  /* ---- API: 예수금 거래내역 (state 갱신 + 데이터 반환 — PDF 등 즉시 사용처를 위해) ---- */
+  const fetchTransactions = useCallback(async (accountId: number): Promise<DepositTransaction[]> => {
     setTransactionsLoading((prev) => ({ ...prev, [accountId]: true }));
     try {
       const res = await fetch(
         `${API_URL}/api/v1/retirement/deposit-accounts/${accountId}/transactions`,
         { headers: authLib.getAuthHeader() }
       );
-      if (!res.ok) { setAccountTransactions((prev) => ({ ...prev, [accountId]: [] })); return; }
+      if (!res.ok) { setAccountTransactions((prev) => ({ ...prev, [accountId]: [] })); return []; }
       const data = await res.json();
-      setAccountTransactions((prev) => ({ ...prev, [accountId]: Array.isArray(data) ? data : [] }));
+      const list: DepositTransaction[] = Array.isArray(data) ? data : [];
+      setAccountTransactions((prev) => ({ ...prev, [accountId]: list }));
+      return list;
     } catch {
       setAccountTransactions((prev) => ({ ...prev, [accountId]: [] }));
+      return [];
     } finally {
       setTransactionsLoading((prev) => ({ ...prev, [accountId]: false }));
     }
@@ -1162,14 +1165,17 @@ export function InvestmentFlowTab() {
         return;
       }
       // 기존 투자기록: 상품명|가입일 → id
+      // 중복키 생성 규칙을 한 함수로 통일 (양쪽 키가 어긋나면 동기화마다 중복 추가됨)
+      const dupKey = (name: unknown, d: unknown) =>
+        `${String(name ?? '').trim()}|${String(d ?? '').slice(0, 10)}`;
       const existMap = new Map<string, number>();
-      records.forEach(r => existMap.set(`${getProductName(r).trim()}|${(r.join_date || r.start_date || '').slice(0, 10)}`, r.id));
+      records.forEach(r => existMap.set(dupKey(getProductName(r), r.join_date || r.start_date), r.id));
 
       let added = 0, updated = 0, skipped = 0;
       for (const row of matched) {
         const body = notionRowToRecordBody(row, saved.mapping, selectedCustomerId);
         if (!body) { skipped++; continue; }
-        const key = `${(body.product_name as string) ?? ''}|${(body.join_date as string) ?? ''}`;
+        const key = dupKey(body.product_name, body.join_date || body.start_date);
         const existingId = existMap.get(key);
         try {
           if (existingId != null) {
@@ -1286,11 +1292,13 @@ export function InvestmentFlowTab() {
     setShowNetAssetChart(true);
     setShowLifetimeFlow(true);
 
-    // 예수금 거래내역 로드
+    // 예수금 거래내역 로드 — setState는 클로저에 반영되지 않으므로(stale closure로
+    // 첫 PDF가 항상 빈 데이터였음) 반환값을 로컬 맵에 직접 수집한다.
     const allAccIds = new Set(depositAccounts.map(a => a.id));
     setExpandedAccountIds(allAccIds);
+    const txByAccount: Record<number, DepositTransaction[]> = { ...accountTransactions };
     for (const a of depositAccounts) {
-      if (!accountTransactions[a.id]) await fetchTransactions(a.id);
+      if (!txByAccount[a.id]) txByAccount[a.id] = await fetchTransactions(a.id);
     }
 
     // 차트 렌더링 대기
@@ -1307,7 +1315,7 @@ export function InvestmentFlowTab() {
       // 예수금 거래 데이터 조립 (발생일 기준 정렬)
       const allTxs: DepositTxType[] = [];
       const firstAcc = depositAccounts[0];
-      const txList = firstAcc ? [...(accountTransactions[firstAcc.id] || [])].sort((a: any, b: any) =>
+      const txList = firstAcc ? [...(txByAccount[firstAcc.id] || [])].sort((a: any, b: any) =>
         (a.transaction_date || '').localeCompare(b.transaction_date || '')
       ) : [];
       txList.forEach((tx: any, idx: number) => {

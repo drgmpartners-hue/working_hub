@@ -187,8 +187,21 @@ export default function DrGmPage() {
         headers: authLib.getAuthHeader(),
       });
       if (!resp.ok) return;
-      const data: CommissionResult[] = await resp.json();
-      setResults(data);
+      // 백엔드는 {items, total} 봉투로 반환 — items를 꺼내고 detail_data를 평탄화
+      // (기존엔 봉투를 배열로 오인해 results.reduce에서 크래시)
+      const data = await resp.json();
+      const rows = (Array.isArray(data) ? data : data.items ?? []).map(
+        (r: Record<string, unknown>) => {
+          const detail = (r.detail_data ?? {}) as Record<string, unknown>;
+          return {
+            ...detail,
+            ...r,
+            total_amount: Number(detail.commission_amount ?? r.total_amount ?? 0),
+            base_amount: Number(detail.base_salary ?? detail.sales_amount ?? r.base_amount ?? 0),
+          } as unknown as CommissionResult;
+        }
+      );
+      setResults(rows);
     } catch {
       // ignore
     }
@@ -259,23 +272,30 @@ export default function DrGmPage() {
   }, [uploadResult]);
 
   const handleDownloadAll = async () => {
-    if (!calcJob) return;
-    try {
-      const resp = await fetch(
-        `${API_URL}/api/v1/commissions/${calcJob.id}/results/download`,
-        { headers: authLib.getAuthHeader() }
-      );
-      if (!resp.ok) throw new Error('다운로드 실패');
-      const blob = await resp.blob();
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `dr_gm_commission_${calcJob.id}.zip`;
-      a.click();
-      URL.revokeObjectURL(url);
-    } catch {
-      alert('다운로드에 실패했습니다.');
+    if (!calcJob || results.length === 0) return;
+    // 백엔드에 전체 묶음 라우트가 없으므로 결과별 PDF를 순차 다운로드
+    // (기존 /results/download 호출은 라우트 부재로 항상 404였음)
+    let ok = 0, fail = 0;
+    for (const r of results) {
+      try {
+        const resp = await fetch(
+          `${API_URL}/api/v1/commissions/${calcJob.id}/results/${r.id}/download`,
+          { headers: authLib.getAuthHeader() }
+        );
+        if (!resp.ok) { fail++; continue; }
+        const blob = await resp.blob();
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `dr_gm_${r.employee_name || r.id}.pdf`;
+        a.click();
+        URL.revokeObjectURL(url);
+        ok++;
+      } catch {
+        fail++;
+      }
     }
+    if (fail > 0) alert(`${ok}건 다운로드, ${fail}건 실패`);
   };
 
   const tabs = [

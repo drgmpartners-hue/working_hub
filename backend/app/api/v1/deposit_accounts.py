@@ -41,7 +41,17 @@ router = APIRouter(prefix="/retirement/deposit-accounts", tags=["deposit-account
 
 
 async def recalculate_balances(account_id: int, db: AsyncSession) -> None:
-    """해당 계좌의 모든 거래를 날짜순으로 정렬하여 잔액 재계산."""
+    """해당 계좌의 모든 거래를 날짜순으로 정렬하여 잔액 재계산.
+
+    계좌 행을 FOR UPDATE로 잠가 동시 재계산 경합을 직렬화한다.
+    (무잠금이면 두 요청이 서로의 미커밋 거래를 못 보고 잔액을 덮어써
+     조용히 틀어진 숫자가 영구화되는 문제가 있었음)
+    """
+    await db.execute(
+        select(DepositAccount.id)
+        .where(DepositAccount.id == account_id)
+        .with_for_update()
+    )
     result = await db.execute(
         select(DepositTransaction)
         .where(DepositTransaction.deposit_account_id == account_id)

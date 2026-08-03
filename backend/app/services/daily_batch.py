@@ -148,10 +148,16 @@ async def score_all_themes(db: AsyncSession, user_id: str) -> dict:
             theme.score_detail = agg
             scored += 1
         else:
-            # 미계산(배치 범위 밖) → placeholder 점수 제거해 목록 하위로 (실데이터 테마가 위로)
-            theme.ai_score = None
-            theme.phase = None
-            theme.score_detail = None
+            # 미계산: 기존에 실데이터 점수(axes)가 있으면 보존 + stale 마킹.
+            # (일시적 KIS 장애로 축적된 5축 점수가 None으로 파괴되던 문제 방지)
+            old = theme.score_detail
+            if isinstance(old, dict) and old.get("axes"):
+                theme.score_detail = {**old, "stale": True}
+            else:
+                # placeholder만 제거해 목록 하위로 (실데이터 테마가 위로)
+                theme.ai_score = None
+                theme.phase = None
+                theme.score_detail = None
     await db.commit()
     return {"scored_themes": scored, "total_themes": len(themes)}
 
