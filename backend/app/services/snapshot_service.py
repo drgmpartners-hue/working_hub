@@ -60,6 +60,8 @@ async def create_snapshot(
         for holding in extracted.get("holdings", []):
             pname = holding.get("product_name", "")
             for old_kw, new_kw in name_changes:
+                if not old_kw:
+                    continue  # 빈 키워드는 replace("")가 상품명을 파괴하므로 방어
                 if old_kw in pname:
                     pname = pname.replace(old_kw, new_kw)
             holding["product_name"] = pname

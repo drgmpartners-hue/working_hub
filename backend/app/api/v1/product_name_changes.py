@@ -50,6 +50,9 @@ async def create_change(
     current_user=Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
+    # 빈 old_keyword가 저장되면 replace("")가 모든 상품명을 파괴하므로 반드시 차단
+    if not body.old_keyword.strip():
+        raise HTTPException(400, "변경 전 키워드(old_keyword)는 비워둘 수 없습니다.")
     rec = ProductNameChange(
         id=str(uuid.uuid4()),
         old_keyword=body.old_keyword.strip(),
@@ -73,6 +76,8 @@ async def update_change(
     if not rec:
         raise HTTPException(404, "Not found")
     if body.old_keyword is not None:
+        if not body.old_keyword.strip():
+            raise HTTPException(400, "변경 전 키워드(old_keyword)는 비워둘 수 없습니다.")
         rec.old_keyword = body.old_keyword.strip()
     if body.new_keyword is not None:
         rec.new_keyword = body.new_keyword.strip()

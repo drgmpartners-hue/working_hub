@@ -672,6 +672,15 @@ export function InvestmentFlowTab() {
   useEffect(() => { fetchWrapAccounts(); }, [fetchWrapAccounts]);
   useEffect(() => { fetchDepositAccounts(); }, [fetchDepositAccounts]);
 
+  // 고객 전환 시 이전 고객 상태 잔존 방지 (거래·펼침·적용연도·플랜·선택 초기화)
+  useEffect(() => {
+    setAccountTransactions({});
+    setExpandedAccountIds(new Set());
+    setAppliedYears({});
+    setDesiredPlanData(null);
+    setSelectedRecordIds(new Set());
+  }, [selectedCustomerId]);
+
   // 1번탭 데이터 로드 (100세 은퇴플로우용) + applied_years 복원
   useEffect(() => {
     if (!selectedCustomerId) return;
@@ -1225,7 +1234,9 @@ export function InvestmentFlowTab() {
       const matched = rows.filter(r =>
         notionNormName(r.properties[custCol]) === target &&
         (r.properties[catCol] ?? '').trim() === NOTION_IR_TARGET_CATEGORY);
-      const existTx = txRes.ok ? await txRes.json() : [];
+      // 기존 거래 조회가 실패하면 "0건"으로 오인해 전부 신규 추가(대량 중복)되므로 반드시 중단
+      if (!txRes.ok) throw new Error('기존 거래 조회에 실패해 동기화를 중단했습니다. 잠시 후 다시 시도해주세요.');
+      const existTx = await txRes.json();
       const existKeys = new Set<string>((Array.isArray(existTx) ? existTx : []).map(depositTxKey));
 
       let added = 0, skipped = 0, fail = 0;

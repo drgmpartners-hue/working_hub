@@ -18,7 +18,7 @@ async function fetchWithAuth(url: string, options: RequestInit = {}) {
   });
 
   if (response.status === 401) {
-    authLib.removeToken();
+    authLib.clearAllAuth();   // access_token + auth-storage 모두 정리 (저장소 이원화 잔존 방지)
     if (typeof window !== 'undefined') {
       window.location.href = '/login';
     }

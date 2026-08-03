@@ -545,7 +545,7 @@ async def screen_stocks(
     from app.models.stock_metrics import StockDailyMetric
     from sqlalchemy import select, func as safunc
 
-    latest = (await db.execute(safunc.max(StockDailyMetric.trade_date))).scalar()
+    latest = (await db.execute(select(safunc.max(StockDailyMetric.trade_date)))).scalar()
     if latest is None:
         return stock_advanced_service.get_screening(pbr_max=pbr_max, ma_alignment=ma_alignment, score_min=score_min)
 

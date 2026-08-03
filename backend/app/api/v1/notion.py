@@ -28,7 +28,7 @@ async def _notion_request(method: str, url: str, token: str, json: dict | None =
     res: httpx.Response | None = None
     for attempt in range(MAX_RETRIES):
         try:
-            async with httpx.AsyncClient(timeout=20) as client:
+            async with httpx.AsyncClient(timeout=15) as client:
                 if method == "GET":
                     res = await client.get(url, headers=_headers(token))
                 else:
@@ -224,9 +224,19 @@ async def query_database(
     all_results = []
     start_cursor = None
 
-    # 페이지네이션 처리 with 재시도
+    # 페이지네이션: page_size 명시 + 총 시간 예산 + 페이지 상한 + 커서 무한루프 방어
+    # (무제한 직렬 페이지네이션이 게이트웨이 타임아웃 → 프런트 'Failed to fetch'의 원인이었음)
+    import time
+    BUDGET_SECONDS = 25
+    MAX_PAGES = 30          # 30 × 100행 = 최대 3,000행
+    started = time.monotonic()
+    pages = 0
     while True:
-        body: dict = {}
+        if time.monotonic() - started > BUDGET_SECONDS:
+            raise HTTPException(504, "Notion 데이터 조회가 너무 오래 걸립니다. 데이터 양을 줄이거나 잠시 후 다시 시도해주세요.")
+        if pages >= MAX_PAGES:
+            break  # 상한 도달 — 수집된 범위까지 반환
+        body: dict = {"page_size": 100}
         if start_cursor:
             body["start_cursor"] = start_cursor
         res = await _notion_request("POST", f"{NOTION_BASE}/databases/{database_id}/query", token, body)
@@ -234,9 +244,13 @@ async def query_database(
             _handle_error(res)
         data = res.json()
         all_results.extend(data.get("results", []))
+        pages += 1
         if not data.get("has_more"):
             break
-        start_cursor = data.get("next_cursor")
+        next_cursor = data.get("next_cursor")
+        if not next_cursor or next_cursor == start_cursor:
+            break  # 커서가 없거나 제자리 → 무한루프 방지
+        start_cursor = next_cursor
 
     rows = []
     for page in all_results:

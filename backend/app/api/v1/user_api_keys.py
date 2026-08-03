@@ -211,8 +211,15 @@ async def test_saved_api_key(
     if not key:
         raise HTTPException(404, f"'{provider}' API 키가 저장되어 있지 않습니다.")
 
-    api_key = _decrypt(key.api_key)
-    api_secret = _decrypt(key.api_secret) if key.api_secret else ""
+    try:
+        api_key = _decrypt(key.api_key)
+        api_secret = _decrypt(key.api_secret) if key.api_secret else ""
+    except Exception:
+        # SECRET_KEY 변경 등으로 저장 키 복호화 불가 (InvalidToken은 str()이 빈 문자열 → 500 원인이었음)
+        raise HTTPException(
+            400,
+            f"저장된 '{provider}' 키를 복호화할 수 없습니다(서버 암호화 키 불일치). 키를 다시 등록해주세요.",
+        )
 
     try:
         if provider == "claude":

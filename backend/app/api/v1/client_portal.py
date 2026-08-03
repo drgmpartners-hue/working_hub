@@ -173,6 +173,17 @@ async def get_suggestion(
     if not suggestion:
         raise HTTPException(status_code=404, detail="Suggestion not found")
 
+    # 소유권 검증: 이 제안이 현재 포털 고객의 계좌에 속하는지 확인 (IDOR 방지)
+    from app.models.client import ClientAccount
+    owner_res = await db.execute(
+        select(ClientAccount).where(
+            ClientAccount.id == suggestion.account_id,
+            ClientAccount.client_id == client_id,
+        )
+    )
+    if not owner_res.scalar_one_or_none():
+        raise HTTPException(status_code=404, detail="Suggestion not found")
+
     expired = datetime.utcnow() > suggestion.expires_at
 
     # Load holdings from the snapshot to get product names + current weights
@@ -414,11 +425,23 @@ async def get_recommended_portfolio_for_portal(
 async def create_call_reservation(
     suggest_id: str,
     body: CallReserveRequest,
+    client_id: str = Depends(get_portal_client_id),   # 무인증 공개였음 → 포털 JWT 필수 (스팸·SMS 폭탄·ID 오라클 차단)
     db: AsyncSession = Depends(get_db),
 ):
     """Create a call reservation for a given suggestion."""
     suggestion = await client_portal_service.get_suggestion(db, suggest_id)
     if not suggestion:
+        raise HTTPException(status_code=404, detail="Suggestion not found")
+
+    # 소유권 검증: 자기 계좌의 제안에만 예약 가능
+    from app.models.client import ClientAccount
+    owner_res = await db.execute(
+        select(ClientAccount).where(
+            ClientAccount.id == suggestion.account_id,
+            ClientAccount.client_id == client_id,
+        )
+    )
+    if not owner_res.scalar_one_or_none():
         raise HTTPException(status_code=404, detail="Suggestion not found")
 
     reservation = await client_portal_service.create_call_reservation(

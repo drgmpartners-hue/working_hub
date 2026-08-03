@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import { CallReservationForm } from './CallReservationForm';
 import { API_URL } from '@/lib/api-url';
+import { sanitizeHtml } from '@/lib/sanitize';
 
 interface SuggestionHolding {
   holding_id: string;
@@ -103,7 +104,7 @@ function AiCommentBlock({ text, title, bgColor, borderColor, titleColor }: {
       </div>
       <div style={{ padding: '14px 16px' }}>
         {isHtml ? (
-          <div style={{ fontSize: 14, color: '#1E1B4B', lineHeight: 1.8 }} dangerouslySetInnerHTML={{ __html: text }} />
+          <div style={{ fontSize: 14, color: '#1E1B4B', lineHeight: 1.8 }} dangerouslySetInnerHTML={{ __html: sanitizeHtml(text) }} />
         ) : (
           <div style={{ fontSize: 14, color: '#1E1B4B', lineHeight: 1.8, whiteSpace: 'pre-wrap' }}>{text}</div>
         )}

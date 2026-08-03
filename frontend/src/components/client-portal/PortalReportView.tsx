@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import dynamic from 'next/dynamic';
 import type { DistributionItem, HistoryPoint, PeriodKey } from '@/components/portfolio/PortfolioCharts';
 import { API_URL } from '@/lib/api-url';
+import { sanitizeHtml } from '@/lib/sanitize';
 
 const PortfolioCharts = dynamic(
   () => import('@/components/portfolio/PortfolioCharts').then((m) => m.PortfolioCharts),
@@ -339,7 +340,7 @@ export function PortalReportView({ token, portalJwt, snapshots, onAccountChange,
                 <p style={{ fontSize: 14, fontWeight: 700, color: '#92400E' }}>AI 분석 코멘트</p>
               </div>
               {/<[a-z][\s\S]*>/i.test(report.ai_comment!) ? (
-                <div style={{ fontSize: 14, color: '#78350F', lineHeight: 1.7 }} dangerouslySetInnerHTML={{ __html: report.ai_comment! }} />
+                <div style={{ fontSize: 14, color: '#78350F', lineHeight: 1.7 }} dangerouslySetInnerHTML={{ __html: sanitizeHtml(report.ai_comment!) }} />
               ) : (
                 <p style={{ fontSize: 14, color: '#78350F', lineHeight: 1.7, margin: 0, whiteSpace: 'pre-wrap' }}>{report.ai_comment}</p>
               )}

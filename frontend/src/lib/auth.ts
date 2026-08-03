@@ -30,6 +30,16 @@ export const authLib = {
   },
 
   /**
+   * 토큰 저장소 전체 정리 — access_token + zustand persist(auth-storage).
+   * 두 저장소가 어긋나 "화면은 뜨는데 API만 401"인 상태를 방지한다.
+   */
+  clearAllAuth(): void {
+    if (typeof window === 'undefined') return;
+    localStorage.removeItem(TOKEN_KEY);
+    localStorage.removeItem('auth-storage');
+  },
+
+  /**
    * Check if user is authenticated.
    */
   isAuthenticated(): boolean {

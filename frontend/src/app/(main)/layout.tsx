@@ -10,6 +10,7 @@
 
 import { usePathname } from 'next/navigation';
 import { ProtectedRoute } from '@/components/ProtectedRoute';
+import { AuthFetchGuard } from '@/components/AuthFetchGuard';
 import { TopNav } from '@/components/common/TopNav';
 
 interface MainLayoutProps {
@@ -35,6 +36,7 @@ export default function MainLayout({ children }: MainLayoutProps) {
 
   return (
     <ProtectedRoute>
+      <AuthFetchGuard />
       <div style={{ minHeight: '100vh', backgroundColor: '#0B1220' }}>
         {/* Sticky top nav */}
         <TopNav />
