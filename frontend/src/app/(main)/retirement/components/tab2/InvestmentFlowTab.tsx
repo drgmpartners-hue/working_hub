@@ -3644,7 +3644,11 @@ function MapSelect({ value, onChange, options, placeholder = '--', highlight = f
       if (menuRef.current?.contains(t)) return;
       setOpen(false);
     };
-    const onScroll = () => setOpen(false);
+    // 메뉴 내부 스크롤(옵션 목록 스크롤바)은 닫지 않음 — 바깥 페이지 스크롤만 닫음
+    const onScroll = (e: Event) => {
+      if (menuRef.current && e.target instanceof Node && menuRef.current.contains(e.target)) return;
+      setOpen(false);
+    };
     document.addEventListener('mousedown', onDown, true);
     window.addEventListener('scroll', onScroll, true);
     window.addEventListener('resize', onScroll);
@@ -4402,17 +4406,50 @@ function NotionImportDepositTxModal({ customerId, customerName, accounts, onClos
   }
 
   async function bulkImport() {
-    if (targetAccountId === '') { alert('대상 예수금 계좌를 선택하세요.'); return; }
     if (selectedRows.size === 0) return;
     setBulkLoading(true);
-    let success = 0, fail = 0, skipped = 0;
     const items = displayRows.filter(r => selectedRows.has(r.id));
+
+    // 대상 계좌 미선택 시 자동 생성 — 체크만 하고 추가해도 동작하도록 (Notion '증권사' 컬럼 값으로 이름 유추)
+    let acctId: number | '' = targetAccountId;
+    let autoCreatedCompany: string | null = null;
+    if (acctId === '') {
+      const secCol = cols.find(c => c.includes('증권사'));
+      const counts = new Map<string, number>();
+      if (secCol) {
+        for (const r of items) {
+          const v = (r.properties[secCol] ?? '').trim();
+          if (v) counts.set(v, (counts.get(v) ?? 0) + 1);
+        }
+      }
+      const company = [...counts.entries()].sort((a, b) => b[1] - a[1])[0]?.[0] || '증권사 미지정';
+      try {
+        const res = await fetch(`${API_URL}/api/v1/retirement/deposit-accounts`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', ...authLib.getAuthHeader() },
+          body: JSON.stringify({ customer_id: customerId, securities_company: company, account_number: null, nickname: `${customerName} 예수금`.trim() }),
+        });
+        if (!res.ok) throw new Error();
+        const created: DepositAccount = await res.json();
+        setExtraAccounts(prev => [...prev, created]);
+        setTargetAccountId(created.id);
+        onAccountCreated();
+        acctId = created.id;
+        autoCreatedCompany = company;
+      } catch {
+        setBulkLoading(false);
+        alert('예수금 계좌 자동 생성에 실패했습니다. [+새 계좌]로 직접 만들어 주세요.');
+        return;
+      }
+    }
+
+    let success = 0, fail = 0, skipped = 0;
     for (const row of items) {
       const body = notionRowToTxBody(row, map);
       if (!body) { skipped++; continue; }
       if (existingKeys.has(notionTxBodyKey(body))) { skipped++; continue; }
       try {
-        const res = await fetch(`${API_URL}/api/v1/retirement/deposit-accounts/${targetAccountId}/transactions`, {
+        const res = await fetch(`${API_URL}/api/v1/retirement/deposit-accounts/${acctId}/transactions`, {
           method: 'POST', headers: { 'Content-Type': 'application/json', ...authLib.getAuthHeader() }, body: JSON.stringify(body),
         });
         if (res.ok) success++; else fail++;
@@ -4420,8 +4457,11 @@ function NotionImportDepositTxModal({ customerId, customerName, accounts, onClos
     }
     setBulkLoading(false);
     setSelectedRows(new Set());
-    saveCfg(selDbId, selDbTitle, map, targetAccountId);
-    alert(`${success}건 추가 완료${fail > 0 ? `, ${fail}건 실패` : ''}${skipped > 0 ? `, ${skipped}건 스킵(중복/거래일 누락)` : ''}`);
+    saveCfg(selDbId, selDbTitle, map, acctId);
+    alert(
+      `${success}건 추가 완료${fail > 0 ? `, ${fail}건 실패` : ''}${skipped > 0 ? `, ${skipped}건 스킵(중복/거래일 누락)` : ''}` +
+      (autoCreatedCompany ? `\n(예수금 계좌 '${autoCreatedCompany}' 자동 생성됨 — 계좌번호·별명은 목록에서 수정 가능)` : '')
+    );
     onImported();
     onClose();
   }
@@ -4635,12 +4675,17 @@ function NotionImportDepositTxModal({ customerId, customerName, accounts, onClos
 
               {loaded && displayRows.length > 0 && (
                 <div style={{ padding: '8px 10px', background: 'var(--bg-surface)', borderTop: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                  <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>{selectedRows.size > 0 ? `${selectedRows.size}건 추가 예정` : '추가할 거래를 선택하세요'}</span>
-                  <button onClick={bulkImport} disabled={bulkLoading || selectedRows.size === 0 || targetAccountId === ''}
+                  <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>
+                    {selectedRows.size > 0
+                      ? `${selectedRows.size}건 추가 예정${targetAccountId === '' ? ' — 계좌 미선택 시 자동 생성됩니다' : ''}`
+                      : '추가할 거래를 선택하세요'}
+                  </span>
+                  <button onClick={bulkImport} disabled={bulkLoading || selectedRows.size === 0}
+                    title={selectedRows.size === 0 ? '추가할 거래를 선택하세요' : ''}
                     style={{ padding: '7px 18px', borderRadius: 7, border: 'none', fontSize: 13, fontWeight: 700,
-                      background: (bulkLoading || selectedRows.size === 0 || targetAccountId === '') ? 'var(--bg-card)' : 'var(--blue-600)',
-                      color: (bulkLoading || selectedRows.size === 0 || targetAccountId === '') ? 'var(--text-muted)' : '#fff',
-                      cursor: (bulkLoading || selectedRows.size === 0 || targetAccountId === '') ? 'not-allowed' : 'pointer' }}>
+                      background: (bulkLoading || selectedRows.size === 0) ? 'var(--bg-card)' : 'var(--blue-600)',
+                      color: (bulkLoading || selectedRows.size === 0) ? 'var(--text-muted)' : '#fff',
+                      cursor: (bulkLoading || selectedRows.size === 0) ? 'not-allowed' : 'pointer' }}>
                     {bulkLoading ? '추가 중...' : `선택 ${selectedRows.size}건 계좌에 추가`}
                   </button>
                 </div>
