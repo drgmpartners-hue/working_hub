@@ -1152,8 +1152,13 @@ export function InvestmentFlowTab() {
 
     setNotionSyncing(true);
     try {
-      const res = await fetch(`${API_URL}/api/v1/notion/databases/${saved.dbId}/rows`, { headers: authLib.getAuthHeader() });
-      if (!res.ok) throw new Error('Notion 데이터 조회 실패');
+      // 서버측 필터: 이 고객의 증권사투자 행만 받아옴 (전체 DB 다운로드 방지)
+      const fq = notionFilterQS([
+        { property: custCol, value: selectedCustomer?.name },
+        { property: catCol, value: NOTION_IR_TARGET_CATEGORY },
+      ]);
+      const res = await fetch(`${API_URL}/api/v1/notion/databases/${saved.dbId}/rows${fq}`, { headers: authLib.getAuthHeader() });
+      if (!res.ok) { const d = await res.json().catch(() => ({} as { detail?: string })); throw new Error(d?.detail || 'Notion 데이터 조회 실패'); }
       const rows: { id: string; properties: Record<string, string> }[] = await res.json();
       const target = notionNormName(selectedCustomer?.name);
       const matched = rows.filter(r =>
@@ -1227,8 +1232,13 @@ export function InvestmentFlowTab() {
 
     setDepositNotionSyncing(true);
     try {
+      // 서버측 필터: 이 고객의 증권사투자 행만 받아옴 (전체 DB 다운로드 방지)
+      const fq = notionFilterQS([
+        { property: saved.mapping['customer_name'], value: selectedCustomer?.name },
+        { property: saved.mapping['category'], value: NOTION_IR_TARGET_CATEGORY },
+      ]);
       const [rowsRes, txRes] = await Promise.all([
-        fetch(`${API_URL}/api/v1/notion/databases/${saved.dbId}/rows`, { headers: authLib.getAuthHeader() }),
+        fetch(`${API_URL}/api/v1/notion/databases/${saved.dbId}/rows${fq}`, { headers: authLib.getAuthHeader() }),
         fetch(`${API_URL}/api/v1/retirement/deposit-accounts/${acctId}/transactions`, { headers: authLib.getAuthHeader() }),
       ]);
       if (!rowsRes.ok) { const d = await rowsRes.json().catch(() => ({})); throw new Error(d?.detail || 'Notion 데이터 조회 실패'); }
@@ -3420,6 +3430,7 @@ const NOTION_IR_MAP_FIELDS: { k: string; l: string; filterHint?: boolean }[] = [
 
 const NOTION_IR_CONFIG_KEY = 'notion_investment_record_config_v2';
 const NOTION_IR_TARGET_CATEGORY = '증권사투자';
+const NOTION_IR_TARGET_DB = '상품가입정보';   // 고정 대상 Notion DB (제목 부분일치) — 예수금 모달과 동일
 
 /** Notion 텍스트 → YYYY-MM-DD 정규화 (실패 시 null) */
 function normalizeNotionDate(raw: string | undefined | null): string | null {
@@ -3449,6 +3460,16 @@ function normalizeNotionDate(raw: string | undefined | null): string | null {
 /** 고객명 정규화 (괄호·공백 제거) — Notion 관계형 값과 견고하게 매칭 */
 function notionNormName(s: string | undefined | null): string {
   return (s ?? '').replace(/\(.*?\)/g, '').replace(/\s+/g, '').toLowerCase();
+}
+
+/** Notion rows 조회용 서버측 필터 쿼리스트링 (고객명·카테고리) — DB 전체 다운로드로 인한 504 방지.
+ *  서버 필터는 최적화일 뿐, 클라이언트 필터가 최종 판정하므로 일부 조건이 생략돼도 결과는 동일하다. */
+function notionFilterQS(pairs: { property?: string; value?: string }[]): string {
+  const valid = pairs
+    .filter(p => !!p.property && !!p.value?.trim())
+    // 괄호 표기(예: '박민환(HB5236)')는 제거 후 contains 매칭 — 양쪽 표기 차이에 견고
+    .map(p => ({ property: p.property as string, value: (p.value as string).replace(/\(.*?\)/g, '').trim() }));
+  return valid.length ? `?filters=${encodeURIComponent(JSON.stringify(valid))}` : '';
 }
 
 /** Notion 행 + 매핑 → 투자기록 body (가입일 파싱 실패 시 null). 불러오기·동기화 공통 사용 */
@@ -3762,36 +3783,72 @@ function NotionImportRecordsModal({ customerId, customerName, existingKeys, onCl
     finally { setIrLoading(false); }
   }
 
-  async function irLoadRows(dbId: string, dbTitle: string, savedMapping?: Record<string, string>) {
+  async function irLoadRows(dbId: string, dbTitle: string, savedMapping?: Record<string, string>): Promise<boolean> {
     setIrLoading(true); setIrError(null);
     setIrSelectedDbId(dbId);
     setIrSelectedDbTitle(dbTitle);
     try {
-      const [pR, rR] = await Promise.all([
-        fetch(`${API_URL}/api/v1/notion/databases/${dbId}/properties`, { headers: authLib.getAuthHeader() }),
-        fetch(`${API_URL}/api/v1/notion/databases/${dbId}/rows`, { headers: authLib.getAuthHeader() }),
-      ]);
-      if (!pR.ok || !rR.ok) throw new Error('데이터 조회 실패');
+      // 1) 컬럼 목록 먼저 → 매핑 확정
+      const pR = await fetch(`${API_URL}/api/v1/notion/databases/${dbId}/properties`, { headers: authLib.getAuthHeader() });
+      if (!pR.ok) {
+        const d = await pR.json().catch(() => ({} as { detail?: string }));
+        throw new Error(d?.detail || `데이터 조회 실패 (HTTP ${pR.status})`);
+      }
       const props: { name: string }[] = await pR.json();
-      const rows: { id: string; properties: Record<string, string> }[] = await rR.json();
       const cols = props.map(p => p.name);
+      const resolvedMap = savedMapping ?? autoGuessMapping(cols);
+      // 2) 고객명·카테고리 서버측 필터로 이 고객 행만 조회 (전체 DB 다운로드 → 504 방지)
+      const fq = notionFilterQS([
+        { property: resolvedMap['customer_name'], value: customerName },
+        { property: resolvedMap['category'], value: NOTION_IR_TARGET_CATEGORY },
+      ]);
+      const rR = await fetch(`${API_URL}/api/v1/notion/databases/${dbId}/rows${fq}`, { headers: authLib.getAuthHeader() });
+      if (!rR.ok) {
+        const d = await rR.json().catch(() => ({} as { detail?: string }));
+        throw new Error(d?.detail || `데이터 조회 실패 (HTTP ${rR.status})`);
+      }
+      const rows: { id: string; properties: Record<string, string> }[] = await rR.json();
       setIrCols(cols);
       setIrRows(rows);
-      const resolvedMap = savedMapping ?? autoGuessMapping(cols);
       setIrMap(resolvedMap);
       // 매핑 화면 진입 즉시 저장 → 다음에 열면 DB·매핑 자동 복원(재매칭 불필요)
       saveIrConfig(dbId, dbTitle, resolvedMap);
       setIrStep('mapping');
-    } catch (e: unknown) { setIrError(e instanceof Error ? e.message : '오류'); }
+      return true;
+    } catch (e: unknown) { setIrError(e instanceof Error ? e.message : '오류'); return false; }
     finally { setIrLoading(false); }
+  }
+
+  // 대상 DB('상품가입정보')를 목록에서 찾아 자동 선택. 없으면 수동 선택으로 폴백
+  // keepMapping: 같은 대상 DB로 재연결하는 경우 기존 필드 매핑을 그대로 이어받음
+  async function irAutoSelectDb(keepMapping?: Record<string, string>) {
+    setIrError(null); setIrLoading(true);
+    let list: { id: string; title: string; icon: string | null }[];
+    try {
+      const res = await fetch(`${API_URL}/api/v1/notion/databases`, { headers: authLib.getAuthHeader() });
+      if (!res.ok) { const d = await res.json().catch(() => ({})); throw new Error(d?.detail || `조회 실패 (HTTP ${res.status})`); }
+      list = await res.json();
+      setIrDbs(list);
+    } catch (e: unknown) { setIrError(e instanceof Error ? e.message : '오류'); setIrLoading(false); return; }
+    const target = list.find(d => d.title.includes(NOTION_IR_TARGET_DB));
+    if (target) {
+      await irLoadRows(target.id, target.title, keepMapping);   // irLoadRows가 loading 처리
+    } else {
+      setIrLoading(false);
+      setIrStep('selectDb');   // 대상 DB를 못 찾으면 수동 선택
+    }
   }
 
   async function irOpenSelector() {
     const saved = loadIrConfig();
-    if (saved) {
-      await irLoadRows(saved.dbId, saved.dbTitle, saved.mapping);
+    // 저장된 설정이 대상 DB('상품가입정보')가 아니면 오염된 설정 → 폐기 후 자동 재연결
+    // (과거 'DB 변경'으로 다른 DB가 저장되면 매핑이 통째로 덮여 사라지던 문제의 자가 복구)
+    if (saved && saved.dbId && saved.dbTitle?.includes(NOTION_IR_TARGET_DB)) {
+      const ok = await irLoadRows(saved.dbId, saved.dbTitle, saved.mapping);
+      if (!ok) { clearIrConfig(); await irAutoSelectDb(saved.mapping); }  // dbId만 낡은 경우: 매핑은 보존한 채 재연결
     } else {
-      await irFetchDbList();
+      if (saved) clearIrConfig();
+      await irAutoSelectDb();   // 다른 DB의 매핑은 의미 없으므로 자동 추측으로 새로 매칭
     }
   }
 
@@ -3811,7 +3868,13 @@ function NotionImportRecordsModal({ customerId, customerName, existingKeys, onCl
     const updated = { ...irMap, [key]: value };
     setIrMap(updated);
     setIrLoaded(false);  // 매핑 바뀌면 다시 '불러오기' 눌러야 함
-    if (irSelectedDbId) saveIrConfig(irSelectedDbId, irSelectedDbTitle, updated);
+    if (irSelectedDbId) {
+      saveIrConfig(irSelectedDbId, irSelectedDbTitle, updated);
+      // 서버측 필터 컬럼이 바뀌면 새 필터로 행 재조회 (이전 필터로 받은 행엔 누락 가능)
+      if (key === 'customer_name' || key === 'category') {
+        void irLoadRows(irSelectedDbId, irSelectedDbTitle, updated);
+      }
+    }
   }
 
   /* ---- 필터: 고객명 일치 + 카테고리 = 증권사투자, '불러오기' 클릭 시 적용 ---- */
@@ -4182,31 +4245,44 @@ function NotionImportDepositTxModal({ customerId, customerName, accounts, onClos
     finally { setLoading(false); }
   }
 
-  async function loadRows(dbId: string, dbTitle: string, savedMapping?: Record<string, string>) {
+  async function loadRows(dbId: string, dbTitle: string, savedMapping?: Record<string, string>): Promise<boolean> {
     setLoading(true); setError(null);
     setSelDbId(dbId); setSelDbTitle(dbTitle);
     try {
-      const [pR, rR] = await Promise.all([
-        fetch(`${API_URL}/api/v1/notion/databases/${dbId}/properties`, { headers: authLib.getAuthHeader() }),
-        fetch(`${API_URL}/api/v1/notion/databases/${dbId}/rows`, { headers: authLib.getAuthHeader() }),
-      ]);
-      if (!pR.ok || !rR.ok) throw new Error('데이터 조회 실패');
+      // 1) 컬럼 목록 먼저 → 매핑 확정
+      const pR = await fetch(`${API_URL}/api/v1/notion/databases/${dbId}/properties`, { headers: authLib.getAuthHeader() });
+      if (!pR.ok) {
+        const d = await pR.json().catch(() => ({} as { detail?: string }));
+        throw new Error(d?.detail || `데이터 조회 실패 (HTTP ${pR.status})`);
+      }
       const props: { name: string }[] = await pR.json();
-      const rws: { id: string; properties: Record<string, string> }[] = await rR.json();
       const colNames = props.map(p => p.name);
+      const resolvedMap = savedMapping ?? autoGuessDtxMapping(colNames);
+      // 2) 고객명·카테고리 서버측 필터로 이 고객 행만 조회 (전체 DB 다운로드 → 504 방지)
+      const fq = notionFilterQS([
+        { property: resolvedMap['customer_name'], value: customerName },
+        { property: resolvedMap['category'], value: NOTION_IR_TARGET_CATEGORY },
+      ]);
+      const rR = await fetch(`${API_URL}/api/v1/notion/databases/${dbId}/rows${fq}`, { headers: authLib.getAuthHeader() });
+      if (!rR.ok) {
+        const d = await rR.json().catch(() => ({} as { detail?: string }));
+        throw new Error(d?.detail || `데이터 조회 실패 (HTTP ${rR.status})`);
+      }
+      const rws: { id: string; properties: Record<string, string> }[] = await rR.json();
       setCols(colNames);
       setRows(rws);
-      const resolvedMap = savedMapping ?? autoGuessDtxMapping(colNames);
       setMap(resolvedMap);
       // 매핑 화면 진입 즉시 저장 → 다음에 열면 DB·매핑 자동 복원(재매칭 불필요)
       saveCfg(dbId, dbTitle, resolvedMap, targetAccountId);
       setStep('mapping');
-    } catch (e: unknown) { setError(e instanceof Error ? e.message : '오류'); }
+      return true;
+    } catch (e: unknown) { setError(e instanceof Error ? e.message : '오류'); return false; }
     finally { setLoading(false); }
   }
 
   // 대상 DB('상품가입정보')를 목록에서 찾아 자동 선택. 없으면 수동 선택으로 폴백
-  async function autoSelectDb() {
+  // keepMapping: 같은 대상 DB로 재연결하는 경우 기존 필드 매핑을 그대로 이어받음
+  async function autoSelectDb(keepMapping?: Record<string, string>) {
     setError(null); setLoading(true);
     let list: { id: string; title: string; icon: string | null }[];
     try {
@@ -4217,7 +4293,7 @@ function NotionImportDepositTxModal({ customerId, customerName, accounts, onClos
     } catch (e: unknown) { setError(e instanceof Error ? e.message : '오류'); setLoading(false); return; }
     const target = list.find(d => d.title.includes(NOTION_DTX_TARGET_DB));
     if (target) {
-      await loadRows(target.id, target.title);   // loadRows가 loading 처리
+      await loadRows(target.id, target.title, keepMapping);   // loadRows가 loading 처리
     } else {
       setLoading(false);
       setStep('selectDb');   // 대상 DB를 못 찾으면 수동 선택
@@ -4226,11 +4302,14 @@ function NotionImportDepositTxModal({ customerId, customerName, accounts, onClos
 
   async function openSelector() {
     const saved = loadCfg();
-    if (saved && saved.dbId) {
+    // 저장된 설정이 대상 DB('상품가입정보')가 아니거나 조회 실패(dbId 낡음)면 폐기 후 자동 재연결
+    if (saved && saved.dbId && saved.dbTitle?.includes(NOTION_DTX_TARGET_DB)) {
       if (saved.acctId != null && accounts.some(a => a.id === saved.acctId)) setTargetAccountId(saved.acctId);
-      await loadRows(saved.dbId, saved.dbTitle, saved.mapping);
+      const ok = await loadRows(saved.dbId, saved.dbTitle, saved.mapping);
+      if (!ok) { clearCfg(); await autoSelectDb(saved.mapping); }  // dbId만 낡은 경우: 매핑은 보존한 채 재연결
     } else {
-      await autoSelectDb();
+      if (saved) clearCfg();
+      await autoSelectDb();   // 다른 DB의 매핑은 의미 없으므로 자동 추측으로 새로 매칭
     }
   }
 
@@ -4261,7 +4340,13 @@ function NotionImportDepositTxModal({ customerId, customerName, accounts, onClos
   function updateMap(k: string, v: string) {
     const updated = { ...map, [k]: v };
     setMap(updated); setLoaded(false);
-    if (selDbId) saveCfg(selDbId, selDbTitle, updated, targetAccountId);
+    if (selDbId) {
+      saveCfg(selDbId, selDbTitle, updated, targetAccountId);
+      // 서버측 필터 컬럼이 바뀌면 새 필터로 행 재조회 (이전 필터로 받은 행엔 누락 가능)
+      if (k === 'customer_name' || k === 'category') {
+        void loadRows(selDbId, selDbTitle, updated);
+      }
+    }
   }
 
   const customerNameCol = map['customer_name'];

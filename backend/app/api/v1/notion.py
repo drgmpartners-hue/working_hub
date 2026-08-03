@@ -18,21 +18,36 @@ NOTION_VERSION = "2022-06-28"
 MAX_RETRIES = 3
 
 
-async def _notion_request(method: str, url: str, token: str, json: dict | None = None) -> httpx.Response:
+async def _notion_request(
+    method: str,
+    url: str,
+    token: str,
+    json: dict | None = None,
+    client: httpx.AsyncClient | None = None,
+) -> httpx.Response:
     """Notion API 호출 with 재시도 (503 등 일시적 오류 대응).
 
     네트워크 오류/타임아웃은 HTTPException(504)으로 변환한다. 이렇게 해야
     CORS 헤더가 포함된 정상 오류 응답이 나가서 프런트가 'Failed to fetch' 대신
     실제 사유를 표시할 수 있다.
+
+    client를 넘기면 커넥션을 재사용한다 (페이지네이션 루프에서 필수 —
+    매 페이지 TLS 새 연결이 조회 시간을 배로 늘려 504의 원인이 됐음).
     """
     res: httpx.Response | None = None
     for attempt in range(MAX_RETRIES):
         try:
-            async with httpx.AsyncClient(timeout=15) as client:
+            if client is not None:
                 if method == "GET":
                     res = await client.get(url, headers=_headers(token))
                 else:
                     res = await client.post(url, headers=_headers(token), json=json or {})
+            else:
+                async with httpx.AsyncClient(timeout=15) as one_off:
+                    if method == "GET":
+                        res = await one_off.get(url, headers=_headers(token))
+                    else:
+                        res = await one_off.post(url, headers=_headers(token), json=json or {})
             if res.status_code != 503:
                 return res
         except httpx.HTTPError:  # Timeout, ConnectError 등 네트워크 계열
@@ -213,44 +228,107 @@ def _extract_value(prop: dict) -> Optional[str]:
     return None
 
 
+def _build_notion_filter(schema_props: dict, filters: list) -> dict | None:
+    """[{property, value}] → Notion query filter (타입별 조건). 못 만드는 타입은 생략.
+
+    서버 필터는 순수 최적화다 — 프런트가 어차피 클라이언트에서 한 번 더 거르므로
+    일부 조건이 생략돼도 결과는 같고, 전송량만 달라진다.
+    """
+    conds = []
+    for f in filters:
+        if not isinstance(f, dict):
+            continue
+        name = str(f.get("property") or "").strip()
+        value = str(f.get("value") or "").strip()
+        if not name or not value or name not in schema_props:
+            continue
+        ptype = schema_props[name].get("type")
+        if ptype == "title":
+            conds.append({"property": name, "title": {"contains": value}})
+        elif ptype == "rich_text":
+            conds.append({"property": name, "rich_text": {"contains": value}})
+        elif ptype == "select":
+            conds.append({"property": name, "select": {"equals": value}})
+        elif ptype == "multi_select":
+            conds.append({"property": name, "multi_select": {"contains": value}})
+        elif ptype == "status":
+            conds.append({"property": name, "status": {"equals": value}})
+        elif ptype == "formula":
+            conds.append({"property": name, "formula": {"string": {"contains": value}}})
+        # relation·rollup·number·date 등은 생략 → 클라이언트 필터가 처리
+    if not conds:
+        return None
+    return conds[0] if len(conds) == 1 else {"and": conds}
+
+
 @router.get("/databases/{database_id}/rows", response_model=list[NotionRow])
 async def query_database(
     database_id: str,
+    filters: Optional[str] = None,
     current_user=Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """데이터베이스의 모든 행(페이지)을 조회하여 속성값을 추출."""
+    """데이터베이스 행(페이지)을 조회하여 속성값을 추출.
+
+    filters: JSON 문자열 [{"property": 컬럼명, "value": 값}] — 서버측(Notion) 필터로
+    해당 조건에 맞는 행만 받아온다. 수천 행 DB 전체 다운로드로 인한 504 방지.
+    """
     token = await _get_notion_token(current_user.id, db)
+
+    # 서버측 필터 구성 (실패 시 전체 조회로 폴백)
+    notion_filter = None
+    if filters:
+        try:
+            import json as _json
+            parsed = _json.loads(filters)
+            if isinstance(parsed, list) and parsed:
+                schema_res = await _notion_request("GET", f"{NOTION_BASE}/databases/{database_id}", token)
+                if schema_res.status_code == 200:
+                    notion_filter = _build_notion_filter(schema_res.json().get("properties", {}), parsed)
+        except Exception:
+            notion_filter = None
+
     all_results = []
     start_cursor = None
 
     # 페이지네이션: page_size 명시 + 총 시간 예산 + 페이지 상한 + 커서 무한루프 방어
     # (무제한 직렬 페이지네이션이 게이트웨이 타임아웃 → 프런트 'Failed to fetch'의 원인이었음)
+    # 커넥션 1개를 루프 전체에서 재사용 — 페이지마다 TLS 새 연결로 25초 예산을
+    # 정상 데이터 양에도 초과(504)하던 문제 해결. 예산도 50초로 상향.
     import time
-    BUDGET_SECONDS = 25
+    BUDGET_SECONDS = 50
     MAX_PAGES = 30          # 30 × 100행 = 최대 3,000행
     started = time.monotonic()
     pages = 0
-    while True:
-        if time.monotonic() - started > BUDGET_SECONDS:
-            raise HTTPException(504, "Notion 데이터 조회가 너무 오래 걸립니다. 데이터 양을 줄이거나 잠시 후 다시 시도해주세요.")
-        if pages >= MAX_PAGES:
-            break  # 상한 도달 — 수집된 범위까지 반환
-        body: dict = {"page_size": 100}
-        if start_cursor:
-            body["start_cursor"] = start_cursor
-        res = await _notion_request("POST", f"{NOTION_BASE}/databases/{database_id}/query", token, body)
-        if res.status_code != 200:
-            _handle_error(res)
-        data = res.json()
-        all_results.extend(data.get("results", []))
-        pages += 1
-        if not data.get("has_more"):
-            break
-        next_cursor = data.get("next_cursor")
-        if not next_cursor or next_cursor == start_cursor:
-            break  # 커서가 없거나 제자리 → 무한루프 방지
-        start_cursor = next_cursor
+    async with httpx.AsyncClient(timeout=15) as client:
+        while True:
+            if time.monotonic() - started > BUDGET_SECONDS:
+                raise HTTPException(
+                    504,
+                    f"Notion 데이터 조회가 너무 오래 걸립니다 ({pages}페이지/{len(all_results)}행까지 수집 후 중단). "
+                    "잠시 후 다시 시도해주세요.",
+                )
+            if pages >= MAX_PAGES:
+                break  # 상한 도달 — 수집된 범위까지 반환
+            body: dict = {"page_size": 100}
+            if notion_filter:
+                body["filter"] = notion_filter
+            if start_cursor:
+                body["start_cursor"] = start_cursor
+            res = await _notion_request(
+                "POST", f"{NOTION_BASE}/databases/{database_id}/query", token, body, client=client
+            )
+            if res.status_code != 200:
+                _handle_error(res)
+            data = res.json()
+            all_results.extend(data.get("results", []))
+            pages += 1
+            if not data.get("has_more"):
+                break
+            next_cursor = data.get("next_cursor")
+            if not next_cursor or next_cursor == start_cursor:
+                break  # 커서가 없거나 제자리 → 무한루프 방지
+            start_cursor = next_cursor
 
     rows = []
     for page in all_results:
