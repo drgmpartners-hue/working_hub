@@ -1089,11 +1089,17 @@ export function InvestmentFlowTab() {
     if (!confirm(`선택한 ${selectedRecordIds.size}건의 투자기록을 정말 삭제하시겠습니까?\n삭제 후에는 되돌릴 수 없습니다.`)) return;
     setBulkDeleting(true);
     const ids = Array.from(selectedRecordIds);
-    await Promise.all(ids.map(id =>
-      fetch(`${API_URL}/api/v1/retirement/investment-records/${id}`, {
-        method: 'DELETE', headers: authLib.getAuthHeader(),
-      }).catch(() => { /* silent */ })
-    ));
+    // 삭제도 연동 거래·잔액 재계산을 수행하므로 병렬 금지 (일괄지정과 동일 사유) — 순차 처리
+    let delFail = 0;
+    for (const id of ids) {
+      try {
+        const res = await fetch(`${API_URL}/api/v1/retirement/investment-records/${id}`, {
+          method: 'DELETE', headers: authLib.getAuthHeader(),
+        });
+        if (!res.ok) delFail++;
+      } catch { delFail++; }
+    }
+    if (delFail > 0) alert(`${ids.length - delFail}건 삭제, ${delFail}건 실패했습니다. 다시 시도해주세요.`);
     setSelectedRecordIds(new Set());
     setBulkDeleting(false);
     fetchRecords();
@@ -1112,16 +1118,26 @@ export function InvestmentFlowTab() {
     if (!confirm(`선택한 ${selectedRecordIds.size}건의 계좌별명을 '${label}'(으)로 일괄 변경하시겠습니까?`)) return;
     setBulkAssigning(true);
     const ids = Array.from(selectedRecordIds);
-    await Promise.all(ids.map(id =>
-      fetch(`${API_URL}/api/v1/retirement/investment-records/${id}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json', ...authLib.getAuthHeader() },
-        body: JSON.stringify({ deposit_account_id: acctId }),
-      }).catch(() => { /* silent */ })
-    ));
+    // 각 PUT이 같은 예수금 계좌의 거래 재구성+잔액 재계산(FOR UPDATE)을 수행하므로
+    // 병렬 전송 시 잠금 경합으로 일부만 반영됨 → 반드시 순차 처리 + 실패 집계
+    let ok = 0, fail = 0;
+    for (const id of ids) {
+      try {
+        const res = await fetch(`${API_URL}/api/v1/retirement/investment-records/${id}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json', ...authLib.getAuthHeader() },
+          body: JSON.stringify({ deposit_account_id: acctId }),
+        });
+        if (res.ok) ok++; else fail++;
+      } catch { fail++; }
+    }
     setBulkAssigning(false);
-    setSelectedRecordIds(new Set());
-    setBulkAccountId('');
+    if (fail > 0) {
+      alert(`${ok}건 변경, ${fail}건 실패했습니다. 선택이 유지되니 다시 시도해주세요.`);
+    } else {
+      setSelectedRecordIds(new Set());
+      setBulkAccountId('');
+    }
     fetchRecords();
     fetchAnnualFlow();
     fetchDepositAccounts();
