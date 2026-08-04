@@ -1761,35 +1761,37 @@ export function InvestmentFlowTab() {
           <table style={{ width: '100%', minWidth: 900, borderCollapse: 'collapse', fontSize: 13, whiteSpace: 'nowrap' }}>
             <thead style={{ position: 'sticky', top: 0, zIndex: 2 }}>
               <tr style={{ backgroundColor: 'var(--bg-surface)' }}>
-                {[
+                {([
                   { label: '연도', align: 'center', tip: '투자 활동이 발생한 연도' },
                   { label: '연차', align: 'center', tip: '최초 투자 연도를 1차로 산정' },
                   { label: '나이', align: 'center', tip: '해당 연도 기준 고객 나이 (만 나이)' },
                   { label: '일시납금액', align: 'right', tip: '예수금 입금(거치) 금액 합계 (투자 제외)' },
                   { label: '연적립금액', align: 'right', tip: '예수금 거래의 적립액(자동이체) 합계 + "적립" 구분 입금액' },
-                  { label: '총납입금액', align: 'right', tip: '당해 투자금액 + 모든 미종결 투자금액' },
-                  { label: '연간평가금액', align: 'right', tip: '당해 종결 평가금액 + 모든 미종결 투자금액' },
-                  { label: '연간총수익', align: 'right', tip: '연간평가금액 - 총납입금액' },
-                  { label: '연수익률', align: 'right', tip: '연간총수익 / 총납입금액 × 100' },
                   { label: '입금액', align: 'right', tip: '일시납금액 + 연적립금액' },
                   { label: '누적입금액', align: 'right', tip: '시작 연도부터 해당 연도까지 입금액 누적 합계' },
                   { label: '인출금액', align: 'right', tip: '투자기록 인출 + 예수금 "출금" 합계' },
                   { label: '누적인출액', align: 'right', tip: '시작 연도부터 해당 연도까지 인출금액 누적 합계' },
-                  { label: '순자산', align: 'right', tip: '연도말 예수금 잔액 + 미종결 투자금액 + 이자수익' },
+                  { label: '순입금액', align: 'right', tip: '해당 연도 누적입금액 - 해당 연도 누적인출액', hl: true },
+                  { label: '순자산', align: 'right', tip: '연도말 예수금 잔액 + 미종결 투자금액 + 이자수익', hl: true },
                   { label: '순자산증가율', align: 'right', tip: '(현재 순자산 - 직전 순자산) / 직전 순자산 × 100' },
                   { label: '순이익', align: 'right', tip: '순자산 - (누적입금액 - 누적인출액)' },
-                  { label: '순자산수익률', align: 'right', tip: '순이익 / (누적입금액 - 누적인출액) × 100' },
+                  { label: '순자산수익률', align: 'right', tip: '순이익 / (누적입금액 - 누적인출액) × 100', hl: true },
+                  { label: '총납입금액', align: 'right', tip: '당해 투자금액 + 모든 미종결 투자금액' },
+                  { label: '연간평가금액', align: 'right', tip: '당해 종결 평가금액 + 모든 미종결 투자금액' },
+                  { label: '연간총수익', align: 'right', tip: '연간평가금액 - 총납입금액' },
+                  { label: '연수익률', align: 'right', tip: '연간총수익 / 총납입금액 × 100' },
                   { label: '100세플로우', align: 'center', tip: '100세 은퇴플로우에 해당 연도 순자산을 적용/취소' },
-                ].map(({ label, align, tip }) => (
+                ] as { label: string; align: string; tip: string; hl?: boolean }[]).map(({ label, align, tip, hl }) => (
                   <th
                     key={label}
                     title={tip}
                     style={{
                       padding: '8px 12px',
                       textAlign: align as 'center' | 'right',
-                      fontWeight: 600,
-                      color: 'var(--text-muted)',
-                      borderBottom: '1px solid var(--border)',
+                      fontWeight: hl ? 800 : 600,
+                      color: hl ? '#93C5FD' : 'var(--text-muted)',
+                      borderBottom: hl ? '2px solid var(--blue-500)' : '1px solid var(--border)',
+                      backgroundColor: hl ? 'rgba(59,130,246,0.12)' : undefined,
                       fontSize: 12,
                       cursor: 'help',
                       position: 'relative',
@@ -1803,7 +1805,7 @@ export function InvestmentFlowTab() {
             <tbody>
               {annualFlowLoading ? (
                 <tr>
-                  <td colSpan={17} style={{ textAlign: 'center', padding: 24, color: 'var(--text-muted)', fontSize: 13 }}>
+                  <td colSpan={19} style={{ textAlign: 'center', padding: 24, color: 'var(--text-muted)', fontSize: 13 }}>
                     불러오는 중...
                   </td>
                 </tr>
@@ -1818,7 +1820,7 @@ export function InvestmentFlowTab() {
                     return (
                       <tr key={year} style={{ borderBottom: '1px solid var(--bg-surface)', backgroundColor: idx % 2 === 0 ? 'transparent' : 'rgba(255,255,255,0.02)' }}>
                         <td style={tdCenter}>{year}</td>
-                        {Array.from({ length: 16 }).map((_, i) => (
+                        {Array.from({ length: 18 }).map((_, i) => (
                           <td key={i} style={{ padding: '9px 12px', textAlign: 'center', color: 'var(--text-muted)', fontSize: 13 }}>-</td>
                         ))}
                       </tr>
@@ -1843,23 +1845,16 @@ export function InvestmentFlowTab() {
                       <td style={tdCenter}>{row.age ?? '-'}</td>
                       <td style={tdRight}>{formatCurrency(row.lump_sum)}</td>
                       <td style={tdRight}>{formatCurrency(row.annual_savings)}</td>
-                      <td style={{ ...tdRight, fontWeight: 700 }}>{formatCurrency(row.total_contribution)}</td>
-                      <td
-                        onClick={() => setEvalDetailYear(evalDetailYear === row.year ? null : row.year)}
-                        style={{ ...tdRight, fontWeight: 700, cursor: 'pointer', textDecoration: 'underline', textDecorationStyle: 'dotted' as const, textUnderlineOffset: '3px' }}
-                        title="클릭하면 평가 상세 보기"
-                      >{formatCurrency(row.annual_evaluation)} {evalDetailYear === row.year ? '▲' : '▼'}</td>
-                      <td style={{ ...tdRight, color: row.annual_return >= 0 ? '#34D399' : '#F87171' }}>
-                        {formatCurrency(row.annual_return)}
-                      </td>
-                      <td style={{ ...tdRight, color: rateColor, fontWeight: 700 }}>
-                        {row.annual_return_rate != null ? `${Number(row.annual_return_rate).toFixed(2)}%` : '-'}
-                      </td>
                       <td style={tdRight}>{formatCurrency(row.deposit_in)}</td>
                       <td style={tdRight}>{formatCurrency(row.cumulative_deposit_in)}</td>
                       <td style={tdRight}>{formatCurrency(row.withdrawal)}</td>
                       <td style={tdRight}>{formatCurrency(row.cumulative_withdrawal)}</td>
-                      <td style={{ ...tdRight, fontWeight: 700, color: 'var(--blue-400)' }}>
+                      {/* 순입금액: 해당 연도 누적입금액 - 해당 연도 누적인출액 (핵심 지표 — 강조) */}
+                      <td style={{ ...tdRight, fontWeight: 800, color: '#E2ECFF', backgroundColor: 'rgba(59,130,246,0.10)' }}>
+                        {formatCurrency(row.cumulative_deposit_in - row.cumulative_withdrawal)}
+                      </td>
+                      {/* 순자산 (핵심 지표 — 강조) */}
+                      <td style={{ ...tdRight, fontWeight: 800, color: '#7CC0FF', backgroundColor: 'rgba(59,130,246,0.10)' }}>
                         {formatCurrency(row.total_evaluation)}
                       </td>
                       {/* 순자산증가율 */}
@@ -1878,15 +1873,29 @@ export function InvestmentFlowTab() {
                         const color = netProfit > 0 ? '#34D399' : netProfit < 0 ? '#F87171' : 'var(--text-primary)';
                         return <td style={{ ...tdRight, fontWeight: 700, color }}>{formatCurrency(netProfit)}</td>;
                       })()}
-                      {/* 순자산수익률: 순이익 / (누적입금액 - 누적인출액) × 100 */}
+                      {/* 순자산수익률: 순이익 / (누적입금액 - 누적인출액) × 100 (핵심 지표 — 강조) */}
                       {(() => {
+                        const hlBg = 'rgba(59,130,246,0.10)';
                         const netInvestment = row.cumulative_deposit_in - row.cumulative_withdrawal;
-                        if (!netInvestment || netInvestment === 0) return <td style={{ ...tdRight, color: 'var(--text-muted)' }}>-</td>;
+                        if (!netInvestment || netInvestment === 0) return <td style={{ ...tdRight, color: 'var(--text-muted)', backgroundColor: hlBg }}>-</td>;
                         const netProfit = row.total_evaluation - netInvestment;
                         const rate = (netProfit / netInvestment * 100);
                         const color = rate > 0 ? '#34D399' : rate < 0 ? '#F87171' : 'var(--text-primary)';
-                        return <td style={{ ...tdRight, fontWeight: 700, color }}>{rate.toFixed(2)}%</td>;
+                        return <td style={{ ...tdRight, fontWeight: 800, color, backgroundColor: hlBg }}>{rate.toFixed(2)}%</td>;
                       })()}
+                      {/* 투자기록 기반 4종 — 100세 플로우 왼쪽 배치 */}
+                      <td style={{ ...tdRight, fontWeight: 700 }}>{formatCurrency(row.total_contribution)}</td>
+                      <td
+                        onClick={() => setEvalDetailYear(evalDetailYear === row.year ? null : row.year)}
+                        style={{ ...tdRight, fontWeight: 700, cursor: 'pointer', textDecoration: 'underline', textDecorationStyle: 'dotted' as const, textUnderlineOffset: '3px' }}
+                        title="클릭하면 평가 상세 보기"
+                      >{formatCurrency(row.annual_evaluation)} {evalDetailYear === row.year ? '▲' : '▼'}</td>
+                      <td style={{ ...tdRight, color: row.annual_return >= 0 ? '#34D399' : '#F87171' }}>
+                        {formatCurrency(row.annual_return)}
+                      </td>
+                      <td style={{ ...tdRight, color: rateColor, fontWeight: 700 }}>
+                        {row.annual_return_rate != null ? `${Number(row.annual_return_rate).toFixed(2)}%` : '-'}
+                      </td>
                       {/* 100세 플로우 적용/취소 - 당해연도는 버튼 없음 */}
                       <td style={{ padding: '6px 8px', textAlign: 'center', whiteSpace: 'nowrap', borderBottom: '1px solid var(--border)' }}>
                         {row.year === new Date().getFullYear() ? (
@@ -2048,7 +2057,7 @@ export function InvestmentFlowTab() {
             <div style={{ marginTop: 12, padding: 16, border: '1px solid var(--border)', borderRadius: 8, backgroundColor: 'var(--bg-card)' }}>
               <div style={{ display: 'flex', gap: 12, marginBottom: 12, fontSize: 12, flexWrap: 'wrap' }} className="no-print">
                 {([
-                  { key: 'cumulativeDeposit' as const, label: '누적입금액', color: 'var(--blue-400)' },
+                  { key: 'cumulativeDeposit' as const, label: '순입금액', color: 'var(--blue-400)' },
                   { key: 'netAsset' as const, label: '순자산', color: 'var(--blue-400)' },
                   { key: 'cumulativeProfit' as const, label: '순이익', color: 'var(--success)' },
                   { key: 'netAssetReturnRate' as const, label: '순자산수익률(%)', color: 'var(--warning)' },
@@ -3431,6 +3440,7 @@ export function InvestmentFlowTab() {
         <Modal open onClose={() => setShowFlowHelp(false)} title="연간 투자흐름표 — 필드별 계산 방식" maxWidth={680}>
           <div style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 10 }}>
             일시납·연적립·입금·인출은 <b style={{ color: 'var(--text-secondary)' }}>예수금 계좌 거래</b>에서, 납입·평가·수익은 <b style={{ color: 'var(--text-secondary)' }}>투자기록</b>에서 계산됩니다. 계좌 필터를 걸면 해당 계좌의 예수금 거래만 집계됩니다.
+            항목 순서는 테이블 컬럼 순서와 동일하며, <b style={{ color: '#93C5FD' }}>★ 표시는 테이블에서 강조된 핵심 지표</b>(순입금액·순자산·순자산수익률)입니다.
           </div>
           {([
             ['기본', [
@@ -3445,6 +3455,13 @@ export function InvestmentFlowTab() {
               ['누적입금액', '시작 연도부터 그 연도까지 입금액 누적 합계'],
               ['인출금액', "투자기록의 인출 + 예수금 거래 중 구분='출금' 의 출금액 합계"],
               ['누적인출액', '시작 연도부터 그 연도까지 인출금액 누적 합계'],
+              ['순입금액 ★', '해당 연도 누적입금액 − 해당 연도 누적인출액'],
+            ]],
+            ['순자산', [
+              ['순자산 ★', '연도말 예수금 잔액 + 미종결 투자금액 + 이자수익'],
+              ['순자산증가율', '(그해 순자산 − 직전 연도 순자산) ÷ 직전 연도 순자산 × 100'],
+              ['순이익', '순자산 − 순입금액'],
+              ['순자산수익률 ★', '순이익 ÷ 순입금액 × 100'],
             ]],
             ['투자기록 기반', [
               ['총납입금액', '그 연도 기준 살아있는(미종결 또는 당해 종결) 투자기록의 투자금액 합계'],
@@ -3452,11 +3469,7 @@ export function InvestmentFlowTab() {
               ['연간총수익', '연간평가금액 − 총납입금액'],
               ['연수익률', '연간총수익 ÷ 총납입금액 × 100'],
             ]],
-            ['순자산', [
-              ['순자산', '연도말 예수금 잔액 + 미종결 투자금액 + 이자수익'],
-              ['순자산증가율', '(그해 순자산 − 직전 연도 순자산) ÷ 직전 연도 순자산 × 100'],
-              ['순이익', '순자산 − (누적입금액 − 누적인출액)'],
-              ['순자산수익률', '순이익 ÷ (누적입금액 − 누적인출액) × 100'],
+            ['기타', [
               ['100세플로우', '해당 연도 순자산을 100세 은퇴플로우의 시작값으로 적용/취소'],
             ]],
           ] as [string, [string, string][]][]).map(([group, items]) => (

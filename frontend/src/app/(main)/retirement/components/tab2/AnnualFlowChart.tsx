@@ -118,7 +118,8 @@ export function NetAssetChart({ data, visibility, noAnimation }: NetAssetChartPr
     return {
       year: `${row.year}`,
       순자산: row.total_evaluation,
-      누적입금액: cumDep,
+      // 순입금액 = 해당 연도 누적입금액 - 해당 연도 누적인출액 (흐름표와 동일 공식)
+      순입금액: netInvestment,
       순이익: netProfit,
       순자산수익률: returnRate,
     };
@@ -133,7 +134,7 @@ export function NetAssetChart({ data, visibility, noAnimation }: NetAssetChartPr
         <YAxis yAxisId="right" orientation="right" fontSize={11} tickLine={false} axisLine={false} tickFormatter={(v: number) => `${v.toFixed(1)}%`} width={50} tick={{ fill: '#7A8FA6' }} />
         <Tooltip formatter={tooltipFmt} contentStyle={{ ...tooltipStyle, backgroundColor: '#16203A', border: '1px solid #2F3D5C', color: '#C9D6E3' }} />
         {visibility.cumulativeDeposit && (
-          <Bar yAxisId="left" dataKey="누적입금액" fill="#4A90D9" opacity={0.5} barSize={28} radius={[3, 3, 0, 0]} isAnimationActive={!noAnimation} />
+          <Bar yAxisId="left" dataKey="순입금액" fill="#4A90D9" opacity={0.5} barSize={28} radius={[3, 3, 0, 0]} isAnimationActive={!noAnimation} />
         )}
         {visibility.netAsset && (
           <Bar yAxisId="left" dataKey="순자산" fill="#3B82F6" opacity={0.85} barSize={28} radius={[3, 3, 0, 0]} isAnimationActive={!noAnimation} />
