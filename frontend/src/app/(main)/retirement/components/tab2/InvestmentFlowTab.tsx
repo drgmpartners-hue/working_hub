@@ -1184,14 +1184,11 @@ export function InvestmentFlowTab() {
     // 바로 적용하지 않고 미리보기 계획을 만들어 사용자가 선택하게 한다 (의도치 않은 자동 입력 방지)
     setNotionSyncing(true);
     try {
-      // 서버측 필터: 이 고객의 증권사투자 행만 받아옴 (전체 DB 다운로드 방지)
-      const fq = notionFilterQS([
+      // 서버측 필터: 이 고객의 증권사투자 행만 받아옴 — 0건이면 조건을 줄여 재시도
+      const rows = await fetchNotionRowsWithFallback(saved.dbId, [
         { property: custCol, value: selectedCustomer?.name },
         { property: catCol, value: NOTION_IR_TARGET_CATEGORY },
       ]);
-      const res = await fetch(`${API_URL}/api/v1/notion/databases/${saved.dbId}/rows${fq}`, { headers: authLib.getAuthHeader() });
-      if (!res.ok) { const d = await res.json().catch(() => ({} as { detail?: string })); throw new Error(d?.detail || 'Notion 데이터 조회 실패'); }
-      const rows: { id: string; properties: Record<string, string> }[] = await res.json();
       const target = notionNormName(selectedCustomer?.name);
       const matched = rows.filter(r =>
         notionNormName(r.properties[custCol]) === target &&
@@ -3757,6 +3754,32 @@ function SyncPreviewModal({ title, subtitle, items, checked, onToggle, onToggleA
   );
 }
 
+/** Notion rows 조회 — 서버 필터가 0건이면 조건을 줄여가며 재시도 (전체조건 → 첫 조건만 → 무필터).
+ *  Notion 컬럼 타입/값 표기가 필터와 어긋나도 데이터를 받아온 뒤 클라이언트 필터가 최종 판정한다. */
+async function fetchNotionRowsWithFallback(
+  dbId: string,
+  pairs: { property?: string; value?: string }[],
+): Promise<{ id: string; properties: Record<string, string> }[]> {
+  const fqFull = notionFilterQS(pairs);
+  const fqFirst = pairs.length > 1 ? notionFilterQS([pairs[0]]) : '';
+  const attempts = [...new Set([fqFull, fqFirst, ''])];   // 중복 제거, 마지막은 무필터
+  let lastErr: Error | null = null;
+  for (const fq of attempts) {
+    try {
+      const res = await fetch(`${API_URL}/api/v1/notion/databases/${dbId}/rows${fq}`, { headers: authLib.getAuthHeader() });
+      if (!res.ok) {
+        const d = await res.json().catch(() => ({} as { detail?: string }));
+        lastErr = new Error(d?.detail || `데이터 조회 실패 (HTTP ${res.status})`);
+        continue;
+      }
+      const rows = await res.json();
+      if (Array.isArray(rows) && rows.length > 0) return rows;
+    } catch (e) { lastErr = e instanceof Error ? e : new Error('네트워크 오류'); }
+  }
+  if (lastErr) throw lastErr;
+  return [];
+}
+
 /** Notion rows 조회용 서버측 필터 쿼리스트링 (고객명·카테고리) — DB 전체 다운로드로 인한 504 방지.
  *  서버 필터는 최적화일 뿐, 클라이언트 필터가 최종 판정하므로 일부 조건이 생략돼도 결과는 동일하다. */
 function notionFilterQS(pairs: { property?: string; value?: string }[]): string {
@@ -4095,16 +4118,11 @@ function NotionImportRecordsModal({ customerId, customerName, existingKeys, onCl
       const cols = props.map(p => p.name);
       const resolvedMap = savedMapping ?? autoGuessMapping(cols);
       // 2) 고객명·카테고리 서버측 필터로 이 고객 행만 조회 (전체 DB 다운로드 → 504 방지)
-      const fq = notionFilterQS([
+      //    필터가 0건이면 조건을 줄여 재시도 — 컬럼 타입/값 표기 차이에 견고
+      const rows = await fetchNotionRowsWithFallback(dbId, [
         { property: resolvedMap['customer_name'], value: customerName },
         { property: resolvedMap['category'], value: NOTION_IR_TARGET_CATEGORY },
       ]);
-      const rR = await fetch(`${API_URL}/api/v1/notion/databases/${dbId}/rows${fq}`, { headers: authLib.getAuthHeader() });
-      if (!rR.ok) {
-        const d = await rR.json().catch(() => ({} as { detail?: string }));
-        throw new Error(d?.detail || `데이터 조회 실패 (HTTP ${rR.status})`);
-      }
-      const rows: { id: string; properties: Record<string, string> }[] = await rR.json();
       setIrCols(cols);
       setIrRows(rows);
       setIrMap(resolvedMap);
@@ -4260,7 +4278,16 @@ function NotionImportRecordsModal({ customerId, customerName, existingKeys, onCl
       (r.properties[categoryCol] ?? '').trim() === NOTION_IR_TARGET_CATEGORY
     );
     if (matched.length === 0) {
-      alert(`'${customerName}' 고객의 '${NOTION_IR_TARGET_CATEGORY}' 상품을 Notion에서 찾지 못했습니다.\n(Notion의 고객명·카테고리 값을 확인하세요)`);
+      // 진단: 불러온 행의 실제 값을 보여줘 어느 쪽(고객명/카테고리)이 어긋났는지 바로 확인
+      const sample = (col: string) =>
+        [...new Set(irRows.map(r => (r.properties[col] ?? '').trim()).filter(Boolean))].slice(0, 5).join(', ') || '(비어있음)';
+      alert(
+        `'${customerName}' 고객의 '${NOTION_IR_TARGET_CATEGORY}' 상품을 Notion에서 찾지 못했습니다.\n\n` +
+        `불러온 행 ${irRows.length}건 기준 실제 값 예시:\n` +
+        `· 고객명(${customerNameCol}): ${sample(customerNameCol)}\n` +
+        `· 카테고리(${categoryCol}): ${sample(categoryCol)}\n\n` +
+        `위 값이 화면과 다르면 Notion 값 또는 매핑 컬럼을 확인하세요.`
+      );
       return;
     }
     // 기존 투자기록에 없는 신규 상품만 미리 체크
