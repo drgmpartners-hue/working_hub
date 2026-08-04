@@ -253,9 +253,12 @@ def _build_notion_filter(schema_props: dict, filters: list) -> dict | None:
             conds.append({"property": name, "multi_select": {"contains": value}})
         elif ptype == "status":
             conds.append({"property": name, "status": {"equals": value}})
-        elif ptype == "formula":
-            conds.append({"property": name, "formula": {"string": {"contains": value}}})
-        # relation·rollup·number·date 등은 생략 → 클라이언트 필터가 처리
+        elif ptype == "rollup":
+            # 롤업(show_original·select) — any.select.equals가 실측으로 동작.
+            # 다른 롤업 원본 타입이면 400 → 조회 루프에서 무필터 폴백
+            conds.append({"property": name, "rollup": {"any": {"select": {"equals": value}}}})
+        # formula는 실측 결과 값이 있어도 0건을 반환(관계형 참조 수식에서 Notion 필터 미동작)
+        # → 서버 필터에서 제외. relation·number·date 등도 생략 → 클라이언트 필터가 처리
     if not conds:
         return None
     return conds[0] if len(conds) == 1 else {"and": conds}
@@ -265,6 +268,7 @@ def _build_notion_filter(schema_props: dict, filters: list) -> dict | None:
 async def query_database(
     database_id: str,
     filters: Optional[str] = None,
+    props: Optional[str] = None,
     current_user=Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
@@ -272,21 +276,43 @@ async def query_database(
 
     filters: JSON 문자열 [{"property": 컬럼명, "value": 값}] — 서버측(Notion) 필터로
     해당 조건에 맞는 행만 받아온다. 수천 행 DB 전체 다운로드로 인한 504 방지.
+    props: JSON 문자열 [컬럼명, ...] — 지정 시 해당 속성만 응답에 포함(filter_properties).
+    롤업·관계형 등 무거운 속성 해석을 생략해 페이지당 응답 시간을 크게 줄인다.
     """
     token = await _get_notion_token(current_user.id, db)
 
+    # 필터/속성 축소에 필요한 스키마 1회 조회
+    import json as _json
+    schema_props: dict | None = None
+    if filters or props:
+        schema_res = await _notion_request("GET", f"{NOTION_BASE}/databases/{database_id}", token)
+        if schema_res.status_code == 200:
+            schema_props = schema_res.json().get("properties", {})
+
     # 서버측 필터 구성 (실패 시 전체 조회로 폴백)
     notion_filter = None
-    if filters:
+    if filters and schema_props:
         try:
-            import json as _json
             parsed = _json.loads(filters)
             if isinstance(parsed, list) and parsed:
-                schema_res = await _notion_request("GET", f"{NOTION_BASE}/databases/{database_id}", token)
-                if schema_res.status_code == 200:
-                    notion_filter = _build_notion_filter(schema_res.json().get("properties", {}), parsed)
+                notion_filter = _build_notion_filter(schema_props, parsed)
         except Exception:
             notion_filter = None
+
+    # 필요한 속성만 요청 (filter_properties — 속성 ID 기준)
+    query_url = f"{NOTION_BASE}/databases/{database_id}/query"
+    if props and schema_props:
+        try:
+            names = _json.loads(props)
+            ids = [
+                schema_props[n]["id"]
+                for n in names
+                if isinstance(n, str) and n in schema_props and schema_props[n].get("id")
+            ]
+            if ids:
+                query_url += "?" + "&".join(f"filter_properties={pid}" for pid in ids)
+        except Exception:
+            pass
 
     all_results = []
     start_cursor = None
@@ -315,9 +341,14 @@ async def query_database(
                 body["filter"] = notion_filter
             if start_cursor:
                 body["start_cursor"] = start_cursor
-            res = await _notion_request(
-                "POST", f"{NOTION_BASE}/databases/{database_id}/query", token, body, client=client
-            )
+            res = await _notion_request("POST", query_url, token, body, client=client)
+            if res.status_code == 400 and notion_filter:
+                # 필터 형식이 이 DB와 안 맞는 경우(롤업 원본 타입 상이 등) → 무필터로 재시작
+                notion_filter = None
+                all_results = []
+                start_cursor = None
+                pages = 0
+                continue
             if res.status_code != 200:
                 _handle_error(res)
             data = res.json()
@@ -332,10 +363,10 @@ async def query_database(
 
     rows = []
     for page in all_results:
-        props = {}
+        extracted: dict = {}
         for name, prop in page.get("properties", {}).items():
             val = _extract_value(prop)
             if val is not None:
-                props[name] = val
-        rows.append(NotionRow(id=page["id"], properties=props))
+                extracted[name] = val
+        rows.append(NotionRow(id=page["id"], properties=extracted))
     return rows

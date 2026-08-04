@@ -1185,10 +1185,14 @@ export function InvestmentFlowTab() {
     setNotionSyncing(true);
     try {
       // 서버측 필터: 이 고객의 증권사투자 행만 받아옴 — 0건이면 조건을 줄여 재시도
-      const rows = await fetchNotionRowsWithFallback(saved.dbId, [
-        { property: custCol, value: selectedCustomer?.name },
-        { property: catCol, value: NOTION_IR_TARGET_CATEGORY },
-      ]);
+      const rows = await fetchNotionRowsWithFallback(
+        saved.dbId,
+        [
+          { property: custCol, value: selectedCustomer?.name },
+          { property: catCol, value: NOTION_IR_TARGET_CATEGORY },
+        ],
+        Object.values(saved.mapping ?? {}),   // 매핑된 컬럼만 받아 고속화
+      );
       const target = notionNormName(selectedCustomer?.name);
       const matched = rows.filter(r =>
         notionNormName(r.properties[custCol]) === target &&
@@ -3759,14 +3763,18 @@ function SyncPreviewModal({ title, subtitle, items, checked, onToggle, onToggleA
 async function fetchNotionRowsWithFallback(
   dbId: string,
   pairs: { property?: string; value?: string }[],
+  propNames?: string[],   // 지정 시 해당 컬럼만 받아옴 (롤업·관계형 해석 생략 → 대폭 고속화)
 ): Promise<{ id: string; properties: Record<string, string> }[]> {
+  const wanted = (propNames ?? []).filter(Boolean);
+  const propsQS = wanted.length ? `props=${encodeURIComponent(JSON.stringify(wanted))}` : '';
+  const withProps = (fq: string) => (propsQS ? (fq ? `${fq}&${propsQS}` : `?${propsQS}`) : fq);
   const fqFull = notionFilterQS(pairs);
   const fqFirst = pairs.length > 1 ? notionFilterQS([pairs[0]]) : '';
   const attempts = [...new Set([fqFull, fqFirst, ''])];   // 중복 제거, 마지막은 무필터
   let lastErr: Error | null = null;
   for (const fq of attempts) {
     try {
-      const res = await fetch(`${API_URL}/api/v1/notion/databases/${dbId}/rows${fq}`, { headers: authLib.getAuthHeader() });
+      const res = await fetch(`${API_URL}/api/v1/notion/databases/${dbId}/rows${withProps(fq)}`, { headers: authLib.getAuthHeader() });
       if (!res.ok) {
         const d = await res.json().catch(() => ({} as { detail?: string }));
         lastErr = new Error(d?.detail || `데이터 조회 실패 (HTTP ${res.status})`);
@@ -4119,10 +4127,14 @@ function NotionImportRecordsModal({ customerId, customerName, existingKeys, onCl
       const resolvedMap = savedMapping ?? autoGuessMapping(cols);
       // 2) 고객명·카테고리 서버측 필터로 이 고객 행만 조회 (전체 DB 다운로드 → 504 방지)
       //    필터가 0건이면 조건을 줄여 재시도 — 컬럼 타입/값 표기 차이에 견고
-      const rows = await fetchNotionRowsWithFallback(dbId, [
-        { property: resolvedMap['customer_name'], value: customerName },
-        { property: resolvedMap['category'], value: NOTION_IR_TARGET_CATEGORY },
-      ]);
+      const rows = await fetchNotionRowsWithFallback(
+        dbId,
+        [
+          { property: resolvedMap['customer_name'], value: customerName },
+          { property: resolvedMap['category'], value: NOTION_IR_TARGET_CATEGORY },
+        ],
+        Object.values(resolvedMap),   // 매핑된 컬럼만 받아 페이지당 응답 고속화
+      );
       setIrCols(cols);
       setIrRows(rows);
       setIrMap(resolvedMap);
