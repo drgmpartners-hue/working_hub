@@ -60,7 +60,8 @@ async def recalculate_balances(account_id: int, db: AsyncSession) -> None:
     txns = result.scalars().all()
     balance = 0
     for txn in txns:
-        balance += txn.credit_amount - txn.debit_amount
+        # 잔액 = 입금 + 적립 - 출금 누적
+        balance += txn.credit_amount + (txn.savings_amount or 0) - txn.debit_amount
         txn.balance = balance
 
 
@@ -111,6 +112,7 @@ async def recalculate_account(
             invest_txn.transaction_date = record.start_date
             invest_txn.debit_amount = record.investment_amount
             invest_txn.related_product = product_label
+            invest_txn.memo = "투자시작"   # 재동기화 시 구형 메모도 새 형식으로 갱신
             updated_count += 1
 
         # 종결(입금) 거래 동기화
@@ -127,7 +129,7 @@ async def recalculate_account(
                 term_txn.transaction_date = term_date
                 term_txn.credit_amount = record.evaluation_amount
                 term_txn.related_product = product_label
-                term_txn.memo = f"{product_label} 종결 (투자: {record.start_date})"
+                term_txn.memo = f"투자종결(시작일 : {record.start_date})"
                 updated_count += 1
 
     # 2. 잔액 재계산
@@ -337,6 +339,7 @@ async def create_transaction(
         related_product=payload.related_product,
         investment_record_id=payload.investment_record_id,
         credit_amount=payload.credit_amount,
+        savings_amount=payload.savings_amount,
         debit_amount=payload.debit_amount,
         memo=payload.memo,
     )

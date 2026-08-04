@@ -158,11 +158,13 @@ async def get_annual_flow(
         )
         txns = tx_result.scalars().all()
         for tx in txns:
-            if tx.transaction_type == "savings":  # 적립
+            # 적립액 컬럼(자동이체 등)은 거래 구분과 무관하게 연적립금액으로 집계
+            annual_savings_amount += (tx.savings_amount or 0)
+            if tx.transaction_type == "savings":  # 적립 (구형: 입금액 컬럼에 적립 기록)
                 annual_savings_amount += tx.credit_amount
             elif tx.transaction_type == "interest":  # 이자
                 interest_amount += tx.credit_amount
-            elif tx.transaction_type == "deposit":  # 입금
+            elif tx.transaction_type == "deposit":  # 입금 (일시납·거치 — 입금액 컬럼만)
                 deposit_in_amount += tx.credit_amount
             elif tx.transaction_type == "withdrawal":  # 출금
                 withdrawal_from_deposit += tx.debit_amount
@@ -382,7 +384,7 @@ async def create_investment_record(
             investment_record_id=record.id,
             credit_amount=0,
             debit_amount=data.investment_amount,
-            memo=f"{product_label} 투자",
+            memo="투자시작",
         )
         db.add(txn)
 
@@ -396,7 +398,7 @@ async def create_investment_record(
                 investment_record_id=record.id,
                 credit_amount=data.evaluation_amount,
                 debit_amount=0,
-                memo=f"{product_label} 종결 (투자: {record.start_date})",
+                memo=f"투자종결(시작일 : {record.start_date})",
             )
             db.add(txn_exit)
 
@@ -509,7 +511,7 @@ async def update_investment_record(
             investment_record_id=record.id,
             credit_amount=0,
             debit_amount=record.investment_amount,
-            memo=f"{product_label} 투자",
+            memo="투자시작",
         ))
         # 종결 시: 입금 (예수금으로 평가금액 들어옴)
         if record.status == "exit" and record.evaluation_amount:
@@ -521,7 +523,7 @@ async def update_investment_record(
                 investment_record_id=record.id,
                 credit_amount=record.evaluation_amount,
                 debit_amount=0,
-                memo=f"{product_label} 종결 (투자: {record.start_date})",
+                memo=f"투자종결(시작일 : {record.start_date})",
             ))
         recalc_accounts.add(record.deposit_account_id)
 

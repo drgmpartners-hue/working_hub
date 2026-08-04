@@ -88,6 +88,7 @@ interface DepositTransaction {
   related_product: string | null;
   investment_record_id: number | null;
   credit_amount: number;
+  savings_amount: number;
   debit_amount: number;
   balance: number;
   memo: string | null;
@@ -388,6 +389,7 @@ export function InvestmentFlowTab() {
   const [desiredPlanData, setDesiredPlanData] = useState<any>(null);
   const [appliedYears, setAppliedYears] = useState<Record<number, any>>({});
   const [flowAccountFilter, setFlowAccountFilter] = useState<'all' | number>('all');
+  const [showFlowHelp, setShowFlowHelp] = useState(false);   // 연간투자흐름표 계산식 도움말
   const [evalDetailYear, setEvalDetailYear] = useState<number | null>(null);
 
   // 투자기록 상태
@@ -396,6 +398,16 @@ export function InvestmentFlowTab() {
   const [selectedRecordIds, setSelectedRecordIds] = useState<Set<number>>(new Set());
   const [bulkDeleting, setBulkDeleting] = useState(false);
   const [notionSyncing, setNotionSyncing] = useState(false);
+  /* ---- Notion 동기화 미리보기: 무엇이 추가/업데이트되는지 보고 선택 후 적용 ---- */
+  const [irSyncPlan, setIrSyncPlan] = useState<SyncPlanItem[] | null>(null);
+  const [irSyncChecked, setIrSyncChecked] = useState<Set<string>>(new Set());
+  const [irSyncApplying, setIrSyncApplying] = useState(false);
+  const [dtxSyncPlan, setDtxSyncPlan] = useState<SyncPlanItem[] | null>(null);
+  const [dtxSyncChecked, setDtxSyncChecked] = useState<Set<string>>(new Set());
+  const [dtxSyncApplying, setDtxSyncApplying] = useState(false);
+  const [dtxSyncAcctId, setDtxSyncAcctId] = useState<number | null>(null);
+  const [dtxSyncSkipped, setDtxSyncSkipped] = useState(0);
+  const [dtxSyncAcctNumber, setDtxSyncAcctNumber] = useState<string | null>(null);  // Notion 증권번호 → 계좌 정보
   const [bulkAccountId, setBulkAccountId] = useState<string>('');  // '' 미선택 · 'none' 해제 · 그 외 계좌id
   const [bulkAssigning, setBulkAssigning] = useState(false);
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
@@ -473,6 +485,7 @@ export function InvestmentFlowTab() {
   const [txEditDate, setTxEditDate] = useState('');
   const [txEditType, setTxEditType] = useState<TransactionType>('deposit');
   const [txEditCredit, setTxEditCredit] = useState('');
+  const [txEditSavings, setTxEditSavings] = useState('');
   const [txEditDebit, setTxEditDebit] = useState('');
   const [txEditMemo, setTxEditMemo] = useState('');
   const [txEditProduct, setTxEditProduct] = useState('');
@@ -767,6 +780,7 @@ export function InvestmentFlowTab() {
     setTxEditDate('');
     setTxEditType('deposit');
     setTxEditCredit('');
+    setTxEditSavings('');
     setTxEditDebit('');
     setTxEditMemo('');
     setTimeout(() => { txScrollRefs.current[accountId]?.scrollTo({ top: 0, behavior: 'smooth' }); }, 50);
@@ -780,6 +794,7 @@ export function InvestmentFlowTab() {
     setTxEditDate(tx.transaction_date);
     setTxEditType(tx.transaction_type);
     setTxEditCredit(tx.credit_amount > 0 ? tx.credit_amount.toLocaleString() : '');
+    setTxEditSavings(tx.savings_amount > 0 ? tx.savings_amount.toLocaleString() : '');
     setTxEditDebit(tx.debit_amount > 0 ? tx.debit_amount.toLocaleString() : '');
     setTxEditMemo(tx.memo || '');
     setTxEditProduct(tx.related_product || '');
@@ -806,6 +821,7 @@ export function InvestmentFlowTab() {
             transaction_type: txEditType,
             related_product: txEditProduct.trim() || null,
             credit_amount: txEditCredit ? parseInt(txEditCredit.replace(/\D/g, ''), 10) : 0,
+            savings_amount: txEditSavings ? parseInt(txEditSavings.replace(/\D/g, ''), 10) : 0,
             debit_amount: txEditDebit ? parseInt(txEditDebit.replace(/\D/g, ''), 10) : 0,
             memo: txEditMemo.trim() || null,
           }),
@@ -837,6 +853,7 @@ export function InvestmentFlowTab() {
             transaction_type: txEditType,
             related_product: txEditProduct.trim() || null,
             credit_amount: txEditCredit ? parseInt(txEditCredit.replace(/\D/g, ''), 10) : 0,
+            savings_amount: txEditSavings ? parseInt(txEditSavings.replace(/\D/g, ''), 10) : 0,
             debit_amount: txEditDebit ? parseInt(txEditDebit.replace(/\D/g, ''), 10) : 0,
             memo: txEditMemo.trim() || null,
           }),
@@ -979,17 +996,19 @@ export function InvestmentFlowTab() {
   /* ---- 예수금 거래 년도 필터 ---- */
   const [txYearFilter, setTxYearFilter] = useState<string>('all');
 
-  /* ---- 예수금 거래 정렬 (localStorage 영속화) ---- */
+  /* ---- 예수금 거래 정렬 (localStorage 영속화) ----
+     기본: 거래일 최신순(상단) — '계좌 위에 투자를 날짜별로 쌓아가는' 모델.
+     키 v2: 구버전 저장값(id/asc)이 새 기본값을 덮지 않도록 분리 */
   const [txSortKey, setTxSortKey] = useState<string>(() => {
-    if (typeof window !== 'undefined') return localStorage.getItem('tx_sort_key') || 'id';
-    return 'id';
+    if (typeof window !== 'undefined') return localStorage.getItem('tx_sort_key_v2') || 'transaction_date';
+    return 'transaction_date';
   });
   const [txSortDir, setTxSortDir] = useState<'asc' | 'desc'>(() => {
-    if (typeof window !== 'undefined') return (localStorage.getItem('tx_sort_dir') as 'asc' | 'desc') || 'asc';
-    return 'asc';
+    if (typeof window !== 'undefined') return (localStorage.getItem('tx_sort_dir_v2') as 'asc' | 'desc') || 'desc';
+    return 'desc';
   });
-  useEffect(() => { localStorage.setItem('tx_sort_key', txSortKey); }, [txSortKey]);
-  useEffect(() => { localStorage.setItem('tx_sort_dir', txSortDir); }, [txSortDir]);
+  useEffect(() => { localStorage.setItem('tx_sort_key_v2', txSortKey); }, [txSortKey]);
+  useEffect(() => { localStorage.setItem('tx_sort_dir_v2', txSortDir); }, [txSortDir]);
   const toggleTxSort = (key: string) => {
     if (txSortKey === key) setTxSortDir(d => d === 'asc' ? 'desc' : 'asc');
     else { setTxSortKey(key); setTxSortDir('asc'); }
@@ -1003,6 +1022,7 @@ export function InvestmentFlowTab() {
         case 'transaction_type': va = a.transaction_type; vb = b.transaction_type; break;
         case 'related_product': va = a.related_product || ''; vb = b.related_product || ''; break;
         case 'credit_amount': va = a.credit_amount; vb = b.credit_amount; break;
+        case 'savings_amount': va = a.savings_amount; vb = b.savings_amount; break;
         case 'debit_amount': va = a.debit_amount; vb = b.debit_amount; break;
         case 'balance': va = a.balance; vb = b.balance; break;
         default: return 0;
@@ -1011,7 +1031,9 @@ export function InvestmentFlowTab() {
       if (va == null) return 1;
       if (vb == null) return -1;
       const cmp = typeof va === 'number' && typeof vb === 'number' ? va - vb : String(va).localeCompare(String(vb));
-      return txSortDir === 'asc' ? cmp : -cmp;
+      // 동률(같은 거래일 등)은 id로 2차 정렬 — 같은 날 거래의 순서 고정
+      const tie = cmp !== 0 ? cmp : a.id - b.id;
+      return txSortDir === 'asc' ? tie : -tie;
     });
   };
 
@@ -1159,13 +1181,7 @@ export function InvestmentFlowTab() {
       alert('고객명·카테고리 매핑이 필요합니다. 📝 Notion 불러오기에서 매핑해 주세요.');
       return;
     }
-    if (!confirm(
-      `Notion "${saved.dbTitle}"와 '${selectedCustomer?.name ?? ''}'의 ${NOTION_IR_TARGET_CATEGORY} 상품을 동기화합니다.\n\n` +
-      `• Notion에만 있는 상품 → 추가\n` +
-      `• 이미 있는 상품 → Notion 기준으로 업데이트 (평가금액·만기일 등)\n` +
-      `• 여기에만 있는 상품 → 그대로 유지\n\n진행하시겠습니까?`
-    )) return;
-
+    // 바로 적용하지 않고 미리보기 계획을 만들어 사용자가 선택하게 한다 (의도치 않은 자동 입력 방지)
     setNotionSyncing(true);
     try {
       // 서버측 필터: 이 고객의 증권사투자 행만 받아옴 (전체 DB 다운로드 방지)
@@ -1192,32 +1208,29 @@ export function InvestmentFlowTab() {
       const existMap = new Map<string, number>();
       records.forEach(r => existMap.set(dupKey(getProductName(r), r.join_date || r.start_date), r.id));
 
-      let added = 0, updated = 0, skipped = 0;
+      let skipped = 0;
+      const items: SyncPlanItem[] = [];
       for (const row of matched) {
         const body = notionRowToRecordBody(row, saved.mapping, selectedCustomerId);
         if (!body) { skipped++; continue; }
         const key = dupKey(body.product_name, body.join_date || body.start_date);
         const existingId = existMap.get(key);
-        try {
-          if (existingId != null) {
-            const r2 = await fetch(`${API_URL}/api/v1/retirement/investment-records/${existingId}`, {
-              method: 'PUT', headers: { 'Content-Type': 'application/json', ...authLib.getAuthHeader() }, body: JSON.stringify(body),
-            });
-            if (r2.ok) updated++;
-          } else {
-            const r2 = await fetch(`${API_URL}/api/v1/retirement/investment-records`, {
-              method: 'POST', headers: { 'Content-Type': 'application/json', ...authLib.getAuthHeader() }, body: JSON.stringify(body),
-            });
-            if (r2.ok) added++;
-          }
-        } catch { /* 개별 실패 무시 */ }
+        items.push({
+          key: row.id,
+          action: existingId != null ? 'update' : 'add',
+          recordId: existingId,
+          label: String(body.product_name ?? '-'),
+          date: String(body.join_date ?? body.start_date ?? '').slice(0, 10),
+          amount: Number(body.investment_amount ?? 0) || undefined,
+          body,
+        });
       }
-      alert(`동기화 완료\n· 추가 ${added}건\n· 업데이트 ${updated}건${skipped > 0 ? `\n· 스킵 ${skipped}건 (가입일 누락)` : ''}`);
-      setSelectedRecordIds(new Set());
-      fetchRecords();
-      fetchAnnualFlow();
-      fetchDepositAccounts();
-      expandedAccountIds.forEach(id => fetchTransactions(id));
+      if (items.length === 0) {
+        alert(`가져올 항목이 없습니다.${skipped > 0 ? ` (가입일 누락 ${skipped}건 제외)` : ''}`);
+        return;
+      }
+      setIrSyncPlan(items);
+      setIrSyncChecked(new Set(items.map(i => i.key)));
     } catch (e) {
       alert(`동기화 실패: ${e instanceof Error ? e.message : '오류'}`);
     } finally {
@@ -1225,12 +1238,46 @@ export function InvestmentFlowTab() {
     }
   };
 
-  /* ---- 예수금 거래 Notion 동기화: 저장된 설정으로 대상 계좌에 신규 거래만 추가(중복 건너뛰기) ---- */
+  /* ---- 투자기록 동기화 미리보기 적용 (선택 항목만) ---- */
+  const applyIrSync = async () => {
+    if (!irSyncPlan) return;
+    const chosen = irSyncPlan.filter(i => irSyncChecked.has(i.key));
+    if (chosen.length === 0) return;
+    setIrSyncApplying(true);
+    let added = 0, updated = 0, fail = 0;
+    // 같은 예수금 계좌 잔액 재계산이 맞물리므로 순차 처리
+    for (const item of chosen) {
+      try {
+        if (item.action === 'update' && item.recordId != null) {
+          const r2 = await fetch(`${API_URL}/api/v1/retirement/investment-records/${item.recordId}`, {
+            method: 'PUT', headers: { 'Content-Type': 'application/json', ...authLib.getAuthHeader() }, body: JSON.stringify(item.body),
+          });
+          if (r2.ok) updated++; else fail++;
+        } else {
+          const r2 = await fetch(`${API_URL}/api/v1/retirement/investment-records`, {
+            method: 'POST', headers: { 'Content-Type': 'application/json', ...authLib.getAuthHeader() }, body: JSON.stringify(item.body),
+          });
+          if (r2.ok) added++; else fail++;
+        }
+      } catch { fail++; }
+    }
+    setIrSyncApplying(false);
+    setIrSyncPlan(null);
+    alert(`동기화 완료\n· 추가 ${added}건\n· 업데이트 ${updated}건${fail > 0 ? `\n· 실패 ${fail}건` : ''}`);
+    setSelectedRecordIds(new Set());
+    fetchRecords();
+    fetchAnnualFlow();
+    fetchDepositAccounts();
+    expandedAccountIds.forEach(id => fetchTransactions(id));
+  };
+
+  /* ---- 예수금 거래 Notion 동기화: 저장된 설정(고객별 전용 DB)으로 대상 계좌에 신규 거래만 추가 ---- */
   const handleDepositNotionSync = async () => {
     let saved: { dbId: string; dbTitle: string; mapping: Record<string, string>; acctId?: number } | null = null;
-    try { const r = localStorage.getItem(NOTION_DTX_CONFIG_KEY); saved = r ? JSON.parse(r) : null; } catch { saved = null; }
-    if (!saved || !saved.dbId || !saved.mapping?.['transaction_date'] || !saved.mapping?.['customer_name'] || !saved.mapping?.['category']) {
-      alert('먼저 📝 Notion 불러오기에서 DB와 고객명·카테고리·거래일 필드를 매핑해 주세요.');
+    // 고객마다 전용 DB가 다르므로 설정도 고객별 키로 저장돼 있음
+    try { const r = localStorage.getItem(`${NOTION_DTX_CONFIG_KEY}:${selectedCustomerId}`); saved = r ? JSON.parse(r) : null; } catch { saved = null; }
+    if (!saved || !saved.dbId || !saved.mapping?.['transaction_date']) {
+      alert('먼저 📝 Notion 불러오기에서 이 고객의 DB를 지정하고 발생일 필드를 매핑해 주세요.');
       return;
     }
     const acctId = saved.acctId;
@@ -1239,59 +1286,94 @@ export function InvestmentFlowTab() {
       alert('동기화 대상 예수금 계좌를 찾을 수 없습니다. 📝 Notion 불러오기에서 대상 계좌를 다시 선택해 주세요.');
       return;
     }
-    const acctLabel = acct.nickname || `${acct.securities_company} ${acct.account_number || ''}`;
-    if (!confirm(
-      `Notion "${saved.dbTitle}"의 거래를 '${acctLabel}' 계좌에 동기화합니다.\n\n` +
-      `• 대상 계좌에 없는 신규 거래 → 추가\n` +
-      `• 이미 있는 거래(거래일·입출금액·유형 동일) → 건너뜀\n\n진행하시겠습니까?`
-    )) return;
-
+    // 바로 적용하지 않고 미리보기 계획을 만들어 사용자가 선택하게 한다 (의도치 않은 자동 입력 방지)
     setDepositNotionSyncing(true);
     try {
-      // 서버측 필터: 이 고객의 증권사투자 행만 받아옴 (전체 DB 다운로드 방지)
-      const fq = notionFilterQS([
-        { property: saved.mapping['customer_name'], value: selectedCustomer?.name },
-        { property: saved.mapping['category'], value: NOTION_IR_TARGET_CATEGORY },
-      ]);
       const [rowsRes, txRes] = await Promise.all([
-        fetch(`${API_URL}/api/v1/notion/databases/${saved.dbId}/rows${fq}`, { headers: authLib.getAuthHeader() }),
+        fetch(`${API_URL}/api/v1/notion/databases/${saved.dbId}/rows`, { headers: authLib.getAuthHeader() }),
         fetch(`${API_URL}/api/v1/retirement/deposit-accounts/${acctId}/transactions`, { headers: authLib.getAuthHeader() }),
       ]);
       if (!rowsRes.ok) { const d = await rowsRes.json().catch(() => ({})); throw new Error(d?.detail || 'Notion 데이터 조회 실패'); }
       const rows: { id: string; properties: Record<string, string> }[] = await rowsRes.json();
-      // 고객명 + 카테고리(증권사투자)로 이 고객의 상품만 필터 (투자기록 동기화와 동일)
-      const custCol = saved.mapping['customer_name'];
-      const catCol = saved.mapping['category'];
-      const target = notionNormName(selectedCustomer?.name);
-      const matched = rows.filter(r =>
-        notionNormName(r.properties[custCol]) === target &&
-        (r.properties[catCol] ?? '').trim() === NOTION_IR_TARGET_CATEGORY);
+      // 고객별 전용 DB이므로 전체 행이 이 고객의 거래 — 행 필터 없음
+      const matched = rows;
       // 기존 거래 조회가 실패하면 "0건"으로 오인해 전부 신규 추가(대량 중복)되므로 반드시 중단
       if (!txRes.ok) throw new Error('기존 거래 조회에 실패해 동기화를 중단했습니다. 잠시 후 다시 시도해주세요.');
       const existTx = await txRes.json();
       const existKeys = new Set<string>((Array.isArray(existTx) ? existTx : []).map(depositTxKey));
 
-      let added = 0, skipped = 0, fail = 0;
+      let skipped = 0;
+      const items: SyncPlanItem[] = [];
       for (const row of matched) {
         const body = notionRowToTxBody(row, saved.mapping);
         if (!body) { skipped++; continue; }
         if (existKeys.has(notionTxBodyKey(body))) { skipped++; continue; }
-        try {
-          const res = await fetch(`${API_URL}/api/v1/retirement/deposit-accounts/${acctId}/transactions`, {
-            method: 'POST', headers: { 'Content-Type': 'application/json', ...authLib.getAuthHeader() }, body: JSON.stringify(body),
-          });
-          if (res.ok) { added++; existKeys.add(notionTxBodyKey(body)); } else fail++;
-        } catch { fail++; }
+        const credit = Number(body.credit_amount ?? 0) + Number(body.savings_amount ?? 0);
+        const debit = Number(body.debit_amount ?? 0);
+        items.push({
+          key: row.id,
+          action: 'add',
+          label: String(body.related_product ?? '-'),
+          date: String(body.transaction_date ?? '').slice(0, 10),
+          amount: credit > 0 ? credit : (debit > 0 ? -debit : undefined),
+          body,
+        });
       }
-      alert(`동기화 완료 (${acctLabel})\n· 추가 ${added}건\n· 건너뜀 ${skipped}건(중복/거래일 누락)${fail > 0 ? `\n· 실패 ${fail}건` : ''}`);
-      fetchDepositAccounts();
-      fetchTransactions(acctId!);
-      fetchAnnualFlow();
+      if (items.length === 0) {
+        alert(`추가할 신규 거래가 없습니다.${skipped > 0 ? ` (중복/거래일 누락 ${skipped}건)` : ''}`);
+        return;
+      }
+      // 증권번호(매핑 시): 계좌 정보(계좌번호)로 반영할 값 추출
+      const acctNumCol = saved.mapping['account_number'];
+      const svcNum = acctNumCol
+        ? (rows.map(r => (r.properties[acctNumCol] ?? '').trim()).find(v => v) ?? '')
+        : '';
+      setDtxSyncAcctNumber(svcNum || null);
+      setDtxSyncAcctId(acctId!);
+      setDtxSyncSkipped(skipped);
+      setDtxSyncPlan(items);
+      setDtxSyncChecked(new Set(items.map(i => i.key)));
     } catch (e) {
       alert(`동기화 실패: ${e instanceof Error ? e.message : '오류'}`);
     } finally {
       setDepositNotionSyncing(false);
     }
+  };
+
+  /* ---- 예수금 동기화 미리보기 적용 (선택 항목만) ---- */
+  const applyDtxSync = async () => {
+    if (!dtxSyncPlan || dtxSyncAcctId == null) return;
+    const chosen = dtxSyncPlan.filter(i => dtxSyncChecked.has(i.key));
+    if (chosen.length === 0) return;
+    setDtxSyncApplying(true);
+    let added = 0, fail = 0;
+    // 같은 계좌 잔액 재계산이 맞물리므로 순차 처리
+    for (const item of chosen) {
+      try {
+        const res = await fetch(`${API_URL}/api/v1/retirement/deposit-accounts/${dtxSyncAcctId}/transactions`, {
+          method: 'POST', headers: { 'Content-Type': 'application/json', ...authLib.getAuthHeader() }, body: JSON.stringify(item.body),
+        });
+        if (res.ok) added++; else fail++;
+      } catch { fail++; }
+    }
+    setDtxSyncApplying(false);
+    const acct = depositAccounts.find(a => a.id === dtxSyncAcctId);
+    // 계좌번호가 비어 있으면 Notion 증권번호로 채움 (수동 입력값은 덮지 않음)
+    if (dtxSyncAcctNumber && acct && !acct.account_number) {
+      try {
+        await fetch(`${API_URL}/api/v1/retirement/deposit-accounts/${dtxSyncAcctId}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json', ...authLib.getAuthHeader() },
+          body: JSON.stringify({ account_number: dtxSyncAcctNumber }),
+        });
+      } catch { /* 계좌번호 갱신 실패는 무시 */ }
+    }
+    const acctLabel = acct ? (acct.nickname || `${acct.securities_company} ${acct.account_number || ''}`) : '';
+    setDtxSyncPlan(null);
+    alert(`동기화 완료${acctLabel ? ` (${acctLabel})` : ''}\n· 추가 ${added}건${fail > 0 ? `\n· 실패 ${fail}건` : ''}`);
+    fetchDepositAccounts();
+    fetchTransactions(dtxSyncAcctId);
+    fetchAnnualFlow();
   };
 
   /* ---- 고객 미선택 ---- */
@@ -1350,7 +1432,7 @@ export function InvestmentFlowTab() {
           date: tx.transaction_date || '-',
           type: tx.transaction_type || '-',
           product: tx.related_product || '-',
-          credit: tx.credit_amount || 0,
+          credit: (tx.credit_amount || 0) + (tx.savings_amount || 0),
           debit: tx.debit_amount || 0,
           balance: tx.balance || 0,
           memo: tx.memo || '',
@@ -1633,6 +1715,18 @@ export function InvestmentFlowTab() {
                 </option>
               ))}
             </select>
+            {/* 계산식 도움말 */}
+            <button
+              onClick={() => setShowFlowHelp(true)}
+              title="각 필드의 계산 방식 보기"
+              style={{
+                width: 26, height: 26, padding: 0, fontSize: 13, fontWeight: 700,
+                border: '1px solid var(--border-strong)', borderRadius: '50%',
+                backgroundColor: 'var(--bg-card)', cursor: 'pointer', color: 'var(--blue-400)',
+              }}
+            >
+              ?
+            </button>
             {/* 재계산 버튼 */}
             <button
               onClick={fetchAnnualFlow}
@@ -1671,12 +1765,12 @@ export function InvestmentFlowTab() {
                   { label: '연차', align: 'center', tip: '최초 투자 연도를 1차로 산정' },
                   { label: '나이', align: 'center', tip: '해당 연도 기준 고객 나이 (만 나이)' },
                   { label: '일시납금액', align: 'right', tip: '예수금 입금(거치) 금액 합계 (투자 제외)' },
-                  { label: '연적립금액', align: 'right', tip: '예수금 계좌의 "적립" 구분 입금액 합계' },
+                  { label: '연적립금액', align: 'right', tip: '예수금 거래의 적립액(자동이체) 합계 + "적립" 구분 입금액' },
                   { label: '총납입금액', align: 'right', tip: '당해 투자금액 + 모든 미종결 투자금액' },
                   { label: '연간평가금액', align: 'right', tip: '당해 종결 평가금액 + 모든 미종결 투자금액' },
                   { label: '연간총수익', align: 'right', tip: '연간평가금액 - 총납입금액' },
                   { label: '연수익률', align: 'right', tip: '연간총수익 / 총납입금액 × 100' },
-                  { label: '입금액', align: 'right', tip: '예수금 계좌 "입금" 구분 합계' },
+                  { label: '입금액', align: 'right', tip: '일시납금액 + 연적립금액' },
                   { label: '누적입금액', align: 'right', tip: '시작 연도부터 해당 연도까지 입금액 누적 합계' },
                   { label: '인출금액', align: 'right', tip: '투자기록 인출 + 예수금 "출금" 합계' },
                   { label: '누적인출액', align: 'right', tip: '시작 연도부터 해당 연도까지 인출금액 누적 합계' },
@@ -2244,13 +2338,14 @@ export function InvestmentFlowTab() {
                           onClick={() => {
                             if (transactions.length === 0) return;
                             const TRANSACTION_TYPE_KR: Record<string, string> = { deposit: '입금', savings: '적립', investment: '투자', termination: '종료', withdrawal: '출금', interest: '이자' };
-                            const header = ['No', '발생일', '구분', '상품명', '입금액', '출금액', '잔액', '메모'];
+                            const header = ['No', '발생일', '구분', '상품명', '입금액', '적립액', '출금액', '잔액', '메모'];
                             const rows = transactions.map((tx, i) => [
                               txOrigIndex.get(tx.id) ?? (i + 1),
                               tx.transaction_date,
                               TRANSACTION_TYPE_KR[tx.transaction_type] ?? tx.transaction_type,
                               tx.related_product || '',
                               tx.credit_amount || 0,
+                              tx.savings_amount || 0,
                               tx.debit_amount || 0,
                               tx.balance,
                               tx.memo || '',
@@ -2272,7 +2367,7 @@ export function InvestmentFlowTab() {
                         </button>
                       </div>
                     <div ref={el => { txScrollRefs.current[account.id] = el; }} style={{ overflowX: 'auto', overflowY: 'auto', maxHeight: 480 }}>
-                      <table style={{ minWidth: 780, borderCollapse: 'collapse', fontSize: 13, whiteSpace: 'nowrap', width: '100%' }}>
+                      <table style={{ minWidth: 890, borderCollapse: 'collapse', fontSize: 13, whiteSpace: 'nowrap', width: '100%' }}>
                         <thead style={{ position: 'sticky', top: 0, zIndex: 2 }}>
                           <tr style={{ backgroundColor: 'var(--bg-surface)' }}>
                             {[
@@ -2281,6 +2376,7 @@ export function InvestmentFlowTab() {
                               { label: '구분', align: 'center', width: 52, sortKey: 'transaction_type' },
                               { label: '상품명', align: 'left', width: 120, sortKey: 'related_product' },
                               { label: '입금액', align: 'right', width: 110, sortKey: 'credit_amount' },
+                              { label: '적립액', align: 'right', width: 110, sortKey: 'savings_amount' },
                               { label: '출금액', align: 'right', width: 110, sortKey: 'debit_amount' },
                               { label: '잔액', align: 'right', width: 110, sortKey: 'balance' },
                               { label: '메모', align: 'left', width: 200, sortKey: '' },
@@ -2354,6 +2450,16 @@ export function InvestmentFlowTab() {
                                 <input
                                   type="text"
                                   inputMode="numeric"
+                                  value={txEditSavings}
+                                  onChange={e => setTxEditSavings(formatInputCurrency(e.target.value))}
+                                  placeholder="0"
+                                  style={{ ...inlineInput, textAlign: 'right' }}
+                                />
+                              </td>
+                              <td style={{ padding: '6px 8px' }}>
+                                <input
+                                  type="text"
+                                  inputMode="numeric"
                                   value={txEditDebit}
                                   onChange={e => setTxEditDebit(formatInputCurrency(e.target.value))}
                                   placeholder="0"
@@ -2385,13 +2491,13 @@ export function InvestmentFlowTab() {
 
                           {txLoading ? (
                             <tr>
-                              <td colSpan={9} style={{ textAlign: 'center', padding: 20, color: 'var(--text-muted)', fontSize: 13 }}>
+                              <td colSpan={10} style={{ textAlign: 'center', padding: 20, color: 'var(--text-muted)', fontSize: 13 }}>
                                 불러오는 중...
                               </td>
                             </tr>
                           ) : transactions.length === 0 && !isAddingNewTx ? (
                             <tr>
-                              <td colSpan={9} style={{ textAlign: 'center', padding: 20, color: 'var(--text-muted)', fontSize: 13 }}>
+                              <td colSpan={10} style={{ textAlign: 'center', padding: 20, color: 'var(--text-muted)', fontSize: 13 }}>
                                 거래내역이 없습니다.
                               </td>
                             </tr>
@@ -2438,6 +2544,16 @@ export function InvestmentFlowTab() {
                                         inputMode="numeric"
                                         value={txEditCredit}
                                         onChange={e => setTxEditCredit(formatInputCurrency(e.target.value))}
+                                        placeholder="0"
+                                        style={{ ...inlineInput, textAlign: 'right' }}
+                                      />
+                                    </td>
+                                    <td style={{ padding: '6px 8px' }}>
+                                      <input
+                                        type="text"
+                                        inputMode="numeric"
+                                        value={txEditSavings}
+                                        onChange={e => setTxEditSavings(formatInputCurrency(e.target.value))}
                                         placeholder="0"
                                         style={{ ...inlineInput, textAlign: 'right' }}
                                       />
@@ -2506,6 +2622,9 @@ export function InvestmentFlowTab() {
                                   </td>
                                   <td style={{ ...txTdRight, color: tx.credit_amount > 0 ? '#60A5FA' : 'var(--text-muted)' }}>
                                     {tx.credit_amount > 0 ? tx.credit_amount.toLocaleString() : '-'}
+                                  </td>
+                                  <td style={{ ...txTdRight, color: tx.savings_amount > 0 ? '#34D399' : 'var(--text-muted)' }}>
+                                    {tx.savings_amount > 0 ? tx.savings_amount.toLocaleString() : '-'}
                                   </td>
                                   <td style={{ ...txTdRight, color: tx.debit_amount > 0 ? '#F87171' : 'var(--text-muted)' }}>
                                     {tx.debit_amount > 0 ? tx.debit_amount.toLocaleString() : '-'}
@@ -3305,6 +3424,87 @@ export function InvestmentFlowTab() {
           }}
         />
       )}
+
+      {/* 연간투자흐름표 계산식 도움말 */}
+      {showFlowHelp && (
+        <Modal open onClose={() => setShowFlowHelp(false)} title="연간 투자흐름표 — 필드별 계산 방식" maxWidth={680}>
+          <div style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 10 }}>
+            일시납·연적립·입금·인출은 <b style={{ color: 'var(--text-secondary)' }}>예수금 계좌 거래</b>에서, 납입·평가·수익은 <b style={{ color: 'var(--text-secondary)' }}>투자기록</b>에서 계산됩니다. 계좌 필터를 걸면 해당 계좌의 예수금 거래만 집계됩니다.
+          </div>
+          {([
+            ['기본', [
+              ['연도', '투자 활동이 발생한 연도'],
+              ['연차', '최초 투자(가장 이른 가입일) 연도를 1차로 산정'],
+              ['나이', '연도 − 출생연도 (만 나이)'],
+            ]],
+            ['예수금 계좌 거래 기반', [
+              ['일시납금액', "그 연도 예수금 거래 중 구분='입금' 의 입금액 합계 (거치 개념 · 투자/종결 거래 제외)"],
+              ['연적립금액', "그 연도 예수금 거래의 적립액(자동이체) 합계 + 구분='적립' 의 입금액"],
+              ['입금액', '일시납금액 + 연적립금액'],
+              ['누적입금액', '시작 연도부터 그 연도까지 입금액 누적 합계'],
+              ['인출금액', "투자기록의 인출 + 예수금 거래 중 구분='출금' 의 출금액 합계"],
+              ['누적인출액', '시작 연도부터 그 연도까지 인출금액 누적 합계'],
+            ]],
+            ['투자기록 기반', [
+              ['총납입금액', '그 연도 기준 살아있는(미종결 또는 당해 종결) 투자기록의 투자금액 합계'],
+              ['연간평가금액', '당해 종결 상품의 평가금액 + 미종결 상품의 중간평가금액(없으면 원금)'],
+              ['연간총수익', '연간평가금액 − 총납입금액'],
+              ['연수익률', '연간총수익 ÷ 총납입금액 × 100'],
+            ]],
+            ['순자산', [
+              ['순자산', '연도말 예수금 잔액 + 미종결 투자금액 + 이자수익'],
+              ['순자산증가율', '(그해 순자산 − 직전 연도 순자산) ÷ 직전 연도 순자산 × 100'],
+              ['순이익', '순자산 − (누적입금액 − 누적인출액)'],
+              ['순자산수익률', '순이익 ÷ (누적입금액 − 누적인출액) × 100'],
+              ['100세플로우', '해당 연도 순자산을 100세 은퇴플로우의 시작값으로 적용/취소'],
+            ]],
+          ] as [string, [string, string][]][]).map(([group, items]) => (
+            <div key={group} style={{ marginBottom: 12 }}>
+              <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--blue-400)', marginBottom: 4 }}>{group}</div>
+              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
+                <tbody>
+                  {items.map(([name, formula]) => (
+                    <tr key={name} style={{ borderBottom: '1px solid var(--border)' }}>
+                      <td style={{ padding: '6px 8px', fontWeight: 600, color: 'var(--text-primary)', width: 110, verticalAlign: 'top', whiteSpace: 'nowrap' }}>{name}</td>
+                      <td style={{ padding: '6px 8px', color: 'var(--text-secondary)', lineHeight: 1.5 }}>{formula}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          ))}
+        </Modal>
+      )}
+
+      {/* Notion 투자기록 동기화 미리보기 — 선택한 항목만 적용 */}
+      {irSyncPlan && (
+        <SyncPreviewModal
+          title="Notion 투자기록 동기화 미리보기"
+          subtitle={`'${selectedCustomer?.name ?? ''}'의 ${NOTION_IR_TARGET_CATEGORY} 상품 — 적용할 항목을 선택하세요. (신규=추가, 업데이트=평가금액·만기일 등 Notion 기준 덮어쓰기)`}
+          items={irSyncPlan}
+          checked={irSyncChecked}
+          onToggle={k => setIrSyncChecked(prev => { const n = new Set(prev); if (n.has(k)) n.delete(k); else n.add(k); return n; })}
+          onToggleAll={() => setIrSyncChecked(prev => prev.size === irSyncPlan.length ? new Set() : new Set(irSyncPlan.map(i => i.key)))}
+          applying={irSyncApplying}
+          onApply={applyIrSync}
+          onClose={() => { if (!irSyncApplying) setIrSyncPlan(null); }}
+        />
+      )}
+
+      {/* Notion 예수금 거래 동기화 미리보기 — 선택한 항목만 적용 */}
+      {dtxSyncPlan && (
+        <SyncPreviewModal
+          title="Notion 예수금 거래 동기화 미리보기"
+          subtitle={`신규 거래만 표시됩니다${dtxSyncSkipped > 0 ? ` (중복/거래일 누락 ${dtxSyncSkipped}건 제외)` : ''} — 적용할 항목을 선택하세요.`}
+          items={dtxSyncPlan}
+          checked={dtxSyncChecked}
+          onToggle={k => setDtxSyncChecked(prev => { const n = new Set(prev); if (n.has(k)) n.delete(k); else n.add(k); return n; })}
+          onToggleAll={() => setDtxSyncChecked(prev => prev.size === dtxSyncPlan.length ? new Set() : new Set(dtxSyncPlan.map(i => i.key)))}
+          applying={dtxSyncApplying}
+          onApply={applyDtxSync}
+          onClose={() => { if (!dtxSyncApplying) setDtxSyncPlan(null); }}
+        />
+      )}
     </div>
   );
 }
@@ -3478,6 +3678,85 @@ function notionNormName(s: string | undefined | null): string {
   return (s ?? '').replace(/\(.*?\)/g, '').replace(/\s+/g, '').toLowerCase();
 }
 
+/** Notion 동기화 미리보기 항목 — 적용 전에 사용자가 보고 선택한다 */
+type SyncPlanItem = {
+  key: string;
+  action: 'add' | 'update';
+  label: string;
+  date?: string;
+  amount?: number;         // 양수=입금/투자금액, 음수=출금
+  body: Record<string, unknown>;
+  recordId?: number;       // update 대상 투자기록 id
+};
+
+/** Notion 동기화 미리보기 모달 — 체크된 항목만 적용 */
+function SyncPreviewModal({ title, subtitle, items, checked, onToggle, onToggleAll, applying, onApply, onClose }: {
+  title: string;
+  subtitle?: string;
+  items: SyncPlanItem[];
+  checked: Set<string>;
+  onToggle: (k: string) => void;
+  onToggleAll: () => void;
+  applying: boolean;
+  onApply: () => void;
+  onClose: () => void;
+}) {
+  const allChecked = items.length > 0 && items.every(i => checked.has(i.key));
+  const nAdd = items.filter(i => i.action === 'add' && checked.has(i.key)).length;
+  const nUpd = items.filter(i => i.action === 'update' && checked.has(i.key)).length;
+  return (
+    <Modal open onClose={onClose} title={title} maxWidth={640}>
+      {subtitle && <div style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 8 }}>{subtitle}</div>}
+      <div style={{ border: '1px solid var(--border)', borderRadius: 8, overflow: 'hidden' }}>
+        <div style={{ padding: '6px 10px', background: 'var(--bg-surface)', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', gap: 8 }}>
+          <input type="checkbox" checked={allChecked} onChange={onToggleAll} style={{ width: 15, height: 15, cursor: 'pointer' }} />
+          <span style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-muted)' }}>전체선택 ({checked.size}/{items.length})</span>
+        </div>
+        <div style={{ maxHeight: 320, overflowY: 'auto' }}>
+          {items.map(i => {
+            const c = checked.has(i.key);
+            return (
+              <div key={i.key} onClick={() => onToggle(i.key)}
+                style={{ padding: '7px 10px', borderBottom: '1px solid var(--border)', display: 'flex', gap: 8, alignItems: 'center', fontSize: 12, cursor: 'pointer', background: c ? 'rgba(16,185,129,0.08)' : 'var(--bg-card)' }}>
+                <input type="checkbox" checked={c} onChange={() => onToggle(i.key)} onClick={e => e.stopPropagation()}
+                  style={{ width: 14, height: 14, flexShrink: 0, cursor: 'pointer' }} />
+                <span style={{ flexShrink: 0, fontSize: 10, fontWeight: 700, padding: '1px 6px', borderRadius: 10,
+                  color: i.action === 'add' ? 'var(--blue-400)' : 'var(--warning)',
+                  border: `1px solid ${i.action === 'add' ? 'rgba(59,130,246,0.4)' : 'rgba(245,158,11,0.4)'}` }}>
+                  {i.action === 'add' ? '신규' : '업데이트'}
+                </span>
+                {i.date && <span style={{ color: 'var(--text-muted)', fontSize: 11, flexShrink: 0, minWidth: 72 }}>{i.date}</span>}
+                <span style={{ fontWeight: 600, color: 'var(--text-primary)', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{i.label}</span>
+                {i.amount != null && (
+                  <span style={{ color: i.amount >= 0 ? '#3B82F6' : 'var(--danger)', fontSize: 11, flexShrink: 0 }}>
+                    {i.amount >= 0 ? '+' : ''}{i.amount.toLocaleString()}
+                  </span>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      </div>
+      <div style={{ marginTop: 10, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+        <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>신규 {nAdd}건{nUpd > 0 ? ` · 업데이트 ${nUpd}건` : ''} 적용 예정</span>
+        <div style={{ display: 'flex', gap: 8 }}>
+          <button onClick={onClose} disabled={applying}
+            style={{ padding: '7px 14px', borderRadius: 7, border: '1px solid var(--border-strong)', fontSize: 13, fontWeight: 600, backgroundColor: 'var(--bg-card)', color: 'var(--text-secondary)', cursor: applying ? 'wait' : 'pointer' }}>
+            취소
+          </button>
+          <button onClick={onApply} disabled={applying || checked.size === 0}
+            style={{ padding: '7px 18px', borderRadius: 7, border: 'none', fontSize: 13, fontWeight: 700,
+              background: (applying || checked.size === 0) ? 'var(--bg-surface)' : 'var(--blue-600)',
+              color: (applying || checked.size === 0) ? 'var(--text-muted)' : '#fff',
+              cursor: (applying || checked.size === 0) ? 'not-allowed' : 'pointer' }}>
+            {applying ? '적용 중...' : `선택 ${checked.size}건 적용`}
+          </button>
+        </div>
+      </div>
+    </Modal>
+  );
+}
+
 /** Notion rows 조회용 서버측 필터 쿼리스트링 (고객명·카테고리) — DB 전체 다운로드로 인한 504 방지.
  *  서버 필터는 최적화일 뿐, 클라이언트 필터가 최종 판정하므로 일부 조건이 생략돼도 결과는 동일하다. */
 function notionFilterQS(pairs: { property?: string; value?: string }[]): string {
@@ -3534,20 +3813,17 @@ function parseNotionAmountToWon(raw: string | undefined | null): number | null {
 /*  예수금 거래 Notion 불러오기 — 상수·헬퍼                            */
 /* ================================================================== */
 
-const NOTION_DTX_CONFIG_KEY = 'notion_deposit_tx_config_v3';   // v3: 고객명 매핑 '고객명(관계형)'→'고객명' 교정
-
-const NOTION_DTX_TARGET_DB = '상품가입정보';   // 고정 대상 Notion DB (제목 부분일치)
+// v4: 고객별 전용 DB(예: '올원랩어카운트_고객명') 방식 — 고객명/카테고리/메모 매핑 제거, 고객별 설정 저장
+const NOTION_DTX_CONFIG_KEY = 'notion_deposit_tx_config_v4';
 
 const NOTION_DTX_MAP_FIELDS: { k: string; l: string; req?: boolean; filter?: boolean }[] = [
-  { k: 'customer_name', l: '고객명', filter: true },
-  { k: 'category', l: '카테고리', filter: true },
-  { k: 'transaction_date', l: '거래일', req: true },
-  { k: 'related_product', l: '관련상품' },
+  { k: 'transaction_date', l: '발생일', req: true },
+  { k: 'related_product', l: '상품명' },
   { k: 'credit_amount', l: '입금액' },
-  { k: 'credit_amount_2', l: '자동이체(입금)' },
+  { k: 'credit_amount_2', l: '적립액(자동이체)' },
   { k: 'debit_amount', l: '출금액' },
-  { k: 'transaction_type', l: '거래유형' },
-  { k: 'memo', l: '메모' },
+  { k: 'transaction_type', l: '구분' },
+  { k: 'account_number', l: '증권번호' },   // 거래 테이블이 아닌 예수금 계좌 정보(계좌번호)로 저장
 ];
 
 /** 컬럼명 키워드 추측 (module scope 공용) */
@@ -3558,16 +3834,15 @@ function notionGuessColumn(cols: string[], keywords: string[]): string {
 
 function autoGuessDtxMapping(cols: string[]): Record<string, string> {
   const pick = (exact: string, guesses: string[]) => (cols.includes(exact) ? exact : notionGuessColumn(cols, guesses));
+  // 고객별 예수금 DB의 6개 필드(상품명·구분·발생일·자동이체·입금액·출금액) 기준 자동 매칭
   return {
-    customer_name: pick('고객명', ['고객명', '고객', 'customer', '이름']),
-    category: pick('카테고리', ['카테고리', 'category']),
-    transaction_date: pick('가입일', ['가입일', '거래일', '거래일자', '일자', '날짜', 'date']),
+    transaction_date: pick('발생일', ['발생일', '거래일', '가입일', '일자', '날짜', 'date']),
     related_product: pick('상품명', ['상품명', '관련상품', '상품', 'product']),
     credit_amount: pick('입금액', ['입금액', '입금', 'credit']),
-    credit_amount_2: pick('자동이체', ['자동이체', '이체']),
+    credit_amount_2: pick('자동이체', ['자동이체', '이체', '적립']),
     debit_amount: pick('출금액', ['출금액', '출금', 'debit']),
-    transaction_type: pick('거래유형', ['거래유형', '유형', '구분', 'type']),
-    memo: pick('비고', ['비고', '메모', 'note', 'memo']),
+    transaction_type: pick('구분', ['구분', '거래유형', '유형', 'type']),
+    account_number: pick('증권번호', ['증권번호', '계좌번호']),
   };
 }
 
@@ -3592,29 +3867,31 @@ function notionRowToTxBody(
   const g = (k: string) => (mapping[k] ? row.properties[mapping[k]] : undefined);
   const date = normalizeNotionDate(g('transaction_date'));
   if (!date) return null;
-  // 입금액 = '입금액' + '자동이체(입금)' 두 컬럼 합산
-  const credit = (parseNotionAmountToWon(g('credit_amount')) ?? 0) + (parseNotionAmountToWon(g('credit_amount_2')) ?? 0);
+  // 입금액과 적립액(자동이체)을 분리 저장 — 잔액 = 입금 + 적립 - 출금
+  const credit = parseNotionAmountToWon(g('credit_amount')) ?? 0;
+  const savings = parseNotionAmountToWon(g('credit_amount_2')) ?? 0;
   const debit = parseNotionAmountToWon(g('debit_amount')) ?? 0;
-  // 거래유형 미매핑 시 입/출금액으로 추론
+  // 거래유형 미매핑 시 입/적립/출금액으로 추론
   const ttype = mapping['transaction_type']
     ? normalizeNotionTxType(g('transaction_type'))
-    : (credit > 0 ? 'deposit' : debit > 0 ? 'withdrawal' : 'other');
+    : (credit > 0 ? 'deposit' : savings > 0 ? 'savings' : debit > 0 ? 'withdrawal' : 'other');
   return {
     transaction_date: date,
     transaction_type: ttype,
     related_product: mapping['related_product'] ? (row.properties[mapping['related_product']]?.trim() || null) : null,
     credit_amount: credit,
+    savings_amount: savings,
     debit_amount: debit,
     memo: mapping['memo'] ? (row.properties[mapping['memo']]?.trim() || null) : null,
   };
 }
 
-/** 중복 판정 키: 거래일|입금액|출금액|거래유형 */
+/** 중복 판정 키: 거래일|입금액|적립액|출금액|거래유형 */
 function notionTxBodyKey(body: Record<string, unknown>): string {
-  return `${body.transaction_date}|${body.credit_amount}|${body.debit_amount}|${body.transaction_type}`;
+  return `${body.transaction_date}|${body.credit_amount}|${Number(body.savings_amount ?? 0)}|${body.debit_amount}|${body.transaction_type}`;
 }
 function depositTxKey(t: DepositTransaction): string {
-  return `${t.transaction_date}|${t.credit_amount}|${t.debit_amount}|${t.transaction_type}`;
+  return `${t.transaction_date}|${t.credit_amount}|${t.savings_amount ?? 0}|${t.debit_amount}|${t.transaction_type}`;
 }
 
 /* ------------------------------------------------------------------ */
@@ -4246,13 +4523,15 @@ function NotionImportDepositTxModal({ customerId, customerName, accounts, onClos
     finally { setAcctSaving(false); }
   };
 
+  // 고객마다 전용 DB가 다르므로 설정을 고객별로 저장
+  const cfgStorageKey = `${NOTION_DTX_CONFIG_KEY}:${customerId}`;
   function saveCfg(dbId: string, dbTitle: string, mapping: Record<string, string>, acctId: number | '') {
-    try { localStorage.setItem(NOTION_DTX_CONFIG_KEY, JSON.stringify({ dbId, dbTitle, mapping, acctId })); } catch { /* ignore */ }
+    try { localStorage.setItem(cfgStorageKey, JSON.stringify({ dbId, dbTitle, mapping, acctId })); } catch { /* ignore */ }
   }
   function loadCfg(): { dbId: string; dbTitle: string; mapping: Record<string, string>; acctId?: number } | null {
-    try { const r = localStorage.getItem(NOTION_DTX_CONFIG_KEY); return r ? JSON.parse(r) : null; } catch { return null; }
+    try { const r = localStorage.getItem(cfgStorageKey); return r ? JSON.parse(r) : null; } catch { return null; }
   }
-  function clearCfg() { try { localStorage.removeItem(NOTION_DTX_CONFIG_KEY); } catch { /* ignore */ } }
+  function clearCfg() { try { localStorage.removeItem(cfgStorageKey); } catch { /* ignore */ } }
 
   async function fetchDbList() {
     setLoading(true); setError(null);
@@ -4278,12 +4557,8 @@ function NotionImportDepositTxModal({ customerId, customerName, accounts, onClos
       const props: { name: string }[] = await pR.json();
       const colNames = props.map(p => p.name);
       const resolvedMap = savedMapping ?? autoGuessDtxMapping(colNames);
-      // 2) 고객명·카테고리 서버측 필터로 이 고객 행만 조회 (전체 DB 다운로드 → 504 방지)
-      const fq = notionFilterQS([
-        { property: resolvedMap['customer_name'], value: customerName },
-        { property: resolvedMap['category'], value: NOTION_IR_TARGET_CATEGORY },
-      ]);
-      const rR = await fetch(`${API_URL}/api/v1/notion/databases/${dbId}/rows${fq}`, { headers: authLib.getAuthHeader() });
+      // 2) 고객별 전용 DB라 전체 행이 이 고객의 거래 — 필터 없이 조회
+      const rR = await fetch(`${API_URL}/api/v1/notion/databases/${dbId}/rows`, { headers: authLib.getAuthHeader() });
       if (!rR.ok) {
         const d = await rR.json().catch(() => ({} as { detail?: string }));
         throw new Error(d?.detail || `데이터 조회 실패 (HTTP ${rR.status})`);
@@ -4300,36 +4575,16 @@ function NotionImportDepositTxModal({ customerId, customerName, accounts, onClos
     finally { setLoading(false); }
   }
 
-  // 대상 DB('상품가입정보')를 목록에서 찾아 자동 선택. 없으면 수동 선택으로 폴백
-  // keepMapping: 같은 대상 DB로 재연결하는 경우 기존 필드 매핑을 그대로 이어받음
-  async function autoSelectDb(keepMapping?: Record<string, string>) {
-    setError(null); setLoading(true);
-    let list: { id: string; title: string; icon: string | null }[];
-    try {
-      const res = await fetch(`${API_URL}/api/v1/notion/databases`, { headers: authLib.getAuthHeader() });
-      if (!res.ok) { const d = await res.json().catch(() => ({})); throw new Error(d?.detail || `조회 실패 (HTTP ${res.status})`); }
-      list = await res.json();
-      setDbs(list);
-    } catch (e: unknown) { setError(e instanceof Error ? e.message : '오류'); setLoading(false); return; }
-    const target = list.find(d => d.title.includes(NOTION_DTX_TARGET_DB));
-    if (target) {
-      await loadRows(target.id, target.title, keepMapping);   // loadRows가 loading 처리
-    } else {
-      setLoading(false);
-      setStep('selectDb');   // 대상 DB를 못 찾으면 수동 선택
-    }
-  }
-
   async function openSelector() {
+    // 고객별 전용 DB(예: '올원랩어카운트_고객명')는 사용자가 직접 지정한다.
+    // 이 고객에 저장된 설정이 있으면 복원, 없거나 조회 실패면 DB 선택 화면으로.
     const saved = loadCfg();
-    // 저장된 설정이 대상 DB('상품가입정보')가 아니거나 조회 실패(dbId 낡음)면 폐기 후 자동 재연결
-    if (saved && saved.dbId && saved.dbTitle?.includes(NOTION_DTX_TARGET_DB)) {
+    if (saved && saved.dbId) {
       if (saved.acctId != null && accounts.some(a => a.id === saved.acctId)) setTargetAccountId(saved.acctId);
       const ok = await loadRows(saved.dbId, saved.dbTitle, saved.mapping);
-      if (!ok) { clearCfg(); await autoSelectDb(saved.mapping); }  // dbId만 낡은 경우: 매핑은 보존한 채 재연결
+      if (!ok) { clearCfg(); await fetchDbList(); }  // dbId가 낡은 경우 수동 재선택
     } else {
-      if (saved) clearCfg();
-      await autoSelectDb();   // 다른 DB의 매핑은 의미 없으므로 자동 추측으로 새로 매칭
+      await fetchDbList();
     }
   }
 
@@ -4360,25 +4615,13 @@ function NotionImportDepositTxModal({ customerId, customerName, accounts, onClos
   function updateMap(k: string, v: string) {
     const updated = { ...map, [k]: v };
     setMap(updated); setLoaded(false);
-    if (selDbId) {
-      saveCfg(selDbId, selDbTitle, updated, targetAccountId);
-      // 서버측 필터 컬럼이 바뀌면 새 필터로 행 재조회 (이전 필터로 받은 행엔 누락 가능)
-      if (k === 'customer_name' || k === 'category') {
-        void loadRows(selDbId, selDbTitle, updated);
-      }
-    }
+    if (selDbId) saveCfg(selDbId, selDbTitle, updated, targetAccountId);
   }
 
-  const customerNameCol = map['customer_name'];
-  const categoryCol = map['category'];
-  // 고객명·카테고리·거래일 매핑돼야 목록 불러오기 가능 (투자기록 팝업과 동일)
-  const filterReady = !!map['transaction_date'] && !!customerNameCol && !!categoryCol;
+  // 고객별 전용 DB — 발생일(거래일)만 매핑되면 불러오기 가능, 행 필터 불필요
+  const filterReady = !!map['transaction_date'];
 
-  const matchedRows = (filterReady && loaded)
-    ? rows.filter(r =>
-        notionNormName(r.properties[customerNameCol]) === notionNormName(customerName) &&
-        (r.properties[categoryCol] ?? '').trim() === NOTION_IR_TARGET_CATEGORY)
-    : [];
+  const matchedRows = (filterReady && loaded) ? rows : [];
   const q = rowSearch.toLowerCase().trim();
   const displayRows = q
     ? matchedRows.filter(r => Object.values(r.properties).some(v => v?.toLowerCase().includes(q)))
@@ -4407,15 +4650,12 @@ function NotionImportDepositTxModal({ customerId, customerName, accounts, onClos
 
   function loadList() {
     if (!filterReady) return;
-    const matched = rows.filter(r =>
-      notionNormName(r.properties[customerNameCol]) === notionNormName(customerName) &&
-      (r.properties[categoryCol] ?? '').trim() === NOTION_IR_TARGET_CATEGORY);
-    if (matched.length === 0) {
-      alert(`'${customerName}' 고객의 ${NOTION_IR_TARGET_CATEGORY} 상품을 Notion에서 찾지 못했습니다.\n(Notion의 고객명·카테고리 값을 확인하세요)`);
+    if (rows.length === 0) {
+      alert('이 DB에 거래 데이터가 없습니다. DB 선택을 확인하세요.');
       return;
     }
     const preselect = new Set<string>();
-    for (const r of matched) { if (notionRowToTxBody(r, map) && !isExisting(r)) preselect.add(r.id); }
+    for (const r of rows) { if (notionRowToTxBody(r, map) && !isExisting(r)) preselect.add(r.id); }
     setSelectedRows(preselect);
     setLoaded(true);
     saveCfg(selDbId, selDbTitle, map, targetAccountId);
@@ -4425,6 +4665,12 @@ function NotionImportDepositTxModal({ customerId, customerName, accounts, onClos
     if (selectedRows.size === 0) return;
     setBulkLoading(true);
     const items = displayRows.filter(r => selectedRows.has(r.id));
+
+    // 증권번호(매핑 시): 거래 테이블이 아닌 예수금 계좌 정보(계좌번호)로 저장
+    const acctNumCol = map['account_number'];
+    const svcNum = acctNumCol
+      ? (items.map(r => (r.properties[acctNumCol] ?? '').trim()).find(v => v) ?? '')
+      : '';
 
     // 대상 계좌 미선택 시 자동 생성 — 체크만 하고 추가해도 동작하도록 (Notion '증권사' 컬럼 값으로 이름 유추)
     let acctId: number | '' = targetAccountId;
@@ -4438,12 +4684,12 @@ function NotionImportDepositTxModal({ customerId, customerName, accounts, onClos
           if (v) counts.set(v, (counts.get(v) ?? 0) + 1);
         }
       }
-      const company = [...counts.entries()].sort((a, b) => b[1] - a[1])[0]?.[0] || '증권사 미지정';
+      const company = [...counts.entries()].sort((a, b) => b[1] - a[1])[0]?.[0] || (selDbTitle || '증권사 미지정');
       try {
         const res = await fetch(`${API_URL}/api/v1/retirement/deposit-accounts`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', ...authLib.getAuthHeader() },
-          body: JSON.stringify({ customer_id: customerId, securities_company: company, account_number: null, nickname: `${customerName} 예수금`.trim() }),
+          body: JSON.stringify({ customer_id: customerId, securities_company: company, account_number: svcNum || null, nickname: `${customerName} 예수금`.trim() }),
         });
         if (!res.ok) throw new Error();
         const created: DepositAccount = await res.json();
@@ -4457,9 +4703,23 @@ function NotionImportDepositTxModal({ customerId, customerName, accounts, onClos
         alert('예수금 계좌 자동 생성에 실패했습니다. [+새 계좌]로 직접 만들어 주세요.');
         return;
       }
+    } else if (svcNum) {
+      // 기존 계좌: 계좌번호가 비어 있으면 Notion 증권번호로 채움 (수동 입력값은 덮지 않음)
+      const acct = allAccounts.find(a => a.id === acctId);
+      if (acct && !acct.account_number) {
+        try {
+          await fetch(`${API_URL}/api/v1/retirement/deposit-accounts/${acctId}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json', ...authLib.getAuthHeader() },
+            body: JSON.stringify({ account_number: svcNum }),
+          });
+          onAccountCreated();   // 계좌 목록 갱신
+        } catch { /* 계좌번호 갱신 실패는 거래 추가를 막지 않음 */ }
+      }
     }
 
     let success = 0, fail = 0, skipped = 0;
+    let failDetail = '';   // 첫 실패 사유를 표시해 원인 파악 가능하게
     for (const row of items) {
       const body = notionRowToTxBody(row, map);
       if (!body) { skipped++; continue; }
@@ -4468,14 +4728,22 @@ function NotionImportDepositTxModal({ customerId, customerName, accounts, onClos
         const res = await fetch(`${API_URL}/api/v1/retirement/deposit-accounts/${acctId}/transactions`, {
           method: 'POST', headers: { 'Content-Type': 'application/json', ...authLib.getAuthHeader() }, body: JSON.stringify(body),
         });
-        if (res.ok) success++; else fail++;
-      } catch { fail++; }
+        if (res.ok) success++;
+        else {
+          fail++;
+          if (!failDetail) {
+            const d = await res.json().catch(() => ({} as { detail?: unknown }));
+            failDetail = typeof d?.detail === 'string' ? d.detail : `HTTP ${res.status}`;
+          }
+        }
+      } catch (err) { fail++; if (!failDetail) failDetail = err instanceof Error ? err.message : '네트워크 오류'; }
     }
     setBulkLoading(false);
     setSelectedRows(new Set());
     saveCfg(selDbId, selDbTitle, map, acctId);
     alert(
       `${success}건 추가 완료${fail > 0 ? `, ${fail}건 실패` : ''}${skipped > 0 ? `, ${skipped}건 스킵(중복/거래일 누락)` : ''}` +
+      (failDetail ? `\n실패 사유: ${failDetail}` : '') +
       (autoCreatedCompany ? `\n(예수금 계좌 '${autoCreatedCompany}' 자동 생성됨 — 계좌번호·별명은 목록에서 수정 가능)` : '')
     );
     onImported();
@@ -4588,7 +4856,7 @@ function NotionImportDepositTxModal({ customerId, customerName, accounts, onClos
           ) : (
             <>
               <div style={{ padding: '8px 10px', background: 'var(--bg-surface)', borderBottom: '1px solid var(--border)' }}>
-                <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 6 }}>Notion 컬럼 → 예수금 거래 필드 매핑 (고객명·카테고리·거래일 * 필수 · 거래일은 보통 ‘가입일’ · 입금액 = ‘입금액’ + ‘자동이체(입금)’ 합산)</div>
+                <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 6 }}>Notion 컬럼 → 예수금 거래 필드 매핑 (발생일 * 필수 · ‘자동이체’는 적립액으로 저장 · 고객별 전용 DB라 행 필터 없음)</div>
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 6 }}>
                   {NOTION_DTX_MAP_FIELDS.map(f => {
                     const hint = f.req || f.filter;
@@ -4611,7 +4879,7 @@ function NotionImportDepositTxModal({ customerId, customerName, accounts, onClos
 
               {!filterReady && (
                 <div style={{ padding: '10px 14px', fontSize: 12, color: 'var(--warning)', backgroundColor: 'rgba(245,158,11,0.1)', borderBottom: '1px solid var(--border)' }}>
-                  ‘고객명’·‘카테고리’·‘거래일’ 필드를 먼저 매핑하세요.
+                  ‘발생일’ 필드를 먼저 매핑하세요.
                 </div>
               )}
 
@@ -4619,12 +4887,12 @@ function NotionImportDepositTxModal({ customerId, customerName, accounts, onClos
                 <button
                   onClick={loadList}
                   disabled={!filterReady}
-                  title={filterReady ? '' : '고객명·카테고리·거래일 매핑 필요'}
+                  title={filterReady ? '' : '발생일 매핑 필요'}
                   style={{ flex: 1, padding: '9px 16px', borderRadius: 7, border: 'none', fontSize: 13, fontWeight: 700, whiteSpace: 'nowrap',
                     cursor: !filterReady ? 'not-allowed' : 'pointer',
                     backgroundColor: !filterReady ? 'var(--bg-surface)' : 'var(--blue-600)',
                     color: !filterReady ? 'var(--text-muted)' : '#fff' }}
-                >{`🔍 ‘${customerName || '고객'}’의 ${NOTION_IR_TARGET_CATEGORY} 상품 불러오기`}</button>
+                >{`🔍 ‘${selDbTitle || 'DB'}’ 거래 목록 불러오기`}</button>
                 {loaded && (
                   <input type="text" placeholder="행 검색..." value={rowSearch} onChange={e => setRowSearch(e.target.value)}
                     style={{ width: 140, padding: '7px 8px', borderRadius: 6, border: '1px solid var(--border-strong)', fontSize: 12, outline: 'none', boxSizing: 'border-box', backgroundColor: 'var(--bg-card)', color: 'var(--text-primary)' }} />
@@ -4634,7 +4902,7 @@ function NotionImportDepositTxModal({ customerId, customerName, accounts, onClos
               <div style={{ maxHeight: 300, overflowY: 'auto' }}>
                 {!loaded ? (
                   <div style={{ padding: 14, textAlign: 'center', color: 'var(--text-muted)', fontSize: 13 }}>
-                    {filterReady ? `위 버튼을 누르면 ‘${customerName || '고객'}’의 ${NOTION_IR_TARGET_CATEGORY} 상품 목록을 보여줍니다. 대상 계좌에 없는 신규 거래만 자동 체크됩니다.` : '고객명·카테고리·거래일 필드를 매핑하세요.'}
+                    {filterReady ? '위 버튼을 누르면 이 DB의 거래 목록을 보여줍니다. 대상 계좌에 없는 신규 거래만 자동 체크됩니다.' : '발생일 필드를 매핑하세요.'}
                   </div>
                 ) : displayRows.length === 0 ? (
                   <div style={{ padding: 14, textAlign: 'center', color: 'var(--text-muted)', fontSize: 13 }}>
@@ -4661,6 +4929,7 @@ function NotionImportDepositTxModal({ customerId, customerName, accounts, onClos
                       const date = body?.transaction_date as string | undefined;
                       const ttype = body?.transaction_type as TransactionType | undefined;
                       const credit = (body?.credit_amount as number) ?? 0;
+                      const savings = (body?.savings_amount as number) ?? 0;
                       const debit = (body?.debit_amount as number) ?? 0;
                       const product = map['related_product'] ? (r.properties[map['related_product']] ?? '') : '';
                       const existing = isExisting(r);
@@ -4679,6 +4948,7 @@ function NotionImportDepositTxModal({ customerId, customerName, accounts, onClos
                           <span style={{ flexShrink: 0, fontSize: 10, fontWeight: 700, color: ttype ? (TRANSACTION_TYPE_COLORS[ttype]) : 'var(--text-muted)' }}>{ttype ? TRANSACTION_TYPE_LABELS[ttype] : '-'}</span>
                           <span style={{ fontWeight: 600, color: 'var(--text-primary)', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{product || '-'}</span>
                           {credit > 0 && <span style={{ color: '#3B82F6', fontSize: 11, flexShrink: 0 }}>+{credit.toLocaleString()}</span>}
+                          {savings > 0 && <span style={{ color: '#34D399', fontSize: 11, flexShrink: 0 }} title="적립액(자동이체)">적+{savings.toLocaleString()}</span>}
                           {debit > 0 && <span style={{ color: 'var(--danger)', fontSize: 11, flexShrink: 0 }}>-{debit.toLocaleString()}</span>}
                           {existing && <span style={{ flexShrink: 0, fontSize: 10, fontWeight: 700, color: 'var(--text-muted)', background: 'var(--bg-card-2)', border: '1px solid var(--border)', padding: '1px 6px', borderRadius: 10 }}>중복</span>}
                           {invalid && <span style={{ flexShrink: 0, fontSize: 10, fontWeight: 700, color: 'var(--warning)', border: '1px solid rgba(245,158,11,0.4)', padding: '1px 6px', borderRadius: 10 }}>거래일 없음</span>}

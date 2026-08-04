@@ -24,7 +24,8 @@ def upgrade() -> None:
         f"DELETE FROM {_TABLE} WHERE customer_id NOT IN (SELECT id FROM clients)"
     )
     # 2) users.id FK 제거 → clients.id FK로 재생성
-    op.drop_constraint(_FK, _TABLE, type_="foreignkey")
+    # (환경에 따라 FK 이름이 다르거나 아예 없을 수 있어 IF EXISTS로 안전 처리)
+    op.execute(f"ALTER TABLE {_TABLE} DROP CONSTRAINT IF EXISTS {_FK}")
     op.create_foreign_key(
         _FK, _TABLE, "clients", ["customer_id"], ["id"], ondelete="CASCADE"
     )

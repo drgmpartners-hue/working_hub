@@ -54,6 +54,9 @@ class DepositTransaction(Base):
     # 입금액 (원)
     credit_amount: Mapped[int] = mapped_column(BigInteger, default=0, nullable=False)
 
+    # 적립액 (원) — 자동이체 등 정기 적립 입금 (잔액에 +반영, 입금액과 구분 표기)
+    savings_amount: Mapped[int] = mapped_column(BigInteger, default=0, nullable=False)
+
     # 출금액 (원)
     debit_amount: Mapped[int] = mapped_column(BigInteger, default=0, nullable=False)
 

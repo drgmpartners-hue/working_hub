@@ -60,6 +60,7 @@ class DepositTransactionCreate(BaseModel):
     related_product: Optional[str] = Field(None, description="관련 상품명")
     investment_record_id: Optional[int] = Field(None, description="관련 투자기록 ID")
     credit_amount: int = Field(0, ge=0, description="입금액 (원)")
+    savings_amount: int = Field(0, ge=0, description="적립액 (원) — 자동이체 등 정기 적립")
     debit_amount: int = Field(0, ge=0, description="출금액 (원)")
     memo: Optional[str] = Field(None, description="메모")
 
@@ -70,6 +71,7 @@ class DepositTransactionUpdate(BaseModel):
     related_product: Optional[str] = None
     investment_record_id: Optional[int] = None
     credit_amount: Optional[int] = Field(None, ge=0)
+    savings_amount: Optional[int] = Field(None, ge=0)
     debit_amount: Optional[int] = Field(None, ge=0)
     memo: Optional[str] = None
 
@@ -82,6 +84,7 @@ class DepositTransactionResponse(BaseModel):
     related_product: Optional[str] = None
     investment_record_id: Optional[int] = None
     credit_amount: int
+    savings_amount: int = 0
     debit_amount: int
     balance: int
     memo: Optional[str] = None
