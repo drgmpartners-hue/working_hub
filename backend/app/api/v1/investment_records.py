@@ -248,15 +248,22 @@ async def get_annual_flow(
         s_year = r.start_date.year if r.start_date else 0
         e_year = r.end_date.year if r.end_date else 9999
 
+        # 순자산 기준일 = 해당 연도 12/31.
         # 해당 연도에 활성이었는지 판단:
         # - 시작 연도 ≤ year
         # - 종료 연도 > year (아직 종결 안 됨) 또는 종료일 없음 (운용중)
-        # - 종료 연도 == year인 경우도 해당 연도에는 활성이었으므로 포함하되,
-        #   이미 종결된 건 예수금에 입금되었으므로 중복 제외
-        if s_year <= year and e_year > year:
-            # 해당 연도 말 기준 아직 운용중이었던 투자
-            # 아직 종결 전이므로 투자금액 사용 (평가금액은 종결 시 확정)
-            active_eval += r.investment_amount
+        # - 종료 연도 == year 는 제외 — 종결분은 예수금 입금으로 잔액에 이미 반영
+        # - 예수금 계좌 미연결 투자는 제외 — 연결돼야 '투자 출금'이 잔액에서
+        #   차감되므로, 미연결을 더하면 같은 돈이 이중계상됨
+        if s_year <= year and e_year > year and r.deposit_account_id:
+            # 운용중 자금 평가: 해당 연도 중간평가 > 입력된 평가금액 > 투자원금 순
+            interim = (r.interim_evaluations or {}).get(str(year))
+            if interim is not None:
+                active_eval += interim
+            elif r.evaluation_amount:
+                active_eval += r.evaluation_amount
+            else:
+                active_eval += r.investment_amount
 
     flow["net_asset"] = total_deposit_balance + active_eval
 
