@@ -9,8 +9,7 @@ import { formatCurrency, formatInputCurrency, parseCurrency } from '../../utils/
 import { API_URL } from '@/lib/api-url';
 import { authLib } from '@/lib/auth';
 
-const AnnualFlowChart = dynamic(() => import('./AnnualFlowChart').then(m => m.AnnualFlowChart), { ssr: false });
-const NetAssetChart = dynamic(() => import('./AnnualFlowChart').then(m => m.NetAssetChart), { ssr: false });
+const AssetGrowthChart = dynamic(() => import('./AnnualFlowChart').then(m => m.AssetGrowthChart), { ssr: false });
 const LifetimeRetirementFlow = dynamic(() => import('./LifetimeRetirementFlow').then(m => m.LifetimeRetirementFlow), { ssr: false });
 
 /* ------------------------------------------------------------------ */
@@ -378,10 +377,9 @@ export function InvestmentFlowTab() {
   const [selectedYear, setSelectedYear] = useState(currentYear);
   const [annualFlowData, setAnnualFlowData] = useState<AnnualFlowRow[]>([]);
   const [annualFlowLoading, setAnnualFlowLoading] = useState(false);
-  const [showFlowChart, setShowFlowChart] = useState(false);
-  const [chartVisibility, setChartVisibility] = useState({ contribution: true, annualReturn: true, depositIn: true, returnRate: true });
-  const [showNetAssetChart, setShowNetAssetChart] = useState(false);
-  const [netAssetVisibility, setNetAssetVisibility] = useState({ netAsset: true, cumulativeDeposit: true, cumulativeProfit: true, netAssetReturnRate: true });
+  // 자산 성장 그래프 (투자흐름·순자산 그래프 2종을 고객 설명용 1종으로 통합)
+  const [showGrowthChart, setShowGrowthChart] = useState(false);
+  const [growthOpts, setGrowthOpts] = useState({ showRate: false });
   const [showLifetimeFlow, setShowLifetimeFlow] = useState(false);
   const [lifetimeRowsForPdf, setLifetimeRowsForPdf] = useState<any[]>([]);
   const lifetimeRowsRef = useRef<any[]>([]);
@@ -1031,8 +1029,16 @@ export function InvestmentFlowTab() {
       if (va == null) return 1;
       if (vb == null) return -1;
       const cmp = typeof va === 'number' && typeof vb === 'number' ? va - vb : String(va).localeCompare(String(vb));
-      // 동률(같은 거래일 등)은 id로 2차 정렬 — 같은 날 거래의 순서 고정
-      const tie = cmp !== 0 ? cmp : a.id - b.id;
+      let tie = cmp;
+      if (tie === 0 && txSortKey === 'transaction_date') {
+        // 같은 날짜: 입금성(입금·적립·이자·종결) 거래가 투자·출금보다 시간상 먼저 —
+        // 잔액 계산 순서(백엔드)와 동일한 규칙으로 표시 순서 고정
+        const pri = (t: DepositTransaction) =>
+          (t.credit_amount + (t.savings_amount || 0)) > 0 && t.debit_amount === 0 ? 0 : 1;
+        tie = pri(a) - pri(b);
+      }
+      // 잔여 동률은 id로 최종 고정
+      if (tie === 0) tie = a.id - b.id;
       return txSortDir === 'asc' ? tie : -tie;
     });
   };
@@ -1397,8 +1403,7 @@ export function InvestmentFlowTab() {
     setIsPrinting(true);
 
     // 그래프 펼치기
-    setShowFlowChart(true);
-    setShowNetAssetChart(true);
+    setShowGrowthChart(true);
     setShowLifetimeFlow(true);
 
     // 예수금 거래내역 로드 — setState는 클로저에 반영되지 않으므로(stale closure로
@@ -1558,7 +1563,7 @@ export function InvestmentFlowTab() {
         depositTxs: allTxs,
         depositAccountInfo: firstAcc ? `${firstAcc.securities_company} ${firstAcc.account_number || ''} "${firstAcc.nickname || ''}" 잔액: ${allTxs.length > 0 ? allTxs[allTxs.length - 1].balance.toLocaleString('ko-KR') : '-'}원` : '',
         investRecords: investRecs,
-        chartIds: ['print-chart-flow', 'print-chart-netasset', 'print-chart-lifetime'],
+        chartIds: ['print-chart-growth', 'print-chart-lifetime'],
       };
 
       await generateInvestmentFlowPdf(pdfData, `투자흐름_${selectedCustomer?.name ?? '보고서'}_${new Date().toISOString().slice(0, 10)}.pdf`);
@@ -2004,18 +2009,11 @@ export function InvestmentFlowTab() {
         {annualFlowData.length > 0 && (
           <div style={{ marginTop: 12, display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
             <button
-              onClick={() => setShowFlowChart(!showFlowChart)}
+              onClick={() => setShowGrowthChart(!showGrowthChart)}
               className="no-print-btn"
-              style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '6px 14px', border: '1px solid var(--border-strong)', borderRadius: 8, backgroundColor: showFlowChart ? 'rgba(59,130,246,0.12)' : 'var(--bg-card)', cursor: 'pointer', fontSize: 13, color: showFlowChart ? '#60A5FA' : 'var(--text-secondary)', fontWeight: 500 }}
+              style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '6px 14px', border: '1px solid var(--border-strong)', borderRadius: 8, backgroundColor: showGrowthChart ? 'rgba(59,130,246,0.12)' : 'var(--bg-card)', cursor: 'pointer', fontSize: 13, color: showGrowthChart ? '#60A5FA' : 'var(--text-secondary)', fontWeight: 500 }}
             >
-              {showFlowChart ? '\u25BC' : '\u25B6'} 투자흐름 그래프
-            </button>
-            <button
-              onClick={() => setShowNetAssetChart(!showNetAssetChart)}
-              className="no-print-btn"
-              style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '6px 14px', border: '1px solid var(--border-strong)', borderRadius: 8, backgroundColor: showNetAssetChart ? 'rgba(59,130,246,0.12)' : 'var(--bg-card)', cursor: 'pointer', fontSize: 13, color: showNetAssetChart ? '#60A5FA' : 'var(--text-secondary)', fontWeight: 500 }}
-            >
-              {showNetAssetChart ? '\u25BC' : '\u25B6'} 순자산 그래프
+              {showGrowthChart ? '\u25BC' : '\u25B6'} 자산 성장 그래프
             </button>
             <button
               onClick={() => setShowLifetimeFlow(!showLifetimeFlow)}
@@ -2027,54 +2025,48 @@ export function InvestmentFlowTab() {
           </div>
         )}
 
-        {/* 투자흐름 그래프 + 순자산 그래프 */}
+        {/* 자산 성장 그래프 — 고객 설명용 단일 그래프 (색면 = 수익 서사) */}
         <section id="print-sec-graphs" className="print-section-graphs">
-          <div className="print-section-title" style={{ fontSize: 13, fontWeight: 700, color: 'var(--blue-400)', marginBottom: 8, paddingBottom: 4, borderBottom: '2px solid var(--blue-500)' }}>2. 투자흐름 분석 그래프</div>
-          {showFlowChart && annualFlowData.length > 0 && (
-            <div style={{ marginTop: 12, padding: 16, border: '1px solid var(--border)', borderRadius: 8, backgroundColor: 'var(--bg-card)' }}>
-              <div style={{ display: 'flex', gap: 12, marginBottom: 12, fontSize: 12, flexWrap: 'wrap' }} className="no-print">
-                {([
-                  { key: 'depositIn' as const, label: '입금액', color: '#8B5CF6' },
-                  { key: 'contribution' as const, label: '총납입금액', color: 'var(--blue-400)' },
-                  { key: 'annualReturn' as const, label: '연간총수익', color: 'var(--success)' },
-                  { key: 'returnRate' as const, label: '연수익률(%)', color: 'var(--warning)' },
-                ] as const).map(({ key, label, color }) => (
-                  <button key={key} onClick={() => setChartVisibility(prev => ({ ...prev, [key]: !prev[key] }))}
-                    style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '4px 10px', border: '1px solid var(--border-strong)', borderRadius: 6, backgroundColor: chartVisibility[key] ? 'var(--bg-card-2)' : 'var(--bg-surface)', cursor: 'pointer', opacity: chartVisibility[key] ? 1 : 0.4, fontSize: 12, color: 'var(--text-secondary)' }}>
-                    <span style={{ width: 10, height: 10, borderRadius: 2, backgroundColor: color, display: 'inline-block' }} />
-                    {label}
+          <div className="print-section-title" style={{ fontSize: 13, fontWeight: 700, color: 'var(--blue-400)', marginBottom: 8, paddingBottom: 4, borderBottom: '2px solid var(--blue-500)' }}>2. 자산 성장 그래프</div>
+          {showGrowthChart && annualFlowData.length > 0 && (() => {
+            // 요약 카드: 최신 연도 기준 헤드라인 숫자 (넣은 돈 → 현재 순자산 → 순이익)
+            const latest = [...annualFlowData].sort((a, b) => a.year - b.year).at(-1)!;
+            const netDeposit = latest.cumulative_deposit_in - latest.cumulative_withdrawal;
+            const netAsset = latest.total_evaluation;
+            const netProfit = netAsset - netDeposit;
+            const profitRate = netDeposit > 0 ? (netProfit / netDeposit) * 100 : null;
+            const profitColor = netProfit > 0 ? '#34D399' : netProfit < 0 ? '#F87171' : 'var(--text-primary)';
+            const card = (label: string, value: string, color: string, sub?: string) => (
+              <div style={{ flex: 1, minWidth: 150, padding: '10px 14px', borderRadius: 8, backgroundColor: 'var(--bg-surface)', border: '1px solid var(--border)' }}>
+                <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 3 }}>{label}</div>
+                <div style={{ fontSize: 17, fontWeight: 800, color }}>{value}{sub && <span style={{ fontSize: 12, fontWeight: 700, marginLeft: 6 }}>{sub}</span>}</div>
+              </div>
+            );
+            return (
+              <div style={{ marginTop: 12, padding: '16px 20px', border: '1px solid var(--border)', borderRadius: 8, backgroundColor: 'var(--bg-card)', maxWidth: 1100, marginLeft: 'auto', marginRight: 'auto' }}>
+                {/* 헤드라인 요약 카드 */}
+                <div style={{ display: 'flex', gap: 10, marginBottom: 14, flexWrap: 'wrap' }}>
+                  {card('순입금액', `${netDeposit.toLocaleString()}원`, 'var(--text-primary)')}
+                  {card(`현재 순자산 (${latest.year}년)`, `${netAsset.toLocaleString()}원`, '#7CC0FF')}
+                  {card('순이익', `${netProfit >= 0 ? '+' : ''}${netProfit.toLocaleString()}원`, profitColor, profitRate != null ? `(${profitRate >= 0 ? '+' : ''}${profitRate.toFixed(1)}%)` : undefined)}
+                </div>
+                {/* 간단 범례 + 수익률 토글 */}
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, marginBottom: 8, fontSize: 11, flexWrap: 'wrap' }}>
+                  <span style={{ color: 'var(--text-muted)' }}>
+                    <span style={{ color: '#7CC0FF', fontWeight: 700 }}>파란 선</span> = 순자산 · 회색 점선 = 순입금액 · <span style={{ color: '#34D399', fontWeight: 700 }}>초록면 = 수익</span> · <span style={{ color: '#F87171' }}>빨간면 = 평가 손실</span>
+                  </span>
+                  <button className="no-print" onClick={() => setGrowthOpts(prev => ({ ...prev, showRate: !prev.showRate }))}
+                    style={{ padding: '3px 10px', border: '1px solid var(--border-strong)', borderRadius: 6, backgroundColor: growthOpts.showRate ? 'var(--bg-card-2)' : 'var(--bg-surface)', cursor: 'pointer', opacity: growthOpts.showRate ? 1 : 0.5, fontSize: 11, color: 'var(--text-secondary)' }}>
+                    수익률(%) 선
                   </button>
-                ))}
+                </div>
+                <div id="print-chart-growth" className="print-chart-wrap">
+                  <div className="print-section-title" style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-secondary)', marginBottom: 4 }}>자산 성장 그래프</div>
+                  <AssetGrowthChart data={annualFlowData} options={growthOpts} noAnimation={isPrinting} />
+                </div>
               </div>
-              <div id="print-chart-flow" className="print-chart-wrap">
-                <div className="print-section-title" style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-secondary)', marginBottom: 4 }}>투자흐름 그래프</div>
-                <AnnualFlowChart data={annualFlowData} visibility={chartVisibility} noAnimation={isPrinting} />
-              </div>
-            </div>
-          )}
-
-          {showNetAssetChart && annualFlowData.length > 0 && (
-            <div style={{ marginTop: 12, padding: 16, border: '1px solid var(--border)', borderRadius: 8, backgroundColor: 'var(--bg-card)' }}>
-              <div style={{ display: 'flex', gap: 12, marginBottom: 12, fontSize: 12, flexWrap: 'wrap' }} className="no-print">
-                {([
-                  { key: 'cumulativeDeposit' as const, label: '순입금액', color: 'var(--blue-400)' },
-                  { key: 'netAsset' as const, label: '순자산', color: 'var(--blue-400)' },
-                  { key: 'cumulativeProfit' as const, label: '순이익', color: 'var(--success)' },
-                  { key: 'netAssetReturnRate' as const, label: '순자산수익률(%)', color: 'var(--warning)' },
-                ] as const).map(({ key, label, color }) => (
-                  <button key={key} onClick={() => setNetAssetVisibility(prev => ({ ...prev, [key]: !prev[key] }))}
-                    style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '4px 10px', border: '1px solid var(--border-strong)', borderRadius: 6, backgroundColor: netAssetVisibility[key] ? 'var(--bg-card-2)' : 'var(--bg-surface)', cursor: 'pointer', opacity: netAssetVisibility[key] ? 1 : 0.4, fontSize: 12, color: 'var(--text-secondary)' }}>
-                    <span style={{ width: 10, height: 10, borderRadius: 2, backgroundColor: color, display: 'inline-block' }} />
-                    {label}
-                  </button>
-                ))}
-              </div>
-              <div id="print-chart-netasset" className="print-chart-wrap">
-                <div className="print-section-title" style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-secondary)', marginBottom: 4 }}>순자산 그래프</div>
-                <NetAssetChart data={annualFlowData} visibility={netAssetVisibility} noAnimation={isPrinting} />
-              </div>
-            </div>
-          )}
+            );
+          })()}
         </section>
 
         {/* 100세 은퇴플로우 */}

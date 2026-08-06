@@ -24,31 +24,10 @@ async function fetchInflation(): Promise<number> {
 /* ================================================================
    금융 함수
    ================================================================ */
-function excelPV(rate: number, nper: number, pmt: number, fv = 0, type = 0) {
-  if (rate === 0) return -(fv + pmt * nper);
-  const pvif = Math.pow(1 + rate, nper);
-  return (-fv - pmt * (pvif - 1) / rate * (1 + rate * type)) / pvif;
-}
 function excelFV(rate: number, nper: number, pmt: number, pv = 0) {
   if (rate === 0) return -(pv + pmt * nper);
   const f = Math.pow(1 + rate, nper);
   return -pv * f - pmt * (f - 1) / rate;
-}
-
-function calcTargetFund(fmWon: number, penR: number, infR: number, period: number, withInfl: boolean) {
-  if (fmWon <= 0 || period <= 0) return 0;
-  const nper = period * 12;
-  const mr = withInfl ? ((1 + penR) / (1 + infR) - 1) / 12 : penR / 12;
-  if (mr <= 0) return fmWon * nper;
-  return -excelPV(mr, nper, fmWon, 0, 1);
-}
-
-function calcRequiredHolding(target: number, annR: number, savP: number, holdP: number, annSav: number) {
-  // 적립기간(savP)이 0이어도 거치기간(holdP)만 있으면 계산 가능 (거치만 케이스)
-  if (target <= 0 || annR <= 0 || (savP <= 0 && holdP <= 0)) return 0;
-  const r = annR / 12;
-  const innerPV = excelPV(r, holdP * 12, 0, -target);
-  return -excelPV(r, savP * 12, -annSav / 12, innerPV);
 }
 
 /* ================================================================
@@ -79,7 +58,8 @@ function buildSim(p: {
   startAge: number; retAge: number; savP: number;
   annSav: number; holding: number; investR: number;
   penR: number; fmWon: number; infR: number; withInfl: boolean;
-  overrides?: Record<number, { monthly?: number; additional?: number }>;
+  annualComp?: boolean;   // true = 연복리(연 단위 기말 적립), 기본 월복리
+  overrides?: Record<number, { monthly?: number; additional?: number; pension?: number }>;
 }): SimRow[] {
   const invYrs = p.retAge - p.startAge;
   if (invYrs <= 0 || p.investR <= 0) return [];
@@ -93,10 +73,15 @@ function buildSim(p: {
     const ov = p.overrides?.[yr];
     const mp = ov?.monthly !== undefined ? ov.monthly * 1e4 : (isSav ? p.annSav / 12 : 0);
     const ad = ov?.additional !== undefined ? ov.additional * 1e4 : (i === 0 ? p.holding : 0);
-    const ev = excelFV(mr, 12, -mp, -(prev + ad));
+    // 중도인출: 해당 연도 기말에 차감한다고 가정 (운용 수익은 연중 그대로 발생)
+    const midWd = ov?.pension !== undefined ? ov.pension * 1e4 : 0;
+    const grown = p.annualComp
+      ? (prev + ad) * (1 + p.investR) + mp * 12          // 연복리: 연 적립액 기말 납입
+      : excelFV(mr, 12, -mp, -(prev + ad));              // 월복리: 월 적립
+    const ev = Math.max(0, grown - midWd);
     cumP += mp * 12 + ad;
     rows.push({ year: yr, age, phase: isSav ? 'saving' : 'holding', monthly_payment: mp, additional: ad,
-      evaluation: Math.round(ev), cumulative_principal: Math.round(cumP), investment_return: Math.round(ev - cumP), pension: 0 });
+      evaluation: Math.round(ev), cumulative_principal: Math.round(cumP), investment_return: Math.round(ev + midWd - cumP), pension: Math.round(midWd) });
     prev = ev;
   }
 
@@ -104,19 +89,42 @@ function buildSim(p: {
   let depleted = false;
   for (let age = p.retAge; age <= 130; age++) {
     const yrs = age - p.retAge;
+    const yearNo = invYrs + yrs + 1;
     if (depleted) {
-      rows.push({ year: invYrs + yrs + 1, age, phase: 'retirement', monthly_payment: 0, additional: 0,
+      rows.push({ year: yearNo, age, phase: 'retirement', monthly_payment: 0, additional: 0,
         evaluation: 0, cumulative_principal: Math.round(cumP), investment_return: Math.round(-cumP), pension: 0 });
     } else {
-      const pen = annPen > 0 ? (p.withInfl ? annPen * Math.pow(1 + p.infR, yrs) : annPen) : 0;
-      const ev = Math.max(0, (prev - pen) * (1 + p.penR));
-      rows.push({ year: invYrs + yrs + 1, age, phase: 'retirement', monthly_payment: 0, additional: 0,
+      const ovP = p.overrides?.[yearNo]?.pension;
+      const pen = ovP !== undefined ? ovP * 1e4
+        : (annPen > 0 ? (p.withInfl ? annPen * Math.pow(1 + p.infR, yrs) : annPen) : 0);
+      // 기말 인출: 1년 운용 후 연말에 연금 지급 — 무한지급 공식(월연금×12÷수익률)과 정합
+      // (원금×수익률 = 연간연금이면 잔액이 정확히 유지된다)
+      const ev = Math.max(0, prev * (1 + p.penR) - pen);
+      rows.push({ year: yearNo, age, phase: 'retirement', monthly_payment: 0, additional: 0,
         evaluation: Math.round(ev), cumulative_principal: Math.round(cumP), investment_return: Math.round(ev - cumP), pension: Math.round(pen) });
       prev = ev;
       if (ev <= 0) depleted = true;
     }
   }
   return rows;
+}
+
+/** 시뮬 결과 → 플랜분석 지표 */
+function analyzeSim(rows: SimRow[]) {
+  if (!rows.length) return null;
+  const acc = rows.filter(r => r.phase !== 'retirement');
+  const ret = rows.filter(r => r.phase === 'retirement');
+  const lastAcc = acc[acc.length - 1];
+  const penRows = ret.filter(r => r.pension > 0);
+  return {
+    invYears: acc.length,
+    principal: lastAcc?.cumulative_principal ?? 0,
+    retFund: lastAcc?.evaluation ?? 0,
+    accProfit: (lastAcc?.evaluation ?? 0) - (lastAcc?.cumulative_principal ?? 0),
+    penYears: penRows.length,
+    totalPension: penRows.reduce((s, r) => s + r.pension, 0),
+    inherit100: rows.find(r => r.age === 100)?.evaluation ?? 0,
+  };
 }
 
 /* ================================================================
@@ -141,6 +149,7 @@ const IS: React.CSSProperties = {
 const US: React.CSSProperties = { position: 'absolute', right: '8px', top: '50%', transform: 'translateY(-50%)', fontSize: '11px', color: 'var(--text-muted)', pointerEvents: 'none' };
 const TC: React.CSSProperties = { padding: '6px 8px', textAlign: 'center', fontSize: '13px', color: 'var(--text-primary)' };
 const TRs: React.CSSProperties = { padding: '6px 8px', textAlign: 'right', fontFamily: 'Inter, monospace', fontSize: '13px', color: 'var(--text-primary)' };
+const SEG: React.CSSProperties = { padding: '1px 6px', fontSize: '10px', fontWeight: 700, borderRadius: '4px', cursor: 'pointer', border: '1px solid var(--border-strong)' };
 
 /* ================================================================
    메인 컴포넌트
@@ -149,244 +158,266 @@ export function DesiredPlanTab() {
   const { selectedCustomer, setCustomer } = useRetirementStore();
   const cid = selectedCustomer?.id ?? null;
   const curAge = selectedCustomer?.currentAge ?? 0;
+  const thisYear = new Date().getFullYear();
 
-  // 생년월일 미등록 경고 팝업: 나이(0)가 없으면 시뮬레이션 그래프가 그려지지 않음
+  // 생년월일 미등록 경고 팝업
   const [showBirthWarn, setShowBirthWarn] = useState(false);
   useEffect(() => {
     if (cid && curAge <= 0) setShowBirthWarn(true);
   }, [cid, curAge]);
 
-  // 목표 은퇴자금
-  const [planStartYear, setPSY] = useState(String(new Date().getFullYear()));
-  const [raIn, setRaIn] = useState('60');
-  const [mIn, setMIn] = useState('1,000');
+  /* ---------- 공통: 물가 · 물가반영 토글 ---------- */
   const [infIn, setInfIn] = useState('2.5');
-  const [penRIn, setPenRIn] = useState('2.0');
-  const [rpIn, setRpIn] = useState('40');
-  const [tog1, setTog1] = useState(false);
-  const [tog2, setTog2] = useState(false);
-  const [newPlan, setNewPlan] = useState(false); // 신규 플랜 모드: 수정 플랜만 설계 (기존 플랜 기준 미사용)
-
-  // 투자조건
-  const [spIn, setSpIn] = useState('');
-  const [exRIn, setExRIn] = useState('');
-  const [asIn, setAsIn] = useState('');
-  const [recPIn, setRecPIn] = useState('');
-  const [recRIn, setRecRIn] = useState('');
-  const [holdIn, setHoldIn] = useState('');
-
-  const [applyReqHold, setApplyReqHold] = useState(false); // 필요 거치금액 적용 체크박스
-
-  // 시스템
+  const [tog1, setTog1] = useState(false);   // 연금액 물가반영: 현재가치 연금액 → 은퇴당시 월 연금액
+  const [tog2, setTog2] = useState(false);   // 목표 물가반영: 은퇴금액 산정·연금 인출 증액에 물가 반영
   const [ecos, setEcos] = useState(ECOS_DEFAULT);
+
+  /* ---------- 현재플랜 입력 ---------- */
+  const [pSYIn, setPSYIn] = useState(String(thisYear));
+  const [cRetAgeIn, setCRetAgeIn] = useState('');
+  const [cAmtIn, setCAmtIn] = useState('');            // 적립액 (만)
+  // 적립 주기 토글: '월' 선택 = 월 적립·월복리 / '연' 선택 = 연 적립·연복리 (복리 방식 자동 연동, 기본 '연')
+  const [cFreq, setCFreq] = useState<'월' | '연'>('연');
+  const [cHoldIn, setCHoldIn] = useState('');          // 거치금액 (만)
+  const [cSavPIn, setCSavPIn] = useState('');          // 적립기간 (년)
+  const [cInvRIn, setCInvRIn] = useState('');          // 투자수익률 (%) — 모으는 과정(적립·거치)에 적용
+  const [cPenMIn, setCPenMIn] = useState('');          // 현재가치 기대 연금액 (만/월)
+  const [cPenRIn, setCPenRIn] = useState('');          // 연금수익률 (%) — 연금 받는 과정에 적용
+
+  /* ---------- 추천플랜 입력 ---------- */
+  const [rRetAgeIn, setRRetAgeIn] = useState('');
+  const [rPenMIn, setRPenMIn] = useState('');          // 현재가치 연금액 (만/월)
+  const [rPenRIn, setRPenRIn] = useState('');          // 기대 연금수익률 (%)
+  const [rInvRIn, setRInvRIn] = useState('');          // 기대 투자수익률 (%)
+  const [rSavPIn, setRSavPIn] = useState('');          // 적립기간 (년)
+  const [rAmtIn, setRAmtIn] = useState('');            // 적립액 (만)
+  const [rFreq, setRFreq] = useState<'월' | '연'>('연');    // 적립 주기 — 월=월복리, 연=연복리 자동 (기본 '연')
+  const [rHoldIn, setRHoldIn] = useState('');          // 거치금액 (만)
+
+  /* ---------- 시스템 ---------- */
+  const [showCurPlan, setShowCurPlan] = useState(true);    // 현재플랜 아코디언 (기본 펼침)
+  const [showRecPlan, setShowRecPlan] = useState(false);   // 추천플랜 아코디언 (기본 접힘)
   const [saving, setSaving] = useState(false);
-  const [loading, setLoading] = useState(false);
   const [showTbl, setShowTbl] = useState(false);
   const [tblData, setTblData] = useState<SimRow[]>([]);
-  const [overrides, setOv] = useState<Record<number, { monthly?: number; additional?: number }>>({});
+  const [overrides, setOv] = useState<Record<number, { monthly?: number; additional?: number; pension?: number }>>({});
   const [toast, setToast] = useState<{ m: string; t: 'success' | 'error' } | null>(null);
   const show = (m: string, t: 'success' | 'error') => { setToast({ m, t }); setTimeout(() => setToast(null), 3000); };
 
-  // 파싱
-  const monthly = pn(mIn);
-  const retAge = parseInt(raIn) || 60;
-  const retPeriod = parseInt(rpIn) || 40;
-  const savYrs = parseInt(spIn) || 0;
+  /* ---------- 파싱 ---------- */
   const infRate = parseFloat(infIn) || ecos;
-  const penRate = parseFloat(penRIn) || 2;
-  const exRate = parseFloat(exRIn) || 0;
-  const annSav = pn(asIn);
-  const recPenR = parseFloat(recPIn) || 0;
-  const recRetR = parseFloat(recRIn) || 0;
-  const holdAmt = pn(holdIn);
 
-  const pSY = parseInt(planStartYear) || new Date().getFullYear();
-  const startAge = curAge > 0 ? curAge - (new Date().getFullYear() - pSY) : 0;
-  const invYrs = startAge > 0 && retAge > startAge ? retAge - startAge : 0;
-  const holdYrs = invYrs > savYrs ? invYrs - savYrs : 0;
+  // 현재플랜
+  const pSY = parseInt(pSYIn) || thisYear;
+  const cRetAge = parseInt(cRetAgeIn) || 0;
+  const cAmt = pn(cAmtIn);
+  const cHold = pn(cHoldIn);
+  const cSavP = parseInt(cSavPIn) || 0;
+  const cPenM = pn(cPenMIn);
+  const cInvR = parseFloat(cInvRIn) || 0;
+  const cPenR = parseFloat(cPenRIn) || 0;
+  const cStartAge = curAge > 0 ? curAge - (thisYear - pSY) : 0;
+  const cInvYrs = cStartAge > 0 && cRetAge > cStartAge ? cRetAge - cStartAge : 0;
+  const cHoldYrs = cInvYrs > cSavP ? cInvYrs - cSavP : 0;
+  // 연 환산 적립액 (원) · 복리 방식은 적립 주기에 자동 연동 (월→월복리, 연→연복리)
+  const cAnnSavWon = (cFreq === '월' ? cAmt * 12 : cAmt) * 1e4;
+  const cCompLabel = cFreq === '월' ? '월복리' : '연복리';
+  const hasCur = cInvYrs > 0 && cInvR > 0 && (cAmt > 0 || cHold > 0);
 
-  const yrsToRet = curAge > 0 && retAge > curAge ? retAge - curAge : 0;
-  const futureM = monthly > 0 && yrsToRet > 0
-    ? (tog1 ? Math.round(monthly * Math.pow(1 + infRate / 100, yrsToRet)) : monthly) : monthly;
-  const fmWon = futureM * 1e4;
+  // 추천플랜
+  const rRetAge = parseInt(rRetAgeIn) || 0;
+  const rPenM = pn(rPenMIn);
+  const rPenR = parseFloat(rPenRIn) || 0;
+  const rInvR = parseFloat(rInvRIn) || 0;
+  const rSavP = parseInt(rSavPIn) || 0;
+  const rAmt = pn(rAmtIn);
+  const rHold = pn(rHoldIn);   // 적립액·거치금액 동시 입력 가능 (모으기 '팩트' 입력)
+  const rAnnSavWon = (rFreq === '월' ? rAmt * 12 : rAmt) * 1e4;
+  const rCompLabel = rFreq === '월' ? '월복리' : '연복리';
 
-  // 실시간 계산
-  const targetFund = useMemo(() =>
-    calcTargetFund(fmWon, penRate / 100, infRate / 100, retPeriod, tog2),
-    [fmWon, penRate, infRate, retPeriod, tog2]);
+  // 추천플랜 시작연도: 현재플랜이 있으면 동일, 없으면 현재년도부터 (규칙 6)
+  const rStartYear = hasCur ? pSY : thisYear;
+  const rStartAge = curAge > 0 ? curAge - (thisYear - rStartYear) : 0;
+  const rInvYrs = rStartAge > 0 && rRetAge > rStartAge ? rRetAge - rStartAge : 0;
+  const rHoldYrs = rInvYrs > rSavP ? rInvYrs - rSavP : 0;
 
-  const reqHold = useMemo(() => {
-    if (targetFund <= 0 || exRate <= 0 || invYrs <= 0) return 0; // 적립기간 0(거치만)도 허용
-    return Math.max(0, calcRequiredHolding(targetFund, exRate / 100, savYrs, holdYrs, annSav * 1e4));
-  }, [targetFund, exRate, savYrs, holdYrs, annSav, invYrs]);
+  /* ---------- 현재플랜 계산 ---------- */
+  // 월 연금액(은퇴당시) = 현재가치 기대 연금액 × 물가 반영(tog1)
+  const cYrsToRet = curAge > 0 && cRetAge > curAge ? cRetAge - curAge : 0;
+  const curPenM = cPenM > 0
+    ? (tog1 && cYrsToRet > 0 ? Math.round(cPenM * Math.pow(1 + infRate / 100, cYrsToRet)) : cPenM)
+    : 0;
 
-  // 기존 플랜
-  const simOrig = useMemo(() => {
-    if (exRate <= 0 || invYrs <= 0 || startAge <= 0) return [];
-    return buildSim({ startAge, retAge, savP: savYrs, annSav: annSav * 1e4, holding: reqHold,
-      investR: exRate / 100, penR: penRate / 100, fmWon, infR: infRate / 100, withInfl: tog2 });
-  }, [startAge, retAge, savYrs, annSav, reqHold, exRate, penRate, fmWon, infRate, tog2, invYrs]);
+  const simCur = useMemo(() => {
+    if (!hasCur) return [];
+    return buildSim({
+      startAge: cStartAge, retAge: cRetAge, savP: cSavP,
+      annSav: cAnnSavWon, holding: cHold * 1e4,
+      investR: cInvR / 100, penR: cPenR / 100,
+      fmWon: curPenM * 1e4, infR: infRate / 100, withInfl: tog2,
+      annualComp: cFreq === '연',
+    });
+  }, [hasCur, cStartAge, cRetAge, cSavP, cAnnSavWon, cHold, cInvR, cPenR, curPenM, infRate, tog2, cFreq]);
 
-  // 수정 플랜
-  const modIR = recRetR > 0 ? recRetR : exRate;
-  const modPR = recPenR > 0 ? recPenR : penRate;
-  const hasMod = recPenR > 0 || recRetR > 0 || holdAmt > 0 || applyReqHold;
+  const curStat = useMemo(() => analyzeSim(simCur), [simCur]);
+  const curAccFund = curStat?.retFund ?? 0;   // 은퇴시점 평가금액 (적립+거치 축적 결과)
 
-  // Step 1: 수정 기본 목표 = 추천 연금수익률 기반 영구연금 공식
-  const modBaseTarget = useMemo(() => {
-    if (recPenR <= 0) return targetFund;
-    const rp = recPenR / 100, ir = infRate / 100;
-    if (rp > ir && fmWon > 0) {
-      const annPen = fmWon * 12;
-      return annPen * (1 + rp) / (rp - ir); // 영구연금 공식
-    }
-    return calcTargetFund(fmWon, rp, ir, retPeriod, tog2); // fallback: PV 40년
-  }, [recPenR, infRate, fmWon, retPeriod, tog2, targetFund]);
+  // 필요 은퇴금액 (플랜분석용) — 추천플랜과 동일한 무한지급식: 월연금 × 12 ÷ 수익률(물가반영 시 −물가)
+  const curNeedFund = useMemo(() => {
+    if (curPenM <= 0 || cPenR <= 0) return 0;
+    const rate = tog2 ? (cPenR - infRate) / 100 : cPenR / 100;
+    if (rate <= 0) return 0;
+    return curPenM * 1e4 * 12 / rate;
+  }, [curPenM, cPenR, infRate, tog2]);
 
-  // Step 2: 수정 플랜 필요 거치금액 = 추천 투자수익률로 수정 기본 목표 도달
-  const modReqHold = useMemo(() => {
-    if (recRetR <= 0 || modBaseTarget <= 0 || invYrs <= 0) return reqHold; // 적립기간 0(거치만)도 허용
-    return Math.max(0, calcRequiredHolding(modBaseTarget, recRetR / 100, savYrs, holdYrs, annSav * 1e4));
-  }, [recRetR, modBaseTarget, savYrs, holdYrs, annSav, invYrs, reqHold]);
+  /* ---------- 추천플랜 계산 ---------- */
+  // 월 연금액(은퇴당시)
+  const rYrsToRet = curAge > 0 && rRetAge > curAge ? rRetAge - curAge : 0;
+  const recPenM = rPenM > 0
+    ? (tog1 && rYrsToRet > 0 ? Math.round(rPenM * Math.pow(1 + infRate / 100, rYrsToRet)) : rPenM)
+    : 0;
 
-  // 거치 가능금액 실제값
-  const effectiveHoldWon = applyReqHold ? modReqHold : holdAmt * 1e4;
+  // 모으기 우선 로직: 팩트(투자수익률·적립기간·월적립액·거치금액)로 은퇴금액을 만들고,
+  // 그 금액이 은퇴 시점에 홀드된 뒤 연금수익률·인출 방식에 따라 이후 그래프가 달라진다.
+  const hasRec = rInvYrs > 0 && rInvR > 0 && (rAmt > 0 || rHold > 0);
 
-  // 수정 플랜 holding 결정:
-  // 기본: modReqHold (추천 수익률로 수정 목표 도달)
-  // 거치 가능금액 입력 시: Case 1(부족) / Case 2(초과) 적용
-  const modHolding = useMemo(() => {
-    if (!hasMod || effectiveHoldWon <= 0) return modReqHold;
-    return modReqHold >= effectiveHoldWon ? modReqHold : effectiveHoldWon;
-  }, [hasMod, effectiveHoldWon, modReqHold]);
+  const simRec = useMemo(() => {
+    if (!hasRec) return [];
+    return buildSim({
+      startAge: rStartAge, retAge: rRetAge, savP: rSavP,
+      annSav: rAnnSavWon, holding: rHold * 1e4,
+      investR: rInvR / 100, penR: rPenR / 100,
+      fmWon: recPenM * 1e4, infR: infRate / 100, withInfl: tog2,
+      annualComp: rFreq === '연',
+    });
+  }, [hasRec, rStartAge, rRetAge, rSavP, rAnnSavWon, rHold, rInvR, rPenR, recPenM, infRate, tog2, rFreq]);
 
-  const extraHolding = useMemo(() => {
-    if (!hasMod || effectiveHoldWon <= 0) return 0;
-    return modReqHold > effectiveHoldWon ? modReqHold - effectiveHoldWon : 0;
-  }, [hasMod, effectiveHoldWon, modReqHold]);
+  const recStat = useMemo(() => analyzeSim(simRec), [simRec]);
+  // 희망 은퇴금액 = 팩트로 만들어지는 은퇴 시점 축적액 (연금 재원으로 홀드됨)
+  const recRetFund = recStat?.retFund ?? 0;
 
-  const simMod = useMemo(() => {
-    if (!hasMod || modIR <= 0 || invYrs <= 0 || startAge <= 0) return [];
-    return buildSim({ startAge, retAge, savP: savYrs, annSav: annSav * 1e4, holding: modHolding,
-      investR: modIR / 100, penR: modPR / 100, fmWon, infR: infRate / 100, withInfl: tog2 });
-  }, [hasMod, startAge, retAge, savYrs, annSav, modHolding, modIR, modPR, fmWon, infRate, tog2, invYrs]);
+  // 필요 은퇴금액 (플랜분석 참고용) — 무한지급식: 월연금 × 12 ÷ 수익률(물가반영 시 −물가)
+  const recNeedFund = useMemo(() => {
+    if (recPenM <= 0 || rPenR <= 0) return 0;
+    const rate = tog2 ? (rPenR - infRate) / 100 : rPenR / 100;
+    if (rate <= 0) return 0;
+    return recPenM * 1e4 * 12 / rate;
+  }, [recPenM, rPenR, infRate, tog2]);
 
-  // 수정 플랜의 은퇴 시점 실제 평가금액 (시뮬레이션 결과)
-  const modRetireFund = useMemo(() => {
-    if (!simMod.length) return 0;
-    const lastInv = simMod.filter(r => r.phase !== 'retirement').pop();
-    return lastInv?.evaluation ?? 0;
-  }, [simMod]);
-
-  // Step 3: 최종 수정 목표 = 시뮬 축적액이 기본 목표 초과 시 축적액으로 업데이트
-  // (거치 가능금액 초과 or 적립 가능금액 초과로 기본 목표 이상 축적된 경우)
-  const modTargetFund = useMemo(() => {
-    if (modRetireFund > modBaseTarget) return modRetireFund; // 초과 축적 → 실제 축적액
-    return modBaseTarget; // 기본 목표 유지
-  }, [modRetireFund, modBaseTarget]);
-
-  // 수정 목표가 기본 목표보다 큰지 (초과 축적 여부)
-  const isTargetOvershot = modRetireFund > modBaseTarget && modRetireFund > 0;
-
-  const inheritance = useMemo(() => {
-    const rows = hasMod ? simMod : simOrig;
-    return rows.find(r => r.age === 100)?.evaluation ?? 0;
-  }, [simOrig, simMod, hasMod]);
-
-  // 그래프 데이터: 소진 후 선 끊김, 가로축은 둘 중 긴 쪽 (최대 130세)
+  /* ---------- 그래프 데이터 (즉시 반영) ---------- */
   const gData = useMemo(() => {
-    // 소진 시점 찾기 (evaluation이 0이 된 첫 age)
     const findEnd = (rows: SimRow[]) => {
-      for (const r of rows) {
-        if (r.phase === 'retirement' && r.evaluation <= 0) return r.age;
-      }
-      return 999; // 소진 안 됨
+      for (const r of rows) if (r.phase === 'retirement' && r.evaluation <= 0) return r.age;
+      return 999;
     };
-    const origEnd = findEnd(simOrig);
-    const modEnd = findEnd(simMod);
+    const curEnd = findEnd(simCur);
+    const recEnd = findEnd(simRec);
     const maxAge = 100;
-
     const m: Record<number, { original?: number; modified?: number; principal?: number }> = {};
-    // 기존: 소진 시점까지만 값, 100세 이하
-    for (const r of simOrig) {
-      if (r.age > maxAge || r.age > origEnd) break;
+    for (const r of simCur) {
+      if (r.age > maxAge || r.age > curEnd) break;
       m[r.age] = { original: Math.round(r.evaluation / 1e4) };
     }
-    // 수정: 소진 시점까지만 값, 100세 이하
-    if (hasMod) {
-      for (const r of simMod) {
-        if (r.age > maxAge || r.age > modEnd) break;
-        if (!m[r.age]) m[r.age] = {};
-        m[r.age].modified = Math.round(r.evaluation / 1e4);
-      }
+    for (const r of simRec) {
+      if (r.age > maxAge || r.age > recEnd) break;
+      if (!m[r.age]) m[r.age] = {};
+      m[r.age].modified = Math.round(r.evaluation / 1e4);
     }
-    // 원금: 100세 이하
-    const pSrc = hasMod ? simMod : simOrig;
+    const pSrc = simRec.length ? simRec : simCur;
     for (const r of pSrc) {
       if (r.age > maxAge) break;
       if (!m[r.age]) m[r.age] = {};
       m[r.age].principal = Math.round(r.cumulative_principal / 1e4);
     }
-    // 가로축을 maxAge까지 채우기 (빈 age도 포함)
-    // 기존 플랜이 없으면(신규 플랜 모드 등) 수정 플랜 시작 나이를 축 시작점으로 사용 → 0세부터 그려지는 문제 방지
-    const axisStart = simOrig.length ? simOrig[0].age : (simMod.length ? simMod[0].age : 0);
-    for (let age = axisStart; age <= maxAge; age++) {
-      if (!m[age]) m[age] = {};
-    }
+    const axisStart = simCur.length ? simCur[0].age : (simRec.length ? simRec[0].age : 0);
+    if (axisStart > 0) for (let age = axisStart; age <= maxAge; age++) { if (!m[age]) m[age] = {}; }
     return Object.entries(m).map(([a, d]) => ({ age: parseInt(a), ...d })).sort((a, b) => a.age - b.age);
-  }, [simOrig, simMod, hasMod]);
+  }, [simCur, simRec]);
 
-  // ECOS & Load
-  // ECOS 물가율은 저장값이 아직 초기값('2.5')일 때만 적용 — load()가 넣은 고객 저장값을 덮지 않도록
+  /* ---------- ECOS & Load ---------- */
   useEffect(() => { fetchInflation().then(r => { setEcos(r); setInfIn(prev => (prev === '2.5' ? r.toFixed(1) : prev)); }); }, []);
 
   const load = useCallback(async () => {
     if (!cid) return;
-    setLoading(true);
     try {
       const r = await fetch(`${API_URL}/api/v1/retirement/desired-plans/${cid}`, { headers: authLib.getAuthHeader() });
       if (r.ok) {
         const d = await r.json(); const p = d.calculation_params || {};
-        const cvm = d.current_value_monthly ?? d.monthly_desired_amount;
-        if (cvm) setMIn(fmt(Math.round(cvm / 1e4)));
-        if (p.retirement_period_years) setRpIn(String(p.retirement_period_years));
-        if (p.retirement_age) setRaIn(String(p.retirement_age));
-        if (p.inflation_rate) setInfIn(((p.inflation_rate * 100) as number).toFixed(1));
-        if (p.pension_return_rate) setPenRIn(((p.pension_return_rate * 100) as number).toFixed(1));
-        else if (p.base_pension_rate) setPenRIn(((p.base_pension_rate * 100) as number).toFixed(1));
-        if (p.savings_period) setSpIn(String(p.savings_period));
-        if (p.existing_return_rate) setExRIn(((p.existing_return_rate * 100) as number).toFixed(1));
-        else if (p.expected_return_rate) setExRIn(((p.expected_return_rate * 100) as number).toFixed(1));
-        if (p.annual_savings) setAsIn(fmt(Math.round(p.annual_savings / 1e4)));
-        if (p.recommended_pension_rate) setRecPIn(((p.recommended_pension_rate * 100) as number).toFixed(1));
-        if (p.recommended_return_rate) setRecRIn(((p.recommended_return_rate * 100) as number).toFixed(1));
-        if (p.available_holding) setHoldIn(fmt(Math.round(p.available_holding / 1e4)));
-        if (d.use_inflation_input !== undefined) setTog1(!!d.use_inflation_input);
-        if (d.use_inflation_calc !== undefined) setTog2(!!d.use_inflation_calc);
-        if (d.plan_start_year) setPSY(String(d.plan_start_year));
+        const v2 = p.plan_v2;
+        if (v2) {
+          // 새 구조 복원
+          if (v2.infIn) setInfIn(v2.infIn);
+          if (v2.tog1 !== undefined) setTog1(!!v2.tog1);
+          if (v2.tog2 !== undefined) setTog2(!!v2.tog2);
+          if (v2.pSYIn) setPSYIn(v2.pSYIn);
+          if (v2.cRetAgeIn !== undefined) setCRetAgeIn(v2.cRetAgeIn);
+          if (v2.cAmtIn !== undefined) setCAmtIn(v2.cAmtIn);
+          if (v2.cFreq) setCFreq(v2.cFreq);
+          if (v2.cHoldIn !== undefined) setCHoldIn(v2.cHoldIn);
+          if (v2.cSavPIn !== undefined) setCSavPIn(v2.cSavPIn);
+          if (v2.cPenMIn !== undefined) setCPenMIn(v2.cPenMIn);
+          if (v2.cInvRIn !== undefined) setCInvRIn(v2.cInvRIn);
+          if (v2.cPenRIn !== undefined) setCPenRIn(v2.cPenRIn);
+          if (v2.rRetAgeIn !== undefined) setRRetAgeIn(v2.rRetAgeIn);
+          if (v2.rPenMIn !== undefined) setRPenMIn(v2.rPenMIn);
+          if (v2.rPenRIn !== undefined) setRPenRIn(v2.rPenRIn);
+          if (v2.rInvRIn !== undefined) setRInvRIn(v2.rInvRIn);
+          if (v2.rSavPIn !== undefined) setRSavPIn(v2.rSavPIn);
+          if (v2.rAmtIn !== undefined) setRAmtIn(v2.rAmtIn);
+          if (v2.rFreq) setRFreq(v2.rFreq);
+          if (v2.rHoldIn !== undefined) setRHoldIn(v2.rHoldIn);
+        } else {
+          // 구버전 데이터 → 추천플랜으로 최대한 매핑
+          const cvm = d.current_value_monthly ?? d.monthly_desired_amount;
+          if (cvm) setRPenMIn(fmt(Math.round(cvm / 1e4)));
+          if (p.retirement_age) setRRetAgeIn(String(p.retirement_age));
+          if (p.inflation_rate) setInfIn(((p.inflation_rate * 100) as number).toFixed(1));
+          if (p.pension_return_rate) setRPenRIn(((p.pension_return_rate * 100) as number).toFixed(1));
+          if (p.recommended_return_rate) setRInvRIn(((p.recommended_return_rate * 100) as number).toFixed(1));
+          else if (p.existing_return_rate) setRInvRIn(((p.existing_return_rate * 100) as number).toFixed(1));
+          if (p.savings_period) setRSavPIn(String(p.savings_period));
+          if (p.annual_savings) setRAmtIn(fmt(Math.round(p.annual_savings / 12 / 1e4)));
+          if (d.use_inflation_input !== undefined) setTog1(!!d.use_inflation_input);
+          if (d.use_inflation_calc !== undefined) setTog2(!!d.use_inflation_calc);
+          if (d.plan_start_year) setPSYIn(String(d.plan_start_year));
+        }
         const saved = d.simulation_data ?? p.modified_plan;
         if (saved?.length) { setTblData(saved); setShowTbl(true); }
       }
-    } catch { /* */ } finally { setLoading(false); }
+    } catch { /* */ }
   }, [cid]);
   useEffect(() => { load(); }, [load]);
 
-  // 테이블 생성 (계산 버튼)
+  /* ---------- 계산 버튼 (추천플랜 기준 편집 테이블) ---------- */
+  const canCalc = hasRec;
   function handleCalc() {
-    const sim = buildSim({ startAge, retAge, savP: savYrs, annSav: annSav * 1e4, holding: modHolding,
-      investR: modIR / 100, penR: modPR / 100, fmWon, infR: infRate / 100, withInfl: tog2, overrides });
+    const sim = buildSim({
+      startAge: rStartAge, retAge: rRetAge, savP: rSavP,
+      annSav: rAnnSavWon, holding: rHold * 1e4,
+      investR: rInvR / 100, penR: rPenR / 100,
+      fmWon: recPenM * 1e4, infR: infRate / 100, withInfl: tog2,
+      annualComp: rFreq === '연', overrides,
+    });
     setTblData(sim); setShowTbl(true); setOv({});
   }
 
-  // overrides 반영 테이블
   const dispTbl = useMemo(() => {
     if (!tblData.length) return [];
     if (!Object.keys(overrides).length) return tblData;
-    return buildSim({ startAge, retAge, savP: savYrs, annSav: annSav * 1e4, holding: modHolding,
-      investR: modIR / 100, penR: modPR / 100, fmWon, infR: infRate / 100, withInfl: tog2, overrides });
-  }, [tblData, overrides, startAge, retAge, savYrs, annSav, modHolding, modIR, modPR, fmWon, infRate, tog2]);
+    return buildSim({
+      startAge: rStartAge, retAge: rRetAge, savP: rSavP,
+      annSav: rAnnSavWon, holding: rHold * 1e4,
+      investR: rInvR / 100, penR: rPenR / 100,
+      fmWon: recPenM * 1e4, infR: infRate / 100, withInfl: tog2,
+      annualComp: rFreq === '연', overrides,
+    });
+  }, [tblData, overrides, rStartAge, rRetAge, rSavP, rAnnSavWon, rHold, rInvR, rPenR, recPenM, infRate, tog2, rFreq]);
 
-  // 프로필 확보
+  function setOvF(yr: number, field: 'monthly' | 'additional' | 'pension', val: string) {
+    setOv(prev => ({ ...prev, [yr]: { ...prev[yr], [field]: pn(val) } }));
+  }
+
+  /* ---------- 저장 ---------- */
   async function ensureProfile() {
     if (!cid) return false;
     try {
@@ -395,7 +426,7 @@ export function DesiredPlanTab() {
       if (c.status === 404) {
         const cr = await fetch(`${API_URL}/api/v1/retirement/profiles`, {
           method: 'POST', headers: { 'Content-Type': 'application/json', ...authLib.getAuthHeader() },
-          body: JSON.stringify({ customer_id: cid, current_age: curAge || 35, age_at_design: curAge || 35, desired_retirement_age: retAge }),
+          body: JSON.stringify({ customer_id: cid, current_age: curAge || 35, age_at_design: curAge || 35, desired_retirement_age: rRetAge || cRetAge || 60 }),
         });
         return cr.ok || cr.status === 409;
       }
@@ -405,47 +436,98 @@ export function DesiredPlanTab() {
 
   async function handleSave() {
     if (!cid) { show('고객을 먼저 선택하세요.', 'error'); return; }
-    if (monthly <= 0) { show('현재가치 연금액을 입력해주세요.', 'error'); return; }
+    if (rPenM <= 0 && cPenM <= 0) { show('현재가치 연금액을 입력해주세요.', 'error'); return; }
     setSaving(true);
     try {
       if (!(await ensureProfile())) { show('프로필 생성 실패', 'error'); setSaving(false); return; }
-      const simRows = dispTbl.length > 0 ? dispTbl : (hasMod ? simMod : simOrig);
+      const simRows = dispTbl.length > 0 ? dispTbl : (simRec.length ? simRec : simCur);
       const body = {
-        monthly_desired_amount: fmWon, retirement_age: retAge, current_age: curAge,
-        retirement_period_years: retPeriod, savings_period: savYrs, annual_savings: annSav * 1e4,
-        plan_start_age: startAge > 0 ? startAge : curAge,
-        inflation_rate: infRate / 100, pension_return_rate: penRate / 100,
-        expected_return_rate: exRate > 0 ? exRate / 100 : modIR / 100,
+        // 하위 호환 필수 필드 (추천플랜 기준, 없으면 현재플랜)
+        monthly_desired_amount: (recPenM || curPenM) * 1e4,
+        retirement_age: rRetAge || cRetAge || 60,
+        current_age: curAge,
+        retirement_period_years: 99,   // 무한지급(이자식) — 하위 호환용 명목값
+        savings_period: rSavP || cSavP,
+        annual_savings: rAmt * 12 * 1e4 || cAnnSavWon,
+        plan_start_age: rStartAge > 0 ? rStartAge : curAge,
+        inflation_rate: infRate / 100,
+        pension_return_rate: (rPenR || cPenR) / 100,
+        expected_return_rate: (rInvR || cInvR) / 100,
         with_inflation: tog2,
-        current_value_monthly: monthly * 1e4, future_monthly_amount: fmWon,
+        current_value_monthly: (rPenM || cPenM) * 1e4,
+        future_monthly_amount: (recPenM || curPenM) * 1e4,
         use_inflation_input: tog1, use_inflation_calc: tog2,
-        desired_retirement_age: retAge, savings_period_years: savYrs, holding_period_years: holdYrs,
-        annual_savings_amount: annSav * 1e4, plan_start_year: pSY,
-        simulation_data: simRows, simulation_target_fund: Math.round(modTargetFund),
-        target_fund_pv: Math.round(targetFund),
-        existing_return_rate: exRate / 100,
-        recommended_return_rate: recRetR > 0 ? recRetR / 100 : undefined,
-        recommended_pension_rate: recPenR > 0 ? recPenR / 100 : undefined,
-        available_holding: holdAmt * 1e4,
-        base_pension_rate: penRate / 100,
-        original_plan: simOrig, modified_plan: hasMod ? simMod : undefined,
+        desired_retirement_age: rRetAge || cRetAge || 60,
+        savings_period_years: rSavP, holding_period_years: rHoldYrs,
+        annual_savings_amount: rAmt * 12 * 1e4,
+        plan_start_year: pSY,
+        simulation_data: simRows,
+        simulation_target_fund: Math.round(recRetFund),
+        target_fund_pv: Math.round(recRetFund),
+        existing_return_rate: cInvR / 100,
+        recommended_return_rate: rInvR > 0 ? rInvR / 100 : undefined,
+        recommended_pension_rate: rPenR > 0 ? rPenR / 100 : undefined,
+        available_holding: rHold * 1e4,
+        base_pension_rate: (rPenR || cPenR) / 100,
+        original_plan: simCur, modified_plan: simRec.length ? simRec : undefined,
+        // 새 구조 전체 저장 (재진입 시 복원)
+        calculation_params: {
+          plan_v2: {
+            infIn, tog1, tog2,
+            pSYIn, cRetAgeIn, cAmtIn, cFreq, cHoldIn, cSavPIn, cInvRIn, cPenMIn, cPenRIn,
+            rRetAgeIn, rPenMIn, rPenRIn, rInvRIn, rSavPIn, rAmtIn, rFreq, rHoldIn,
+          },
+        },
       };
       const r = await fetch(`${API_URL}/api/v1/retirement/desired-plans/${cid}`, {
         method: 'PUT', headers: { 'Content-Type': 'application/json', ...authLib.getAuthHeader() },
         body: JSON.stringify(body),
       });
       if (r.ok) {
-        if (selectedCustomer) setCustomer({ ...selectedCustomer, retirementAge: retAge, targetFund: Math.round(modTargetFund / 1e4) });
+        if (selectedCustomer) setCustomer({ ...selectedCustomer, retirementAge: rRetAge || cRetAge, targetFund: Math.round(recRetFund / 1e4) });
         show('저장이 완료되었습니다.', 'success');
       } else { const e = await r.json().catch(() => ({})); show(String((e as Record<string, unknown>).detail || '저장 실패'), 'error'); }
     } catch { show('네트워크 오류', 'error'); } finally { setSaving(false); }
   }
 
-  function setOvF(yr: number, field: 'monthly' | 'additional', val: string) {
-    setOv(prev => ({ ...prev, [yr]: { ...prev[yr], [field]: pn(val) } }));
-  }
-
-  const canCalc = monthly > 0 && (exRate > 0 || modIR > 0) && invYrs > 0;
+  /* ---------- 플랜분석 행 ---------- */
+  const analysisRows = useMemo(() => {
+    type Cell = string;
+    const rows: { label: string; cur: Cell; rec: Cell; diff?: Cell; diffColor?: string }[] = [];
+    const num = (v: number) => fmtW(v);
+    const push = (label: string, curV: number | null, recV: number | null, formatter: (v: number) => string = num, unit = '') => {
+      const diff = curV != null && recV != null ? recV - curV : null;
+      rows.push({
+        label,
+        cur: curV != null ? formatter(curV) + unit : '-',
+        rec: recV != null ? formatter(recV) + unit : '-',
+        diff: diff != null ? `${diff > 0 ? '+' : ''}${formatter(diff)}${unit}` : undefined,
+        diffColor: diff != null ? (diff > 0 ? '#34D399' : diff < 0 ? '#F87171' : 'var(--text-muted)') : undefined,
+      });
+    };
+    const plain = (v: number) => fmt(Math.round(v));
+    push('은퇴나이', hasCur ? cRetAge : null, hasRec ? rRetAge : null, plain, '세');
+    push('투자기간 (적립+거치)', curStat ? curStat.invYears : null, recStat ? recStat.invYears : null, plain, '년');
+    push('투자원금', curStat ? curStat.principal : null, recStat ? recStat.principal : null);
+    push('총 수익 (모으는 기간)', curStat ? curStat.accProfit : null, recStat ? recStat.accProfit : null);
+    push('은퇴금액 (필요·무한지급 기준)', curNeedFund > 0 ? curNeedFund : null, recNeedFund > 0 ? recNeedFund : null);
+    push('은퇴시점 평가금액 (모은 돈)', curStat ? curAccFund : null, recStat ? recStat.retFund : null);
+    push('월 연금액 (은퇴당시)', hasCur && curPenM > 0 ? curPenM * 1e4 : null, hasRec && recPenM > 0 ? recPenM * 1e4 : null);
+    rows.push({
+      label: '연금수령기간',
+      cur: curStat ? `${fmt(curStat.penYears)}년` : '-',
+      rec: hasRec ? '무한 (이자 지급식)' : '-',
+    });
+    push('총 수령 연금액', curStat ? curStat.totalPension : null, recStat ? recStat.totalPension : null);
+    push('상속금액 (100세)', curStat ? curStat.inherit100 : null, recStat ? recStat.inherit100 : null);
+    // 추가 지표: 수익률 가정 (차이 없이 표기)
+    rows.push({
+      label: '수익률 가정 (투자/연금)',
+      cur: hasCur ? `${cInvR}% / ${cPenR}%` : '-',
+      rec: hasRec ? `${rInvR}% / ${rPenR}%` : '-',
+    });
+    return rows;
+  }, [hasCur, hasRec, cRetAge, rRetAge, curStat, recStat, curNeedFund, curAccFund, recNeedFund, curPenM, recPenM, cInvR, cPenR, rInvR, rPenR]);
 
   /* ================================================================
      RENDER
@@ -464,20 +546,8 @@ export function DesiredPlanTab() {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
 
-      {/* ==================== 초기화 / PDF 다운로드 버튼 ==================== */}
+      {/* ==================== PDF 다운로드 버튼 ==================== */}
       <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px' }}>
-        <button
-          onClick={() => {
-            if (!window.confirm("'목표 은퇴자금'과 '투자조건'의 입력값을 모두 지울까요?")) return;
-            // 목표 은퇴자금
-            setPSY(''); setRaIn(''); setMIn(''); setInfIn(''); setPenRIn(''); setRpIn('');
-            // 투자조건
-            setSpIn(''); setExRIn(''); setAsIn(''); setRecPIn(''); setRecRIn(''); setHoldIn('');
-          }}
-          style={{ padding: '8px 16px', fontSize: '13px', fontWeight: 600, borderRadius: '8px', cursor: 'pointer', border: '1px solid var(--border-strong)', backgroundColor: 'var(--bg-card)', color: 'var(--text-secondary)', display: 'flex', alignItems: 'center', gap: '6px' }}
-        >
-          ↺ 초기화
-        </button>
         <button
           onClick={async () => {
             try {
@@ -486,53 +556,41 @@ export function DesiredPlanTab() {
               type CI = import('../../utils/desiredPlanPdf').CardItem;
 
               const targetFundCards: CI[] = [
-                { label: '플랜 시작연도', value: `${planStartYear}년` },
-                { label: '희망 은퇴나이', value: `${retAge}세 (총 ${invYrs}년)` },
-                { label: '현재가치 연금액(월)', value: `${monthly.toLocaleString()}만원/월` },
-                { label: '은퇴당시 연금액(월)', value: tog1 ? `${futureM.toLocaleString()}만원/월` : `${monthly.toLocaleString()}만원/월`, highlight: true },
-                { label: '물가상승률', value: `${infRate}%` },
-                { label: '연금 수익률', value: `${penRate}%` },
-                { label: '연금 수령기간', value: `${retPeriod}년` },
-                { label: '목표 은퇴자금', value: fmtW(targetFund), highlight: true },
+                { label: '[현재플랜] 플랜 시작연도', value: `${pSY}년` },
+                { label: '희망 은퇴나이', value: cRetAge > 0 ? `${cRetAge}세 (총 ${cInvYrs}년)` : '-' },
+                { label: `적립액 (${cFreq} 적립 · ${cCompLabel})`, value: cAmt > 0 ? `${fmt(cAmt)}만원/${cFreq}` : '-' },
+                { label: '거치금액', value: cHold > 0 ? `${fmt(cHold)}만원` : '-' },
+                { label: '적립기간', value: cSavP > 0 ? `${cSavP}년 (거치 ${cHoldYrs}년)` : '-' },
+                { label: '투자수익률 / 연금수익률', value: `${cInvR || '-'}% / ${cPenR || '-'}%` },
+                { label: '기존 은퇴금액', value: curAccFund > 0 ? fmtW(curAccFund) : '-', highlight: true },
+                { label: '월 연금액(은퇴당시)', value: curPenM > 0 ? `${fmt(curPenM)}만원/월` : '-', highlight: true },
               ];
-
               const investCards: CI[] = [
-                { label: '적립기간', value: `${savYrs}년 (거치: ${holdYrs}년)` },
-                { label: '기존 투자수익률', value: `${exRate}%` },
-                { label: '적립 가능금액(연)', value: `${annSav.toLocaleString()}만원/연` },
-                { label: '필요 거치금액', value: fmtW(modReqHold), highlight: true },
-                { label: '추천 연금수익률', value: recPenR > 0 ? `${recPenR}%` : '미입력' },
-                { label: '추천 투자수익률', value: recRetR > 0 ? `${recRetR}%` : '미입력' },
-                { label: '거치 가능금액', value: holdAmt > 0 ? `${holdAmt.toLocaleString()}만원` : '-' },
-                { label: modBaseTarget !== targetFund ? '수정 목표 은퇴자금' : '추가 거치금액', value: modBaseTarget !== targetFund ? fmtW(modBaseTarget) : fmtW(extraHolding), highlight: modBaseTarget !== targetFund },
+                { label: '[추천플랜] 희망 은퇴나이', value: rRetAge > 0 ? `${rRetAge}세 (총 ${rInvYrs}년)` : '-' },
+                { label: '지급 방식', value: '무한지급 (이자식 영구연금)' },
+                { label: '기대 투자수익률 / 연금수익률', value: `${rInvR || '-'}% / ${rPenR || '-'}%` },
+                { label: '적립기간', value: `${rSavP}년 (거치 ${rHoldYrs}년)` },
+                { label: `적립액 (${rFreq} · ${rCompLabel}) / 거치금액`, value: `${fmt(rAmt)}만원/${rFreq} · ${fmt(rHold)}만원` },
+                { label: '희망 은퇴금액 (축적)', value: recRetFund > 0 ? fmtW(recRetFund) : '-', highlight: true },
+                { label: '월 연금액(은퇴당시)', value: recPenM > 0 ? `${fmt(recPenM)}만원/월` : '-', highlight: true },
               ];
+              const goalPlanCards: CI[] = analysisRows.slice(0, 8).map(r => ({
+                label: r.label, value: `${r.cur} → ${r.rec}`,
+              }));
 
-              const goalPlanCards: CI[] = [
-                { label: '목표 은퇴자금', value: fmtW(modTargetFund) },
-                { label: '은퇴당시 연금액(월)', value: tog1 ? `${futureM.toLocaleString()}만원/월` : `${monthly.toLocaleString()}만원/월` },
-                { label: '기대 투자수익률', value: `${modIR}%`, highlight: true },
-                { label: '기대 연금수익률', value: `${modPR}%`, highlight: true },
-                { label: '투자기간', value: `${invYrs}년 (적립 ${savYrs} + 거치 ${holdYrs})` },
-                { label: '적립금액(연)', value: `${annSav.toLocaleString()}만원/연` },
-                { label: '연거치 금액', value: fmtW(modHolding) },
-                { label: '상속금액', value: fmtW(inheritance), highlight: true },
-              ];
-
-              // 시뮬레이션 테이블 데이터 (simMod 사용)
               type SRow = import('../../utils/desiredPlanPdf').SimRow;
               let runCumPen = 0;
-              const simRows: SRow[] = simMod.map((r: any) => { // eslint-disable-line @typescript-eslint/no-explicit-any
-                const pen = r.pensionWithdraw ?? r.pension ?? 0;
+              const simRows: SRow[] = (dispTbl.length ? dispTbl : simRec).map(r => {
+                const pen = r.pension ?? 0;
                 runCumPen += pen;
-                const rawPhase = r.phase ?? '';
-                const phase = rawPhase === 'saving' ? '적립' : rawPhase === 'holding' ? '거치' : rawPhase === 'retirement' ? '은퇴후' : rawPhase;
+                const phase = r.phase === 'saving' ? '적립' : r.phase === 'holding' ? '거치' : '은퇴후';
                 return {
-                  calYear: (parseInt(planStartYear) || 2020) + (r.year ?? 0) - 1,
+                  calYear: rStartYear + (r.year ?? 0) - 1,
                   year: r.year ?? 0, age: r.age ?? 0, phase,
-                  monthlyPayment: (r.monthlyPayment ?? 0) * 12,
+                  monthlyPayment: (r.monthly_payment ?? 0) * 12,
                   additional: r.additional ?? 0,
-                  cumulativePrincipal: r.cumulativePrincipal ?? 0,
-                  investmentReturn: r.investmentReturn ?? 0,
+                  cumulativePrincipal: r.cumulative_principal ?? 0,
+                  investmentReturn: r.investment_return ?? 0,
                   pension: pen, cumPension: runCumPen,
                   evaluation: r.evaluation ?? 0,
                 };
@@ -540,14 +598,10 @@ export function DesiredPlanTab() {
 
               const pdfData: PData = {
                 customer: customerInfo ?? { name: '', birthDate: '', targetFund: '-', retireAge: '-' },
-                targetFundCards,
-                investCards,
-                goalPlanCards,
-                simRows,
-                retirementAge: retAge,
+                targetFundCards, investCards, goalPlanCards, simRows,
+                retirementAge: rRetAge || cRetAge,
                 graphId: 'pdf-tab1-graph',
               };
-
               await generateDesiredPlanPdf(pdfData, `은퇴플랜설계_${selectedCustomer?.name ?? ''}_${new Date().toISOString().slice(0, 10)}.pdf`);
             } catch (e: unknown) {
               const msg = e instanceof Error ? e.message : String(e);
@@ -560,161 +614,180 @@ export function DesiredPlanTab() {
         </button>
       </div>
 
-      {/* ==================== 목표 은퇴자금 ==================== */}
+      {/* ==================== 현재플랜 (아코디언) ==================== */}
       <div id="pdf-tab1-target">
-        <div style={SH}>
-          <span>목표 은퇴자금</span>
-          <div style={{ display: 'flex', gap: '16px', alignItems: 'center' }}>
-            <button
-              type="button"
-              onClick={() => setNewPlan(v => !v)}
-              title="신규 플랜: 기존 은퇴플랜 없이 수정 플랜만 설계. 필요한 입력 카드만 강조됩니다."
-              style={{
-                padding: '5px 12px', fontSize: '12px', fontWeight: 700, borderRadius: '6px', cursor: 'pointer',
-                transition: 'all 0.15s', whiteSpace: 'nowrap',
-                border: newPlan ? '1.5px solid #fff' : '1.5px solid rgba(255,255,255,0.5)',
-                backgroundColor: newPlan ? '#fff' : 'rgba(255,255,255,0.12)',
-                color: newPlan ? 'var(--blue-600)' : '#fff',
-              }}
-            >
-              {newPlan ? '✓ 신규 플랜' : '신규 플랜'}
-            </button>
+        <div style={showCurPlan ? SH : { ...SH, borderRadius: '12px' }}>
+          <span>현재플랜</span>
+          <div style={{ display: 'flex', gap: '14px', alignItems: 'center' }}>
             <Tog label="연금액 물가반영" c={tog1} f={() => setTog1(!tog1)} />
             <Tog label="목표 물가반영" c={tog2} f={() => setTog2(!tog2)} />
+            <button type="button"
+              onClick={() => {
+                if (!window.confirm('현재플랜 입력값을 모두 지울까요?')) return;
+                setPSYIn(String(thisYear)); setCRetAgeIn(''); setCAmtIn(''); setCHoldIn(''); setCSavPIn(''); setCPenMIn(''); setCPenRIn('');
+              }}
+              style={{ padding: '4px 10px', fontSize: '11px', fontWeight: 700, borderRadius: '6px', border: '1px solid rgba(255,255,255,0.4)',
+                backgroundColor: 'rgba(255,255,255,0.12)', color: '#fff', cursor: 'pointer' }}>
+              ↺ 초기화
+            </button>
+            <button type="button" onClick={() => setShowCurPlan(v => !v)}
+              title={showCurPlan ? '접기' : '펼치기'}
+              style={{ width: 26, height: 26, padding: 0, borderRadius: '6px', border: '1px solid rgba(255,255,255,0.4)',
+                backgroundColor: 'rgba(255,255,255,0.12)', color: '#fff', fontSize: '12px', fontWeight: 700, cursor: 'pointer' }}>
+              {showCurPlan ? '▲' : '▼'}
+            </button>
           </div>
         </div>
+        {showCurPlan && (
         <div style={SB}>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '12px' }}>
-            <InC label="플랜 시작연도" u="년" v={planStartYear} f={v => setPSY(v.replace(/\D/g, ''))} hl={newPlan} />
-            <InC label="희망 은퇴나이" u="세" v={raIn} f={v => setRaIn(v.replace(/\D/g, ''))}
-              sub={invYrs > 0 ? `총 투자기간: ${invYrs}년` : ''} hl={newPlan} />
-            <InC label="현재가치 연금액(월)" u="만원/월" v={mIn} f={v => setMIn(fi(v))} cur hl={newPlan} />
-            <IfC label="은퇴당시 연금액(월)" v={futureM > 0 ? `${fmt(futureM)}만원/월` : '-'}
-              sub={tog1 ? `물가 ${infRate}% × ${yrsToRet}년 반영` : '물가 미반영'} g />
+            <InC label="플랜 시작연도" u="년" v={pSYIn} f={v => setPSYIn(v.replace(/\D/g, ''))} />
+            <InC label="희망 은퇴나이" u="세" v={cRetAgeIn} f={v => setCRetAgeIn(v.replace(/\D/g, ''))}
+              sub={cInvYrs > 0 ? `총 투자기간: ${cInvYrs}년` : ''} />
+            {/* 적립액: 월/연 토글 하나 — 월 = 월복리, 연 = 연복리 자동 적용 */}
+            <SavAmtCard label="적립액" v={cAmtIn} f={v => setCAmtIn(fi0(v))}
+              freq={cFreq} setFreq={setCFreq} amt={cAmt} annSavWon={cAnnSavWon} />
+            <InC label="거치금액" u="만원" v={cHoldIn} f={v => setCHoldIn(fi(v))} cur />
 
-            <InC label="물가상승률" u="%" v={infIn} f={v => setInfIn(v.replace(/[^\d.]/g, ''))}
-              sub={`한국은행 기준 ${ecos.toFixed(1)}%`} hl={newPlan} />
-            <InC label="연금 수익률" u="%" v={penRIn} f={v => setPenRIn(v.replace(/[^\d.]/g, ''))} dim={newPlan} />
-            <InC label="연금 수령기간" u="년" v={rpIn} f={v => setRpIn(v.replace(/\D/g, ''))} hl={newPlan} />
-            {/* 신규 플랜 모드에서는 기존 플랜 기준 '목표 은퇴자금' 카드 숨김 (수정 목표와 혼동 방지) */}
-            {!newPlan && (
-              <IfC label="목표 은퇴자금" v={targetFund > 0 ? fmtW(targetFund) : '-'}
-                sub={tog2 ? '물가반영 계산' : '물가 미반영'} g hl />
-            )}
-          </div>
-        </div>
-      </div>
+            <SavPCard label="적립기간" v={cSavPIn} f={v => setCSavPIn(v.replace(/\D/g, ''))}
+              invYrs={cInvYrs} holdYrs={cHoldYrs} />
+            <InC label="투자수익률" u="%" v={cInvRIn} f={v => setCInvRIn(v.replace(/[^\d.]/g, ''))}
+              sub="모으는 과정(적립·거치)에 적용" />
+            <InC label="현재가치 기대 연금액" u="만원/월" v={cPenMIn} f={v => setCPenMIn(fi(v))} cur />
+            <InC label="연금수익률" u="%" v={cPenRIn} f={v => setCPenRIn(v.replace(/[^\d.]/g, ''))}
+              sub="연금 받는 과정에 적용" />
 
-      {/* ==================== 투자조건 ==================== */}
-      <div id="pdf-tab1-invest">
-        <div style={SH}><span>투자조건</span></div>
-        <div style={SB}>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '12px', marginBottom: '12px' }}>
-            <InC label="기존 투자수익률" u="%" v={exRIn} f={v => setExRIn(v.replace(/[^\d.]/g, ''))} dim={newPlan} />
-            <InC label="적립기간" u="년" v={spIn} f={v => setSpIn(v.replace(/\D/g, ''))}
-              sub={holdYrs > 0 ? `거치기간: ${holdYrs}년` : ''} subC="#D4A847" hl={newPlan} />
-            <InC label="적립 가능금액(연)" u="만원/연" v={asIn} f={v => setAsIn(fi0(v))} cur hl={newPlan}
-              sub={pn(asIn) === 0 && asIn !== '' ? '적립 없음 · 거치만' : ''} subC="#D4A847" />
-            <div style={recRetR > 0 ? { ...CARD_G, background: 'linear-gradient(135deg, #FFF7ED 0%, #FFEDD5 100%)', border: '1px solid #FDBA74' } : CARD_G}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <div style={CL}>필요 거치금액</div>
-                {(recRetR > 0 ? modReqHold : reqHold) > 0 && (
-                  <label style={{ display: 'flex', alignItems: 'center', gap: '4px', cursor: 'pointer', fontSize: '10px', color: recRetR > 0 ? '#EA580C' : '#059669', fontWeight: 600 }}>
-                    <input type="checkbox" checked={applyReqHold}
-                      onChange={e => {
-                        setApplyReqHold(e.target.checked);
-                        if (e.target.checked) setHoldIn(fmt(Math.round(modReqHold / 1e4)));
-                      }}
-                      style={{ width: 14, height: 14, accentColor: recRetR > 0 ? '#EA580C' : '#059669', cursor: 'pointer' }} />
-                    거치적용
-                  </label>
-                )}
-              </div>
-              <div style={CV}>{recRetR > 0
-                ? (modReqHold > 0 ? `${fmt(Math.round(modReqHold / 1e4))}만원` : '0원 (적립만 충분)')
-                : (reqHold > 0 ? `${fmt(Math.round(reqHold / 1e4))}만원` : '0원')
-              }</div>
-              <div style={{ fontSize: '10px', color: 'var(--text-muted)', marginTop: '4px' }}>
-                {recRetR > 0 ? `추천수익률 ${recRetR}% → 수정목표 기준` : '기존수익률 기준 계산'}
-              </div>
+            <div style={{ gridColumn: 'span 2' }}>
+              <IfC label="기존 은퇴금액" v={curAccFund > 0 ? fmtW(curAccFund) : '-'}
+                sub={curAccFund > 0
+                  ? `${cRetAge}세 시점 모이는 금액 (${cCompLabel}) — 그래프의 현재플랜 정점과 동일`
+                  : '적립액·수익률·기간을 입력하세요'} g hl />
+            </div>
+            <div style={{ gridColumn: 'span 2' }}>
+              <IfC label="월 연금액 (은퇴당시)" v={curPenM > 0 ? `${fmt(curPenM)}만원/월` : '-'}
+                sub={tog1 ? `현재가치 ${fmt(cPenM)}만원 × 물가 ${infRate}% × ${cYrsToRet}년` : '물가 미반영 (연금액 물가반영 꺼짐)'} g hl />
             </div>
           </div>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '12px' }}>
-            <InC label="추천 연금수익률" u="%" v={recPIn} f={v => setRecPIn(v.replace(/[^\d.]/g, ''))} ph="미입력시 기존" hl={newPlan} />
-            <InC label="추천 투자수익률" u="%" v={recRIn} f={v => setRecRIn(v.replace(/[^\d.]/g, ''))} ph="미입력시 기존" hl={newPlan} />
-            <InC label="거치 가능금액" u="만원" v={holdIn} f={v => { setHoldIn(fi(v)); setApplyReqHold(false); }} cur hl={newPlan} />
-            {extraHolding > 0 ? (
-              <IfC label="추가 거치금액" v={fmtW(extraHolding)} sub="필요 거치금액 - 거치 가능금액" g />
-            ) : recPenR > 0 ? (
-              <div style={isTargetOvershot
-                ? { background: 'linear-gradient(135deg, #FFF7ED 0%, #FFEDD5 100%)', border: '2px solid #F97316', borderRadius: '8px', padding: '12px 14px' }
-                : CARD_G}>
-                <div style={CL}>수정 목표 은퇴자금</div>
-                <div style={{ ...CV, color: isTargetOvershot ? '#EA580C' : '#059669' }}>
-                  {modTargetFund > 0 ? fmtW(modTargetFund) : '-'}
-                </div>
-                <div style={{ fontSize: '10px', color: 'var(--text-muted)', marginTop: '4px' }}>
-                  {isTargetOvershot
-                    ? `투자초과 (기본목표: ${fmtW(modBaseTarget)})`
-                    : modPR / 100 > infRate / 100 ? '영구연금 기준' : 'PV 40년 기준'}
-                </div>
-              </div>
-            ) : <div />}
-          </div>
         </div>
+        )}
       </div>
 
-      {/* ==================== 시뮬레이션 그래프 ==================== */}
-      {gData.length > 0 && (
+      {/* ==================== 추천플랜 (아코디언 · 기본 접힘) ==================== */}
+      <div id="pdf-tab1-invest">
+        <div style={showRecPlan ? SH : { ...SH, borderRadius: '12px' }}>
+          <span>추천플랜</span>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
+            <span style={{ fontSize: '11px', fontWeight: 500, color: 'rgba(255,255,255,0.75)' }}>
+              시작연도 {rStartYear}년 {hasCur ? '(현재플랜과 동일)' : '(현재플랜 미입력 → 올해부터)'}
+            </span>
+            <button type="button"
+              onClick={() => {
+                if (!window.confirm('추천플랜 입력값을 모두 지울까요?')) return;
+                setRRetAgeIn(''); setRPenMIn(''); setRPenRIn(''); setRInvRIn(''); setRSavPIn(''); setRAmtIn(''); setRHoldIn('');
+              }}
+              style={{ padding: '4px 10px', fontSize: '11px', fontWeight: 700, borderRadius: '6px', border: '1px solid rgba(255,255,255,0.4)',
+                backgroundColor: 'rgba(255,255,255,0.12)', color: '#fff', cursor: 'pointer' }}>
+              ↺ 초기화
+            </button>
+            <button type="button" onClick={() => setShowRecPlan(v => !v)}
+              title={showRecPlan ? '접기' : '펼치기'}
+              style={{ width: 26, height: 26, padding: 0, borderRadius: '6px', border: '1px solid rgba(255,255,255,0.4)',
+                backgroundColor: 'rgba(255,255,255,0.12)', color: '#fff', fontSize: '12px', fontWeight: 700, cursor: 'pointer' }}>
+              {showRecPlan ? '▲' : '▼'}
+            </button>
+          </div>
+        </div>
+        {showRecPlan && (
+        <div style={SB}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '12px' }}>
+            {/* 1행: 모으기 팩트 — 이 값들로 은퇴금액이 만들어진다 */}
+            <InC label="기대 투자수익률" u="%" v={rInvRIn} f={v => setRInvRIn(v.replace(/[^\d.]/g, ''))} />
+            <SavPCard label="적립기간" v={rSavPIn} f={v => setRSavPIn(v.replace(/\D/g, ''))}
+              invYrs={rInvYrs} holdYrs={rHoldYrs} />
+            <SavAmtCard label="적립액" v={rAmtIn} f={v => setRAmtIn(fi0(v))}
+              freq={rFreq} setFreq={setRFreq} amt={rAmt} annSavWon={rAnnSavWon} />
+            <InC label="거치금액" u="만원" v={rHoldIn} f={v => setRHoldIn(fi0(v))} cur />
+
+            {/* 2행: 쓰기 로직 — 홀드된 은퇴금액을 어떻게 받을지 */}
+            <InC label="희망 은퇴나이" u="세" v={rRetAgeIn} f={v => setRRetAgeIn(v.replace(/\D/g, ''))}
+              sub={rInvYrs > 0 ? `총 투자기간: ${rInvYrs}년` : ''} />
+            <InC label="현재가치 연금액" u="만원/월" v={rPenMIn} f={v => setRPenMIn(fi(v))} cur />
+            <InC label="기대 연금수익률" u="%" v={rPenRIn} f={v => setRPenRIn(v.replace(/[^\d.]/g, ''))}
+              sub="은퇴 후 재원 운용 수익률" />
+            {/* 물가: 현재플랜과 공용 값 — 어느 쪽에서 수정해도 동일 적용 */}
+            <InC label="물가" u="%" v={infIn} f={v => setInfIn(v.replace(/[^\d.]/g, ''))}
+              sub={`두 플랜 공용 적용 · 한국은행 기준 ${ecos.toFixed(1)}%`} />
+
+            {/* 3행: 결과 */}
+            <div style={{ gridColumn: 'span 2' }}>
+              <IfC label="희망 은퇴금액" v={recRetFund > 0 ? fmtW(recRetFund) : '-'}
+                sub={recRetFund > 0
+                  ? `${rRetAge}세 시점 축적액 — 이 금액이 홀드되어 연금 재원이 됩니다`
+                  : '투자수익률·적립/거치·기간 입력 시 계산'} g hl />
+            </div>
+            <div style={{ gridColumn: 'span 2' }}>
+              <IfC label="월 연금액 (은퇴당시)" v={recPenM > 0 ? `${fmt(recPenM)}만원/월` : '-'}
+                sub={tog1 ? `현재가치 ${fmt(rPenM)}만원 × 물가 ${infRate}% × ${rYrsToRet}년` : '물가 미반영 (연금액 물가반영 꺼짐)'} g hl />
+            </div>
+          </div>
+        </div>
+        )}
+      </div>
+
+      {/* ==================== 시뮬레이션 그래프 (즉시 반영) ==================== */}
+      {gData.length > 0 && (simCur.length > 0 || simRec.length > 0) && (
         <div id="pdf-tab1-graph" style={{ backgroundColor: 'var(--bg-card)', border: '1px solid var(--border-soft)', borderRadius: '12px', padding: '20px' }}>
           <h3 style={{ fontSize: '15px', fontWeight: 700, color: 'var(--blue-400)', margin: '0 0 12px' }}>시뮬레이션 그래프</h3>
           <div style={{ display: 'flex', gap: '20px', marginBottom: '12px', fontSize: '12px' }}>
-            {simOrig.length > 0 && <LG color="#1E3A5F" label="기존 은퇴플랜" />}
-            {hasMod && <LG color="#E85D04" label="수정 은퇴플랜" />}
+            {simCur.length > 0 && <LG color="#1E3A5F" label="현재플랜" />}
+            {simRec.length > 0 && <LG color="#E85D04" label="추천플랜" />}
             <LG color="#9CA3AF" label="투자원금" dash />
           </div>
-          <GrowthChart data={gData} retirementAge={retAge} showModified={hasMod} savingsEndAge={startAge + savYrs} />
+          <GrowthChart data={gData} retirementAge={rRetAge || cRetAge} showModified={simRec.length > 0}
+            savingsEndAge={(simRec.length ? rStartAge + rSavP : cStartAge + cSavP)} />
         </div>
       )}
 
-      {/* ==================== 목표 은퇴플랜 ==================== */}
-      <div id="pdf-tab1-plan">
-        <div style={SH}><span>목표 은퇴플랜</span></div>
-        <div style={SB}>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '12px' }}>
-            <IfC label="목표 은퇴자금" v={modTargetFund > 0 ? fmtW(modTargetFund) : '-'}
-              sub={modTargetFund !== targetFund ? '거치 가능금액 기준' : ''} />
-            <IfC label="은퇴당시 연금액(월)" v={futureM > 0 ? `${fmt(futureM)}만원/월` : '-'} />
-            <IfC label="기대 투자수익률" v={modIR > 0 ? `${modIR.toFixed(1)}%` : '-'} hl />
-            <IfC label="기대 연금수익률" v={modPR > 0 ? `${modPR.toFixed(1)}%` : '-'} hl />
-            <IfC label="투자기간" v={invYrs > 0 ? `${invYrs}년 (적립 ${savYrs} + 거치 ${holdYrs})` : '-'} />
-            <IfC label="적립금액(연)" v={annSav > 0 ? `${fmt(annSav)}만원/연` : '-'} />
-            {/* 연거치 금액: 실제 시뮬에 적용된 modHolding 기준 */}
-            <div style={holdAmt > 0 && extraHolding > 0 ? CARD_G : holdAmt > 0 && holdAmt * 1e4 > modReqHold ? { ...CARD, background: 'linear-gradient(135deg, #FFF7ED 0%, #FFEDD5 100%)', border: '1px solid #FDBA74' } : { ...CARD, backgroundColor: 'var(--bg-surface)' }}>
-              <div style={CL}>연거치 금액</div>
-              {holdAmt > 0 && extraHolding > 0 ? (<>
-                {/* Case1: 필요거치 > 거치가능 (부족) */}
-                <div style={CV}>{fmtW(modReqHold)}</div>
-                <div style={{ fontSize: '10px', color: 'var(--text-muted)', marginTop: '4px', lineHeight: 1.5 }}>
-                  거치 가능: {fmtW(holdAmt * 1e4)}<br/>
-                  <span style={{ color: 'var(--danger)', fontWeight: 600 }}>추가 필요: {fmtW(extraHolding)}</span>
-                </div>
-              </>) : holdAmt > 0 && holdAmt * 1e4 > modReqHold ? (<>
-                {/* Case2: 거치가능 > 필요거치 (초과) */}
-                <div style={{ ...CV, color: '#EA580C' }}>{fmtW(holdAmt * 1e4)}</div>
-                <div style={{ fontSize: '10px', color: '#EA580C', marginTop: '4px' }}>거치 가능금액 적용 (초과투자)</div>
-              </>) : (
-                <div style={CV}>{modHolding > 0 ? fmtW(modHolding) : '-'}</div>
-              )}
-            </div>
-            <IfC label="상속금액" v={inheritance > 0 ? fmtW(inheritance) : '0원'} sub="100세 평가금액" hl />
+      {/* ==================== 플랜분석 ==================== */}
+      {(hasCur || hasRec) && (
+        <div id="pdf-tab1-plan">
+          <div style={SH}><span>플랜분석</span>
+            <span style={{ fontSize: '11px', fontWeight: 500, color: 'rgba(255,255,255,0.75)' }}>
+              {hasCur && hasRec ? '현재플랜 vs 추천플랜' : hasRec ? '추천플랜' : '현재플랜'}
+            </span>
+          </div>
+          <div style={SB}>
+            {/* 가로폭을 좁혀 한눈에 비교 — 중앙 정렬 카드형 */}
+            <table style={{ width: '100%', maxWidth: 760, margin: '0 auto', borderCollapse: 'collapse', fontSize: '13px' }}>
+              <thead>
+                <tr style={{ backgroundColor: 'var(--bg-card)' }}>
+                  <th style={{ padding: '8px 10px', textAlign: 'left', fontWeight: 600, color: 'var(--text-muted)', borderBottom: '2px solid var(--border)', fontSize: '12px' }}>항목</th>
+                  {hasCur && <th style={{ padding: '8px 10px', textAlign: 'right', fontWeight: 700, color: '#60A5FA', borderBottom: '2px solid var(--border)', fontSize: '12px', whiteSpace: 'nowrap' }}>현재플랜</th>}
+                  {hasRec && <th style={{ padding: '8px 10px', textAlign: 'right', fontWeight: 700, color: '#E85D04', borderBottom: '2px solid var(--border)', fontSize: '12px', whiteSpace: 'nowrap' }}>추천플랜</th>}
+                  {hasCur && hasRec && <th style={{ padding: '8px 10px', textAlign: 'right', fontWeight: 600, color: 'var(--text-muted)', borderBottom: '2px solid var(--border)', fontSize: '12px', whiteSpace: 'nowrap' }}>차이 (추천-현재)</th>}
+                </tr>
+              </thead>
+              <tbody>
+                {analysisRows.map(r => (
+                  <tr key={r.label} style={{ borderBottom: '1px solid var(--bg-card)' }}>
+                    <td style={{ padding: '8px 12px', color: 'var(--text-secondary)', fontWeight: 500 }}>{r.label}</td>
+                    {hasCur && <td style={{ ...TRs, fontWeight: 600 }}>{r.cur}</td>}
+                    {hasRec && <td style={{ ...TRs, fontWeight: 600 }}>{r.rec}</td>}
+                    {hasCur && hasRec && (
+                      <td style={{ ...TRs, fontWeight: 700, color: r.diffColor ?? 'var(--text-muted)' }}>{r.diff ?? '-'}</td>
+                    )}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
         </div>
-      </div>
+      )}
 
-      {/* ==================== 계산 버튼 ==================== */}
+      {/* ==================== 계산 버튼 (추천플랜 상세 시뮬레이션) ==================== */}
       <div style={{ display: 'flex', justifyContent: 'center' }}>
         <button onClick={handleCalc} disabled={!canCalc}
+          title={canCalc ? '' : '추천플랜 입력(은퇴나이·수령기간·연금액·수익률·월적립 또는 거치)을 완성하세요'}
           style={{ padding: '12px 0', width: '30%', fontSize: '14px', fontWeight: 700, borderRadius: '8px',
             cursor: canCalc ? 'pointer' : 'not-allowed', backgroundColor: canCalc ? '#1E3A5F' : '#9CA3AF',
             color: '#fff', border: 'none', boxShadow: canCalc ? '0 2px 8px rgba(30,58,95,0.3)' : 'none' }}>
@@ -722,11 +795,11 @@ export function DesiredPlanTab() {
         </button>
       </div>
 
-      {/* ==================== 은퇴플랜 시뮬레이션 ==================== */}
+      {/* ==================== 은퇴플랜 시뮬레이션 (추천플랜 기준 · 편집 가능) ==================== */}
       {showTbl && dispTbl.length > 0 && (
         <div id="pdf-tab1-sim" style={{ backgroundColor: 'var(--bg-card)', border: '1px solid var(--border-soft)', borderRadius: '12px', padding: '20px' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px' }}>
-            <h3 style={{ fontSize: '15px', fontWeight: 700, color: 'var(--blue-400)', margin: 0 }}>은퇴플랜 시뮬레이션</h3>
+            <h3 style={{ fontSize: '15px', fontWeight: 700, color: 'var(--blue-400)', margin: 0 }}>은퇴플랜 시뮬레이션 (추천플랜)</h3>
             <button onClick={() => setOv({})}
               style={{ padding: '5px 14px', fontSize: '12px', fontWeight: 600, color: 'var(--danger)', backgroundColor: 'var(--danger-bg)',
                 border: '1px solid rgba(239,68,68,0.35)', borderRadius: '6px', cursor: 'pointer' }}>수정 초기화</button>
@@ -748,7 +821,7 @@ export function DesiredPlanTab() {
                   const ov = overrides[r.year];
                   const mpM = Math.round(r.monthly_payment / 1e4);
                   const adM = Math.round(r.additional / 1e4);
-                  const isRA = r.age === retAge;
+                  const isRA = r.age === (rRetAge || cRetAge);
                   const is100 = r.age === 100;
                   const isHL = isRA || is100;
                   const pc = r.phase === 'saving' ? '#60A5FA' : r.phase === 'holding' ? '#E0B44E' : '#34D399';
@@ -756,7 +829,7 @@ export function DesiredPlanTab() {
                   const bg = isRA ? 'rgba(96,165,250,0.14)' : is100 ? 'rgba(248,113,113,0.12)' : r.phase === 'saving' ? 'transparent' : r.phase === 'holding' ? 'rgba(224,180,78,0.08)' : 'rgba(52,211,153,0.08)';
                   return (
                     <tr key={r.year} style={{ borderBottom: isHL ? '2px solid' : '1px solid var(--bg-surface)', borderBottomColor: isRA ? '#60A5FA' : is100 ? '#F87171' : undefined, backgroundColor: bg }}>
-                      <td style={{ ...TC, fontSize: 11, color: 'var(--text-muted)' }}>{pSY + r.year - 1}</td>
+                      <td style={{ ...TC, fontSize: 11, color: 'var(--text-muted)' }}>{rStartYear + r.year - 1}</td>
                       <td style={TC}>{r.year}</td>
                       <td style={{ ...TC, fontWeight: isHL ? 700 : 400, color: isRA ? '#60A5FA' : is100 ? '#F87171' : 'var(--text-primary)' }}>{r.age}세{isRA && ' ★'}{is100 && ' ★'}</td>
                       <td style={{ ...TC, color: pc, fontWeight: 600 }}>{pl}</td>
@@ -778,8 +851,15 @@ export function DesiredPlanTab() {
                               border: ov?.additional !== undefined ? '2px solid #3B82F6' : '1px solid var(--border-strong)' }} />
                         ) : '-'}
                       </td>
-                      <td style={{ ...TRs, color: r.pension > 0 ? '#DC2626' : '#9CA3AF' }}>
-                        {r.pension > 0 ? fmt(Math.round(r.pension / 1e4)) : '-'}
+                      {/* 연금인출: 직접 수정 가능 — 은퇴 전 구간 입력 시 중도인출(해당 연도 기말 차감) */}
+                      <td style={TRs}>
+                        <input type="text" inputMode="numeric"
+                          value={ov?.pension !== undefined ? fi0(String(ov.pension)) : (r.pension > 0 ? fmt(Math.round(r.pension / 1e4)) : '')}
+                          onChange={e => setOvF(r.year, 'pension', e.target.value)}
+                          placeholder="-"
+                          style={{ ...IS, width: '90px', height: '28px', fontSize: '12px', padding: '0 6px', backgroundColor: 'var(--bg-base)',
+                            color: (ov?.pension !== undefined || r.pension > 0) ? '#F87171' : 'var(--text-muted)',
+                            border: ov?.pension !== undefined ? '2px solid #F87171' : '1px solid var(--border-strong)' }} />
                       </td>
                       <td style={TRs}>{fmt(Math.round(r.cumulative_principal / 1e4))}</td>
                       <td style={{ ...TRs, fontWeight: 700, color: isRA ? '#60A5FA' : is100 ? '#F87171' : 'var(--text-primary)', fontSize: isHL ? '14px' : '13px' }}>{fmt(Math.round(r.evaluation / 1e4))}</td>
@@ -788,14 +868,16 @@ export function DesiredPlanTab() {
                 })}
               </tbody>
             </table>
-            <div style={{ textAlign: 'right', fontSize: '10px', color: 'var(--text-muted)', marginTop: '4px' }}>(단위: 만원) 파란 테두리 = 수정된 값</div>
+            <div style={{ textAlign: 'right', fontSize: '10px', color: 'var(--text-muted)', marginTop: '4px' }}>
+              (단위: 만원) 파란 테두리 = 수정된 값 · 빨간 테두리 = 인출 수정 (은퇴 전 입력 = 중도인출, 해당 연도 기말 차감)
+            </div>
           </div>
         </div>
       )}
 
       {/* ==================== 저장 버튼 ==================== */}
       <div style={{ display: 'flex', justifyContent: 'center', gap: '12px', alignItems: 'center' }}>
-        <button onClick={handleSave} disabled={!cid || monthly <= 0 || saving}
+        <button onClick={handleSave} disabled={!cid || saving}
           style={{ padding: '12px 0', width: '30%', fontSize: '14px', fontWeight: 700, borderRadius: '8px',
             cursor: cid && !saving ? 'pointer' : 'not-allowed',
             backgroundColor: cid && !saving ? '#059669' : '#9CA3AF', color: '#fff', border: 'none',
@@ -856,17 +938,73 @@ function InC({ label, u, v, f, cur, sub, subC, ph, hl, dim }: {
   const cardStyle: React.CSSProperties = hl
     ? { ...CARD, border: '1.5px solid var(--blue-400)', boxShadow: '0 0 0 1px var(--blue-400), 0 0 10px rgba(59,130,246,0.22)' }
     : dim
-    ? { ...CARD, opacity: 0.35 }
+    ? { ...CARD, opacity: 0.4 }
     : CARD;
   return (
     <div style={cardStyle}>
       <div style={CL}>{label}</div>
       <div style={{ position: 'relative' }}>
         <input type="text" inputMode={cur ? 'numeric' : undefined} value={v} onChange={e => f(e.target.value)}
-          placeholder={ph} style={IS} />
+          placeholder={ph} disabled={dim} style={{ ...IS, ...(dim ? { cursor: 'not-allowed' } : {}) }} />
         <span style={US}>{u}</span>
       </div>
       {sub && <div style={{ fontSize: '10px', color: subC || '#9CA3AF', marginTop: '4px' }}>{sub}</div>}
+    </div>
+  );
+}
+
+/** 적립액 카드 — 월/연 토글 하나로 적립 주기·복리 방식 자동 연동 (현재·추천플랜 공용) */
+function SavAmtCard({ label, v, f, freq, setFreq, amt, annSavWon }: {
+  label: string; v: string; f: (v: string) => void;
+  freq: '월' | '연'; setFreq: (f: '월' | '연') => void;
+  amt: number; annSavWon: number;
+}) {
+  const compLabel = freq === '월' ? '월복리' : '연복리';
+  return (
+    <div style={CARD}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '2px' }}>
+        <div style={{ ...CL, marginBottom: 0 }}>{label}</div>
+        <div style={{ display: 'flex', gap: '3px' }}>
+          {(['월', '연'] as const).map(fq => (
+            <button key={fq} type="button" onClick={() => setFreq(fq)}
+              title={fq === '월' ? '월 적립 · 월복리 계산' : '연 적립 · 연복리 계산'}
+              style={{ ...SEG, backgroundColor: freq === fq ? 'rgba(59,130,246,0.18)' : 'var(--bg-surface)', color: freq === fq ? '#60A5FA' : 'var(--text-muted)', borderColor: freq === fq ? 'var(--blue-400)' : 'var(--border-strong)' }}>{fq}</button>
+          ))}
+        </div>
+      </div>
+      <div style={{ position: 'relative' }}>
+        <input type="text" inputMode="numeric" value={v} onChange={e => f(e.target.value)} style={IS} />
+        <span style={US}>만원/{freq}</span>
+      </div>
+      <div style={{ fontSize: '10px', color: '#9CA3AF', marginTop: '4px' }}>
+        {compLabel} 자동 적용{amt > 0 ? ` · 연 환산 ${fmt(Math.round(annSavWon / 1e4))}만원` : ''}
+      </div>
+    </div>
+  );
+}
+
+/** 적립기간 카드 — 시작~은퇴 총 기간에서 적립기간을 뺀 '거치기간'을 표시 */
+function SavPCard({ label, v, f, invYrs, holdYrs }: {
+  label: string; v: string; f: (v: string) => void;
+  invYrs: number; holdYrs: number;
+}) {
+  return (
+    <div style={CARD}>
+      <div style={CL}>{label}</div>
+      <div style={{ position: 'relative' }}>
+        <input type="text" inputMode="numeric" value={v} onChange={e => f(e.target.value)} style={IS} />
+        <span style={US}>년</span>
+      </div>
+      {/* 거치기간은 항상 표시 — 계산 불가 시 이유를 명시 (조용히 숨기지 않음) */}
+      {invYrs > 0 ? (
+        <div style={{ marginTop: '4px', fontSize: '11px', fontWeight: 700, color: '#E0B44E' }}>
+          거치기간 : {holdYrs}년
+        </div>
+      ) : (
+        <div style={{ marginTop: '4px', fontSize: '11px', fontWeight: 700, color: '#F87171' }}>
+          거치기간 : 계산 불가 (고객 생년월일·은퇴나이 확인)
+        </div>
+      )}
     </div>
   );
 }

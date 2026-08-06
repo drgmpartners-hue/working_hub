@@ -58,6 +58,15 @@ async def recalculate_balances(account_id: int, db: AsyncSession) -> None:
         .order_by(DepositTransaction.transaction_date, DepositTransaction.id)
     )
     txns = result.scalars().all()
+
+    # 같은 날짜에는 입금성 거래(입금·적립·이자·종결)가 투자·출금보다 먼저 반영되도록 강제
+    # — 동일자에 '투자 → 입금' 순으로 계산되면 잔액이 일시 마이너스가 되는 비상식 방지
+    def _intraday_priority(t: DepositTransaction) -> int:
+        is_credit = (t.credit_amount + (t.savings_amount or 0)) > 0 and t.debit_amount == 0
+        return 0 if is_credit else 1
+
+    txns = sorted(txns, key=lambda t: (t.transaction_date, _intraday_priority(t), t.id))
+
     balance = 0
     for txn in txns:
         # 잔액 = 입금 + 적립 - 출금 누적
