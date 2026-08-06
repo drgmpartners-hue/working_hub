@@ -281,7 +281,6 @@ export function PensionPlanTab() {
   const [tab1, setTab1] = useState<Tab1Data | null>(null);
   const [loading, setLoading] = useState(false);
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
-  const [optionTab, setOptionTab] = useState(0);
 
   const [lifetimeRate, setLifetimeRate] = useState('');
   const [fixedRate, setFixedRate] = useState('2');
@@ -425,47 +424,58 @@ export function PensionPlanTab() {
                 retireAge: String(selectedCustomer?.retirementAge ?? '-'),
               };
 
-              // 비교 테이블 데이터
+              // 비교 테이블 데이터 — 화면과 동일하게 A/B 각자의 수령기간을 표기
+              // (type/inheritance가 빈 행은 PDF에서 위 행과 셀 병합됨)
               const compRows: CRow[] = [];
+              const rateA = `연금수익률 (${(basePenRate * 100).toFixed(1)}%)`;
+              const rateB = recPenRate ? `추천수익률 (${(recPenRate * 100).toFixed(1)}%)` : '';
               // 종신형
-              compRows.push({ type: '종신형', customer: 'A고객', rate: `연금수익률 (${(basePenRate*100).toFixed(1)}%)`, period: `평생 (경험생명표 120세, ${lifetimeYears}년)`, monthly: `${fmt(Math.round(compareLifetimeMonthlyA / 1e4))}만원`, inheritance: '잔존연금' });
-              if (recPenRate) compRows.push({ type: '', customer: 'B고객', rate: `추천수익률 (${(recPenRate*100).toFixed(1)}%)`, period: '', monthly: `${fmt(Math.round(compareLifetimeMonthlyB / 1e4))}만원`, inheritance: '' });
+              compRows.push({ type: '종신형', customer: 'A고객', rate: rateA, period: `평생 (120세, ${lifetimeYearsA}년)`, monthly: `${fmt(Math.round(compareLifetimeMonthlyA / 1e4))}만원`, inheritance: '잔존연금' });
+              if (recPenRate) compRows.push({ type: '', customer: 'B고객', rate: rateB, period: `평생 (120세, ${lifetimeYearsB}년)`, monthly: `${fmt(Math.round(compareLifetimeMonthlyB / 1e4))}만원`, inheritance: '' });
               // 확정형
-              compRows.push({ type: '확정형', customer: 'A고객', rate: `연금수익률 (${(basePenRate*100).toFixed(1)}%)`, period: '확정 30년', monthly: `${fmt(Math.round(compareFixedMonthlyA / 1e4))}만원`, inheritance: '잔존연금 또는 없음' });
-              if (recPenRate) compRows.push({ type: '', customer: 'B고객', rate: `추천수익률 (${(recPenRate*100).toFixed(1)}%)`, period: '', monthly: `${fmt(Math.round(compareFixedMonthlyB / 1e4))}만원`, inheritance: '' });
+              compRows.push({ type: '확정형', customer: 'A고객', rate: rateA, period: `확정 ${fixedCompareYears}년 (${retireAgeA}→${retireAgeA + fixedCompareYears}세)`, monthly: `${fmt(Math.round(compareFixedMonthlyA / 1e4))}만원`, inheritance: '잔존연금 또는 없음' });
+              if (recPenRate) compRows.push({ type: '', customer: 'B고객', rate: rateB, period: `확정 ${fixedCompareYearsB}년 (${retireAgeB}→${retireAgeB + fixedCompareYearsB}세)`, monthly: `${fmt(Math.round(compareFixedMonthlyB / 1e4))}만원`, inheritance: '' });
               // 무한지급형
-              compRows.push({ type: '무한지급형', customer: 'A고객', rate: `연금수익률 (${(basePenRate*100).toFixed(1)}%)`, period: '평생', monthly: `${fmt(Math.round(compareInfiniteMonthlyA / 1e4))}만원`, inheritance: '연금재원 상당' });
-              if (recPenRate) compRows.push({ type: '', customer: 'B고객', rate: `추천수익률 (${(recPenRate*100).toFixed(1)}%)`, period: '', monthly: `${fmt(Math.round(compareInfiniteMonthlyB / 1e4))}만원`, inheritance: '' });
+              compRows.push({ type: '무한지급형', customer: 'A고객', rate: rateA, period: '평생', monthly: `${fmt(Math.round(compareInfiniteMonthlyA / 1e4))}만원`, inheritance: '연금재원 상당' });
+              if (recPenRate) compRows.push({ type: '', customer: 'B고객', rate: rateB, period: '평생', monthly: `${fmt(Math.round(compareInfiniteMonthlyB / 1e4))}만원`, inheritance: '' });
 
               const lr = lifetimeResult;
               const fr = fixedResult;
               const ir = infiniteResult;
 
-              // 3개 탭 차트를 순회하며 캡처
-              const html2canvas = (await import('html2canvas')).default;
-              const chartImages: { lifetime?: string; fixed?: string; infinite?: string } = {};
-              const origTab = optionTab;
-              for (const [idx, key] of [[0, 'lifetime'], [1, 'fixed'], [2, 'infinite']] as [number, string][]) {
-                setOptionTab(idx);
-                await new Promise(r => setTimeout(r, 800)); // Recharts 렌더링 대기
-                const chartId = `pension-chart-${key}`;
-                const el = document.getElementById(chartId);
-                if (el && el.offsetHeight > 0) {
-                  try {
-                    const canvas = await html2canvas(el, { scale: 2, useCORS: true, backgroundColor: 'var(--bg-card)', logging: false });
-                    if (canvas.width > 0 && canvas.height > 0) {
-                      chartImages[key as keyof typeof chartImages] = canvas.toDataURL('image/jpeg', 0.92);
-                    }
-                  } catch { /* skip */ }
-                }
-              }
-              setOptionTab(origTab);
+              // 그래프는 화면 캡처 없이 PDF에서 직접 벡터로 그린다 (화면과 동일한 데이터 구성)
+              type PChart = import('../../utils/pensionPlanPdf').PdfChartPoint;
+              // 종신형: 화면과 동일한 '원금 vs 이자' 스택 구성 (balance=원금 수령분, pension=이자 수령분)
+              const lifetimeChart: PChart[] = lifetimeResult.yearlyData.map(d => {
+                const annPmt = d.yearPrincipal + d.yearInterest;
+                const principal = Math.max(0, d.yearPrincipal);
+                return { age: d.age, balance: Math.round(principal), pension: Math.round(annPmt - principal) };
+              });
+              // 확정형: 수령 종료 후에도 120세까지 축을 그려 '수령 기간이 짧다'는 점이 드러나게 한다
+              const fixedChart: PChart[] = (() => {
+                const rows: PChart[] = fixedResult.chartData.map(p => ({ age: p.age, balance: p.balance, pension: p.pension }));
+                const lastAge = rows.length ? rows[rows.length - 1].age : retireAge;
+                for (let a = lastAge + 1; a <= 120; a++) rows.push({ age: a, balance: 0, pension: 0 });
+                return rows;
+              })();
+              const infiniteChart: PChart[] = infiniteResult.chartData.map(p => ({ age: p.age, balance: p.balance, pension: p.pension }));
+              // 그래프 아래 첨언 (화면 Note와 동일 문구)
+              const fixedP = parseInt(fixedPeriod) || 30;
+              const infDiff = infiniteResult.interestAnnual - infiniteResult.annualPension;
+              const infStatus: 'keep' | 'grow' | 'drain' =
+                Math.abs(infDiff) < infiniteResult.interestAnnual * 0.005 ? 'keep' : infDiff > 0 ? 'grow' : 'drain';
+              const infiniteNote =
+                infStatus === 'keep'
+                  ? `이자만 수령 (원금 보존): 잔액 = 전년 잔액 × (1 + ${infiniteRate || '5'}%) − 연금액. 연금액이 연 이자(${fmtW(infiniteResult.interestAnnual)})와 같아 원금 ${fmtW(pensionFund)}이 100% 유지되고, 사망 시 전액 상속됩니다.`
+                  : infStatus === 'grow'
+                  ? `이자 미만 수령 (원금 증가): 연 이자 ${fmtW(infiniteResult.interestAnnual)} 중 ${fmtW(infiniteResult.annualPension)}만 수령해 매년 ${fmtW(infDiff)}씩 잔액이 늘어 120세 상속재원이 ${fmtW(infiniteResult.inheritanceAmount)}이 됩니다.`
+                  : `이자 초과 수령 (원금 감소): 연금액이 이자(${fmtW(infiniteResult.interestAnnual)})보다 연 ${fmtW(-infDiff)} 많아 원금이 줄어듭니다${infiniteResult.depletedAge ? ` — ${infiniteResult.depletedAge}세에 소진됩니다.` : ' (120세까지는 유지).'}`;
 
               const pdfData: PData = {
                 customer,
                 pensionFundA: fmtW(pensionFundA),
                 pensionFundB: fmtW(pensionFundB),
-                retireAge,
+                retireAge, retireAgeA, retireAgeB,
                 comparisonRows: compRows,
                 // 종신형
                 lifetimeCards: [
@@ -507,7 +517,14 @@ export function PensionPlanTab() {
                   { label: '총 연금액', value: fmtW(ir.totalPension) },
                   { label: '상속재원', value: fmtW(ir.inheritanceAmount) },
                 ],
-                chartImages,
+                // PDF에서 직접 그릴 그래프 데이터 + 첨언
+                lifetimeChart,
+                lifetimeNote: `원리금 균등상환 방식: 매월 동일한 ${fmtW(lr.monthlyPension)}을 수령합니다. 초기에는 이자 비중이 높고, 후반으로 갈수록 원금 비중이 증가합니다.`,
+                fixedChart,
+                fixedEndAge: retireAge + fixedP,
+                fixedNote: `확정기간 수령: ${retireAge}세부터 ${retireAge + fixedP}세까지 ${fixedP}년간 확정 수령합니다. 수령 종료 후 연금재원은 소진되며, 중도 사망 시 잔존연금이 상속됩니다.`,
+                infiniteChart,
+                infiniteNote,
                 // 목표달성 플랜 섹션 제거 — PDF에서도 생략
                 goalInfo: [],
                 goalRows: [],
@@ -604,26 +621,35 @@ export function PensionPlanTab() {
         </div>
       </div>
 
-      {/* ===== 섹션2: 연금전환 옵션 (탭) ===== */}
-      <div style={cardStyle}>
+      {/* ===== 섹션2: 연금전환 옵션 — 탭 없이 3종 모두 표시 (PDF에 전부 출력되도록) ===== */}
+      <div style={cardStyle} id="pdf-tab3-option">
         <h3 style={sectionTitle}>연금전환 옵션</h3>
-        <div className="no-print" style={{ display: 'flex', marginBottom: '24px', borderBottom: '2px solid var(--border)' }}>
-          {tabs.map((label, i) => (
-            <button key={label} onClick={() => setOptionTab(i)} style={{
-              flex: 1, padding: '12px 16px', fontSize: '14px',
-              fontWeight: optionTab === i ? 700 : 500,
-              color: optionTab === i ? tabColors[i] : 'var(--text-muted)',
-              backgroundColor: 'transparent', border: 'none',
-              borderBottom: optionTab === i ? `3px solid ${tabColors[i]}` : '3px solid transparent',
-              cursor: 'pointer', marginBottom: '-2px',
-            }}>{label}</button>
-          ))}
+
+        {/* 종신형 */}
+        <div id="pension-opt-lifetime" style={{ marginBottom: '48px', paddingBottom: '40px', borderBottom: '1px solid var(--border)' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '14px', paddingBottom: '8px', borderBottom: `2px solid ${tabColors[0]}` }}>
+            <span style={{ width: 4, height: 16, backgroundColor: tabColors[0], borderRadius: 2 }} />
+            <span style={{ fontSize: '15px', fontWeight: 700, color: '#7CC0FF' }}>{tabs[0]}</span>
+          </div>
+          <LifetimeSection pv={pensionFund} rate={lifetimeRate} setRate={setLifetimeRate} retireAge={retireAge} result={lifetimeResult} pensionRateFromTab1={pensionRate} />
         </div>
 
-        <div id="pdf-tab3-option">
-          {optionTab === 0 && <LifetimeSection pv={pensionFund} rate={lifetimeRate} setRate={setLifetimeRate} retireAge={retireAge} result={lifetimeResult} pensionRateFromTab1={pensionRate} />}
-          {optionTab === 1 && <FixedSection pv={pensionFund} rate={fixedRate} setRate={setFixedRate} period={fixedPeriod} setPeriod={setFixedPeriod} retireAge={retireAge} result={fixedResult} />}
-          {optionTab === 2 && <InfiniteSection pv={pensionFund} rate={infiniteRate} setRate={setInfiniteRate} period={infinitePeriod} setPeriod={setInfinitePeriod} retireAge={retireAge} result={infiniteResult} pension={infinitePension} setPension={setInfinitePension} />}
+        {/* 확정형 */}
+        <div id="pension-opt-fixed" style={{ marginBottom: '48px', paddingBottom: '40px', borderBottom: '1px solid var(--border)' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '14px', paddingBottom: '8px', borderBottom: `2px solid ${tabColors[1]}` }}>
+            <span style={{ width: 4, height: 16, backgroundColor: tabColors[1], borderRadius: 2 }} />
+            <span style={{ fontSize: '15px', fontWeight: 700, color: '#93C5FD' }}>{tabs[1]}</span>
+          </div>
+          <FixedSection pv={pensionFund} rate={fixedRate} setRate={setFixedRate} period={fixedPeriod} setPeriod={setFixedPeriod} retireAge={retireAge} result={fixedResult} />
+        </div>
+
+        {/* 무한지급형 */}
+        <div id="pension-opt-infinite">
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '14px', paddingBottom: '8px', borderBottom: `2px solid ${tabColors[2]}` }}>
+            <span style={{ width: 4, height: 16, backgroundColor: tabColors[2], borderRadius: 2 }} />
+            <span style={{ fontSize: '15px', fontWeight: 700, color: '#4ADE80' }}>{tabs[2]}</span>
+          </div>
+          <InfiniteSection pv={pensionFund} rate={infiniteRate} setRate={setInfiniteRate} period={infinitePeriod} setPeriod={setInfinitePeriod} retireAge={retireAge} result={infiniteResult} pension={infinitePension} setPension={setInfinitePension} />
         </div>
       </div>
 

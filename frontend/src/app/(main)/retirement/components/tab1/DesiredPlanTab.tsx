@@ -598,28 +598,41 @@ export function DesiredPlanTab() {
               type PData = import('../../utils/desiredPlanPdf').DesiredPlanPdfData;
               type CI = import('../../utils/desiredPlanPdf').CardItem;
 
+              // 화면 카드 배치와 동일한 순서 (1행 4개 · 2행 4개), 결과는 별도 강조 라인
               const targetFundCards: CI[] = [
-                { label: '[현재플랜] 플랜 시작연도', value: `${pSY}년` },
+                { label: '플랜 시작연도', value: `${pSY}년` },
                 { label: '희망 은퇴나이', value: cRetAge > 0 ? `${cRetAge}세 (총 ${cInvYrs}년)` : '-' },
-                { label: `적립액 (${cFreq} 적립 · ${cCompLabel})`, value: cAmt > 0 ? `${fmt(cAmt)}만원/${cFreq}` : '-' },
+                { label: `적립액 (${cFreq}·${cCompLabel})`, value: cAmt > 0 ? `${fmt(cAmt)}만원/${cFreq}` : '-' },
                 { label: '거치금액', value: cHold > 0 ? `${fmt(cHold)}만원` : '-' },
-                { label: '적립기간', value: cSavP > 0 ? `${cSavP}년 (거치 ${cHoldYrs}년)` : '-' },
-                { label: '투자수익률 / 연금수익률', value: `${cInvR || '-'}% / ${cPenR || '-'}%` },
-                { label: '기존 은퇴금액', value: curAccFund > 0 ? fmtW(curAccFund) : '-', highlight: true },
-                { label: '월 연금액(은퇴당시)', value: curPenM > 0 ? `${fmt(curPenM)}만원/월` : '-', highlight: true },
+                { label: '적립기간', value: cInvYrs > 0 ? `${cSavP}년 (거치 ${cHoldYrs}년)` : '-' },
+                { label: '투자수익률', value: cInvR > 0 ? `${cInvR}%` : '-' },
+                { label: '현재가치 기대 연금액', value: cPenM > 0 ? `${fmt(cPenM)}만원/월` : '-' },
+                { label: '연금수익률', value: cPenR > 0 ? `${cPenR}%` : '-' },
+              ];
+              const targetFundResults: CI[] = [
+                { label: '기존 은퇴금액', value: curAccFund > 0 ? fmtW(curAccFund) : '-' },
+                { label: '월 연금액 (은퇴당시)', value: curPenM > 0 ? `${fmt(curPenM)}만원/월` : '-' },
               ];
               const investCards: CI[] = [
-                { label: '[추천플랜] 희망 은퇴나이', value: rRetAge > 0 ? `${rRetAge}세 (총 ${rInvYrs}년)` : '-' },
-                { label: '지급 방식', value: '무한지급 (이자식 영구연금)' },
-                { label: '기대 투자수익률 / 연금수익률', value: `${rInvR || '-'}% / ${rPenR || '-'}%` },
-                { label: '적립기간', value: `${rSavP}년 (거치 ${rHoldYrs}년)` },
-                { label: `적립액 (${rFreq} · ${rCompLabel}) / 거치금액`, value: `${fmt(rAmt)}만원/${rFreq} · ${fmt(rHold)}만원` },
-                { label: '희망 은퇴금액 (축적)', value: recRetFund > 0 ? fmtW(recRetFund) : '-', highlight: true },
-                { label: '월 연금액(은퇴당시)', value: recPenM > 0 ? `${fmt(recPenM)}만원/월` : '-', highlight: true },
+                { label: '기대 투자수익률', value: rInvR > 0 ? `${rInvR}%` : '-' },
+                { label: '적립기간', value: rInvYrs > 0 ? `${rSavP}년 (거치 ${rHoldYrs}년)` : '-' },
+                { label: `적립액 (${rFreq}·${rCompLabel})`, value: rAmt > 0 ? `${fmt(rAmt)}만원/${rFreq}` : '-' },
+                { label: '거치금액', value: rHold > 0 ? `${fmt(rHold)}만원` : '-' },
+                { label: '희망 은퇴나이', value: rRetAge > 0 ? `${rRetAge}세 (총 ${rInvYrs}년)` : '-' },
+                { label: '현재가치 연금액', value: rPenM > 0 ? `${fmt(rPenM)}만원/월` : '-' },
+                { label: '기대 연금수익률', value: rPenR > 0 ? `${rPenR}%` : '-' },
+                { label: '물가', value: `${infRate}%` },
               ];
-              const goalPlanCards: CI[] = analysisRows.slice(0, 8).map(r => ({
-                label: r.label, value: `${r.cur} → ${r.rec}`,
+              const investResults: CI[] = [
+                { label: '희망 은퇴금액', value: recRetFund > 0 ? fmtW(recRetFund) : '-' },
+                { label: '월 연금액 (은퇴당시)', value: recPenM > 0 ? `${fmt(recPenM)}만원/월` : '-' },
+              ];
+              // 플랜분석은 화면과 동일한 비교 테이블로 PDF 2페이지에 렌더링
+              type ARow = import('../../utils/desiredPlanPdf').AnalysisRow;
+              const pdfAnalysisRows: ARow[] = analysisRows.map(r => ({
+                group: r.group, label: r.label, cur: r.cur, rec: r.rec, diff: r.diff,
               }));
+              const goalPlanCards: CI[] = [];   // (사용 안 함 — 하위 호환)
 
               type SRow = import('../../utils/desiredPlanPdf').SimRow;
               let runCumPen = 0;
@@ -641,7 +654,8 @@ export function DesiredPlanTab() {
 
               const pdfData: PData = {
                 customer: customerInfo ?? { name: '', birthDate: '', targetFund: '-', retireAge: '-' },
-                targetFundCards, investCards, goalPlanCards, simRows,
+                targetFundCards, targetFundResults, investCards, investResults, goalPlanCards, simRows,
+                analysisRows: pdfAnalysisRows, hasCur, hasRec,
                 retirementAge: rRetAge || cRetAge,
                 graphId: 'pdf-tab1-graph',
               };
