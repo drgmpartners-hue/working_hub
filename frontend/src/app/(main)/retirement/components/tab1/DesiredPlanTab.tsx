@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect, useCallback, useMemo, Fragment } from 'react';
 import dynamic from 'next/dynamic';
 import { useRetirementStore } from '../../hooks/useRetirementStore';
 import { API_URL } from '@/lib/api-url';
@@ -109,13 +109,15 @@ function buildSim(p: {
   return rows;
 }
 
-/** 시뮬 결과 → 플랜분석 지표 */
+/** 시뮬 결과 → 플랜분석 지표
+ *  연금 관련 집계는 상속금액과 동일하게 **100세까지**로 기준을 통일한다
+ *  (무한지급 플랜을 130세까지 합산하면 상속금액과 기준이 어긋나 비교가 왜곡됨) */
 function analyzeSim(rows: SimRow[]) {
   if (!rows.length) return null;
   const acc = rows.filter(r => r.phase !== 'retirement');
   const ret = rows.filter(r => r.phase === 'retirement');
   const lastAcc = acc[acc.length - 1];
-  const penRows = ret.filter(r => r.pension > 0);
+  const penRows = ret.filter(r => r.pension > 0 && r.age <= 100);
   return {
     invYears: acc.length,
     principal: lastAcc?.cumulative_principal ?? 0,
@@ -468,7 +470,7 @@ export function DesiredPlanTab() {
         recommended_return_rate: rInvR > 0 ? rInvR / 100 : undefined,
         recommended_pension_rate: rPenR > 0 ? rPenR / 100 : undefined,
         available_holding: rHold * 1e4,
-        base_pension_rate: (rPenR || cPenR) / 100,
+        base_pension_rate: cPenR / 100,   // A고객(현재플랜) 연금수익률 — 추천값으로 덮지 않음
         original_plan: simCur, modified_plan: simRec.length ? simRec : undefined,
         // 새 구조 전체 저장 (재진입 시 복원)
         calculation_params: {
@@ -493,11 +495,13 @@ export function DesiredPlanTab() {
   /* ---------- 플랜분석 행 ---------- */
   const analysisRows = useMemo(() => {
     type Cell = string;
-    const rows: { label: string; cur: Cell; rec: Cell; diff?: Cell; diffColor?: string }[] = [];
+    type Row = { group: string; label: string; cur: Cell; rec: Cell; diff?: Cell; diffColor?: string; curColor?: string; recColor?: string };
+    const rows: Row[] = [];
     const num = (v: number) => fmtW(v);
-    const push = (label: string, curV: number | null, recV: number | null, formatter: (v: number) => string = num, unit = '') => {
+    const push = (group: string, label: string, curV: number | null, recV: number | null, formatter: (v: number) => string = num, unit = '') => {
       const diff = curV != null && recV != null ? recV - curV : null;
       rows.push({
+        group,
         label,
         cur: curV != null ? formatter(curV) + unit : '-',
         rec: recV != null ? formatter(recV) + unit : '-',
@@ -506,26 +510,65 @@ export function DesiredPlanTab() {
       });
     };
     const plain = (v: number) => fmt(Math.round(v));
-    push('은퇴나이', hasCur ? cRetAge : null, hasRec ? rRetAge : null, plain, '세');
-    push('투자기간 (적립+거치)', curStat ? curStat.invYears : null, recStat ? recStat.invYears : null, plain, '년');
-    push('투자원금', curStat ? curStat.principal : null, recStat ? recStat.principal : null);
-    push('총 수익 (모으는 기간)', curStat ? curStat.accProfit : null, recStat ? recStat.accProfit : null);
-    push('은퇴금액 (필요·무한지급 기준)', curNeedFund > 0 ? curNeedFund : null, recNeedFund > 0 ? recNeedFund : null);
-    push('은퇴시점 평가금액 (모은 돈)', curStat ? curAccFund : null, recStat ? recStat.retFund : null);
-    push('월 연금액 (은퇴당시)', hasCur && curPenM > 0 ? curPenM * 1e4 : null, hasRec && recPenM > 0 ? recPenM * 1e4 : null);
+
+    /* ── 플랜 — 설계 조건 ── */
+    push('플랜', '은퇴나이', hasCur ? cRetAge : null, hasRec ? rRetAge : null, plain, '세');
+    push('플랜', '투자기간 (적립+거치)', curStat ? curStat.invYears : null, recStat ? recStat.invYears : null, plain, '년');
     rows.push({
-      label: '연금수령기간',
-      cur: curStat ? `${fmt(curStat.penYears)}년` : '-',
-      rec: hasRec ? '무한 (이자 지급식)' : '-',
-    });
-    push('총 수령 연금액', curStat ? curStat.totalPension : null, recStat ? recStat.totalPension : null);
-    push('상속금액 (100세)', curStat ? curStat.inherit100 : null, recStat ? recStat.inherit100 : null);
-    // 추가 지표: 수익률 가정 (차이 없이 표기)
-    rows.push({
+      group: '플랜',
       label: '수익률 가정 (투자/연금)',
       cur: hasCur ? `${cInvR}% / ${cPenR}%` : '-',
       rec: hasRec ? `${rInvR}% / ${rPenR}%` : '-',
     });
+
+    /* ── 투자 — 모으는 과정 ── */
+    push('투자', '투자원금', curStat ? curStat.principal : null, recStat ? recStat.principal : null);
+    push('투자', '총 수익 (모으는 기간)', curStat ? curStat.accProfit : null, recStat ? recStat.accProfit : null);
+    // 은퇴금액 = 각 플랜 카드의 '기존/희망 은퇴금액'과 동일한 축적액
+    push('투자', '은퇴금액 (모은 돈)', curStat ? curAccFund : null, recStat ? recStat.retFund : null);
+
+    /* ── 연금 — 쓰는 과정 ── */
+    push('연금', '월 연금액 (은퇴당시)', hasCur && curPenM > 0 ? curPenM * 1e4 : null, hasRec && recPenM > 0 ? recPenM * 1e4 : null);
+    // 무한지급 필요액 — 적을수록 유리한 참고 지표라 단순 차이 비교는 오해를 부르므로 생략
+    rows.push({
+      group: '연금',
+      label: '무한지급 필요액 (참고)',
+      cur: curNeedFund > 0 ? num(curNeedFund) : '-',
+      rec: recNeedFund > 0 ? num(recNeedFund) : '-',
+    });
+    // 여력 = 모은 돈 − 무한지급 필요액 → 원금 유지 가능 여부를 한 줄로 판정
+    const surplus = (fund: number | null, need: number) =>
+      fund != null && need > 0 ? fund - need : null;
+    const curSur = surplus(curStat ? curAccFund : null, curNeedFund);
+    const recSur = surplus(recStat ? recStat.retFund : null, recNeedFund);
+    const surCell = (v: number | null) => (v == null ? '-' : `${v >= 0 ? '충분 +' : '부족 '}${num(v)}`);
+    const surColor = (v: number | null) => (v == null ? undefined : v >= 0 ? '#34D399' : '#F87171');
+    rows.push({
+      group: '연금',
+      label: '무한지급 여력',
+      cur: surCell(curSur), rec: surCell(recSur),
+      curColor: surColor(curSur), recColor: surColor(recSur),
+    });
+    rows.push({
+      group: '연금',
+      label: '연금수령기간',
+      cur: curStat ? `${fmt(curStat.penYears)}년` : '-',
+      rec: hasRec ? (recSur != null && recSur >= 0 ? '무한 (이자 지급식)' : `${fmt(recStat?.penYears ?? 0)}년`) : '-',
+    });
+    // 총 수령 연금액 — 100세 기준 통일(상속금액과 동일), 각 플랜의 실제 수령 연수 병기
+    const penCell = (st: { totalPension: number; penYears: number } | null) =>
+      st ? `${num(st.totalPension)} (${st.penYears}년)` : '-';
+    const penDiff = curStat && recStat ? recStat.totalPension - curStat.totalPension : null;
+    rows.push({
+      group: '연금',
+      label: '총 수령 연금액 (100세까지)',
+      cur: penCell(curStat), rec: penCell(recStat),
+      diff: penDiff != null ? `${penDiff > 0 ? '+' : ''}${num(penDiff)}` : undefined,
+      diffColor: penDiff != null ? (penDiff > 0 ? '#34D399' : penDiff < 0 ? '#F87171' : 'var(--text-muted)') : undefined,
+    });
+
+    /* ── 상속 — 남는 자산 ── */
+    push('상속', '상속금액 (100세)', curStat ? curStat.inherit100 : null, recStat ? recStat.inherit100 : null);
     return rows;
   }, [hasCur, hasRec, cRetAge, rRetAge, curStat, recStat, curNeedFund, curAccFund, recNeedFund, curPenM, recPenM, cInvR, cPenR, rInvR, rPenR]);
 
@@ -768,16 +811,37 @@ export function DesiredPlanTab() {
                 </tr>
               </thead>
               <tbody>
-                {analysisRows.map(r => (
-                  <tr key={r.label} style={{ borderBottom: '1px solid var(--bg-card)' }}>
-                    <td style={{ padding: '8px 12px', color: 'var(--text-secondary)', fontWeight: 500 }}>{r.label}</td>
-                    {hasCur && <td style={{ ...TRs, fontWeight: 600 }}>{r.cur}</td>}
-                    {hasRec && <td style={{ ...TRs, fontWeight: 600 }}>{r.rec}</td>}
-                    {hasCur && hasRec && (
-                      <td style={{ ...TRs, fontWeight: 700, color: r.diffColor ?? 'var(--text-muted)' }}>{r.diff ?? '-'}</td>
-                    )}
-                  </tr>
-                ))}
+                {analysisRows.map((r, i) => {
+                  // 분류(플랜·투자·연금·상속)가 바뀌는 지점마다 구분 헤더 삽입
+                  const isNewGroup = i === 0 || analysisRows[i - 1].group !== r.group;
+                  const colCount = 1 + (hasCur ? 1 : 0) + (hasRec ? 1 : 0) + (hasCur && hasRec ? 1 : 0);
+                  const groupColor = r.group === '플랜' ? '#9CA3AF'
+                    : r.group === '투자' ? '#60A5FA'
+                    : r.group === '연금' ? '#34D399' : '#E0B44E';
+                  return (
+                    <Fragment key={r.label}>
+                      {isNewGroup && (
+                        <tr>
+                          <td colSpan={colCount} style={{
+                            padding: i === 0 ? '6px 10px 5px' : '14px 10px 5px',
+                            fontSize: '11px', fontWeight: 800, letterSpacing: '0.04em',
+                            color: groupColor, borderBottom: `1px solid ${groupColor}44`,
+                          }}>
+                            {r.group}
+                          </td>
+                        </tr>
+                      )}
+                      <tr style={{ borderBottom: '1px solid var(--bg-card)' }}>
+                        <td style={{ padding: '8px 12px 8px 18px', color: 'var(--text-secondary)', fontWeight: 500 }}>{r.label}</td>
+                        {hasCur && <td style={{ ...TRs, fontWeight: 600, ...(r.curColor ? { color: r.curColor, fontWeight: 700 } : {}) }}>{r.cur}</td>}
+                        {hasRec && <td style={{ ...TRs, fontWeight: 600, ...(r.recColor ? { color: r.recColor, fontWeight: 700 } : {}) }}>{r.rec}</td>}
+                        {hasCur && hasRec && (
+                          <td style={{ ...TRs, fontWeight: 700, color: r.diffColor ?? 'var(--text-muted)' }}>{r.diff ?? '-'}</td>
+                        )}
+                      </tr>
+                    </Fragment>
+                  );
+                })}
               </tbody>
             </table>
           </div>
