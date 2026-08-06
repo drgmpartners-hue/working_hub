@@ -610,8 +610,7 @@ export function RetirementPlanTab() {
         display: 'flex',
         flexDirection: 'column',
         gap: '24px',
-        maxWidth: '1100px',
-        margin: '0 auto',
+        // 폭 제한 없이 화면 컨테이너(1600px)를 그대로 사용 — 은퇴플랜 설계 탭과 동일
       }}
     >
       {/* PDF 다운로드 버튼 */}
