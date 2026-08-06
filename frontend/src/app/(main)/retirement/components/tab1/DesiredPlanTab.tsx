@@ -613,6 +613,8 @@ export function DesiredPlanTab() {
                 { label: '기존 은퇴금액', value: curAccFund > 0 ? fmtW(curAccFund) : '-' },
                 { label: '월 연금액 (은퇴당시)', value: curPenM > 0 ? `${fmt(curPenM)}만원/월` : '-' },
               ];
+              // 기존 은퇴금액·월 연금액이 모두 산출되지 않았다면 현재플랜은 '없음'으로 처리
+              const curPlanEmpty = curAccFund <= 0 && curPenM <= 0;
               const investCards: CI[] = [
                 { label: '기대 투자수익률', value: rInvR > 0 ? `${rInvR}%` : '-' },
                 { label: '적립기간', value: rInvYrs > 0 ? `${rSavP}년 (거치 ${rHoldYrs}년)` : '-' },
@@ -654,7 +656,10 @@ export function DesiredPlanTab() {
 
               const pdfData: PData = {
                 customer: customerInfo ?? { name: '', birthDate: '', targetFund: '-', retireAge: '-' },
-                targetFundCards, targetFundResults, investCards, investResults, goalPlanCards, simRows,
+                // 현재플랜 결과값이 모두 없으면 카드 대신 '진행한 플랜이 없습니다.'만 출력
+                targetFundCards: curPlanEmpty ? [] : targetFundCards,
+                targetFundResults: curPlanEmpty ? [] : targetFundResults,
+                investCards, investResults, goalPlanCards, simRows,
                 analysisRows: pdfAnalysisRows, hasCur, hasRec,
                 retirementAge: rRetAge || cRetAge,
                 graphId: 'pdf-tab1-graph',

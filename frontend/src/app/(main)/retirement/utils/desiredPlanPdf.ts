@@ -219,9 +219,15 @@ export async function generateDesiredPlanPdf(data: DesiredPlanPdfData, filename:
   if (data.targetFundCards.length > 0) {
     y = renderCards(pdf, data.targetFundCards, y, [30, 58, 95], [236, 253, 245], [22, 101, 52]);
     y += 2.5;
-  }
-  if (data.targetFundResults?.length) {
-    y = renderResultCards(pdf, data.targetFundResults, y);
+    if (data.targetFundResults?.length) {
+      y = renderResultCards(pdf, data.targetFundResults, y);
+    }
+  } else {
+    // 현재플랜 결과(은퇴금액·월 연금액)가 없으면 안내만 남기고 추천플랜으로 넘어간다
+    setFont(pdf);
+    pdf.setFontSize(9); pdf.setTextColor(120, 128, 138);
+    pdf.text('진행한 플랜이 없습니다.', M + 2, y + 5);
+    y += 9;
   }
   y += 5;
 
