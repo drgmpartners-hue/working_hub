@@ -802,6 +802,7 @@ export function InvestmentFlowTab() {
     await fetchRecords();
     fetchDepositAccounts();
     expandedAccountIds.forEach(id => fetchTransactions(id));
+    fetchAnnualFlow();  // 평가금액·종료일은 순자산에 직접 반영되므로 흐름표도 재조회
   };
 
   /* ---- 예수금 거래 인라인: 거래 추가 시작 ---- */
@@ -2049,12 +2050,30 @@ export function InvestmentFlowTab() {
                     </button>
                   </div>
                 </div>
-                {/* 해당 연도 행의 핵심 값 — 표를 다시 대조하지 않아도 되도록 */}
-                <div style={{ fontSize: 11.5, color: 'var(--text-muted)', marginBottom: 7 }}>
-                  총납입 <b style={{ color: 'var(--text-secondary)' }}>{formatCurrency(row.total_contribution)}</b>
-                  {' · '}연간평가 <b style={{ color: '#93C5FD' }}>{formatCurrency(row.annual_evaluation)}</b>
-                  {' · '}순자산 <b style={{ color: '#93C5FD' }}>{formatCurrency(row.total_evaluation)}</b>
-                </div>
+                {/* 해당 연도 행의 핵심 값 + 순자산 검산 — 표를 다시 대조하지 않아도 되도록 */}
+                {(() => {
+                  // 순자산에 합산되는 분(= 연말 시점 운용중)만 골라 합계를 낸다. 백엔드 조건과 동일.
+                  const activeSum = items.reduce((s, r) => {
+                    const ey = r.end_date ? parseInt(r.end_date.slice(0, 4)) : 9999;
+                    if (ey <= row.year) return s;  // 당해 종결분은 예수금 잔액에 이미 반영
+                    const iv = r.interim_evaluations?.[String(row.year)];
+                    return s + (iv ?? (r.evaluation_amount || r.investment_amount));
+                  }, 0);
+                  const balance = row.total_evaluation - activeSum;  // 역산한 예수금 잔액
+                  return (
+                    <div style={{ fontSize: 11.5, color: 'var(--text-muted)', marginBottom: 7, lineHeight: 1.7 }}>
+                      총납입 <b style={{ color: 'var(--text-secondary)' }}>{formatCurrency(row.total_contribution)}</b>
+                      {' · '}연간평가 <b style={{ color: '#93C5FD' }}>{formatCurrency(row.annual_evaluation)}</b>
+                      {' · '}순자산 <b style={{ color: '#93C5FD' }}>{formatCurrency(row.total_evaluation)}</b>
+                      <br />
+                      <span style={{ fontSize: 11 }}>
+                        순자산 내역 = 예수금 잔액 <b style={{ color: balance < 0 ? '#F87171' : 'var(--text-secondary)' }}>{formatCurrency(balance)}</b>
+                        {' + '}운용중 합계 <b style={{ color: '#34D399' }}>{formatCurrency(activeSum)}</b>
+                        <span style={{ color: 'var(--text-muted)' }}> (아래 &lsquo;운용중&rsquo; 행의 평가금액 합)</span>
+                      </span>
+                    </div>
+                  );
+                })()}
                 {items.length === 0 ? (
                   <div style={{ padding: '18px 40px', textAlign: 'center', color: 'var(--text-muted)', fontSize: 12 }}>
                     해당 연도에 운용된 투자기록이 없습니다.
@@ -2078,7 +2097,13 @@ export function InvestmentFlowTab() {
                       const interim = r.interim_evaluations?.[String(row.year)];
                       const isExit = r.status === 'exit' && r.end_date && parseInt(r.end_date.slice(0, 4)) === row.year;
                       const exitVal = isExit ? (r.evaluation_amount ?? null) : null;
-                      const evalVal = exitVal ?? interim ?? r.investment_amount;
+                      // 백엔드 순자산과 동일 규칙: 중간평가 > 평가금액 > 투자원금.
+                      // (이전엔 운용중 상품의 평가금액을 무시하고 원금을 표시해, 화면 합계와
+                      //  순자산이 서로 다른 값이 되어 검산이 불가능했음)
+                      const evalVal = interim ?? (r.evaluation_amount || r.investment_amount);
+                      // 종결 표시인데 종료일이 조회 연도보다 미래 — 백엔드는 아직 운용중으로 합산한다
+                      const dateMismatch = r.status === 'exit' && !!r.end_date
+                        && parseInt(r.end_date.slice(0, 4)) > row.year;
                       const bg = rIdx % 2 === 0 ? 'transparent' : 'rgba(255,255,255,0.02)';
                       return (
                         <tr key={r.id} style={{ backgroundColor: bg, borderBottom: '1px solid var(--bg-surface)' }}>
@@ -2091,6 +2116,12 @@ export function InvestmentFlowTab() {
                           <td style={{ ...tdD, textAlign: 'right', fontWeight: 700, color: 'var(--blue-400)' }}>{evalVal.toLocaleString()}</td>
                           <td style={{ ...tdD, textAlign: 'center' }}>
                             <span style={{ fontSize: 10, padding: '2px 6px', borderRadius: 4, backgroundColor: isExit ? 'rgba(16,185,129,0.15)' : 'rgba(59,130,246,0.15)', color: isExit ? '#34D399' : '#60A5FA', fontWeight: 600 }}>{isExit ? '종결' : '운용중'}</span>
+                            {dateMismatch && (
+                              <span
+                                title={`'종결'로 표시돼 있으나 종료일(${r.end_date})이 ${row.year}년보다 미래입니다.\n순자산은 종료일 기준으로 판단하므로 이 상품은 아직 운용중으로 합산됩니다.\n종료일이 예상 만기일로 잘못 입력되지 않았는지 확인해주세요.`}
+                                style={{ marginLeft: 4, fontSize: 10, cursor: 'help', color: '#FCD34D' }}
+                              >⚠️</span>
+                            )}
                           </td>
                         </tr>
                       );
@@ -3413,6 +3444,7 @@ export function InvestmentFlowTab() {
                               fetchRecords();
                               fetchDepositAccounts();
                               expandedAccountIds.forEach(aid => fetchTransactions(aid));
+                              fetchAnnualFlow();  // 투자기록 삭제는 순자산에 직접 반영
                             } catch { /* silent */ }
                           }}
                           style={{ padding: '3px 8px', fontSize: 11, fontWeight: 500, borderRadius: 4, border: '1px solid rgba(239,68,68,0.35)', backgroundColor: 'var(--danger-bg)', color: 'var(--danger)', cursor: 'pointer' }}

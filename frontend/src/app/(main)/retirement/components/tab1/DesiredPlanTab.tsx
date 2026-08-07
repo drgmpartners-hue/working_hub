@@ -616,11 +616,11 @@ export function DesiredPlanTab() {
               // 기존 은퇴금액·월 연금액이 모두 산출되지 않았다면 현재플랜은 '없음'으로 처리
               const curPlanEmpty = curAccFund <= 0 && curPenM <= 0;
               const investCards: CI[] = [
-                { label: '기대 투자수익률', value: rInvR > 0 ? `${rInvR}%` : '-' },
+                { label: '희망 은퇴나이', value: rRetAge > 0 ? `${rRetAge}세 (총 ${rInvYrs}년)` : '-' },
                 { label: '적립기간', value: rInvYrs > 0 ? `${rSavP}년 (거치 ${rHoldYrs}년)` : '-' },
                 { label: `적립액 (${rFreq}·${rCompLabel})`, value: rAmt > 0 ? `${fmt(rAmt)}만원/${rFreq}` : '-' },
                 { label: '거치금액', value: rHold > 0 ? `${fmt(rHold)}만원` : '-' },
-                { label: '희망 은퇴나이', value: rRetAge > 0 ? `${rRetAge}세 (총 ${rInvYrs}년)` : '-' },
+                { label: '기대 투자수익률', value: rInvR > 0 ? `${rInvR}%` : '-' },
                 { label: '현재가치 연금액', value: rPenM > 0 ? `${fmt(rPenM)}만원/월` : '-' },
                 { label: '기대 연금수익률', value: rPenR > 0 ? `${rPenR}%` : '-' },
                 { label: '물가', value: `${infRate}%` },
@@ -762,17 +762,18 @@ export function DesiredPlanTab() {
         {showRecPlan && (
         <div style={SB}>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '12px' }}>
-            {/* 1행: 모으기 팩트 — 이 값들로 은퇴금액이 만들어진다 */}
-            <InC label="기대 투자수익률" u="%" v={rInvRIn} f={v => setRInvRIn(v.replace(/[^\d.]/g, ''))} />
+            {/* 1행: 은퇴 시점과 모으기 조건 — 이 값들로 은퇴금액이 만들어진다 */}
+            <InC label="희망 은퇴나이" u="세" v={rRetAgeIn} f={v => setRRetAgeIn(v.replace(/\D/g, ''))}
+              sub={rInvYrs > 0 ? `총 투자기간: ${rInvYrs}년` : ''} />
             <SavPCard label="적립기간" v={rSavPIn} f={v => setRSavPIn(v.replace(/\D/g, ''))}
               invYrs={rInvYrs} holdYrs={rHoldYrs} />
             <SavAmtCard label="적립액" v={rAmtIn} f={v => setRAmtIn(fi0(v))}
               freq={rFreq} setFreq={setRFreq} amt={rAmt} annSavWon={rAnnSavWon} />
             <InC label="거치금액" u="만원" v={rHoldIn} f={v => setRHoldIn(fi0(v))} cur />
 
-            {/* 2행: 쓰기 로직 — 홀드된 은퇴금액을 어떻게 받을지 */}
-            <InC label="희망 은퇴나이" u="세" v={rRetAgeIn} f={v => setRRetAgeIn(v.replace(/\D/g, ''))}
-              sub={rInvYrs > 0 ? `총 투자기간: ${rInvYrs}년` : ''} />
+            {/* 2행: 수익률과 쓰기 로직 — 모은 은퇴금액을 어떻게 받을지 */}
+            <InC label="기대 투자수익률" u="%" v={rInvRIn} f={v => setRInvRIn(v.replace(/[^\d.]/g, ''))}
+              sub="모으는 과정(적립·거치)에 적용" />
             <InC label="현재가치 연금액" u="만원/월" v={rPenMIn} f={v => setRPenMIn(fi(v))} cur />
             <InC label="기대 연금수익률" u="%" v={rPenRIn} f={v => setRPenRIn(v.replace(/[^\d.]/g, ''))}
               sub="은퇴 후 재원 운용 수익률" />
