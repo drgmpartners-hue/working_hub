@@ -225,15 +225,20 @@ async def get_annual_flow(
         net_acct_ids = [a.id for a in all_acct_result.scalars().all()]
 
     # 1) 예수금 연말 잔액
+    from app.api.v1.deposit_accounts import last_tx_order  # noqa: PLC0415
+
     total_deposit_balance = 0
     for aid in net_acct_ids:
+        # 잔액 재계산과 동일한 정렬로 '그 해 마지막 거래'를 뽑는다.
+        # (날짜·id만으로 뽑으면 같은 날짜에 나중에 등록된 입금성 거래의 잔액을
+        #  최종 잔액으로 오인해 순자산이 크게 부풀려진다)
         last_tx_r = await db.execute(
             select(DepositTransaction)
             .where(
                 DepositTransaction.deposit_account_id == aid,
                 DepositTransaction.transaction_date <= year_end,
             )
-            .order_by(DepositTransaction.transaction_date.desc(), DepositTransaction.id.desc())
+            .order_by(*last_tx_order())
             .limit(1)
         )
         last_tx_obj = last_tx_r.scalar_one_or_none()

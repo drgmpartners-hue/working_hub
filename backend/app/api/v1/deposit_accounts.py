@@ -15,7 +15,7 @@ DELETE /retirement/deposit-transactions/{id}                  - 거래내역 삭
 from __future__ import annotations
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from sqlalchemy import select
+from sqlalchemy import case, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.deps import get_current_user
@@ -38,6 +38,33 @@ router = APIRouter(prefix="/retirement/deposit-accounts", tags=["deposit-account
 # ---------------------------------------------------------------------------
 # Helper: 잔액 재계산
 # ---------------------------------------------------------------------------
+
+
+def last_tx_order():
+    """잔액 재계산과 동일한 순서에서 '마지막 거래'를 뽑기 위한 정렬(역순).
+
+    재계산은 (날짜, 입금우선, id) 오름차순으로 잔액을 누적하므로,
+    마지막 거래는 그 역순의 첫 번째다. 날짜·id만으로 뒤에서 뽑으면
+    같은 날짜에 입금성 거래의 id가 더 클 때 엉뚱한 잔액을 집어온다
+    (예: 같은 날 투자 3건 뒤에 등록된 종결 거래의 잔액을 최종 잔액으로 오인).
+    """
+    credit_first = case(
+        (
+            (
+                DepositTransaction.credit_amount
+                + func.coalesce(DepositTransaction.savings_amount, 0)
+                > 0
+            )
+            & (DepositTransaction.debit_amount == 0),
+            0,
+        ),
+        else_=1,
+    )
+    return (
+        DepositTransaction.transaction_date.desc(),
+        credit_first.desc(),
+        DepositTransaction.id.desc(),
+    )
 
 
 async def recalculate_balances(account_id: int, db: AsyncSession) -> None:
@@ -180,7 +207,7 @@ async def list_deposit_accounts(
         last_tx = await db.execute(
             select(DepositTransaction)
             .where(DepositTransaction.deposit_account_id == acct.id)
-            .order_by(DepositTransaction.transaction_date.desc(), DepositTransaction.id.desc())
+            .order_by(*last_tx_order())
             .limit(1)
         )
         last = last_tx.scalar_one_or_none()
