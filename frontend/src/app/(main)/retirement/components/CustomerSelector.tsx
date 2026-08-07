@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo, useCallback } from 'react';
 import { useRetirementStore, type RetirementCustomer } from '../hooks/useRetirementStore';
 import { API_URL } from '@/lib/api-url';
 import { authLib } from '@/lib/auth';
@@ -109,7 +109,8 @@ export function CustomerSelector() {
   }
 
   // 고객 선택 → retirement profile 확인/생성
-  async function handleClientChange(clientId: string) {
+  // keepQuery: 검색 자동선택으로 호출된 경우 입력 중인 검색어를 지우지 않는다
+  const handleClientChange = useCallback(async (clientId: string, opts?: { keepQuery?: boolean }) => {
     if (!clientId) {
       setCustomer(null);
       setSelectedClient(null);
@@ -179,15 +180,33 @@ export function CustomerSelector() {
       birthDate: client.birth_date ?? null,
     };
     setCustomer(customer);
-    setSearchQuery('');
-  }
+    if (!opts?.keepQuery) setSearchQuery('');
+  }, [clients, setCustomer]);
 
   // 검색 필터
-  const filtered = clients.filter((c) => {
-    if (!searchQuery.trim()) return true;
+  const filtered = useMemo(() => {
     const q = searchQuery.trim().toLowerCase();
-    return c.name.toLowerCase().includes(q) || (c.unique_code ?? '').includes(q);
-  });
+    if (!q) return clients;
+    return clients.filter(
+      (c) => c.name.toLowerCase().includes(q) || (c.unique_code ?? '').includes(q)
+    );
+  }, [clients, searchQuery]);
+
+  // 검색 결과가 한 명뿐이면 자동 선택 — 드롭다운을 열어 클릭할 필요가 없다.
+  // 타이핑 중 매 글자마다 프로필 조회가 나가지 않도록 짧게 지연시킨다.
+  useEffect(() => {
+    if (!searchQuery.trim()) return;
+    if (filtered.length !== 1) return;
+    const only = filtered[0];
+    if (selectedCustomer?.id === only.id) return;
+    const timer = setTimeout(() => {
+      handleClientChange(only.id, { keepQuery: true });
+    }, 250);
+    return () => clearTimeout(timer);
+  }, [searchQuery, filtered, selectedCustomer?.id, handleClientChange]);
+
+  const trimmedQuery = searchQuery.trim();
+  const noMatch = trimmedQuery.length > 0 && filtered.length === 0;
 
   const age = selectedClient?.birth_date ? calculateAge(selectedClient.birth_date) : null;
 
@@ -205,17 +224,26 @@ export function CustomerSelector() {
       }}
     >
       {/* 검색 */}
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 2, minWidth: 140 }}>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 2, minWidth: 160, position: 'relative' }}>
         <label style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-secondary)' }}>검색</label>
         <input
           type="text"
           placeholder="이름/고유번호"
           value={searchQuery}
           onChange={(e) => setSearchQuery(e.target.value)}
+          onKeyDown={(e) => {
+            // Enter: 결과 중 첫 번째를 즉시 선택 / Esc: 검색어 지우기
+            if (e.key === 'Enter' && filtered.length > 0) {
+              e.preventDefault();
+              handleClientChange(filtered[0].id, { keepQuery: true });
+            } else if (e.key === 'Escape') {
+              setSearchQuery('');
+            }
+          }}
           style={{
             padding: '6px 10px',
             fontSize: '0.8125rem',
-            border: '1px solid var(--border)',
+            border: `1px solid ${noMatch ? 'var(--danger)' : 'var(--border)'}`,
             borderRadius: 8,
             outline: 'none',
             color: 'var(--text-primary)',
@@ -223,6 +251,16 @@ export function CustomerSelector() {
             boxSizing: 'border-box',
           }}
         />
+        {/* 검색 상태 — 다른 입력들과 세로 정렬이 어긋나지 않도록 흐름 밖에 띄운다 */}
+        <div style={{ position: 'absolute', top: '100%', left: 0, marginTop: 3, fontSize: 11, lineHeight: '14px', whiteSpace: 'nowrap', pointerEvents: 'none' }}>
+          {noMatch ? (
+            <span style={{ color: 'var(--danger)', fontWeight: 600 }}>일치하는 고객이 없습니다</span>
+          ) : trimmedQuery && filtered.length === 1 ? (
+            <span style={{ color: 'var(--success)', fontWeight: 600 }}>1명 — 자동 선택됨</span>
+          ) : trimmedQuery ? (
+            <span style={{ color: 'var(--text-muted)' }}>{filtered.length}명 — Enter로 첫 번째 선택</span>
+          ) : null}
+        </div>
       </div>
 
       {/* 고객 선택 */}
@@ -244,11 +282,15 @@ export function CustomerSelector() {
           }}
         >
           <option value="">-- 고객 선택 --</option>
-          {filtered.map((c) => (
-            <option key={c.id} value={c.id}>
-              {c.name}{c.unique_code ? ` (${c.unique_code})` : ''}
-            </option>
-          ))}
+          {noMatch ? (
+            <option value="" disabled>검색 결과 없음</option>
+          ) : (
+            filtered.map((c) => (
+              <option key={c.id} value={c.id}>
+                {c.name}{c.unique_code ? ` (${c.unique_code})` : ''}
+              </option>
+            ))
+          )}
         </select>
       </div>
 
