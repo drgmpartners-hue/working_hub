@@ -3693,7 +3693,10 @@ export default function IRPPage() {
     }
 
     // 토스트 메시지 표시
-    const msg = failCount === 0
+    // 예수금만 있고 아직 투자상품이 없는 계좌는 종목 0건이 정상이다
+    const msg = er.holdings.length === 0
+      ? '저장 완료 — 보유상품 없이 예수금만 기록되었습니다'
+      : failCount === 0
       ? `${successCount}개 종목 전체 저장 완료`
       : `${successCount}개 저장, ${failCount}개 실패`;
 
@@ -5927,6 +5930,15 @@ export default function IRPPage() {
                           </tr>
                         </thead>
                         <tbody>
+                          {/* 예수금만 있고 아직 투자상품이 없는 계좌 — 0건이 정상이다 */}
+                          {er.holdings.length === 0 && (
+                            <tr>
+                              <td colSpan={20} style={{ padding: '18px 12px', textAlign: 'center', fontSize: '0.8rem', color: 'var(--text-muted)', borderBottom: '1px solid var(--border)' }}>
+                                보유상품이 없습니다 — <b style={{ color: 'var(--text-secondary)' }}>예수금만 있는 계좌</b>입니다.
+                                {' '}아래 예수금 금액을 확인한 뒤 저장하시면 됩니다.
+                              </td>
+                            </tr>
+                          )}
                           {er.holdings.map((h) => {
                             const rowBg = h.unmapped ? 'rgba(245,158,11,0.18)' : 'transparent';
                             const calcReturnAmt = (h.evaluationAmount != null && h.purchaseAmount != null)

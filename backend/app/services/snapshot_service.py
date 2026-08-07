@@ -57,7 +57,24 @@ async def create_snapshot(
 
     # Vision 실패/빈 결과 시 스냅샷 생성 차단 — 이전엔 holdings 0건짜리 빈
     # 스냅샷이 201로 생성되어 정상 저장처럼 보이는 문제가 있었음.
-    if extracted.get("error") or not extracted.get("holdings"):
+    #
+    # 단, 예수금에 돈만 넣어두고 아직 어떤 상품에도 투자하지 않은 계좌는
+    # holdings가 0건이어도 정상 데이터다(포트폴리오를 짜주며 투자가 시작되는 단계).
+    # 따라서 예수금·총자산 등 금액이 하나라도 인식됐다면 저장을 허용하고,
+    # 상품도 금액도 전혀 못 읽은 경우에만 인식 실패로 처리한다.
+    def _num(v) -> float:
+        try:
+            return float(v or 0)
+        except (TypeError, ValueError):
+            return 0.0
+
+    _amount_keys = (
+        "deposit_amount", "foreign_deposit_amount",
+        "total_assets", "total_evaluation",
+    )
+    has_amount = any(_num(extracted.get(k)) > 0 for k in _amount_keys)
+
+    if extracted.get("error") or (not extracted.get("holdings") and not has_amount):
         try:
             os.remove(image_path)  # 고아 이미지 파일 정리
         except OSError:
@@ -66,7 +83,7 @@ async def create_snapshot(
         raise HTTPException(
             status_code=422,
             detail=(
-                "이미지에서 포트폴리오를 인식하지 못했습니다. "
+                "이미지에서 보유상품과 예수금 어느 것도 인식하지 못했습니다. "
                 "선명한 계좌 화면 캡처인지 확인 후 다시 업로드해주세요."
                 + (f" (원인: {extracted.get('error')})" if extracted.get("error") else "")
             ),
