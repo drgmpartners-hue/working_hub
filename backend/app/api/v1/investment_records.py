@@ -138,8 +138,13 @@ async def get_annual_flow(
     if deposit_account_id:
         acct_ids = [deposit_account_id]
     else:
+        # 숨긴 계좌(is_active=False)는 어떤 집계에도 반영하지 않는다.
+        # 화면 목록에서 보이지 않는 계좌가 입금액·출금액에 잡히면 검산이 불가능해진다.
         acct_result = await db.execute(
-            select(DepositAccount).where(DepositAccount.customer_id == customer_id)
+            select(DepositAccount).where(
+                DepositAccount.customer_id == customer_id,
+                DepositAccount.is_active == True,  # noqa: E712
+            )
         )
         deposit_accounts = acct_result.scalars().all()
         acct_ids = [a.id for a in deposit_accounts]
@@ -209,8 +214,13 @@ async def get_annual_flow(
     if deposit_account_id:
         net_acct_ids = [deposit_account_id]
     else:
+        # 숨긴 계좌는 순자산에도 포함하지 않는다 — 화면에 보이지 않는 잔액이
+        # 순자산에만 더해져 검산이 맞지 않던 문제
         all_acct_result = await db.execute(
-            select(DepositAccount).where(DepositAccount.customer_id == customer_id)
+            select(DepositAccount).where(
+                DepositAccount.customer_id == customer_id,
+                DepositAccount.is_active == True,  # noqa: E712
+            )
         )
         net_acct_ids = [a.id for a in all_acct_result.scalars().all()]
 

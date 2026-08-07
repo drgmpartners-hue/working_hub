@@ -2060,6 +2060,16 @@ export function InvestmentFlowTab() {
                     return s + (iv ?? (r.evaluation_amount || r.investment_amount));
                   }, 0);
                   const balance = row.total_evaluation - activeSum;  // 역산한 예수금 잔액
+                  // 활성 계좌들의 연말 잔액 합(백엔드와 동일 규칙: 날짜·id 최대, 숨긴 계좌 제외)
+                  const cutoff = `${row.year}-12-31`;
+                  const visibleBal = depositAccounts.filter(a => a.is_active).reduce((s, acc) => {
+                    const txs = (accountTransactions[acc.id] || [])
+                      .filter(t => (t.transaction_date || '') <= cutoff)
+                      .sort((a, b) => (a.transaction_date || '').localeCompare(b.transaction_date || '') || a.id - b.id);
+                    return s + (txs.length ? (txs[txs.length - 1].balance || 0) : 0);
+                  }, 0);
+                  // 순자산에서 역산한 잔액과 실제 계좌 잔액 합의 차이 — 0이어야 정상
+                  const unlistedBal = balance - visibleBal;
                   return (
                     <div style={{ fontSize: 11.5, color: 'var(--text-muted)', marginBottom: 7, lineHeight: 1.7 }}>
                       총납입 <b style={{ color: 'var(--text-secondary)' }}>{formatCurrency(row.total_contribution)}</b>
@@ -2071,6 +2081,18 @@ export function InvestmentFlowTab() {
                         {' + '}운용중 합계 <b style={{ color: '#34D399' }}>{formatCurrency(activeSum)}</b>
                         <span style={{ color: 'var(--text-muted)' }}> (아래 &lsquo;운용중&rsquo; 행의 평가금액 합)</span>
                       </span>
+                      {Math.abs(unlistedBal) >= 1 && (
+                        <>
+                          <br />
+                          <span
+                            title={'순자산에서 역산한 예수금 잔액이 활성 계좌들의 실제 잔액 합과 다릅니다.\n계좌 연결이 누락된 투자기록이 있거나, 거래 데이터가 갱신되지 않았을 수 있습니다.\n\n[재계산] 버튼을 눌러도 차이가 남으면 데이터 점검이 필요합니다.'}
+                            style={{ fontSize: 11, color: '#FCD34D', cursor: 'help' }}
+                          >
+                            ⚠️ 계좌 잔액 합계({formatCurrency(visibleBal)})와 <b>{formatCurrency(unlistedBal)}</b> 차이가 있습니다
+                            {' '}— [재계산] 후에도 남으면 데이터 점검이 필요합니다.
+                          </span>
+                        </>
+                      )}
                     </div>
                   );
                 })()}
