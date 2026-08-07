@@ -232,13 +232,9 @@ export function CustomerSelector() {
           value={searchQuery}
           onChange={(e) => setSearchQuery(e.target.value)}
           onKeyDown={(e) => {
-            // Enter: 결과 중 첫 번째를 즉시 선택 / Esc: 검색어 지우기
-            if (e.key === 'Enter' && filtered.length > 0) {
-              e.preventDefault();
-              handleClientChange(filtered[0].id, { keepQuery: true });
-            } else if (e.key === 'Escape') {
-              setSearchQuery('');
-            }
+            // 결과가 한 명이면 자동 선택되므로 Enter는 두지 않는다
+            // (여러 명일 때 첫 번째를 고르면 엉뚱한 고객이 선택될 수 있음)
+            if (e.key === 'Escape') setSearchQuery('');
           }}
           style={{
             padding: '6px 10px',
@@ -251,16 +247,12 @@ export function CustomerSelector() {
             boxSizing: 'border-box',
           }}
         />
-        {/* 검색 상태 — 다른 입력들과 세로 정렬이 어긋나지 않도록 흐름 밖에 띄운다 */}
-        <div style={{ position: 'absolute', top: '100%', left: 0, marginTop: 3, fontSize: 11, lineHeight: '14px', whiteSpace: 'nowrap', pointerEvents: 'none' }}>
-          {noMatch ? (
-            <span style={{ color: 'var(--danger)', fontWeight: 600 }}>일치하는 고객이 없습니다</span>
-          ) : trimmedQuery && filtered.length === 1 ? (
-            <span style={{ color: 'var(--success)', fontWeight: 600 }}>1명 — 자동 선택됨</span>
-          ) : trimmedQuery ? (
-            <span style={{ color: 'var(--text-muted)' }}>{filtered.length}명 — Enter로 첫 번째 선택</span>
-          ) : null}
-        </div>
+        {/* 검색 결과 없음만 안내 — 다른 입력들과 세로 정렬이 어긋나지 않도록 흐름 밖에 띄운다 */}
+        {noMatch && (
+          <div style={{ position: 'absolute', top: '100%', left: 0, marginTop: 3, fontSize: 11, lineHeight: '14px', whiteSpace: 'nowrap', pointerEvents: 'none', color: 'var(--danger)', fontWeight: 600 }}>
+            일치하는 고객이 없습니다
+          </div>
+        )}
       </div>
 
       {/* 고객 선택 */}
