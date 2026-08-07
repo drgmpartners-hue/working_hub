@@ -686,8 +686,22 @@ export function InvestmentFlowTab() {
   useEffect(() => { fetchWrapAccounts(); }, [fetchWrapAccounts]);
   useEffect(() => { fetchDepositAccounts(); }, [fetchDepositAccounts]);
 
+  // 계좌 목록이 로드되면 펼침 여부와 무관하게 전 계좌 거래를 미리 로드한다.
+  // (연간 투자흐름표의 연도 범위·순자산이 거래 데이터에서 파생되므로,
+  //  계좌를 열어야만 표가 채워지던 문제를 방지)
+  const prefetchedTxRef = useRef<Set<number>>(new Set());
+  useEffect(() => {
+    const targets = depositAccounts.filter((a) => !prefetchedTxRef.current.has(a.id));
+    if (targets.length === 0) return;
+    targets.forEach((a) => prefetchedTxRef.current.add(a.id));
+    (async () => {
+      for (const acc of targets) await fetchTransactions(acc.id);
+    })();
+  }, [depositAccounts, fetchTransactions]);
+
   // 고객 전환 시 이전 고객 상태 잔존 방지 (거래·펼침·적용연도·플랜·선택 초기화)
   useEffect(() => {
+    prefetchedTxRef.current = new Set();
     setAccountTransactions({});
     setExpandedAccountIds(new Set());
     setAppliedYears({});
@@ -1836,16 +1850,24 @@ export function InvestmentFlowTab() {
                     : Number(row.annual_return_rate) < 0
                     ? '#F87171'
                     : 'var(--text-primary)';
+                  const isDetailRow = evalDetailYear === row.year;
                   return (
-                    <React.Fragment key={year}>
                     <tr
+                      key={year}
                       style={{
                         borderBottom: '1px solid var(--bg-surface)',
                         backgroundColor: idx % 2 === 0 ? 'transparent' : 'rgba(255,255,255,0.02)',
                         ...(year === currentYear ? { backgroundColor: 'rgba(59,130,246,0.06)' } : {}),
+                        // 평가상세를 보고 있는 연도 행 — 상세 화면과 짝을 이루도록 강조
+                        ...(isDetailRow ? { backgroundColor: 'rgba(56,189,248,0.16)' } : {}),
                       }}
                     >
-                      <td style={tdCenter}>{row.year}</td>
+                      <td style={{ ...tdCenter, ...(isDetailRow ? { borderLeft: '3px solid var(--cyan-400)', fontWeight: 800, color: '#93C5FD' } : {}) }}>
+                        {row.year}
+                        {isDetailRow && (
+                          <span style={{ display: 'block', fontSize: 9.5, fontWeight: 700, color: 'var(--cyan-400)', marginTop: 1, whiteSpace: 'nowrap' }}>▼ 상세</span>
+                        )}
+                      </td>
                       <td style={tdCenter}>{row.order_in_year ?? '-'}</td>
                       <td style={tdCenter}>{row.age ?? '-'}</td>
                       <td style={tdRight}>{formatCurrency(row.lump_sum)}</td>
@@ -1944,64 +1966,121 @@ export function InvestmentFlowTab() {
                         )}
                       </td>
                     </tr>
-                    {/* 평가상세 펼침 행 */}
-                    {evalDetailYear === row.year && (
-                      <tr>
-                        <td colSpan={20} style={{ padding: 0, backgroundColor: 'var(--bg-card)', borderBottom: '1px solid var(--border)' }}>
-                          <div style={{ display: 'flex', justifyContent: 'flex-start', paddingLeft: 'calc(4 * 80px + 4 * 12px)', paddingTop: 8, paddingBottom: 12, paddingRight: 16 }}>
-                            <div style={{ width: '100%', maxWidth: 700 }}>
-                              <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-muted)', marginBottom: 6 }}>
-                                {row.year}년 평가 상세 — 총납입: {formatCurrency(row.total_contribution)} / 연간평가: {formatCurrency(row.annual_evaluation)}
-                              </div>
-                              <table style={{ width: '100%', fontSize: 11, borderCollapse: 'collapse', borderRadius: 6, overflow: 'hidden', border: '1px solid var(--border)' }}>
-                                <thead>
-                                  <tr style={{ backgroundColor: 'var(--bg-card-2)' }}>
-                                    <th style={{ padding: '5px 8px', textAlign: 'left', fontWeight: 600, color: 'var(--text-secondary)', borderBottom: '1px solid var(--border)' }}>상품</th>
-                                    <th style={{ padding: '5px 8px', textAlign: 'right', fontWeight: 600, color: 'var(--text-secondary)', borderBottom: '1px solid var(--border)' }}>투자금액</th>
-                                    <th style={{ padding: '5px 8px', textAlign: 'right', fontWeight: 600, color: 'var(--warning)', borderBottom: '1px solid var(--border)' }}>중간평가</th>
-                                    <th style={{ padding: '5px 8px', textAlign: 'right', fontWeight: 600, color: 'var(--success)', borderBottom: '1px solid var(--border)' }}>투자종료</th>
-                                    <th style={{ padding: '5px 8px', textAlign: 'right', fontWeight: 600, color: 'var(--blue-400)', borderBottom: '1px solid var(--border)' }}>평가금액</th>
-                                    <th style={{ padding: '5px 8px', textAlign: 'center', fontWeight: 600, color: 'var(--text-secondary)', borderBottom: '1px solid var(--border)' }}>상태</th>
-                                  </tr>
-                                </thead>
-                                <tbody>
-                                  {records.filter(r => {
-                                    const sy = r.start_date ? parseInt(r.start_date.slice(0, 4)) : 9999;
-                                    const ey = r.end_date ? parseInt(r.end_date.slice(0, 4)) : 9999;
-                                    return sy <= row.year && ey >= row.year && r.record_type === 'investment';
-                                  }).map((r, rIdx) => {
-                                    const interim = r.interim_evaluations?.[String(row.year)];
-                                    const isExit = r.status === 'exit' && r.end_date && parseInt(r.end_date.slice(0, 4)) === row.year;
-                                    const exitVal = isExit ? (r.evaluation_amount ?? null) : null;
-                                    const evalVal = exitVal ?? interim ?? r.investment_amount;
-                                    const bg = rIdx % 2 === 0 ? 'transparent' : 'rgba(255,255,255,0.02)';
-                                    return (
-                                      <tr key={r.id} style={{ backgroundColor: bg, borderBottom: '1px solid var(--bg-surface)' }}>
-                                        <td style={{ padding: '4px 8px', color: 'var(--text-secondary)' }}>{getProductName(r)}</td>
-                                        <td style={{ padding: '4px 8px', textAlign: 'right', color: 'var(--text-muted)' }}>{r.investment_amount.toLocaleString()}</td>
-                                        <td style={{ padding: '4px 8px', textAlign: 'right', color: interim != null ? '#FCD34D' : 'var(--text-muted)', fontWeight: interim != null ? 700 : 400 }}>{interim != null ? interim.toLocaleString() : '-'}</td>
-                                        <td style={{ padding: '4px 8px', textAlign: 'right', color: exitVal != null ? '#34D399' : 'var(--text-muted)', fontWeight: exitVal != null ? 700 : 400 }}>{exitVal != null ? exitVal.toLocaleString() : '-'}</td>
-                                        <td style={{ padding: '4px 8px', textAlign: 'right', fontWeight: 700, color: 'var(--blue-400)' }}>{evalVal.toLocaleString()}</td>
-                                        <td style={{ padding: '4px 8px', textAlign: 'center' }}>
-                                          <span style={{ fontSize: 10, padding: '2px 6px', borderRadius: 4, backgroundColor: isExit ? 'rgba(16,185,129,0.15)' : 'rgba(59,130,246,0.15)', color: isExit ? '#34D399' : '#60A5FA', fontWeight: 600 }}>{isExit ? '종결' : '운용중'}</span>
-                                        </td>
-                                      </tr>
-                                    );
-                                  })}
-                                </tbody>
-                              </table>
-                            </div>
-                          </div>
-                        </td>
-                      </tr>
-                    )}
-                    </React.Fragment>
                   );
                 });
               })()}
             </tbody>
           </table>
         </div>
+        {/* ===== 평가 상세 — 가로 스크롤 컨테이너 바깥(스크롤바는 위 표에만 붙는다) ===== */}
+        {evalDetailYear !== null && (() => {
+          const row = annualFlowData.find(r => r.year === evalDetailYear);
+          if (!row) return null;
+          // 투자일 오름차순(빠른 투자일 → 최근 투자일). 투자일이 없으면 맨 뒤로.
+          const items = records
+            .filter(r => {
+              const sy = r.start_date ? parseInt(r.start_date.slice(0, 4)) : 9999;
+              const ey = r.end_date ? parseInt(r.end_date.slice(0, 4)) : 9999;
+              return sy <= row.year && ey >= row.year && r.record_type === 'investment';
+            })
+            .sort((a, b) => (a.start_date || '9999-99-99').localeCompare(b.start_date || '9999-99-99'));
+          const fmtD = (d?: string | null) => (d ? d.slice(0, 10).replace(/-/g, '.') : '-');
+          const thD: React.CSSProperties = { padding: '6px 10px', fontWeight: 600, borderBottom: '1px solid var(--border)', whiteSpace: 'nowrap' };
+          const tdD: React.CSSProperties = { padding: '5px 10px', whiteSpace: 'nowrap' };
+          return (
+            <div style={{ display: 'flex', justifyContent: 'flex-end', padding: '10px 2px 4px', backgroundColor: 'var(--bg-card)', borderTop: '1px solid var(--border)' }}>
+              {/* 내용 폭에 맞춘 블록을 오른쪽 정렬 — 상품명이 데이터 바로 왼쪽에 붙는다 */}
+              <div style={{ maxWidth: '100%', overflowX: 'auto' }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 20, marginBottom: 4, flexWrap: 'wrap' }}>
+                  {/* 연도를 크게 — 표를 다시 보지 않아도 어느 해인지 즉시 식별 */}
+                  <div style={{ display: 'flex', alignItems: 'baseline', gap: 8 }}>
+                    <span style={{ fontSize: 17, fontWeight: 800, color: '#93C5FD', letterSpacing: '-0.02em', padding: '1px 9px', borderRadius: 5, backgroundColor: 'rgba(56,189,248,0.16)' }}>
+                      {row.year}년
+                    </span>
+                    <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--text-secondary)' }}>평가 상세</span>
+                    <span style={{ fontSize: 11.5, color: 'var(--text-muted)' }}>{items.length}건</span>
+                  </div>
+                  {/* 연도 전환 칩 — 표로 되돌아가지 않고 상세 안에서 연도를 바꾼다 */}
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 5, flexWrap: 'wrap' }}>
+                    {[...annualFlowData].sort((a, b) => a.year - b.year).map(fr => {
+                      const on = fr.year === row.year;
+                      return (
+                        <button
+                          key={fr.year}
+                          onClick={() => setEvalDetailYear(fr.year)}
+                          style={{
+                            padding: '3px 10px', fontSize: 11.5, fontWeight: on ? 800 : 600, borderRadius: 5, cursor: 'pointer',
+                            border: `1px solid ${on ? 'var(--cyan-400)' : 'var(--border)'}`,
+                            backgroundColor: on ? 'rgba(56,189,248,0.18)' : 'transparent',
+                            color: on ? '#93C5FD' : 'var(--text-secondary)',
+                          }}
+                        >
+                          {fr.year}
+                        </button>
+                      );
+                    })}
+                    <button
+                      onClick={() => setEvalDetailYear(null)}
+                      title="닫기"
+                      style={{ marginLeft: 6, flexShrink: 0, padding: '3px 9px', fontSize: 11, borderRadius: 5, border: '1px solid var(--border)', backgroundColor: 'transparent', color: 'var(--text-secondary)', cursor: 'pointer' }}
+                    >
+                      닫기 ✕
+                    </button>
+                  </div>
+                </div>
+                {/* 해당 연도 행의 핵심 값 — 표를 다시 대조하지 않아도 되도록 */}
+                <div style={{ fontSize: 11.5, color: 'var(--text-muted)', marginBottom: 7 }}>
+                  총납입 <b style={{ color: 'var(--text-secondary)' }}>{formatCurrency(row.total_contribution)}</b>
+                  {' · '}연간평가 <b style={{ color: '#93C5FD' }}>{formatCurrency(row.annual_evaluation)}</b>
+                  {' · '}순자산 <b style={{ color: '#93C5FD' }}>{formatCurrency(row.total_evaluation)}</b>
+                </div>
+                {items.length === 0 ? (
+                  <div style={{ padding: '18px 40px', textAlign: 'center', color: 'var(--text-muted)', fontSize: 12 }}>
+                    해당 연도에 운용된 투자기록이 없습니다.
+                  </div>
+                ) : (
+                <table style={{ fontSize: 11.5, borderCollapse: 'collapse', borderRadius: 6, overflow: 'hidden', border: '1px solid var(--border)' }}>
+                  <thead>
+                    <tr style={{ backgroundColor: 'var(--bg-card-2)' }}>
+                      <th style={{ ...thD, textAlign: 'left', color: 'var(--text-secondary)' }}>상품</th>
+                      <th style={{ ...thD, textAlign: 'center', color: 'var(--text-secondary)', width: 92 }}>투자일</th>
+                      <th style={{ ...thD, textAlign: 'center', color: 'var(--text-secondary)', width: 92 }}>종료일</th>
+                      <th style={{ ...thD, textAlign: 'right', color: 'var(--text-secondary)', width: 110 }}>투자금액</th>
+                      <th style={{ ...thD, textAlign: 'right', color: 'var(--warning)', width: 110 }}>중간평가</th>
+                      <th style={{ ...thD, textAlign: 'right', color: 'var(--success)', width: 110 }}>투자종료</th>
+                      <th style={{ ...thD, textAlign: 'right', color: 'var(--blue-400)', width: 110 }}>평가금액</th>
+                      <th style={{ ...thD, textAlign: 'center', color: 'var(--text-secondary)', width: 66 }}>상태</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {items.map((r, rIdx) => {
+                      const interim = r.interim_evaluations?.[String(row.year)];
+                      const isExit = r.status === 'exit' && r.end_date && parseInt(r.end_date.slice(0, 4)) === row.year;
+                      const exitVal = isExit ? (r.evaluation_amount ?? null) : null;
+                      const evalVal = exitVal ?? interim ?? r.investment_amount;
+                      const bg = rIdx % 2 === 0 ? 'transparent' : 'rgba(255,255,255,0.02)';
+                      return (
+                        <tr key={r.id} style={{ backgroundColor: bg, borderBottom: '1px solid var(--bg-surface)' }}>
+                          <td style={{ ...tdD, color: 'var(--text-secondary)', paddingRight: 18 }}>{getProductName(r)}</td>
+                          <td style={{ ...tdD, textAlign: 'center', color: 'var(--text-muted)' }}>{fmtD(r.start_date)}</td>
+                          <td style={{ ...tdD, textAlign: 'center', color: 'var(--text-muted)' }}>{fmtD(r.end_date)}</td>
+                          <td style={{ ...tdD, textAlign: 'right', color: 'var(--text-muted)' }}>{r.investment_amount.toLocaleString()}</td>
+                          <td style={{ ...tdD, textAlign: 'right', color: interim != null ? '#FCD34D' : 'var(--text-muted)', fontWeight: interim != null ? 700 : 400 }}>{interim != null ? interim.toLocaleString() : '-'}</td>
+                          <td style={{ ...tdD, textAlign: 'right', color: exitVal != null ? '#34D399' : 'var(--text-muted)', fontWeight: exitVal != null ? 700 : 400 }}>{exitVal != null ? exitVal.toLocaleString() : '-'}</td>
+                          <td style={{ ...tdD, textAlign: 'right', fontWeight: 700, color: 'var(--blue-400)' }}>{evalVal.toLocaleString()}</td>
+                          <td style={{ ...tdD, textAlign: 'center' }}>
+                            <span style={{ fontSize: 10, padding: '2px 6px', borderRadius: 4, backgroundColor: isExit ? 'rgba(16,185,129,0.15)' : 'rgba(59,130,246,0.15)', color: isExit ? '#34D399' : '#60A5FA', fontWeight: 600 }}>{isExit ? '종결' : '운용중'}</span>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+                )}
+              </div>
+            </div>
+          );
+        })()}
 
       </section>
 
