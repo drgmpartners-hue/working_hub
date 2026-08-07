@@ -519,6 +519,25 @@ export function InvestmentFlowTab() {
     return Array.from(yearSet).sort((a, b) => a - b);
   }, [accountTransactions, currentYear]);
 
+  /* ---- 원금(입금) 데이터 누락 계좌 ---- */
+  // 투자 거래는 있는데 입금(deposit)·적립(savings) 거래가 한 건도 없는 계좌.
+  // 이 경우 누적입금액이 0이 되어 순입금액·순자산수익률이 성립하지 않는다.
+  // (종료 거래는 투자금 회수이므로 백엔드에서 입금으로 집계하지 않는다)
+  const missingDepositAccountIds = useMemo(() => {
+    const ids = new Set<number>();
+    for (const acc of depositAccounts) {
+      const txs = accountTransactions[acc.id];
+      if (!txs || txs.length === 0) continue; // 미로드·거래없음은 판정 보류
+      const hasInvestment = txs.some((t) => t.transaction_type === 'investment');
+      if (!hasInvestment) continue;
+      const hasPrincipal = txs.some(
+        (t) => t.transaction_type === 'deposit' || t.transaction_type === 'savings' || (t.savings_amount || 0) > 0
+      );
+      if (!hasPrincipal) ids.add(acc.id);
+    }
+    return ids;
+  }, [depositAccounts, accountTransactions]);
+
   // 거래 로드 후 가장 빠른 연도로 자동 선택
   useEffect(() => {
     if (years.length > 0 && !years.includes(selectedYear)) {
@@ -843,6 +862,7 @@ export function InvestmentFlowTab() {
       cancelTxEdit();
       fetchTransactions(accountId);
       fetchDepositAccounts();
+      fetchAnnualFlow();  // 거래가 바뀌면 순자산·입금액이 달라지므로 흐름표도 재조회
     } catch {
       // silent
     } finally {
@@ -875,6 +895,7 @@ export function InvestmentFlowTab() {
       cancelTxEdit();
       fetchTransactions(accountId);
       fetchDepositAccounts();
+      fetchAnnualFlow();  // 거래가 바뀌면 순자산·입금액이 달라지므로 흐름표도 재조회
     } catch {
       // silent
     } finally {
@@ -2309,6 +2330,19 @@ export function InvestmentFlowTab() {
                           {(account.current_balance ?? 0).toLocaleString()}원
                         </strong>
                       </span>
+                      {/* 원금(입금) 누락 경고 — 투자 기록은 있으나 입금 거래가 0건인 계좌 */}
+                      {missingDepositAccountIds.has(account.id) && (
+                        <span
+                          title={'투자 거래는 있으나 입금 거래가 한 건도 없습니다.\n누적입금액·순입금액이 0이 되어 순자산수익률을 계산할 수 없고, 자산 전액이 수익으로 계상됩니다.\n\n종료(투자금 회수)는 고객이 새로 넣은 돈이 아니므로 입금으로 집계되지 않습니다.\n최초 투자일 이전 날짜로 입금 거래를 추가하면 모든 지표가 정상화됩니다.'}
+                          style={{
+                            fontSize: 11, fontWeight: 700, whiteSpace: 'nowrap', cursor: 'help',
+                            color: '#FCD34D', backgroundColor: 'rgba(245,158,11,0.14)',
+                            border: '1px solid rgba(245,158,11,0.5)', padding: '1px 7px', borderRadius: 4,
+                          }}
+                        >
+                          ⚠️ 입금 내역 없음
+                        </span>
+                      )}
                     </div>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                       {isExpanded && (
@@ -2734,6 +2768,7 @@ export function InvestmentFlowTab() {
                                               });
                                               fetchTransactions(account.id);
                                               fetchDepositAccounts();
+                                              fetchAnnualFlow();  // 삭제로 잔액이 바뀌므로 흐름표도 재조회
                                             } catch { /* silent */ }
                                           }}
                                           style={{ padding: '2px 6px', fontSize: 11, borderRadius: 4, border: '1px solid rgba(239,68,68,0.35)', backgroundColor: 'var(--danger-bg)', color: 'var(--danger)', cursor: 'pointer' }}

@@ -230,15 +230,27 @@ export async function generateInvestmentFlowPdf(data: PdfData, filename: string)
     didDrawPage: () => { drawHeader(pdf, c); },
     willDrawPage: (d: any) => { if (d.pageNumber > 1) pageNum++; },
   });
-  drawFooter(pdf, pageNum);
+  // 푸터는 아래 그래프 섹션에서 배치가 확정된 뒤 그린다(같은 페이지에 이어 붙는 경우 중복 방지)
 
-  // ==================== 2. 투자흐름 분석 그래프 (2개를 한 페이지에) ====================
+  // ==================== 2. 투자흐름 분석 그래프 ====================
+  // 1페이지의 표 아래 남은 공간에 이어서 배치한다. 공간이 부족할 때만 다음 페이지로 넘긴다.
   {
     const chartEls = data.chartIds.filter(id => !id.includes('lifetime')).map(id => document.getElementById(id)).filter(Boolean) as HTMLElement[];
 
     if (chartEls.length > 0) {
-      newPage();
-      curY = sectionTitle(pdf, '2. 투자흐름 분석 그래프', BY);
+      const MIN_CHART_H = 42;          // 이보다 좁으면 그래프가 읽히지 않으므로 다음 페이지로
+      const tableEndY = (pdf as any).lastAutoTable?.finalY ?? curY;
+      let avail = BY + BH - tableEndY - 12;   // 표 아래 남은 높이(섹션 제목·여백 제외)
+
+      if (avail >= MIN_CHART_H) {
+        // 같은 페이지에 이어 붙인다
+        curY = sectionTitle(pdf, '2. 투자흐름 분석 그래프', tableEndY + 7);
+      } else {
+        drawFooter(pdf, pageNum);
+        newPage();
+        curY = sectionTitle(pdf, '2. 투자흐름 분석 그래프', BY);
+        avail = BY + BH - curY - 6;
+      }
 
       for (let i = 0; i < chartEls.length; i++) {
         const el = chartEls[i];
@@ -248,12 +260,16 @@ export async function generateInvestmentFlowPdf(data: PdfData, filename: string)
         const img = new Image();
         await new Promise<void>(resolve => { img.onload = () => resolve(); img.src = imgData; });
         const imgW = CW - 4;
-        const imgH = Math.min((img.height * imgW) / img.width, BH / 2 - 8);
+        // 남은 공간과 차트 개수에 맞춰 높이를 제한 (제목 5mm + 하단 여백 6mm 감안)
+        const slot = chartEls.length > 1 ? (avail / chartEls.length) - 8 : avail - 6;
+        const imgH = Math.min((img.height * imgW) / img.width, Math.max(MIN_CHART_H - 6, slot));
 
         // 차트 제목
         setFont(pdf, 'bold');
         pdf.setFontSize(7); pdf.setTextColor(55, 65, 81);
-        const chartTitle = i === 0 ? '투자흐름 그래프' : '순자산 그래프';
+        const chartTitle = chartEls.length === 1
+          ? '자산 성장 그래프'
+          : (i === 0 ? '투자흐름 그래프' : '순자산 그래프');
         pdf.text(chartTitle, M + 2, curY + 3);
         curY += 5;
 
@@ -266,8 +282,12 @@ export async function generateInvestmentFlowPdf(data: PdfData, filename: string)
           drawFooter(pdf, pageNum);
           newPage();
           curY = sectionTitle(pdf, '2. 투자흐름 분석 그래프 (계속)', BY);
+          avail = BY + BH - curY - 6;
         }
       }
+      drawFooter(pdf, pageNum);
+    } else {
+      // 그래프가 없으면 표 페이지 푸터를 여기서 마감한다
       drawFooter(pdf, pageNum);
     }
   }
