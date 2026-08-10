@@ -1817,10 +1817,10 @@ export function InvestmentFlowTab() {
                   { label: '순자산증가율', align: 'right', tip: '(현재 순자산 - 직전 순자산) / 직전 순자산 × 100' },
                   { label: '순이익', align: 'right', tip: '순자산 - (누적입금액 - 누적인출액)' },
                   { label: '순자산수익률', align: 'right', tip: '순이익 / (누적입금액 - 누적인출액) × 100', hl: true },
-                  { label: '총납입금액', align: 'right', tip: '당해 투자금액 + 모든 미종결 투자금액' },
-                  { label: '연간평가금액', align: 'right', tip: '당해 종결 평가금액 + 모든 미종결 투자금액' },
-                  { label: '연간총수익', align: 'right', tip: '연간평가금액 - 총납입금액' },
-                  { label: '연수익률', align: 'right', tip: '연간총수익 / 총납입금액 × 100' },
+                  { label: '총투자금액', align: 'right', tip: '당해 종결된 상품의 투자원금 합 · 운용중인 자금은 순자산에 반영(중복 방지)' },
+                  { label: '연간평가금액', align: 'right', tip: '당해 종결된 상품의 평가금액(회수금액) 합' },
+                  { label: '연간총수익', align: 'right', tip: '당해 실현손익 = 연간평가금액 − 총투자금액' },
+                  { label: '연수익률', align: 'right', tip: '당해 실현손익 ÷ 총투자금액 × 100 · 종결이 없는 해는 0' },
                   { label: '100세플로우', align: 'center', tip: '100세 은퇴플로우에 해당 연도 순자산을 적용/취소' },
                 ] as { label: string; align: string; tip: string; hl?: boolean }[]).map(({ label, align, tip, hl }) => (
                   <th
@@ -2072,7 +2072,7 @@ export function InvestmentFlowTab() {
                   const unlistedBal = balance - visibleBal;
                   return (
                     <div style={{ fontSize: 11.5, color: 'var(--text-muted)', marginBottom: 7, lineHeight: 1.7 }}>
-                      총납입 <b style={{ color: 'var(--text-secondary)' }}>{formatCurrency(row.total_contribution)}</b>
+                      <span title="그 해에 종결된 상품의 투자원금 합 (운용중인 자금은 순자산에 반영)">총투자</span> <b style={{ color: 'var(--text-secondary)' }}>{formatCurrency(row.total_contribution)}</b>
                       {' · '}연간평가 <b style={{ color: '#93C5FD' }}>{formatCurrency(row.annual_evaluation)}</b>
                       {' · '}순자산 <b style={{ color: '#93C5FD' }}>{formatCurrency(row.total_evaluation)}</b>
                       <br />
@@ -3623,11 +3623,12 @@ export function InvestmentFlowTab() {
               ['순이익', '순자산 − 순입금액'],
               ['순자산수익률 ★', '순이익 ÷ 순입금액 × 100'],
             ]],
-            ['투자기록 기반', [
-              ['총납입금액', '그 연도 기준 살아있는(미종결 또는 당해 종결) 투자기록의 투자금액 합계'],
-              ['연간평가금액', '당해 종결 상품의 평가금액 + 미종결 상품의 중간평가금액(없으면 원금)'],
-              ['연간총수익', '연간평가금액 − 총납입금액'],
-              ['연수익률', '연간총수익 ÷ 총납입금액 × 100'],
+            ['투자기록 기반 — 당해 실현 성과', [
+              ['총투자금액', '그 해에 종결된 상품의 투자원금 합계. 해를 걸친 투자는 종결된 해에 한 번만 집계되며, 운용 중이던 해에는 목록에 표시만 되고 금액에는 포함되지 않는다(중복 방지). 같은 해에 엑싯 후 재투자한 회전분은 서로 다른 건이므로 각각 집계된다'],
+              ['연간평가금액', '그 해에 종결된 상품의 평가금액(회수금액) 합계'],
+              ['연간총수익', '당해 실현손익 = 연간평가금액 − 총투자금액. 중간평가는 순자산에만 반영되므로 미실현 수익이 여기에 먼저 잡혔다가 종결 시 다시 잡히는 이중계상은 발생하지 않는다'],
+              ['연수익률', '당해 실현손익 ÷ 총투자금액 × 100. 그 해에 종결된 상품이 없으면 0'],
+              ['※ 운용 중인 자산', '아직 종결되지 않은 투자는 위 네 항목에 포함되지 않고 순자산에 반영된다'],
             ]],
             ['기타', [
               ['100세플로우', '해당 연도 순자산을 100세 은퇴플로우의 시작값으로 적용/취소'],

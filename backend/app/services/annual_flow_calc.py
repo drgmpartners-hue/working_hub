@@ -19,7 +19,12 @@ def calculate_annual_flow(
     records: list[dict[str, Any]],
     year: int,
 ) -> dict[str, Any]:
-    """연간 투자흐름표 집계 - 새 계산 방식.
+    """연간 투자흐름표 집계 — '그 해에 실현한 성과' 기준.
+
+    총투자금액·연간평가금액·연간총수익·연수익률은 **그 해에 종결된 투자**만으로
+    산출한다. 여러 해에 걸친 투자는 종결된 해에 한 번만 집계되므로,
+    직전 연도에는 목록에 표시되기만 하고 금액에는 포함되지 않는다.
+    운용 중인 자산은 순자산(연말 예수금 잔액 + 운용중 평가)이 담당한다.
 
     Args:
         records: 고객의 **전체** 투자기록 (모든 연도)
@@ -31,16 +36,14 @@ def calculate_annual_flow(
     lump_sum_amount = 0          # 당해 일시납금액 (예수금 입금 유형만, 투자 제외)
     withdrawal_amount = 0        # 당해 인출금액
 
-    # 모든 미종결 투자 추적
-    total_payment = 0            # 총납입금액: 당해 투자금액 + 모든 미종결 투자금액
-    annual_evaluation = 0        # 연간평가금액: 당해 종결 평가금액 + 미종결 투자금액
+    # 총투자금액·연간평가금액은 '그 해에 종결된' 투자만 집계한다(당해 실현 성과).
+    total_payment = 0            # 총투자금액: 당해 종결 상품의 원금 합
+    annual_evaluation = 0        # 연간평가금액: 당해 종결 상품의 평가금액 합
 
     for rec in records:
         record_type = rec.get("record_type")
         investment_amount = rec.get("investment_amount") or 0
         evaluation_amount = rec.get("evaluation_amount")
-        interim_evals = rec.get("interim_evaluations") or {}
-        rec_status = rec.get("status")
         start_date = rec.get("start_date")
         end_date = rec.get("end_date")
 
@@ -60,29 +63,28 @@ def calculate_annual_flow(
             if record_type == "withdrawal":
                 withdrawal_amount += investment_amount
 
-        # 총납입금액: 해당 연도 기준 아직 살아있는(=미종결 OR 당해종결) 투자
-        # 조건: 시작년 <= year AND (종료년 >= year OR 미종결)
-        if start_year <= year and end_year >= year:
+        # 총투자금액·연간평가금액: '그 해에 종결된' 투자만 집계한다.
+        #
+        # 여러 해에 걸친 투자를 매년 계상하면 같은 건이 두 번 이상 잡혀 금액이
+        # 부풀려진다(예: 2025.06 투자 → 2026.03 종결 건이 두 해 모두 계상).
+        # 종결된 해에 한 번만 집계하면 중복이 사라지고, 이 네 컬럼은
+        # '그 해에 실현한 성과'라는 하나의 의미를 갖는다.
+        #
+        # 아직 운용 중인 자산은 순자산(연말 예수금 잔액 + 운용중 평가)이 담당하므로
+        # 정보 손실은 없다. 중간평가도 순자산에만 반영되어, 미실현 수익이 이 표의
+        # 연간총수익에 먼저 잡혔다가 종결 시 다시 잡히는 이중계상이 발생하지 않는다.
+        #
+        # 종결 판정은 순자산 계산(e_year > year 이면 운용중)과 어긋나지 않도록
+        # status 가 아닌 종료일 기준으로 한다.
+        # 같은 해에 엑싯 후 재투자한 '회전'은 서로 다른 투자 건이므로 각각 집계한다.
+        if record_type != "withdrawal" and end_year == year:
             total_payment += investment_amount
-
-        # 연간평가금액:
-        # - 당해 종결: 평가금액 사용
-        # - 미종결: 중간평가 있으면 중간평가, 없으면 투자금액(원금)
-        if end_year == year and rec_status == "exit":
-            # 당해 종결된 상품 → 평가금액
             annual_evaluation += (evaluation_amount or investment_amount)
-        elif start_year <= year and end_year > year:
-            # 해당 연도에 활성이지만 아직 미종결
-            interim_val = interim_evals.get(str(year))
-            if interim_val is not None:
-                annual_evaluation += interim_val
-            else:
-                annual_evaluation += investment_amount
 
-    # 연간총수익: 연간평가금액 - 총납입금액
+    # 연간총수익: 당해 실현손익 = 회수금액(평가) - 투자원금
     annual_total_profit = annual_evaluation - total_payment
 
-    # 연수익률: 연간총수익 / 총납입금액 * 100
+    # 연수익률: 실현손익 / 당해 투자원금 * 100 (종결 없는 해는 None)
     annual_return_rate = None
     if total_payment > 0:
         annual_return_rate = round(annual_total_profit / total_payment * 100, 2)

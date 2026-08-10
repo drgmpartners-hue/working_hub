@@ -193,7 +193,7 @@ export async function generateInvestmentFlowPdf(data: PdfData, filename: string)
   newPage();
   let curY = sectionTitle(pdf, '1. 연간 투자흐름표', BY);
 
-  const flowHead = [['연도', '연차', '나이', '일시납금액', '연적립금액', '총납입금액', '연간평가금액', '연간총수익', '연수익률', '입금액', '누적입금액', '인출금액', '누적인출액', '순자산', '순이익', '순자산수익률']];
+  const flowHead = [['연도', '연차', '나이', '일시납금액', '연적립금액', '총투자금액', '연간평가금액', '연간총수익', '연수익률', '입금액', '누적입금액', '인출금액', '누적인출액', '순자산', '순이익', '순자산수익률']];
 
   autoTable(pdf, {
     startY: curY,
