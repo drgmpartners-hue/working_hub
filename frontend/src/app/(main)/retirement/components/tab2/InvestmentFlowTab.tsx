@@ -1998,6 +1998,7 @@ export function InvestmentFlowTab() {
         {evalDetailYear !== null && (() => {
           const row = annualFlowData.find(r => r.year === evalDetailYear);
           if (!row) return null;
+          const todayStr = new Date().toISOString().slice(0, 10);
           // 투자일 오름차순(빠른 투자일 → 최근 투자일). 투자일이 없으면 맨 뒤로.
           const items = records
             .filter(r => {
@@ -2123,9 +2124,11 @@ export function InvestmentFlowTab() {
                       // (이전엔 운용중 상품의 평가금액을 무시하고 원금을 표시해, 화면 합계와
                       //  순자산이 서로 다른 값이 되어 검산이 불가능했음)
                       const evalVal = interim ?? (r.evaluation_amount || r.investment_amount);
-                      // 종결 표시인데 종료일이 조회 연도보다 미래 — 백엔드는 아직 운용중으로 합산한다
+                      // 종결 표시인데 종료일이 아직 오지 않은 경우 — 실제 데이터 이상.
+                      // 기준을 '조회 연도'로 잡으면 과거 연도를 볼 때 이듬해 종료 예정인
+                      // 정상 상품까지 걸리므로, 오늘 날짜와 비교한다.
                       const dateMismatch = r.status === 'exit' && !!r.end_date
-                        && parseInt(r.end_date.slice(0, 4)) > row.year;
+                        && r.end_date.slice(0, 10) > todayStr;
                       const bg = rIdx % 2 === 0 ? 'transparent' : 'rgba(255,255,255,0.02)';
                       return (
                         <tr key={r.id} style={{ backgroundColor: bg, borderBottom: '1px solid var(--bg-surface)' }}>
@@ -2140,7 +2143,7 @@ export function InvestmentFlowTab() {
                             <span style={{ fontSize: 10, padding: '2px 6px', borderRadius: 4, backgroundColor: isExit ? 'rgba(16,185,129,0.15)' : 'rgba(59,130,246,0.15)', color: isExit ? '#34D399' : '#60A5FA', fontWeight: 600 }}>{isExit ? '종결' : '운용중'}</span>
                             {dateMismatch && (
                               <span
-                                title={`'종결'로 표시돼 있으나 종료일(${r.end_date})이 ${row.year}년보다 미래입니다.\n순자산은 종료일 기준으로 판단하므로 이 상품은 아직 운용중으로 합산됩니다.\n종료일이 예상 만기일로 잘못 입력되지 않았는지 확인해주세요.`}
+                                title={`'종결'로 표시돼 있으나 종료일(${r.end_date})이 아직 오지 않았습니다.\n집계와 순자산은 종료일을 기준으로 판단하므로, 이 상품은 종료일이 속한 연도에 실현 성과로 잡히고 그전까지는 운용중으로 계산됩니다.\n종료일이 예상 만기일로 잘못 입력되지 않았는지 확인해주세요.`}
                                 style={{ marginLeft: 4, fontSize: 10, cursor: 'help', color: '#FCD34D' }}
                               >⚠️</span>
                             )}
