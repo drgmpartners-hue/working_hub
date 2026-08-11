@@ -298,8 +298,10 @@ body {
 .wh-btn-sm{height:36px;font-size:var(--fs-caption);padding:0 var(--sp-4);}
 
 /* ---- Global Top Nav ---- */
-.wh-topbar{position:sticky;top:0;z-index:40;background:rgba(11,18,32,.72);
-  backdrop-filter:blur(18px);-webkit-backdrop-filter:blur(18px);border-bottom:1px solid var(--border);}
+/* 불투명 — 반투명(rgba .72)이면 스크롤된 표·숫자가 상단바 뒤로 비쳐 읽기 어렵다.
+   backdrop-filter 블러는 브라우저/합성 조건에 따라 적용되지 않는 경우가 있어 의존하지 않는다. */
+.wh-topbar{position:sticky;top:0;z-index:40;background:var(--bg-base);
+  border-bottom:1px solid var(--border);box-shadow:0 4px 14px rgba(0,0,0,.5);}
 /* 상단바 — 콘텐츠와 동일 폭(--wh-maxw)·동일 여백 */
 .wh-topbar-inner{max-width:var(--wh-maxw);margin:0 auto;display:flex;align-items:center;gap:var(--sp-5);height:68px;padding:0 40px;}
 .wh-brand{display:flex;align-items:center;gap:var(--sp-3);flex-shrink:0;}
@@ -451,7 +453,7 @@ body {
 /* ============================================================
    PUBLIC LANDING (PASONA)
    ============================================================ */
-.lp-topbar{position:sticky;top:0;z-index:40;background:rgba(11,18,32,.72);backdrop-filter:blur(18px);-webkit-backdrop-filter:blur(18px);border-bottom:1px solid var(--border);}
+.lp-topbar{position:sticky;top:0;z-index:40;background:var(--bg-base);border-bottom:1px solid var(--border);box-shadow:0 4px 14px rgba(0,0,0,.5);}
 .lp-topbar-inner{max-width:var(--wh-maxw);margin:0 auto;display:flex;align-items:center;justify-content:space-between;height:64px;padding:0 var(--sp-6);}
 .lp-section{max-width:var(--wh-maxw);margin:0 auto;padding:var(--sp-20) var(--sp-12);}
 @media(max-width:768px){.lp-section{padding:var(--sp-12) var(--sp-5);}}

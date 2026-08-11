@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback, useMemo, Fragment } from 'react';
 import dynamic from 'next/dynamic';
 import { useRetirementStore } from '../../hooks/useRetirementStore';
+import { Section } from '../common/Section';
 import { API_URL } from '@/lib/api-url';
 import { authLib } from '@/lib/auth';
 
@@ -130,15 +131,49 @@ function analyzeSim(rows: SimRow[]) {
 }
 
 /* ================================================================
+   입력 검증 — 은퇴나이 미입력 / 적립기간 > 실제 투자기간
+   ================================================================ */
+interface PlanCheck {
+  retAgeMsg: string;   // 희망 은퇴나이 카드 하단 경고
+  savPMsg: string;     // 적립기간 카드 하단 경고
+  issues: string[];    // 배너 · 저장 차단 메시지용 (플랜명 접두사 없음)
+}
+function checkPlan(o: {
+  touched: boolean; curAge: number; startAge: number;
+  retAgeRaw: string; retAge: number; savP: number; invYrs: number;
+}): PlanCheck {
+  const issues: string[] = [];
+  let retAgeMsg = '', savPMsg = '';
+  if (!o.touched) return { retAgeMsg, savPMsg, issues };
+
+  if (o.curAge <= 0) {
+    retAgeMsg = '고객 생년월일이 없어 투자기간을 계산할 수 없습니다.';
+    issues.push('고객 생년월일이 등록되지 않아 투자기간을 계산할 수 없습니다. 고객 정보에서 생년월일을 먼저 등록하세요.');
+  } else if (!o.retAgeRaw.trim() || o.retAge <= 0) {
+    retAgeMsg = '희망 은퇴나이를 입력하세요 — 투자기간이 정해지지 않습니다.';
+    issues.push('희망 은퇴나이가 비어 있습니다. 은퇴나이를 입력해야 적립·거치 기간이 정해집니다.');
+  } else if (o.retAge <= o.startAge) {
+    retAgeMsg = `희망 은퇴나이가 플랜 시작 시점 나이(${o.startAge}세)보다 커야 합니다.`;
+    issues.push(`희망 은퇴나이 ${o.retAge}세가 플랜 시작 시점 나이 ${o.startAge}세보다 크지 않습니다. 은퇴나이를 ${o.startAge + 1}세 이상으로 입력하세요.`);
+  }
+
+  // 적립기간이 실제 투자기간을 넘으면 초과분은 계산에 반영되지 않는다 → 반드시 경고
+  if (o.invYrs > 0 && o.savP > o.invYrs) {
+    savPMsg = `적립기간 ${o.savP}년 > 총 투자기간 ${o.invYrs}년 · ${o.invYrs}년 이하로 수정하세요`;
+    issues.push(`적립기간 ${o.savP}년이 실제 투자기간 ${o.invYrs}년(${o.startAge}세 → ${o.retAge}세)보다 깁니다. 초과한 ${o.savP - o.invYrs}년치 적립은 계산에 반영되지 않으니, 적립기간을 ${o.invYrs}년 이하로 줄이거나 희망 은퇴나이를 늦추세요.`);
+  }
+  return { retAgeMsg, savPMsg, issues };
+}
+const NO_CHECK: PlanCheck = { retAgeMsg: '', savPMsg: '', issues: [] };
+
+/* ================================================================
    스타일
    ================================================================ */
-const SH: React.CSSProperties = {
-  background: 'linear-gradient(135deg, var(--blue-600) 0%, #2D5A8E 100%)',
-  color: '#fff', padding: '14px 20px', borderRadius: '12px 12px 0 0',
-  display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontWeight: 700, fontSize: '15px',
-};
-const SB: React.CSSProperties = {
-  border: '1px solid var(--border-strong)', borderTop: 'none', borderRadius: '0 0 12px 12px', padding: '20px', backgroundColor: 'var(--bg-surface)',
+/** 헤더 우측 아이콘 버튼 (초기화 · 접기) — 공용 Section의 right 슬롯에 넣는다 */
+const HBTN: React.CSSProperties = {
+  padding: '4px 10px', fontSize: '11px', fontWeight: 700, borderRadius: '6px',
+  border: '1px solid rgba(255,255,255,0.4)', backgroundColor: 'rgba(255,255,255,0.12)',
+  color: '#fff', cursor: 'pointer',
 };
 const CARD: React.CSSProperties = { backgroundColor: 'var(--bg-card)', border: '1px solid var(--border-soft)', borderRadius: '8px', padding: '12px 14px' };
 const CARD_G: React.CSSProperties = { background: 'linear-gradient(135deg, var(--success-bg) 0%, var(--success-bg) 100%)', border: '1px solid rgba(16,185,129,0.35)', borderRadius: '8px', padding: '12px 14px' };
@@ -203,8 +238,11 @@ export function DesiredPlanTab() {
   const [showTbl, setShowTbl] = useState(false);
   const [tblData, setTblData] = useState<SimRow[]>([]);
   const [overrides, setOv] = useState<Record<number, { monthly?: number; additional?: number; pension?: number }>>({});
+  const [chkOn, setChkOn] = useState(false);   // 경고 표시 스위치 — '계산'·'저장' 클릭 시에만 켬
+  const [calcOn, setCalcOn] = useState(false); // '계산' 전용 — 시뮬에 필요한 빈 입력 경고
   const [toast, setToast] = useState<{ m: string; t: 'success' | 'error' } | null>(null);
-  const show = (m: string, t: 'success' | 'error') => { setToast({ m, t }); setTimeout(() => setToast(null), 3000); };
+  // 오류 토스트는 문장이 길어 3초로는 못 읽는다 → 7초 유지
+  const show = (m: string, t: 'success' | 'error') => { setToast({ m, t }); setTimeout(() => setToast(null), t === 'error' ? 7000 : 3000); };
 
   /* ---------- 파싱 ---------- */
   const infRate = parseFloat(infIn) || ecos;
@@ -242,6 +280,32 @@ export function DesiredPlanTab() {
   const rStartAge = curAge > 0 ? curAge - (thisYear - rStartYear) : 0;
   const rInvYrs = rStartAge > 0 && rRetAge > rStartAge ? rRetAge - rStartAge : 0;
   const rHoldYrs = rInvYrs > rSavP ? rInvYrs - rSavP : 0;
+
+  /* ---------- 입력 검증 ----------
+     검증 결과는 항상 계산해 두되, 화면 경고는 '계산'·'저장'을 눌렀을 때만 켠다.
+     (입력 중이거나 초기화 직후의 빈 값에 경고가 상주하지 않도록) */
+  // '건드린 플랜'만 검증 — 빈 플랜에 경고를 띄우지 않는다
+  const cTouched = !!(cRetAgeIn || cAmtIn || cHoldIn || cSavPIn || cPenMIn || cInvRIn || cPenRIn);
+  const rTouched = !!(rRetAgeIn || rAmtIn || rHoldIn || rSavPIn || rPenMIn || rInvRIn || rPenRIn);
+  const cChk = useMemo(() => checkPlan({
+    touched: cTouched, curAge, startAge: cStartAge, retAgeRaw: cRetAgeIn, retAge: cRetAge, savP: cSavP, invYrs: cInvYrs,
+  }), [cTouched, curAge, cStartAge, cRetAgeIn, cRetAge, cSavP, cInvYrs]);
+  const rChk = useMemo(() => checkPlan({
+    touched: rTouched, curAge, startAge: rStartAge, retAgeRaw: rRetAgeIn, retAge: rRetAge, savP: rSavP, invYrs: rInvYrs,
+  }), [rTouched, curAge, rStartAge, rRetAgeIn, rRetAge, rSavP, rInvYrs]);
+  // 화면 표시용 — 버튼을 누르기 전까지는 빈 결과
+  const cView = chkOn ? cChk : NO_CHECK;
+  const rView = chkOn ? rChk : NO_CHECK;
+
+  // 시뮬레이션에 필요한 값이 비었는지 — '계산' 버튼에서만 따진다 (저장은 미완성 플랜도 허용)
+  const rMissing = useMemo(() => {
+    const m: string[] = [];
+    if (rInvR <= 0) m.push('기대 투자수익률이 비어 있습니다. 모으는 과정에 적용할 수익률(%)을 입력하세요.');
+    if (rAmt <= 0 && rHold <= 0) m.push('적립액과 거치금액이 모두 비어 있습니다. 둘 중 최소 하나는 입력해야 은퇴금액이 만들어집니다.');
+    return m;
+  }, [rInvR, rAmt, rHold]);
+  const rMissingView = calcOn ? rMissing : [];
+  const rShown = [...rView.issues, ...rMissingView];
 
   /* ---------- 현재플랜 계산 ---------- */
   // 월 연금액(은퇴당시) = 현재가치 기대 연금액 × 물가 반영(tog1)
@@ -393,6 +457,20 @@ export function DesiredPlanTab() {
   /* ---------- 계산 버튼 (추천플랜 기준 편집 테이블) ---------- */
   const canCalc = hasRec;
   function handleCalc() {
+    if (!cid) { show('고객을 먼저 선택하세요.', 'error'); return; }
+    // 어긋나거나 빈 입력으로 시뮬레이션을 돌리면 조용히 틀린 표가 나온다 → 버튼을 누른 이 시점에 막는다
+    const blockers = [...rChk.issues, ...rMissing];
+    if (!rTouched) {
+      setShowRecPlan(true);
+      show('계산할 수 없습니다 — 추천플랜이 비어 있습니다.\n희망 은퇴나이 · 적립기간 · 적립액(또는 거치금액) · 기대 투자수익률을 입력하세요.', 'error');
+      return;
+    }
+    if (blockers.length) {
+      setChkOn(true); setCalcOn(true); setShowRecPlan(true);
+      show(`계산할 수 없습니다 — 추천플랜을 먼저 수정하세요\n\n${blockers.map(m => `• ${m}`).join('\n')}`, 'error');
+      return;
+    }
+    setChkOn(false); setCalcOn(false);
     const sim = buildSim({
       startAge: rStartAge, retAge: rRetAge, savP: rSavP,
       annSav: rAnnSavWon, holding: rHold * 1e4,
@@ -438,7 +516,23 @@ export function DesiredPlanTab() {
 
   async function handleSave() {
     if (!cid) { show('고객을 먼저 선택하세요.', 'error'); return; }
-    if (rPenM <= 0 && cPenM <= 0) { show('현재가치 연금액을 입력해주세요.', 'error'); return; }
+    // 은퇴나이 미입력·적립기간 초과는 계산 자체가 어긋나므로 저장 전에 막는다
+    const blockers = [
+      ...cChk.issues.map(m => `[현재플랜] ${m}`),
+      ...rChk.issues.map(m => `[추천플랜] ${m}`),
+    ];
+    if (blockers.length) {
+      setChkOn(true);
+      if (cChk.issues.length) setShowCurPlan(true);   // 접혀 있으면 펼쳐서 고칠 곳을 보여준다
+      if (rChk.issues.length) setShowRecPlan(true);
+      show(`저장할 수 없습니다 — 아래 항목을 먼저 수정하세요\n\n${blockers.map(m => `• ${m}`).join('\n')}`, 'error');
+      return;
+    }
+    setChkOn(false); setCalcOn(false);
+    if (rPenM <= 0 && cPenM <= 0) {
+      show('저장할 수 없습니다 — 현재플랜의 "현재가치 기대 연금액" 또는 추천플랜의 "현재가치 연금액" 중 최소 한 곳에 월 기준 금액을 입력하세요.', 'error');
+      return;
+    }
     setSaving(true);
     try {
       if (!(await ensureProfile())) { show('프로필 생성 실패', 'error'); setSaving(false); return; }
@@ -677,42 +771,45 @@ export function DesiredPlanTab() {
       </div>
 
       {/* ==================== 현재플랜 (아코디언) ==================== */}
-      <div id="pdf-tab1-target">
-        <div style={showCurPlan ? SH : { ...SH, borderRadius: '12px' }}>
-          <span>현재플랜</span>
-          <div style={{ display: 'flex', gap: '14px', alignItems: 'center' }}>
-            <Tog label="연금액 물가반영" c={tog1} f={() => setTog1(!tog1)} />
-            <Tog label="목표 물가반영" c={tog2} f={() => setTog2(!tog2)} />
-            <button type="button"
-              onClick={() => {
-                if (!window.confirm('현재플랜 입력값을 모두 지울까요?')) return;
-                setPSYIn(String(thisYear)); setCRetAgeIn(''); setCAmtIn(''); setCHoldIn(''); setCSavPIn(''); setCPenMIn(''); setCPenRIn('');
-              }}
-              style={{ padding: '4px 10px', fontSize: '11px', fontWeight: 700, borderRadius: '6px', border: '1px solid rgba(255,255,255,0.4)',
-                backgroundColor: 'rgba(255,255,255,0.12)', color: '#fff', cursor: 'pointer' }}>
-              ↺ 초기화
-            </button>
-            <button type="button" onClick={() => setShowCurPlan(v => !v)}
-              title={showCurPlan ? '접기' : '펼치기'}
-              style={{ width: 26, height: 26, padding: 0, borderRadius: '6px', border: '1px solid rgba(255,255,255,0.4)',
-                backgroundColor: 'rgba(255,255,255,0.12)', color: '#fff', fontSize: '12px', fontWeight: 700, cursor: 'pointer' }}>
-              {showCurPlan ? '▲' : '▼'}
-            </button>
-          </div>
-        </div>
-        {showCurPlan && (
-        <div style={SB}>
+      <Section
+        id="pdf-tab1-target"
+        open={showCurPlan}
+        title={<>현재플랜{!showCurPlan && cView.issues.length > 0 && <WarnBadge n={cView.issues.length} />}</>}
+        right={<>
+          <Tog label="연금액 물가반영" c={tog1} f={() => setTog1(!tog1)} />
+          <Tog label="목표 물가반영" c={tog2} f={() => setTog2(!tog2)} />
+          <button type="button"
+            onClick={() => {
+              if (!window.confirm('현재플랜 입력값을 모두 지울까요?')) return;
+              // 현재플랜에는 '물가' 카드가 없으므로 전 항목을 비운다 (시작연도만 기본값 복원)
+              // — 한 칸이라도 남으면 '현재플랜 입력됨'으로 판정돼 경고가 되살아난다
+              setPSYIn(String(thisYear)); setCRetAgeIn(''); setCAmtIn(''); setCHoldIn(''); setCSavPIn('');
+              setCInvRIn(''); setCPenMIn(''); setCPenRIn('');
+              setChkOn(false); setCalcOn(false);   // 초기화 직후 빈 값에 경고가 남지 않도록
+            }}
+            style={HBTN}>
+            ↺ 초기화
+          </button>
+          <button type="button" onClick={() => setShowCurPlan(v => !v)}
+            title={showCurPlan ? '접기' : '펼치기'}
+            style={{ ...HBTN, width: 26, height: 26, padding: 0, fontSize: '12px' }}>
+            {showCurPlan ? '▲' : '▼'}
+          </button>
+        </>}
+      >
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '12px' }}>
+            <WarnBox items={cView.issues} />
             <InC label="플랜 시작연도" u="년" v={pSYIn} f={v => setPSYIn(v.replace(/\D/g, ''))} />
             <InC label="희망 은퇴나이" u="세" v={cRetAgeIn} f={v => setCRetAgeIn(v.replace(/\D/g, ''))}
-              sub={cInvYrs > 0 ? `총 투자기간: ${cInvYrs}년` : ''} />
+              sub={cView.retAgeMsg || (cInvYrs > 0 ? `총 투자기간: ${cInvYrs}년` : '')}
+              subC={cView.retAgeMsg ? '#F87171' : undefined} err={!!cView.retAgeMsg} />
             {/* 적립액: 월/연 토글 하나 — 월 = 월복리, 연 = 연복리 자동 적용 */}
             <SavAmtCard label="적립액" v={cAmtIn} f={v => setCAmtIn(fi0(v))}
               freq={cFreq} setFreq={setCFreq} amt={cAmt} annSavWon={cAnnSavWon} />
             <InC label="거치금액" u="만원" v={cHoldIn} f={v => setCHoldIn(fi(v))} cur />
 
             <SavPCard label="적립기간" v={cSavPIn} f={v => setCSavPIn(v.replace(/\D/g, ''))}
-              invYrs={cInvYrs} holdYrs={cHoldYrs} />
+              invYrs={cInvYrs} holdYrs={cHoldYrs} warn={cView.savPMsg} maxYrs={cInvYrs} />
             <InC label="투자수익률" u="%" v={cInvRIn} f={v => setCInvRIn(v.replace(/[^\d.]/g, ''))}
               sub="모으는 과정(적립·거치)에 적용" />
             <InC label="현재가치 기대 연금액" u="만원/월" v={cPenMIn} f={v => setCPenMIn(fi(v))} cur />
@@ -730,43 +827,39 @@ export function DesiredPlanTab() {
                 sub={tog1 ? `현재가치 ${fmt(cPenM)}만원 × 물가 ${infRate}% × ${cYrsToRet}년` : '물가 미반영 (연금액 물가반영 꺼짐)'} g hl />
             </div>
           </div>
-        </div>
-        )}
-      </div>
+      </Section>
 
       {/* ==================== 추천플랜 (아코디언 · 기본 접힘) ==================== */}
-      <div id="pdf-tab1-invest">
-        <div style={showRecPlan ? SH : { ...SH, borderRadius: '12px' }}>
-          <span>추천플랜</span>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
-            <span style={{ fontSize: '11px', fontWeight: 500, color: 'rgba(255,255,255,0.75)' }}>
-              시작연도 {rStartYear}년 {hasCur ? '(현재플랜과 동일)' : '(현재플랜 미입력 → 올해부터)'}
-            </span>
-            <button type="button"
-              onClick={() => {
-                if (!window.confirm('추천플랜 입력값을 모두 지울까요?')) return;
-                setRRetAgeIn(''); setRPenMIn(''); setRPenRIn(''); setRInvRIn(''); setRSavPIn(''); setRAmtIn(''); setRHoldIn('');
-              }}
-              style={{ padding: '4px 10px', fontSize: '11px', fontWeight: 700, borderRadius: '6px', border: '1px solid rgba(255,255,255,0.4)',
-                backgroundColor: 'rgba(255,255,255,0.12)', color: '#fff', cursor: 'pointer' }}>
-              ↺ 초기화
-            </button>
-            <button type="button" onClick={() => setShowRecPlan(v => !v)}
-              title={showRecPlan ? '접기' : '펼치기'}
-              style={{ width: 26, height: 26, padding: 0, borderRadius: '6px', border: '1px solid rgba(255,255,255,0.4)',
-                backgroundColor: 'rgba(255,255,255,0.12)', color: '#fff', fontSize: '12px', fontWeight: 700, cursor: 'pointer' }}>
-              {showRecPlan ? '▲' : '▼'}
-            </button>
-          </div>
-        </div>
-        {showRecPlan && (
-        <div style={SB}>
+      <Section
+        id="pdf-tab1-invest"
+        open={showRecPlan}
+        title={<>추천플랜{!showRecPlan && rShown.length > 0 && <WarnBadge n={rShown.length} />}</>}
+        note={`시작연도 ${rStartYear}년 ${hasCur ? '(현재플랜과 동일)' : '(현재플랜 미입력 → 올해부터)'}`}
+        right={<>
+          <button type="button"
+            onClick={() => {
+              if (!window.confirm('추천플랜 입력값을 모두 지울까요?')) return;
+              setRRetAgeIn(''); setRPenMIn(''); setRPenRIn(''); setRInvRIn(''); setRSavPIn(''); setRAmtIn(''); setRHoldIn('');
+              setChkOn(false); setCalcOn(false);   // 초기화 직후 빈 값에 경고가 남지 않도록
+            }}
+            style={HBTN}>
+            ↺ 초기화
+          </button>
+          <button type="button" onClick={() => setShowRecPlan(v => !v)}
+            title={showRecPlan ? '접기' : '펼치기'}
+            style={{ ...HBTN, width: 26, height: 26, padding: 0, fontSize: '12px' }}>
+            {showRecPlan ? '▲' : '▼'}
+          </button>
+        </>}
+      >
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '12px' }}>
             {/* 1행: 은퇴 시점과 모으기 조건 — 이 값들로 은퇴금액이 만들어진다 */}
+            <WarnBox items={rShown} />
             <InC label="희망 은퇴나이" u="세" v={rRetAgeIn} f={v => setRRetAgeIn(v.replace(/\D/g, ''))}
-              sub={rInvYrs > 0 ? `총 투자기간: ${rInvYrs}년` : ''} />
+              sub={rView.retAgeMsg || (rInvYrs > 0 ? `총 투자기간: ${rInvYrs}년` : '')}
+              subC={rView.retAgeMsg ? '#F87171' : undefined} err={!!rView.retAgeMsg} />
             <SavPCard label="적립기간" v={rSavPIn} f={v => setRSavPIn(v.replace(/\D/g, ''))}
-              invYrs={rInvYrs} holdYrs={rHoldYrs} />
+              invYrs={rInvYrs} holdYrs={rHoldYrs} warn={rView.savPMsg} maxYrs={rInvYrs} />
             <SavAmtCard label="적립액" v={rAmtIn} f={v => setRAmtIn(fi0(v))}
               freq={rFreq} setFreq={setRFreq} amt={rAmt} annSavWon={rAnnSavWon} />
             <InC label="거치금액" u="만원" v={rHoldIn} f={v => setRHoldIn(fi0(v))} cur />
@@ -793,14 +886,11 @@ export function DesiredPlanTab() {
                 sub={tog1 ? `현재가치 ${fmt(rPenM)}만원 × 물가 ${infRate}% × ${rYrsToRet}년` : '물가 미반영 (연금액 물가반영 꺼짐)'} g hl />
             </div>
           </div>
-        </div>
-        )}
-      </div>
+      </Section>
 
       {/* ==================== 시뮬레이션 그래프 (즉시 반영) ==================== */}
       {gData.length > 0 && (simCur.length > 0 || simRec.length > 0) && (
-        <div id="pdf-tab1-graph" style={{ backgroundColor: 'var(--bg-card)', border: '1px solid var(--border-soft)', borderRadius: '12px', padding: '20px' }}>
-          <h3 style={{ fontSize: '15px', fontWeight: 700, color: 'var(--blue-400)', margin: '0 0 12px' }}>시뮬레이션 그래프</h3>
+        <Section id="pdf-tab1-graph" title="시뮬레이션 그래프">
           <div style={{ display: 'flex', gap: '20px', marginBottom: '12px', fontSize: '12px' }}>
             {simCur.length > 0 && <LG color="#1E3A5F" label="현재플랜" />}
             {simRec.length > 0 && <LG color="#E85D04" label="추천플랜" />}
@@ -808,18 +898,14 @@ export function DesiredPlanTab() {
           </div>
           <GrowthChart data={gData} retirementAge={rRetAge || cRetAge} showModified={simRec.length > 0}
             savingsEndAge={(simRec.length ? rStartAge + rSavP : cStartAge + cSavP)} />
-        </div>
+        </Section>
       )}
 
       {/* ==================== 플랜분석 ==================== */}
       {(hasCur || hasRec) && (
-        <div id="pdf-tab1-plan">
-          <div style={SH}><span>플랜분석</span>
-            <span style={{ fontSize: '11px', fontWeight: 500, color: 'rgba(255,255,255,0.75)' }}>
-              {hasCur && hasRec ? '현재플랜 vs 추천플랜' : hasRec ? '추천플랜' : '현재플랜'}
-            </span>
-          </div>
-          <div style={SB}>
+        <Section id="pdf-tab1-plan" title="플랜분석"
+          note={hasCur && hasRec ? '현재플랜 vs 추천플랜' : hasRec ? '추천플랜' : '현재플랜'}
+        >
             {/* 가로폭을 좁혀 한눈에 비교 — 중앙 정렬 카드형 */}
             <table style={{ width: '100%', maxWidth: 760, margin: '0 auto', borderCollapse: 'collapse', fontSize: '13px' }}>
               <thead>
@@ -864,30 +950,26 @@ export function DesiredPlanTab() {
                 })}
               </tbody>
             </table>
-          </div>
-        </div>
+        </Section>
       )}
 
       {/* ==================== 계산 버튼 (추천플랜 상세 시뮬레이션) ==================== */}
       <div style={{ display: 'flex', justifyContent: 'center' }}>
-        <button onClick={handleCalc} disabled={!canCalc}
-          title={canCalc ? '' : '추천플랜 입력(은퇴나이·수령기간·연금액·수익률·월적립 또는 거치)을 완성하세요'}
+        {/* 비활성화하지 않는다 — 눌렀을 때 '왜 계산할 수 없는지'를 알려주는 게 먼저 */}
+        <button onClick={handleCalc} disabled={!cid}
+          title={canCalc ? '' : '추천플랜 입력(은퇴나이·적립기간·적립액 또는 거치금액·투자수익률)을 완성하세요'}
           style={{ padding: '12px 0', width: '30%', fontSize: '14px', fontWeight: 700, borderRadius: '8px',
-            cursor: canCalc ? 'pointer' : 'not-allowed', backgroundColor: canCalc ? '#1E3A5F' : '#9CA3AF',
-            color: '#fff', border: 'none', boxShadow: canCalc ? '0 2px 8px rgba(30,58,95,0.3)' : 'none' }}>
+            cursor: cid ? 'pointer' : 'not-allowed', backgroundColor: cid ? '#1E3A5F' : '#9CA3AF',
+            color: '#fff', border: 'none', boxShadow: cid ? '0 2px 8px rgba(30,58,95,0.3)' : 'none' }}>
           계산
         </button>
       </div>
 
       {/* ==================== 은퇴플랜 시뮬레이션 (추천플랜 기준 · 편집 가능) ==================== */}
       {showTbl && dispTbl.length > 0 && (
-        <div id="pdf-tab1-sim" style={{ backgroundColor: 'var(--bg-card)', border: '1px solid var(--border-soft)', borderRadius: '12px', padding: '20px' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px' }}>
-            <h3 style={{ fontSize: '15px', fontWeight: 700, color: 'var(--blue-400)', margin: 0 }}>은퇴플랜 시뮬레이션 (추천플랜)</h3>
-            <button onClick={() => setOv({})}
-              style={{ padding: '5px 14px', fontSize: '12px', fontWeight: 600, color: 'var(--danger)', backgroundColor: 'var(--danger-bg)',
-                border: '1px solid rgba(239,68,68,0.35)', borderRadius: '6px', cursor: 'pointer' }}>수정 초기화</button>
-          </div>
+        <Section id="pdf-tab1-sim" title="은퇴플랜 시뮬레이션 (추천플랜)"
+          right={<button onClick={() => setOv({})} style={HBTN}>수정 초기화</button>}
+        >
           <div style={{ overflowX: 'auto', maxHeight: '500px', overflowY: 'auto' }}>
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px' }}>
               <thead>
@@ -956,7 +1038,7 @@ export function DesiredPlanTab() {
               (단위: 만원) 파란 테두리 = 수정된 값 · 빨간 테두리 = 인출 수정 (은퇴 전 입력 = 중도인출, 해당 연도 기말 차감)
             </div>
           </div>
-        </div>
+        </Section>
       )}
 
       {/* ==================== 저장 버튼 ==================== */}
@@ -971,8 +1053,10 @@ export function DesiredPlanTab() {
       </div>
 
       {toast && <div style={{ position: 'fixed', bottom: 32, left: '50%', transform: 'translateX(-50%)', zIndex: 9999,
-        padding: '12px 24px', borderRadius: 8, backgroundColor: toast.t === 'success' ? '#1E3A5F' : '#EF4444',
-        color: '#fff', fontSize: 14, fontWeight: 500, boxShadow: '0 4px 16px rgba(0,0,0,0.18)' }}>{toast.m}</div>}
+        padding: '14px 22px', borderRadius: 8, backgroundColor: toast.t === 'success' ? '#1E3A5F' : '#B91C1C',
+        color: '#fff', fontSize: 13.5, fontWeight: 500, boxShadow: '0 4px 16px rgba(0,0,0,0.28)',
+        maxWidth: 'min(680px, 92vw)', whiteSpace: 'pre-line', lineHeight: 1.65,
+        textAlign: toast.t === 'error' ? 'left' : 'center' }}>{toast.m}</div>}
 
       {/* ==================== 생년월일 미등록 경고 팝업 ==================== */}
       {showBirthWarn && (
@@ -1015,11 +1099,41 @@ export function DesiredPlanTab() {
 /* ================================================================
    서브 컴포넌트
    ================================================================ */
-function InC({ label, u, v, f, cur, sub, subC, ph, hl, dim }: {
+/** 플랜 섹션 상단 경고 배너 — 무엇을 어떻게 고쳐야 하는지 문장으로 안내 */
+function WarnBox({ items }: { items: string[] }) {
+  if (!items.length) return null;
+  return (
+    <div style={{ gridColumn: '1 / -1', display: 'flex', gap: 10, alignItems: 'flex-start',
+      padding: '11px 14px', borderRadius: 8, backgroundColor: 'rgba(248,113,113,0.10)',
+      border: '1px solid rgba(248,113,113,0.45)' }}>
+      <span style={{ fontSize: 15, lineHeight: 1.5 }}>⚠️</span>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
+        <div style={{ fontSize: 12, fontWeight: 800, color: '#F87171', letterSpacing: '0.02em' }}>입력값을 확인해주세요</div>
+        {items.map((m, i) => (
+          <div key={i} style={{ fontSize: 12.5, lineHeight: 1.6, color: '#FCA5A5', fontWeight: 600 }}>· {m}</div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+/** 아코디언이 접혀 있어도 문제를 알 수 있게 헤더에 붙는 배지 */
+function WarnBadge({ n }: { n: number }) {
+  return (
+    <span style={{ marginLeft: 8, padding: '2px 8px', fontSize: 11, fontWeight: 800, borderRadius: 10,
+      backgroundColor: 'rgba(255,255,255,0.92)', color: '#B91C1C' }}>
+      ⚠ 확인 필요 {n}
+    </span>
+  );
+}
+
+function InC({ label, u, v, f, cur, sub, subC, ph, hl, dim, err }: {
   label: string; u: string; v: string; f: (v: string) => void;
-  cur?: boolean; sub?: string; subC?: string; ph?: string; hl?: boolean; dim?: boolean;
+  cur?: boolean; sub?: string; subC?: string; ph?: string; hl?: boolean; dim?: boolean; err?: boolean;
 }) {
-  const cardStyle: React.CSSProperties = hl
+  const cardStyle: React.CSSProperties = err
+    ? { ...CARD, border: '1.5px solid #F87171', boxShadow: '0 0 0 1px rgba(248,113,113,0.35)' }
+    : hl
     ? { ...CARD, border: '1.5px solid var(--blue-400)', boxShadow: '0 0 0 1px var(--blue-400), 0 0 10px rgba(59,130,246,0.22)' }
     : dim
     ? { ...CARD, opacity: 0.4 }
@@ -1029,10 +1143,11 @@ function InC({ label, u, v, f, cur, sub, subC, ph, hl, dim }: {
       <div style={CL}>{label}</div>
       <div style={{ position: 'relative' }}>
         <input type="text" inputMode={cur ? 'numeric' : undefined} value={v} onChange={e => f(e.target.value)}
-          placeholder={ph} disabled={dim} style={{ ...IS, ...(dim ? { cursor: 'not-allowed' } : {}) }} />
+          placeholder={ph} disabled={dim}
+          style={{ ...IS, ...(dim ? { cursor: 'not-allowed' } : {}), ...(err ? { borderColor: '#F87171' } : {}) }} />
         <span style={US}>{u}</span>
       </div>
-      {sub && <div style={{ fontSize: '10px', color: subC || '#9CA3AF', marginTop: '4px' }}>{sub}</div>}
+      {sub && <div style={{ fontSize: err ? '11px' : '10px', fontWeight: err ? 700 : 400, lineHeight: 1.5, color: subC || '#9CA3AF', marginTop: '4px' }}>{sub}</div>}
     </div>
   );
 }
@@ -1067,26 +1182,44 @@ function SavAmtCard({ label, v, f, freq, setFreq, amt, annSavWon }: {
   );
 }
 
-/** 적립기간 카드 — 시작~은퇴 총 기간에서 적립기간을 뺀 '거치기간'을 표시 */
-function SavPCard({ label, v, f, invYrs, holdYrs }: {
+/** 적립기간 카드 — 시작~은퇴 총 기간에서 적립기간을 뺀 '거치기간'을 표시
+ *  warn: 적립기간이 실제 투자기간을 초과할 때의 경고 문구 (있으면 카드 전체를 오류 상태로) */
+function SavPCard({ label, v, f, invYrs, holdYrs, warn, maxYrs }: {
   label: string; v: string; f: (v: string) => void;
-  invYrs: number; holdYrs: number;
+  invYrs: number; holdYrs: number; warn?: string; maxYrs?: number;
 }) {
+  const err = !!warn;
   return (
-    <div style={CARD}>
+    <div style={err ? { ...CARD, border: '1.5px solid #F87171', boxShadow: '0 0 0 1px rgba(248,113,113,0.35)' } : CARD}>
       <div style={CL}>{label}</div>
       <div style={{ position: 'relative' }}>
-        <input type="text" inputMode="numeric" value={v} onChange={e => f(e.target.value)} style={IS} />
+        <input type="text" inputMode="numeric" value={v} onChange={e => f(e.target.value)}
+          style={{ ...IS, ...(err ? { borderColor: '#F87171' } : {}) }} />
         <span style={US}>년</span>
       </div>
-      {/* 거치기간은 항상 표시 — 계산 불가 시 이유를 명시 (조용히 숨기지 않음) */}
-      {invYrs > 0 ? (
+      {/* 거치기간은 항상 표시 — 계산 불가·초과 입력 시 이유를 명시 (조용히 숨기지 않음) */}
+      {err ? (
+        <>
+          <div style={{ marginTop: '4px', fontSize: '11px', fontWeight: 700, lineHeight: 1.5, color: '#F87171' }}>
+            {warn}
+          </div>
+          {maxYrs != null && maxYrs > 0 && (
+            <button type="button" onClick={() => f(String(maxYrs))}
+              style={{ marginTop: '5px', padding: '3px 8px', fontSize: '10.5px', fontWeight: 700, borderRadius: '5px',
+                cursor: 'pointer', border: '1px solid rgba(248,113,113,0.5)',
+                backgroundColor: 'rgba(248,113,113,0.12)', color: '#FCA5A5' }}>
+              {maxYrs}년으로 맞추기
+            </button>
+          )}
+        </>
+      ) : invYrs > 0 ? (
         <div style={{ marginTop: '4px', fontSize: '11px', fontWeight: 700, color: '#E0B44E' }}>
           거치기간 : {holdYrs}년
         </div>
       ) : (
-        <div style={{ marginTop: '4px', fontSize: '11px', fontWeight: 700, color: '#F87171' }}>
-          거치기간 : 계산 불가 (고객 생년월일·은퇴나이 확인)
+        // 아직 은퇴나이가 없을 뿐이므로 경고가 아닌 안내 톤으로 (빈 값에 붉은 경고를 상주시키지 않는다)
+        <div style={{ marginTop: '4px', fontSize: '10px', lineHeight: 1.5, color: '#9CA3AF' }}>
+          거치기간 : 희망 은퇴나이 입력 후 표시
         </div>
       )}
     </div>

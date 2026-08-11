@@ -5,6 +5,7 @@ import dynamic from 'next/dynamic';
 import { Button } from '@/components/common/Button';
 // PDF export: retirementPlanPdf.ts
 import { useRetirementStore } from '../../hooks/useRetirementStore';
+import { Section } from '../common/Section';
 import { formatCurrency, formatInputCurrency, parseCurrency } from '../../utils/formatCurrency';
 import { API_URL } from '@/lib/api-url';
 import { authLib } from '@/lib/auth';
@@ -75,12 +76,7 @@ function Toast({ message, type }: { message: string; type: 'success' | 'error' }
 /*  스타일 상수                                                          */
 /* ------------------------------------------------------------------ */
 
-const cardStyle: React.CSSProperties = {
-  backgroundColor: 'var(--bg-card)',
-  border: '1px solid var(--border)',
-  borderRadius: '12px',
-  padding: '24px',
-};
+/* 섹션 프레임(파란 헤더바 + 본문)은 공용 <Section>이 담당 — components/common/Section.tsx */
 
 const labelStyle: React.CSSProperties = {
   display: 'block',
@@ -112,14 +108,6 @@ const unitStyle: React.CSSProperties = {
   fontSize: '12px',
   color: 'var(--text-muted)',
   pointerEvents: 'none',
-};
-
-const sectionTitleStyle: React.CSSProperties = {
-  fontSize: '15px',
-  fontWeight: 600,
-  color: 'var(--blue-400)',
-  marginBottom: '20px',
-  marginTop: 0,
 };
 
 /* ------------------------------------------------------------------ */
@@ -717,22 +705,15 @@ export function RetirementPlanTab() {
       </div>
 
       {/* 상단: 기본정보 (1번탭 데이터 읽기전용) */}
-      <div id="pdf-tab2-info" style={cardStyle}>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '16px' }}>
-          <h3 style={{ ...sectionTitleStyle, marginBottom: 0 }}>기본정보</h3>
-          <span style={{ fontSize: '12px', color: 'var(--text-muted)' }}>
-            수정은 1번탭(희망은퇴플랜)에서 가능합니다.
-          </span>
-        </div>
+      <Section id="pdf-tab2-info" title="기본정보" note="수정은 1번탭(은퇴플랜 설계)에서 가능합니다.">
         <BasicInfoCard
           data={desiredPlanData}
           currentAge={selectedCustomer?.currentAge ?? null}
         />
-      </div>
+      </Section>
 
       {/* 연도별 예상 평가금액 (1번탭 시뮬레이션 데이터) */}
-      <div id="pdf-tab2-table" style={cardStyle}>
-        <h3 style={sectionTitleStyle}>연도별 예상 평가금액</h3>
+      <Section id="pdf-tab2-table" title="연도별 예상 평가금액" note="(단위: 만원)">
         {desiredPlanData?.simulation_data && desiredPlanData.simulation_data.length > 0 ? (
           <div style={{ overflowX: 'auto' }}>
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px' }}>
@@ -784,19 +765,17 @@ export function RetirementPlanTab() {
                 }); })()}
               </tbody>
             </table>
-            <div style={{ textAlign: 'right', fontSize: 11, color: 'var(--text-muted)', marginTop: 4 }}>(단위: 만원)</div>
           </div>
         ) : (
           <div style={{ padding: 40, textAlign: 'center', color: 'var(--text-muted)', fontSize: 14 }}>
             1번탭에서 복리 성장 시뮬레이션을 계산하고 저장해주세요.
           </div>
         )}
-      </div>
+      </Section>
 
       {/* 성장 그래프 */}
       {desiredPlanData?.simulation_data && desiredPlanData.simulation_data.length > 0 && (
-        <div id="pdf-tab2-growth-chart" style={cardStyle}>
-          <h3 style={sectionTitleStyle}>성장 그래프</h3>
+        <Section id="pdf-tab2-growth-chart" title="성장 그래프">
           <RetirementGrowthChart
             data={desiredPlanData.simulation_data.map((row: Record<string, unknown>) => ({
               age: Number(row.age ?? 0),
@@ -807,7 +786,7 @@ export function RetirementPlanTab() {
             }))}
             retirementAge={desiredPlanData.desired_retirement_age ?? 65}
           />
-        </div>
+        </Section>
       )}
 
       {/* -- 기존 시뮬레이션 설정/테이블/그래프 제거 완료 -- */}

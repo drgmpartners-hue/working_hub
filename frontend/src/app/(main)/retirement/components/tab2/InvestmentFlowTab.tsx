@@ -5,6 +5,7 @@ import { createPortal } from 'react-dom';
 import dynamic from 'next/dynamic';
 import { Modal } from '@/components/common/Modal';
 import { useRetirementStore } from '../../hooks/useRetirementStore';
+import { Section } from '../common/Section';
 import { formatCurrency, formatInputCurrency, parseCurrency } from '../../utils/formatCurrency';
 import { API_URL } from '@/lib/api-url';
 import { authLib } from '@/lib/auth';
@@ -130,6 +131,16 @@ const RECORD_TYPE_LABELS: Record<string, string> = {
   additional_savings: '추가적립',
   withdrawal: '인출',
 };
+
+/** 섹션 본문 안의 하위 블록 제목 — 파란 헤더바(Section)보다 한 단계 낮은 위계 */
+function SubHead({ label }: { label: string }) {
+  return (
+    <div className="no-print" style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
+      <span style={{ width: 3, height: 14, backgroundColor: 'var(--blue-500)', borderRadius: 2 }} />
+      <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--text-secondary)' }}>{label}</span>
+    </div>
+  );
+}
 
 /* ------------------------------------------------------------------ */
 /*  인라인 편집 스타일                                                   */
@@ -1628,10 +1639,12 @@ export function InvestmentFlowTab() {
 
           .investment-flow-container { gap: 0 !important; padding: 0 !important; }
 
-          /* 각 섹션 페이지 분리 */
+          /* 각 섹션 페이지 분리 —
+             1번 섹션(연간 투자흐름표)은 자산 성장 그래프·100세 은퇴플로우까지
+             하나의 섹션이므로 내부에서 끊지 않고 이어서 출력한다 */
           .print-section-flow { page-break-after: always; }
-          .print-section-graphs { page-break-after: always; }
-          .print-section-lifetime { page-break-after: always; }
+          .print-section-graphs,
+          .print-section-lifetime { page-break-before: avoid; page-break-after: auto; }
           .print-section-deposit { page-break-after: always; }
           .print-section-records { page-break-before: auto; }
 
@@ -1731,18 +1744,13 @@ export function InvestmentFlowTab() {
       {/* ===== 섹터1: 연간 투자흐름표 ===== */}
       <section id="print-sec-flow" className="print-section-flow">
         <div className="print-section-title" style={{ fontSize: 13, fontWeight: 700, color: 'var(--blue-400)', marginBottom: 8, paddingBottom: 4, borderBottom: '2px solid var(--blue-500)' }}>1. 연간 투자흐름표</div>
+        <Section title="연간 투자흐름표" note="(단위: 원)" headClassName="no-print">
         <div className="no-print" style={{
           display: 'flex',
           alignItems: 'center',
-          justifyContent: 'space-between',
+          justifyContent: 'flex-end',
           marginBottom: 12,
         }}>
-          <h3 style={{ margin: 0, fontSize: 15, fontWeight: 600, color: 'var(--blue-400)' }}>
-            연간 투자흐름표
-            <span style={{ marginLeft: 8, fontSize: 12, fontWeight: 400, color: 'var(--text-muted)' }}>
-              (단위: 원)
-            </span>
-          </h3>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
             {/* 계좌 필터 */}
             <select
@@ -2159,11 +2167,11 @@ export function InvestmentFlowTab() {
           );
         })()}
 
-      </section>
-
-        {/* 그래프 버튼 행 - 우측 정렬 */}
+        {/* ── 하위 보기 전환 ──────────────────────────────────────────
+             자산 성장 그래프·100세 은퇴플로우는 연간 투자흐름표에서 파생되는
+             '보는 방식'이므로 별도 섹션으로 올리지 않고 이 섹션 본문 안에 둔다 */}
         {annualFlowData.length > 0 && (
-          <div style={{ marginTop: 12, display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
+          <div className="no-print" style={{ marginTop: 18, paddingTop: 14, borderTop: '1px solid var(--border)', display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
             <button
               onClick={() => setShowGrowthChart(!showGrowthChart)}
               className="no-print-btn"
@@ -2183,7 +2191,8 @@ export function InvestmentFlowTab() {
 
         {/* 자산 성장 그래프 — 고객 설명용 단일 그래프 (색면 = 수익 서사) */}
         <section id="print-sec-graphs" className="print-section-graphs">
-          <div className="print-section-title" style={{ fontSize: 13, fontWeight: 700, color: 'var(--blue-400)', marginBottom: 8, paddingBottom: 4, borderBottom: '2px solid var(--blue-500)' }}>2. 자산 성장 그래프</div>
+          {/* 1번 섹션의 하위 블록 — 번호 없이 작은 제목으로 (페이지도 나누지 않는다) */}
+          <div className="print-section-title" style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-secondary)', marginTop: 10, marginBottom: 6 }}>· 자산 성장 그래프</div>
           {showGrowthChart && annualFlowData.length > 0 && (() => {
             // 요약 카드: 최신 연도 기준 헤드라인 숫자 (넣은 돈 → 현재 순자산 → 순이익)
             const latest = [...annualFlowData].sort((a, b) => a.year - b.year).at(-1)!;
@@ -2198,8 +2207,10 @@ export function InvestmentFlowTab() {
                 <div style={{ fontSize: 17, fontWeight: 800, color }}>{value}{sub && <span style={{ fontSize: 12, fontWeight: 700, marginLeft: 6 }}>{sub}</span>}</div>
               </div>
             );
+            // 가로폭 제한 없음 — 섹션 폭을 그대로 쓴다
             return (
-              <div style={{ marginTop: 12, padding: '16px 20px', border: '1px solid var(--border)', borderRadius: 8, backgroundColor: 'var(--bg-card)', maxWidth: 1100, marginLeft: 'auto', marginRight: 'auto' }}>
+              <div style={{ marginTop: 12, padding: '16px 20px', border: '1px solid var(--border)', borderRadius: 8, backgroundColor: 'var(--bg-card)' }}>
+                <SubHead label="자산 성장 그래프" />
                 {/* 헤드라인 요약 카드 */}
                 <div style={{ display: 'flex', gap: 10, marginBottom: 14, flexWrap: 'wrap' }}>
                   {card('순입금액', `${netDeposit.toLocaleString()}원`, 'var(--text-primary)')}
@@ -2228,7 +2239,9 @@ export function InvestmentFlowTab() {
         {/* 100세 은퇴플로우 */}
         {showLifetimeFlow && (
           <section id="print-sec-lifetime" className="print-section-lifetime" style={{ marginTop: 12 }}>
-            <div className="print-section-title" style={{ fontSize: 13, fontWeight: 700, color: 'var(--blue-400)', marginBottom: 8, paddingBottom: 4, borderBottom: '2px solid var(--blue-500)' }}>3. 100세 은퇴플로우</div>
+            <div className="print-section-title" style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-secondary)', marginTop: 10, marginBottom: 6 }}>· 100세 은퇴플로우</div>
+            <div style={{ marginTop: 12, padding: '16px 20px', border: '1px solid var(--border)', borderRadius: 8, backgroundColor: 'var(--bg-card)' }}>
+            <SubHead label="100세 은퇴플로우" />
             <LifetimeRetirementFlow
               currentAge={(() => {
                 if (!selectedCustomer?.birthDate) return null;
@@ -2243,21 +2256,22 @@ export function InvestmentFlowTab() {
               appliedYears={appliedYears}
               onRowsChange={(rows: any[]) => { setLifetimeRowsForPdf(rows); lifetimeRowsRef.current = rows; }}
             />
+            </div>
           </section>
         )}
+        </Section>
+      </section>
 
       {/* ===== 섹터2: 예수금 계좌 기록 ===== */}
       <section id="print-sec-deposit" className="print-section-deposit">
-        <div className="print-section-title" style={{ fontSize: 13, fontWeight: 700, color: 'var(--blue-400)', marginBottom: 8, paddingBottom: 4, borderBottom: '2px solid var(--blue-500)' }}>4. 예수금 계좌 기록</div>
+        <div className="print-section-title" style={{ fontSize: 13, fontWeight: 700, color: 'var(--blue-400)', marginBottom: 8, paddingBottom: 4, borderBottom: '2px solid var(--blue-500)' }}>2. 예수금 계좌 기록</div>
+        <Section title="예수금 계좌 기록" headClassName="no-print">
         <div className="no-print" style={{
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'space-between',
           marginBottom: 12,
         }}>
-          <h3 style={{ margin: 0, fontSize: 15, fontWeight: 600, color: 'var(--blue-400)' }}>
-            예수금 계좌 기록
-          </h3>
           <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginLeft: 'auto' }}>
             <label style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 12, color: 'var(--text-muted)', cursor: 'pointer' }}>
               <input type="checkbox" checked={showHidden} onChange={() => setShowHidden(!showHidden)} style={{ cursor: 'pointer' }} />
@@ -2846,11 +2860,13 @@ export function InvestmentFlowTab() {
             })}
           </div>
         )}
+        </Section>
       </section>
 
       {/* ===== 섹터3: 투자기록 테이블 ===== */}
       <section id="print-sec-records" className="print-section-records">
-        <div className="print-section-title" style={{ fontSize: 13, fontWeight: 700, color: 'var(--blue-400)', marginBottom: 8, paddingBottom: 4, borderBottom: '2px solid var(--blue-500)' }}>5. 투자기록</div>
+        <div className="print-section-title" style={{ fontSize: 13, fontWeight: 700, color: 'var(--blue-400)', marginBottom: 8, paddingBottom: 4, borderBottom: '2px solid var(--blue-500)' }}>3. 투자기록</div>
+        <Section title="투자기록" headClassName="no-print">
         <div className="no-print" style={{
           display: 'flex',
           alignItems: 'center',
@@ -2858,10 +2874,6 @@ export function InvestmentFlowTab() {
           marginBottom: 12,
         }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-            <h3 style={{ margin: 0, fontSize: 15, fontWeight: 600, color: 'var(--blue-400)' }}>
-              투자기록
-            </h3>
-
             {/* 상태 필터 버튼 그룹 */}
             <div style={{ display: 'flex', gap: 4 }}>
               {([
@@ -3484,6 +3496,7 @@ export function InvestmentFlowTab() {
             </tbody>
           </table>
         </div>
+        </Section>
       </section>
 
       {/* ===== 중간평가 모달 ===== */}

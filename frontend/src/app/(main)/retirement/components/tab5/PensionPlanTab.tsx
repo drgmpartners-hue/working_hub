@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import dynamic from 'next/dynamic';
 import { useRetirementStore } from '../../hooks/useRetirementStore';
+import { Section } from '../common/Section';
 // PDF export는 pensionPlanPdf.ts 사용
 import { API_URL } from '@/lib/api-url';
 import { authLib } from '@/lib/auth';
@@ -40,14 +41,7 @@ function fmtW(n: number): string {
 /*  스타일                                                              */
 /* ------------------------------------------------------------------ */
 
-const cardStyle: React.CSSProperties = {
-  backgroundColor: 'var(--bg-card)', border: '1px solid var(--border)',
-  borderRadius: '12px', padding: '24px',
-};
-const sectionTitle: React.CSSProperties = {
-  fontSize: '16px', fontWeight: 700, color: 'var(--blue-400)',
-  marginBottom: '20px', marginTop: 0,
-};
+/* 섹션 프레임(파란 헤더바 + 본문)은 공용 <Section>이 담당 — components/common/Section.tsx */
 const subTitle: React.CSSProperties = {
   fontSize: '14px', fontWeight: 600, color: 'var(--text-secondary)', marginBottom: '12px',
 };
@@ -544,8 +538,7 @@ export function PensionPlanTab() {
       </div>
 
       {/* ===== 섹션1: 연금전환 옵션 비교 ===== */}
-      <div id="pdf-tab3-compare" style={cardStyle}>
-        <h3 style={sectionTitle}>연금전환 옵션 비교</h3>
+      <Section id="pdf-tab3-compare" title="연금전환 옵션 비교">
         <div style={{ fontSize: '12px', color: 'var(--text-muted)', marginBottom: '12px' }}>
           연금재원 — A: <strong style={{ color: 'var(--blue-400)' }}>{fmtW(pensionFundA)}</strong>
           {recPenRate && pensionFundB > 0 && (<>{', '}B: <strong style={{ color: '#EA580C' }}>{fmtW(pensionFundB)}</strong></>)}
@@ -620,11 +613,10 @@ export function PensionPlanTab() {
         <div style={{ marginTop: '12px', padding: '10px 14px', backgroundColor: 'var(--bg-surface)', borderRadius: '6px', fontSize: '11px', color: 'var(--text-muted)', lineHeight: 1.6 }}>
           ※ 본 표는 고객의 이해를 돕기 위한 참고용 시뮬레이션이며, 실제 연금전환 조건 및 수령액은 보험사별로 상이할 수 있습니다. 정확한 상담은 담당 보험사를 통해 문의해 주세요.
         </div>
-      </div>
+      </Section>
 
       {/* ===== 섹션2: 연금전환 옵션 — 탭 없이 3종 모두 표시 (PDF에 전부 출력되도록) ===== */}
-      <div style={cardStyle} id="pdf-tab3-option">
-        <h3 style={sectionTitle}>연금전환 옵션</h3>
+      <Section id="pdf-tab3-option" title="연금전환 옵션" note="종신형 · 확정형 · 무한지급형">
 
         {/* 종신형 */}
         <div id="pension-opt-lifetime" style={{ marginBottom: '48px', paddingBottom: '40px', borderBottom: '1px solid var(--border)' }}>
@@ -652,7 +644,7 @@ export function PensionPlanTab() {
           </div>
           <InfiniteSection pv={pensionFund} rate={infiniteRate} setRate={setInfiniteRate} period={infinitePeriod} setPeriod={setInfinitePeriod} retireAge={retireAge} result={infiniteResult} pension={infinitePension} setPension={setInfinitePension} />
         </div>
-      </div>
+      </Section>
 
       {toast && <Toast message={toast.message} type={toast.type} />}
     </div>
