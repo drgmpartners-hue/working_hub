@@ -230,6 +230,8 @@ export async function generateInvestmentFlowPdf(data: PdfData, filename: string)
     didDrawPage: () => { drawHeader(pdf, c); },
     willDrawPage: (d: any) => { if (d.pageNumber > 1) pageNum++; },
   });
+  // 이후 블록이 '남은 공간에 이어 붙일지'를 판단할 수 있도록 표 끝 위치를 커서에 반영한다
+  curY = (pdf as any).lastAutoTable?.finalY ?? curY;
   // 푸터는 아래 그래프 섹션에서 배치가 확정된 뒤 그린다(같은 페이지에 이어 붙는 경우 중복 방지)
 
   // ==================== 2. 투자흐름 분석 그래프 ====================
@@ -239,18 +241,17 @@ export async function generateInvestmentFlowPdf(data: PdfData, filename: string)
 
     if (chartEls.length > 0) {
       const MIN_CHART_H = 42;          // 이보다 좁으면 그래프가 읽히지 않으므로 다음 페이지로
-      const tableEndY = (pdf as any).lastAutoTable?.finalY ?? curY;
-      let avail = BY + BH - tableEndY - 12;   // 표 아래 남은 높이(섹션 제목·여백 제외)
+      let avail = BY + BH - curY - 12;   // 표 아래 남은 높이(섹션 제목·여백 제외)
 
       if (avail >= MIN_CHART_H) {
         // 같은 페이지에 이어 붙인다
-        curY = sectionTitle(pdf, '2. 투자흐름 분석 그래프', tableEndY + 7);
+        curY = sectionTitle(pdf, '2. 투자흐름 분석 그래프', curY + 7);
       } else {
         drawFooter(pdf, pageNum);
         newPage();
         curY = sectionTitle(pdf, '2. 투자흐름 분석 그래프', BY);
-        avail = BY + BH - curY - 6;
       }
+      avail = BY + BH - curY - 6;   // 제목 배치 후 실제 남은 높이로 다시 계산
 
       for (let i = 0; i < chartEls.length; i++) {
         const el = chartEls[i];
@@ -293,9 +294,16 @@ export async function generateInvestmentFlowPdf(data: PdfData, filename: string)
   }
 
   // ==================== 3. 100세 은퇴플로우 ====================
+  // 1~3은 '연간 투자흐름표' 한 섹션의 하위 내용이므로 페이지를 강제로 나누지 않고
+  // 앞 내용 아래 남은 공간에 이어 붙인다. 공간이 부족할 때만 다음 페이지로 넘어간다.
   {
-    newPage();
-    curY = sectionTitle(pdf, '3. 100세 은퇴플로우', BY);
+    const MIN_LIFE_H = 60;                       // 제목+기본정보+표 머리가 최소한 들어갈 높이
+    if (BY + BH - curY - 12 >= MIN_LIFE_H) {
+      curY = sectionTitle(pdf, '3. 100세 은퇴플로우', curY + 7);
+    } else {
+      newPage();
+      curY = sectionTitle(pdf, '3. 100세 은퇴플로우', BY);
+    }
 
     // 기본정보 (3그룹: 기간설정 / 투자계획 / 목표)
     if (Object.keys(data.lifetimeInfo).length > 0) {
@@ -378,25 +386,37 @@ export async function generateInvestmentFlowPdf(data: PdfData, filename: string)
         didDrawPage: () => { drawHeader(pdf, c); },
         willDrawPage: (d: any) => { if (d.pageNumber > 1) pageNum++; },
       });
-      drawFooter(pdf, pageNum);
+      // 푸터는 아래 그래프 배치가 확정된 뒤 그린다 (같은 페이지에 이어 붙는 경우 중복 방지)
+      curY = (pdf as any).lastAutoTable?.finalY ?? curY;
     }
 
-    // 100세 은퇴플로우 그래프
+    // 100세 은퇴플로우 그래프 — 표 아래 남은 공간에 이어 붙이고, 부족할 때만 다음 페이지
     const lifetimeChartEl = document.getElementById('print-chart-lifetime');
+    let footerDone = false;
     if (lifetimeChartEl) {
       const imgData = await captureChart(lifetimeChartEl);
       if (imgData) {
-        newPage();
-        curY = sectionTitle(pdf, '3. 100세 은퇴플로우 그래프', BY);
+        const MIN_CHART_H = 42;                  // 이보다 좁으면 그래프가 읽히지 않는다
+        if (BY + BH - curY - 12 >= MIN_CHART_H) {
+          curY = sectionTitle(pdf, '3-1. 100세 은퇴플로우 그래프', curY + 7);
+        } else {
+          drawFooter(pdf, pageNum);
+          newPage();
+          curY = sectionTitle(pdf, '3-1. 100세 은퇴플로우 그래프', BY);
+        }
+        const avail = BY + BH - curY - 6;
 
         const img = new Image();
         await new Promise<void>(resolve => { img.onload = () => resolve(); img.src = imgData; });
         const imgW = CW - 4;
-        const imgH = Math.min((img.height * imgW) / img.width, BH - 10);
+        const imgH = Math.min((img.height * imgW) / img.width, Math.max(MIN_CHART_H - 6, avail));
         pdf.addImage(imgData, 'JPEG', M + 2, curY, imgW, imgH);
+        curY += imgH;
         drawFooter(pdf, pageNum);
+        footerDone = true;
       }
     }
+    if (!footerDone) drawFooter(pdf, pageNum);
   }
 
   // ==================== 4. 예수금 계좌 기록 ====================
