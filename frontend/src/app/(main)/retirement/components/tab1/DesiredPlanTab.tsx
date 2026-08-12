@@ -130,6 +130,55 @@ function analyzeSim(rows: SimRow[]) {
   };
 }
 
+/** 실질가치 체감을 보여줄 기준 나이.
+ *  100세는 할인 기간이 60년 가까이 되어 숫자가 비현실적으로 작아지므로 80세를 쓴다. */
+const PV_AGE = 80;
+
+/** 한 플랜의 월 연금액 추이 (현재나이 → 100세).
+ *  nominal  = 그 나이에 실제로 받는 금액(명목)
+ *  original = 그 금액을 오늘의 돈으로 환산한 값
+ *  은퇴 전은 연금액 물가반영(tog1), 은퇴 후는 목표 물가반영(tog2)이 모양을 결정한다.
+ *  재원 고갈은 반영하지 않는 순수 계산값. */
+function penSeries(o: {
+  penInput: number; penRet: number; retAge: number; growBase: number;
+  curAge: number; infPct: number; tog1: boolean; tog2: boolean;
+}): { age: number; nominal: number; original: number }[] {
+  const { penInput, penRet, retAge, growBase, curAge, infPct, tog1, tog2 } = o;
+  if (penInput <= 0 || curAge <= 0 || growBase <= 0 || retAge <= curAge) return [];
+  const f = 1 + infPct / 100;
+  const out: { age: number; nominal: number; original: number }[] = [];
+  for (let a = curAge; a <= 100; a++) {
+    const nominal = a < retAge
+      ? (tog1 ? penInput * Math.pow(f, a - growBase) : penInput)
+      : (tog2 ? penRet * Math.pow(f, a - retAge) : penRet);
+    out.push({
+      age: a,
+      nominal: Math.round(nominal),
+      original: Math.round(nominal / Math.pow(f, a - curAge)),   // 전 구간 오늘 기준
+    });
+  }
+  return out;
+}
+
+/** PV_AGE 시점 월 연금액의 현재가치 (만원).
+ *  재원 고갈 여부와 무관한 순수 비교값이다 — 시뮬레이션 결과를 참조하지 않는다.
+ *   withInfl(목표 물가반영) ON  → 인출액이 물가만큼 증액되므로 실질가치는 은퇴시와 동일
+ *   withInfl OFF → 명목이 고정이라 (PV_AGE − 기준나이)년치 물가만큼 줄어든다
+ *  null = 은퇴나이가 PV_AGE 이상이라 그 시점에 아직 연금 수령 전 */
+function pvAtAge(penM: number, retAge: number, baseAge: number, infPct: number, withInfl: boolean): number | null {
+  if (penM <= 0 || retAge <= 0 || retAge >= PV_AGE) return null;
+  const f = 1 + infPct / 100;
+  const grow = withInfl ? Math.pow(f, PV_AGE - retAge) : 1;          // 수령 시점까지의 증액
+  const disc = baseAge > 0 ? Math.pow(f, PV_AGE - baseAge) : 1;      // 기준 시점으로 되돌리는 할인
+  return Math.round((penM * grow) / disc);
+}
+
+/** 은퇴시 현재가치보다 눈에 띄게 줄었으면 경고색 — 물가 미반영의 결과를 드러낸다 */
+function pv80Color(pv: number | null, pvAtRet: number): string {
+  if (pv === null || pv <= 0) return 'var(--text-muted)';
+  return pvAtRet > 0 && pv < pvAtRet * 0.95 ? '#FBBF24' : '#7CC0FF';
+}
+
 /* ================================================================
    입력 검증 — 은퇴나이 미입력 / 적립기간 > 실제 투자기간
    ================================================================ */
@@ -177,7 +226,8 @@ const HBTN: React.CSSProperties = {
 };
 const CARD: React.CSSProperties = { backgroundColor: 'var(--bg-card)', border: '1px solid var(--border-soft)', borderRadius: '8px', padding: '12px 14px' };
 const CARD_G: React.CSSProperties = { background: 'linear-gradient(135deg, var(--success-bg) 0%, var(--success-bg) 100%)', border: '1px solid rgba(16,185,129,0.35)', borderRadius: '8px', padding: '12px 14px' };
-const CL: React.CSSProperties = { fontSize: '11px', color: 'var(--text-muted)', marginBottom: '6px', fontWeight: 500 };
+/* 카드 제목 — 입력칸을 훑을 때 무슨 항목인지 먼저 잡히도록 굵게·밝게 (보조문구보다 확실히 위) */
+const CL: React.CSSProperties = { fontSize: '12.5px', color: 'var(--text-primary)', marginBottom: '7px', fontWeight: 700, letterSpacing: '-0.01em' };
 const CV: React.CSSProperties = { fontSize: '18px', fontWeight: 700, color: 'var(--blue-400)', fontFamily: 'Inter, monospace' };
 const IS: React.CSSProperties = {
   width: '100%', height: '32px', padding: '0 52px 0 10px', fontSize: '14px', color: 'var(--text-primary)',
@@ -235,6 +285,8 @@ export function DesiredPlanTab() {
   const [showCurPlan, setShowCurPlan] = useState(true);    // 현재플랜 아코디언 (기본 펼침)
   const [showRecPlan, setShowRecPlan] = useState(false);   // 추천플랜 아코디언 (기본 접힘)
   const [saving, setSaving] = useState(false);
+  // 시뮬레이션 그래프 보기 전환 — 'fund'(은퇴금액)가 기본이자 고정값
+  const [gMode, setGMode] = useState<'fund' | 'penCur' | 'penRec'>('fund');
   const [showTbl, setShowTbl] = useState(false);
   const [tblData, setTblData] = useState<SimRow[]>([]);
   const [overrides, setOv] = useState<Record<number, { monthly?: number; additional?: number; pension?: number }>>({});
@@ -309,10 +361,17 @@ export function DesiredPlanTab() {
 
   /* ---------- 현재플랜 계산 ---------- */
   // 월 연금액(은퇴당시) = 현재가치 기대 연금액 × 물가 반영(tog1)
-  const cYrsToRet = curAge > 0 && cRetAge > curAge ? cRetAge - curAge : 0;
+  // 현재플랜의 물가 적용 기간 = 플랜 시작연도 → 은퇴나이 (= 총 투자기간).
+  // 추천플랜(오늘 → 은퇴)과는 독립적인 기준이며, 정방향·역방향 모두 이 기간을 쓴다.
+  const cYrsToRet = cInvYrs;
   const curPenM = cPenM > 0
     ? (tog1 && cYrsToRet > 0 ? Math.round(cPenM * Math.pow(1 + infRate / 100, cYrsToRet)) : cPenM)
     : 0;
+  // 현재가치 환산 — 물가반영 토글과 무관하게 항상 계산한다
+  // (은퇴당시 금액이 플랜 시작 시점 기준으로 얼마짜리인지 늘 보여주기 위함)
+  const curPenPV = curPenM > 0 && cYrsToRet > 0
+    ? Math.round(curPenM / Math.pow(1 + infRate / 100, cYrsToRet))
+    : curPenM;
 
   const simCur = useMemo(() => {
     if (!hasCur) return [];
@@ -342,6 +401,10 @@ export function DesiredPlanTab() {
   const recPenM = rPenM > 0
     ? (tog1 && rYrsToRet > 0 ? Math.round(rPenM * Math.pow(1 + infRate / 100, rYrsToRet)) : rPenM)
     : 0;
+  // 현재가치 환산 — 추천플랜은 지금 제안하는 플랜이므로 '오늘(현재나이)'이 기준
+  const recPenPV = recPenM > 0 && rYrsToRet > 0
+    ? Math.round(recPenM / Math.pow(1 + infRate / 100, rYrsToRet))
+    : recPenM;
 
   // 모으기 우선 로직: 팩트(투자수익률·적립기간·월적립액·거치금액)로 은퇴금액을 만들고,
   // 그 금액이 은퇴 시점에 홀드된 뒤 연금수익률·인출 방식에 따라 이후 그래프가 달라진다.
@@ -369,6 +432,34 @@ export function DesiredPlanTab() {
     if (rate <= 0) return 0;
     return recPenM * 1e4 * 12 / rate;
   }, [recPenM, rPenR, infRate, tog2]);
+
+  /* ---------- 80세 시점 연금의 현재가치 ----------
+     목표 물가반영을 켜면 인출액이 물가만큼 증액되어 실질가치가 유지되고(= 은퇴시와 동일),
+     끄면 명목이 고정이라 실질가치가 계속 줄어든다. 그 차이를 숫자로 보여준다.
+     기준 시점은 월 연금액 카드와 동일 — 현재플랜은 플랜 시작 시점, 추천플랜은 오늘. */
+  const cPen80 = pvAtAge(curPenM, cRetAge, cStartAge, infRate, tog2);
+  const rPen80 = pvAtAge(recPenM, rRetAge, curAge, infRate, tog2);
+
+  /* ---------- 월 연금액 현재가치 추이 (현재나이 → 100세) ----------
+     두 토글이 각각 어느 구간을 바꾸는지 한 줄로 보여준다. 전 구간 '오늘의 돈' 기준이라
+     현재플랜·추천플랜을 같은 축에서 바로 비교할 수 있다. 재원 고갈은 반영하지 않는 순수 계산값.
+
+       은퇴 전 구간 = 연금액 물가반영(tog1)이 결정
+         ON  → 입력한 현재가치가 물가만큼 증액되므로 실질 수평 (65세에도 1,000만원)
+         OFF → 입력액이 명목 고정이라 실질 하락 (65세엔 620만원)
+       은퇴 후 구간 = 목표 물가반영(tog2)이 결정
+         ON  → 인출액이 물가만큼 증액되어 은퇴시 실질가치 유지
+         OFF → 인출액 명목 고정이라 계속 하락                                */
+  // growBase = 연금액 물가반영 배수를 재는 시작 나이 (현재플랜은 플랜 시작 시점, 추천플랜은 오늘)
+  const pvCurData = useMemo(() => penSeries({
+    penInput: cPenM, penRet: curPenM, retAge: cRetAge, growBase: cStartAge,
+    curAge, infPct: infRate, tog1, tog2,
+  }), [cPenM, curPenM, cRetAge, cStartAge, curAge, infRate, tog1, tog2]);
+
+  const pvRecData = useMemo(() => penSeries({
+    penInput: rPenM, penRet: recPenM, retAge: rRetAge, growBase: curAge,
+    curAge, infPct: infRate, tog1, tog2,
+  }), [rPenM, recPenM, rRetAge, curAge, infRate, tog1, tog2]);
 
   /* ---------- 그래프 데이터 (즉시 반영) ---------- */
   const gData = useMemo(() => {
@@ -640,6 +731,8 @@ export function DesiredPlanTab() {
 
     /* ── 연금 — 쓰는 과정 ── */
     push('연금', '월 연금액 (은퇴당시)', hasCur && curPenM > 0 ? curPenM * 1e4 : null, hasRec && recPenM > 0 ? recPenM * 1e4 : null);
+    // 같은 금액을 오늘의 화폐가치로 환산 — 은퇴당시 금액만 보면 실질 구매력을 과대평가한다
+    push('연금', '월 연금액 (현재가치 환산)', hasCur && curPenPV > 0 ? curPenPV * 1e4 : null, hasRec && recPenPV > 0 ? recPenPV * 1e4 : null);
     // 무한지급 필요액 — 적을수록 유리한 참고 지표라 단순 차이 비교는 오해를 부르므로 생략
     rows.push({
       group: '연금',
@@ -681,7 +774,7 @@ export function DesiredPlanTab() {
     /* ── 상속 — 남는 자산 ── */
     push('상속', '상속금액 (100세)', curStat ? curStat.inherit100 : null, recStat ? recStat.inherit100 : null);
     return rows;
-  }, [hasCur, hasRec, cRetAge, rRetAge, curStat, recStat, curNeedFund, curAccFund, recNeedFund, curPenM, recPenM, cInvR, cPenR, rInvR, rPenR]);
+  }, [hasCur, hasRec, cRetAge, rRetAge, curStat, recStat, curNeedFund, curAccFund, recNeedFund, curPenM, recPenM, curPenPV, recPenPV, cInvR, cPenR, rInvR, rPenR]);
 
   /* ================================================================
      RENDER
@@ -723,6 +816,9 @@ export function DesiredPlanTab() {
               const targetFundResults: CI[] = [
                 { label: '기존 은퇴금액', value: curAccFund > 0 ? fmtW(curAccFund) : '-' },
                 { label: '월 연금액 (은퇴당시)', value: curPenM > 0 ? `${fmt(curPenM)}만원/월` : '-' },
+                // 은퇴당시 금액만으로는 실질 구매력을 과대평가하므로 현재가치를 함께 출력
+                // (카드 폭이 균등 분할되므로 라벨은 짧게)
+                { label: `현재가치 (${pSY}년 기준)`, value: curPenPV > 0 ? `${fmt(curPenPV)}만원/월` : '-' },
               ];
               // 기존 은퇴금액·월 연금액이 모두 산출되지 않았다면 현재플랜은 '없음'으로 처리
               const curPlanEmpty = curAccFund <= 0 && curPenM <= 0;
@@ -739,6 +835,7 @@ export function DesiredPlanTab() {
               const investResults: CI[] = [
                 { label: '희망 은퇴금액', value: recRetFund > 0 ? fmtW(recRetFund) : '-' },
                 { label: '월 연금액 (은퇴당시)', value: recPenM > 0 ? `${fmt(recPenM)}만원/월` : '-' },
+                { label: '현재가치 (오늘 기준)', value: recPenPV > 0 ? `${fmt(recPenPV)}만원/월` : '-' },
               ];
               // 플랜분석은 화면과 동일한 비교 테이블로 PDF 2페이지에 렌더링
               type ARow = import('../../utils/desiredPlanPdf').AnalysisRow;
@@ -840,8 +937,14 @@ export function DesiredPlanTab() {
                   : '적립액·수익률·기간을 입력하세요'} g hl />
             </div>
             <div style={{ gridColumn: 'span 2' }}>
-              <IfC label="월 연금액 (은퇴당시)" v={curPenM > 0 ? `${fmt(curPenM)}만원/월` : '-'}
-                sub={tog1 ? `현재가치 ${fmt(cPenM)}만원 × 물가 ${infRate}% × ${cYrsToRet}년` : '물가 미반영 (연금액 물가반영 꺼짐)'} g hl />
+              <IfC2 label={`월 연금액 (현재가치는 ${pSY}년 기준)`}
+                cols={[
+                  { cap: cRetAge > 0 ? `은퇴당시 ${cRetAge}세` : '은퇴당시',
+                    v: curPenM > 0 ? `${fmt(curPenM)}만원` : '-', color: 'var(--success)' },
+                  { cap: cRetAge > 0 ? `현재가치 ${cRetAge}세` : '현재가치',
+                    v: curPenPV > 0 ? `${fmt(curPenPV)}만원` : '-', color: '#7CC0FF' },
+                  { cap: `현재가치 ${PV_AGE}세`, v: cPen80 ? `${fmt(cPen80)}만원` : '-', color: pv80Color(cPen80, curPenPV) },
+                ]} />
             </div>
           </div>
       </Section>
@@ -899,22 +1002,72 @@ export function DesiredPlanTab() {
                   : '투자수익률·적립/거치·기간 입력 시 계산'} g hl />
             </div>
             <div style={{ gridColumn: 'span 2' }}>
-              <IfC label="월 연금액 (은퇴당시)" v={recPenM > 0 ? `${fmt(recPenM)}만원/월` : '-'}
-                sub={tog1 ? `현재가치 ${fmt(rPenM)}만원 × 물가 ${infRate}% × ${rYrsToRet}년` : '물가 미반영 (연금액 물가반영 꺼짐)'} g hl />
+              <IfC2 label="월 연금액 (현재가치는 오늘 기준)"
+                cols={[
+                  { cap: rRetAge > 0 ? `은퇴당시 ${rRetAge}세` : '은퇴당시',
+                    v: recPenM > 0 ? `${fmt(recPenM)}만원` : '-', color: 'var(--success)' },
+                  { cap: rRetAge > 0 ? `현재가치 ${rRetAge}세` : '현재가치',
+                    v: recPenPV > 0 ? `${fmt(recPenPV)}만원` : '-', color: '#7CC0FF' },
+                  { cap: `현재가치 ${PV_AGE}세`, v: rPen80 ? `${fmt(rPen80)}만원` : '-', color: pv80Color(rPen80, recPenPV) },
+                ]} />
             </div>
           </div>
       </Section>
 
       {/* ==================== 시뮬레이션 그래프 (즉시 반영) ==================== */}
       {gData.length > 0 && (simCur.length > 0 || simRec.length > 0) && (
-        <Section id="pdf-tab1-graph" title="시뮬레이션 그래프">
-          <div style={{ display: 'flex', gap: '20px', marginBottom: '12px', fontSize: '12px' }}>
-            {simCur.length > 0 && <LG color="#1E3A5F" label="현재플랜" />}
-            {simRec.length > 0 && <LG color="#E85D04" label="추천플랜" />}
-            <LG color="#9CA3AF" label="투자원금" dash />
-          </div>
-          <GrowthChart data={gData} retirementAge={rRetAge || cRetAge} showModified={simRec.length > 0}
-            savingsEndAge={(simRec.length ? rStartAge + rSavP : cStartAge + cSavP)} />
+        <Section id="pdf-tab1-graph" title="시뮬레이션 그래프"
+          right={<div style={{ display: 'flex', gap: '4px' }}>
+            {/* '은퇴금액'은 항상 열려 있는 고정 보기, 나머지 둘은 연금액을 입력해야 열린다 */}
+            {([
+              ['fund', '은퇴금액', true],
+              ['penCur', '월 연금액(현재플랜)', pvCurData.length > 0],
+              ['penRec', '월 연금액(추천플랜)', pvRecData.length > 0],
+            ] as const).map(([k, lb, ok]) => (
+              <button key={k} type="button" onClick={() => setGMode(k)} disabled={!ok}
+                title={ok ? '' : '해당 플랜의 현재가치 연금액·은퇴나이를 입력하면 볼 수 있습니다'}
+                style={{ ...HBTN, fontSize: '11px',
+                  backgroundColor: gMode === k ? 'rgba(255,255,255,0.9)' : 'rgba(255,255,255,0.12)',
+                  color: gMode === k ? 'var(--blue-600)' : '#fff',
+                  opacity: ok ? 1 : 0.45, cursor: ok ? 'pointer' : 'not-allowed' }}>
+                {lb}
+              </button>
+            ))}
+          </div>}
+        >
+          {(() => {
+            // 보던 플랜의 데이터가 사라지면 고정 보기(은퇴금액)로 되돌린다
+            const penData = gMode === 'penCur' ? pvCurData : gMode === 'penRec' ? pvRecData : [];
+            const isPen = gMode !== 'fund' && penData.length > 0;
+            const pc = gMode === 'penCur' ? '#3B82F6' : '#E85D04';
+            const retA = gMode === 'penCur' ? cRetAge : gMode === 'penRec' ? rRetAge : (rRetAge || cRetAge);
+            return (
+              <>
+                <div style={{ display: 'flex', gap: '18px', marginBottom: '12px', fontSize: '12px', alignItems: 'center', flexWrap: 'wrap' }}>
+                  {isPen ? (<>
+                    {/* 범례 색은 실제 선 색과 일치시킨다 */}
+                    <LG color="#9CA3AF" label="실제 받을 금액" dash />
+                    <LG color={pc} label={`현재가치 (오늘의 돈) · ${gMode === 'penCur' ? '현재플랜' : '추천플랜'}`} />
+                    <span style={{ color: 'var(--text-muted)', fontSize: '11px', lineHeight: 1.5 }}>
+                      은퇴 전 <strong style={{ color: tog1 ? '#34D399' : '#FBBF24' }}>연금액 물가반영 {tog1 ? '켜짐 → 유지' : '꺼짐 → 감소'}</strong>
+                      {' · 은퇴 후 '}
+                      <strong style={{ color: tog2 ? '#34D399' : '#FBBF24' }}>목표 물가반영 {tog2 ? '켜짐 → 유지' : '꺼짐 → 감소'}</strong>
+                    </span>
+                  </>) : (<>
+                    {simCur.length > 0 && <LG color="#3B82F6" label="현재플랜" />}
+                    {simRec.length > 0 && <LG color="#E85D04" label="추천플랜" />}
+                    <LG color="#9CA3AF" label="투자원금" dash />
+                  </>)}
+                </div>
+                {isPen ? (
+                  <GrowthChart data={penData} mode="pension" planColor={pc} retirementAge={retA} />
+                ) : (
+                  <GrowthChart data={gData} retirementAge={rRetAge || cRetAge} showModified={simRec.length > 0}
+                    savingsEndAge={(simRec.length ? rStartAge + rSavP : cStartAge + cSavP)} />
+                )}
+              </>
+            );
+          })()}
         </Section>
       )}
 
@@ -967,6 +1120,12 @@ export function DesiredPlanTab() {
                 })}
               </tbody>
             </table>
+            {/* 두 플랜의 환산 기준 시점이 다르므로 표 아래에 명시 */}
+            <div style={{ maxWidth: 760, margin: '10px auto 0', fontSize: '10.5px', lineHeight: 1.6, color: 'var(--text-muted)' }}>
+              ※ 현재가치 환산 — 물가 {infRate}% 적용
+              {hasCur && `, 현재플랜은 플랜 시작연도(${pSY}년) 기준 ${cYrsToRet}년 할인`}
+              {hasRec && `, 추천플랜은 오늘 기준 ${rYrsToRet}년 할인`}
+            </div>
         </Section>
       )}
 
@@ -1243,11 +1402,45 @@ function SavPCard({ label, v, f, invYrs, holdYrs, warn, maxYrs }: {
   );
 }
 
+/** 좌우 분할 결과 카드 — 왼쪽 '은퇴당시', 오른쪽 '현재가치 환산'
+ *  은퇴당시 1,000만원이 오늘로는 얼마인지를 한 카드 안에서 대비시킨다. */
+/** 다단 결과 카드 — 같은 연금을 시점별로 나란히 보여준다.
+ *  각 값 위의 작은 라벨이 곧 설명이므로 하단 보조문구는 두지 않는다
+ *  (옆 '은퇴금액' 카드와 세로 높이를 맞추기 위함) */
+function IfC2({ label, cols }: {
+  label: string;
+  cols: { cap: string; v: string; color: string }[];
+}) {
+  const cap: React.CSSProperties = { fontSize: '10.5px', color: 'var(--text-muted)', marginBottom: '3px', whiteSpace: 'nowrap' };
+  const val = (c: string, s: string): React.CSSProperties => ({
+    fontWeight: 700, color: c, fontFamily: 'Inter, monospace',
+    fontSize: s.length > 9 ? '14px' : s.length > 6 ? '16px' : '18px', whiteSpace: 'nowrap',
+  });
+  return (
+    <div style={{ ...CARD_G, height: '100%', boxSizing: 'border-box' }}>
+      <div style={CL}>{label}</div>
+      <div style={{ display: 'flex', alignItems: 'stretch', gap: '10px' }}>
+        {cols.map((c, i) => (
+          <Fragment key={c.cap}>
+            {/* 세로 구분선 — 각 칸이 서로 다른 시점의 금액임을 시각적으로 갈라준다 */}
+            {i > 0 && <div style={{ width: 1, backgroundColor: 'rgba(16,185,129,0.35)', flexShrink: 0 }} />}
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={cap}>{c.cap}</div>
+              <div style={val(c.color, c.v)}>{c.v}</div>
+            </div>
+          </Fragment>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 function IfC({ label, v, sub, g, hl }: {
   label: string; v: string; sub?: string; g?: boolean; hl?: boolean;
 }) {
   return (
-    <div style={g ? CARD_G : { ...CARD, backgroundColor: 'var(--bg-surface)' }}>
+    // height 100% — 같은 행의 월 연금액 카드와 세로 높이를 맞춘다
+    <div style={{ ...(g ? CARD_G : { ...CARD, backgroundColor: 'var(--bg-surface)' }), height: '100%', boxSizing: 'border-box' }}>
       <div style={CL}>{label}</div>
       <div style={{ ...CV, ...(hl ? { color: 'var(--success)' } : {}), fontSize: v.length > 12 ? '14px' : v.length > 8 ? '16px' : '18px' }}>{v}</div>
       {sub && <div style={{ fontSize: '10px', color: 'var(--text-muted)', marginTop: '4px' }}>{sub}</div>}
