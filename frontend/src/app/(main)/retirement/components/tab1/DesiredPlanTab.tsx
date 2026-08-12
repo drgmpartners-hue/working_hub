@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback, useMemo, Fragment } from 'react';
+import { useState, useEffect, useRef, useMemo, Fragment } from 'react';
 import dynamic from 'next/dynamic';
 import { useRetirementStore } from '../../hooks/useRetirementStore';
 import { Section } from '../common/Section';
@@ -400,40 +400,57 @@ export function DesiredPlanTab() {
     return Object.entries(m).map(([a, d]) => ({ age: parseInt(a), ...d })).sort((a, b) => a.age - b.age);
   }, [simCur, simRec]);
 
-  /* ---------- ECOS & Load ---------- */
-  useEffect(() => { fetchInflation().then(r => { setEcos(r); setInfIn(prev => (prev === '2.5' ? r.toFixed(1) : prev)); }); }, []);
+  /* ---------- ECOS ---------- */
+  // 고객 전환 시 물가를 기본값으로 되돌릴 때 쓰려고 ref에도 보관 (effect 의존성 오염 방지)
+  const ecosRef = useRef(ECOS_DEFAULT);
+  useEffect(() => {
+    fetchInflation().then(r => { ecosRef.current = r; setEcos(r); setInfIn(prev => (prev === '2.5' ? r.toFixed(1) : prev)); });
+  }, []);
 
-  const load = useCallback(async () => {
+  /* ---------- 고객 전환 시 초기화 + 로드 ----------
+     플랜은 고객과 1:1 이다. 고객이 바뀌면 이전 고객 값을 '먼저 전부 비우고',
+     해당 고객의 저장분이 있을 때만 채운다.
+     - 404(설계 이력 없음)  → 빈 화면이 정답
+     - 저장분에 없는 필드   → 이전 값을 물려받지 않도록 항상 대입 (조건부 대입 금지)
+     - 응답 순서 뒤바뀜     → stale 플래그로 이전 고객 응답이 덮어쓰는 것을 차단 */
+  useEffect(() => {
+    let stale = false;
+
+    // 1) 전 항목 초기화 — 한 칸이라도 남으면 다른 고객의 값이 섞인다
+    setInfIn(ecosRef.current.toFixed(1)); setTog1(false); setTog2(false);
+    setPSYIn(String(thisYear));
+    setCRetAgeIn(''); setCAmtIn(''); setCFreq('연'); setCHoldIn(''); setCSavPIn('');
+    setCInvRIn(''); setCPenMIn(''); setCPenRIn('');
+    setRRetAgeIn(''); setRPenMIn(''); setRPenRIn(''); setRInvRIn(''); setRSavPIn('');
+    setRAmtIn(''); setRFreq('연'); setRHoldIn('');
+    setTblData([]); setShowTbl(false); setOv({});
+    setChkOn(false); setCalcOn(false);
+
     if (!cid) return;
-    try {
-      const r = await fetch(`${API_URL}/api/v1/retirement/desired-plans/${cid}`, { headers: authLib.getAuthHeader() });
-      if (r.ok) {
-        const d = await r.json(); const p = d.calculation_params || {};
+
+    // 2) 해당 고객의 저장분만 채운다
+    (async () => {
+      try {
+        const r = await fetch(`${API_URL}/api/v1/retirement/desired-plans/${cid}`, { headers: authLib.getAuthHeader() });
+        if (!r.ok) return;                 // 404 = 설계 이력 없음 → 초기화 상태 유지
+        const d = await r.json();
+        if (stale) return;                 // 고객을 빠르게 바꾼 경우 이전 응답은 버린다
+        const p = d.calculation_params || {};
         const v2 = p.plan_v2;
+        const s = (v: unknown) => (v === undefined || v === null ? '' : String(v));
         if (v2) {
           // 새 구조 복원
-          if (v2.infIn) setInfIn(v2.infIn);
-          if (v2.tog1 !== undefined) setTog1(!!v2.tog1);
-          if (v2.tog2 !== undefined) setTog2(!!v2.tog2);
-          if (v2.pSYIn) setPSYIn(v2.pSYIn);
-          if (v2.cRetAgeIn !== undefined) setCRetAgeIn(v2.cRetAgeIn);
-          if (v2.cAmtIn !== undefined) setCAmtIn(v2.cAmtIn);
-          if (v2.cFreq) setCFreq(v2.cFreq);
-          if (v2.cHoldIn !== undefined) setCHoldIn(v2.cHoldIn);
-          if (v2.cSavPIn !== undefined) setCSavPIn(v2.cSavPIn);
-          if (v2.cPenMIn !== undefined) setCPenMIn(v2.cPenMIn);
-          if (v2.cInvRIn !== undefined) setCInvRIn(v2.cInvRIn);
-          if (v2.cPenRIn !== undefined) setCPenRIn(v2.cPenRIn);
-          if (v2.rRetAgeIn !== undefined) setRRetAgeIn(v2.rRetAgeIn);
-          if (v2.rPenMIn !== undefined) setRPenMIn(v2.rPenMIn);
-          if (v2.rPenRIn !== undefined) setRPenRIn(v2.rPenRIn);
-          if (v2.rInvRIn !== undefined) setRInvRIn(v2.rInvRIn);
-          if (v2.rSavPIn !== undefined) setRSavPIn(v2.rSavPIn);
-          if (v2.rAmtIn !== undefined) setRAmtIn(v2.rAmtIn);
-          if (v2.rFreq) setRFreq(v2.rFreq);
-          if (v2.rHoldIn !== undefined) setRHoldIn(v2.rHoldIn);
+          setInfIn(v2.infIn ? String(v2.infIn) : ecosRef.current.toFixed(1));
+          setTog1(!!v2.tog1); setTog2(!!v2.tog2);
+          setPSYIn(v2.pSYIn ? String(v2.pSYIn) : String(thisYear));
+          setCRetAgeIn(s(v2.cRetAgeIn)); setCAmtIn(s(v2.cAmtIn)); setCFreq(v2.cFreq === '월' ? '월' : '연');
+          setCHoldIn(s(v2.cHoldIn)); setCSavPIn(s(v2.cSavPIn));
+          setCInvRIn(s(v2.cInvRIn)); setCPenMIn(s(v2.cPenMIn)); setCPenRIn(s(v2.cPenRIn));
+          setRRetAgeIn(s(v2.rRetAgeIn)); setRPenMIn(s(v2.rPenMIn)); setRPenRIn(s(v2.rPenRIn));
+          setRInvRIn(s(v2.rInvRIn)); setRSavPIn(s(v2.rSavPIn)); setRAmtIn(s(v2.rAmtIn));
+          setRFreq(v2.rFreq === '월' ? '월' : '연'); setRHoldIn(s(v2.rHoldIn));
         } else {
-          // 구버전 데이터 → 추천플랜으로 최대한 매핑
+          // 구버전 데이터 → 추천플랜으로 최대한 매핑 (없는 값은 초기화 상태 그대로)
           const cvm = d.current_value_monthly ?? d.monthly_desired_amount;
           if (cvm) setRPenMIn(fmt(Math.round(cvm / 1e4)));
           if (p.retirement_age) setRRetAgeIn(String(p.retirement_age));
@@ -443,16 +460,16 @@ export function DesiredPlanTab() {
           else if (p.existing_return_rate) setRInvRIn(((p.existing_return_rate * 100) as number).toFixed(1));
           if (p.savings_period) setRSavPIn(String(p.savings_period));
           if (p.annual_savings) setRAmtIn(fmt(Math.round(p.annual_savings / 12 / 1e4)));
-          if (d.use_inflation_input !== undefined) setTog1(!!d.use_inflation_input);
-          if (d.use_inflation_calc !== undefined) setTog2(!!d.use_inflation_calc);
+          setTog1(!!d.use_inflation_input); setTog2(!!d.use_inflation_calc);
           if (d.plan_start_year) setPSYIn(String(d.plan_start_year));
         }
         const saved = d.simulation_data ?? p.modified_plan;
         if (saved?.length) { setTblData(saved); setShowTbl(true); }
-      }
-    } catch { /* */ }
-  }, [cid]);
-  useEffect(() => { load(); }, [load]);
+      } catch { /* */ }
+    })();
+
+    return () => { stale = true; };
+  }, [cid, thisYear]);
 
   /* ---------- 계산 버튼 (추천플랜 기준 편집 테이블) ---------- */
   const canCalc = hasRec;

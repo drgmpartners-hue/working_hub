@@ -299,18 +299,22 @@ export function PensionPlanTab() {
   useEffect(() => { if (customerId) loadTab1(customerId); else setTab1(null); }, [customerId, loadTab1]);
 
   // tab1 로드 시 은퇴연금 수익률로 초기화 (추천 연금수익률 우선, 없으면 기존 연금수익률)
+  // 조건부 대입 금지 — 새 고객에게 플랜이 없으면 이전 고객 수익률이 그대로 남는다
   useEffect(() => {
     const cp = tab1?.calculation_params || {};
     const recRate = cp.recommended_pension_rate as number | undefined;
     const baseRate = tab1?.retirement_pension_rate;
     const rateToUse = recRate ?? baseRate;
-    if (rateToUse) {
-      const rateStr = String(rateToUse * 100);
-      setLifetimeRate(rateStr);
-      setFixedRate(rateStr);
-      setInfiniteRate(rateStr);
-    }
+    const rateStr = rateToUse ? String(rateToUse * 100) : '';
+    setLifetimeRate(rateStr);
+    setFixedRate(rateStr || '2');
+    setInfiniteRate(rateStr || '5');
   }, [tab1]);
+
+  // 고객 전환 시 직접 입력값 초기화 — 연금 설정도 고객별로 독립이다
+  useEffect(() => {
+    setFixedPeriod('30'); setInfinitePeriod('40'); setInfinitePension('');
+  }, [customerId]);
 
   // 1번탭 calculation_params에서 추천/기존 수익률 추출
   // plan_v2(현재플랜/추천플랜 분리 저장)가 있으면 우선 사용 — A는 현재플랜, B는 추천플랜 값
