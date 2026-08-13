@@ -475,7 +475,10 @@ function Tab2Section({
     monthly_amount?: number | null;
     lump_sum_amount?: number | null;
   }
-  const DRGM_MAX_TABS = 4;
+  const DRGM_MAX_TABS = 5;
+  // 탭 하나가 차지할 수 있는 최대 폭 — 5개를 합쳐도 표 폭을 넘지 않게 나눈다
+  // (48px = '+' 버튼 26 + 좌우 여백·간격 여유)
+  const DRGM_TAB_MAXW = `calc((100% - 48px) / ${DRGM_MAX_TABS})`;
   const [drGmTabs, setDrGmTabs] = useState<DrGmTab[]>([]);
   const [drGmTabId, setDrGmTabId] = useState<string | null>(null);
   const [drGmRenamingId, setDrGmRenamingId] = useState<string | null>(null);
@@ -2472,14 +2475,15 @@ function Tab2Section({
           </div>
 
           {/* 바인더 탭 — 표 바로 위에 물려 있게 배치. 클릭하면 그 탭에 저장된 상품을 불러온다 */}
-          <div className="drgm-tabs" style={{ display: 'flex', alignItems: 'flex-end', gap: 3, paddingLeft: 10, marginBottom: -1, position: 'relative', zIndex: 3 }}>
+          <div className="drgm-tabs" style={{ display: 'flex', alignItems: 'flex-end', gap: 3, paddingLeft: 10, marginBottom: -1, position: 'relative', zIndex: 3, width: '100%', boxSizing: 'border-box', overflow: 'hidden' }}>
             {drGmTabs.map((t) => {
               const on = t.id === drGmTabId;
               return (
                 <div key={t.id}
                   onClick={() => !drGmTabBusy && switchDrGmTab(t.id)}
                   onDoubleClick={() => { setDrGmRenamingId(t.id); setDrGmRenameText(t.name); }}
-                  title={on ? '더블클릭하면 이름을 바꿉니다' : `'${t.name}' 불러오기 (더블클릭: 이름 변경)`}
+                  // 말줄임된 이름을 확인할 수 있도록 툴팁에는 항상 전체 이름을 넣는다
+                  title={on ? `${t.name} — 더블클릭하면 이름을 바꿉니다` : `${t.name} 불러오기 (더블클릭: 이름 변경)`}
                   style={{
                     display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer',
                     // 활성 탭은 표 머리와 같은 배경 + 아래 테두리를 지워 표에 붙어 보이게 한다
@@ -2492,6 +2496,8 @@ function Tab2Section({
                     fontWeight: on ? 800 : 600, fontSize: '0.8125rem',
                     position: 'relative', whiteSpace: 'nowrap',
                     boxShadow: on ? '0 -3px 8px rgba(0,0,0,0.28)' : 'none',
+                    // 이름이 길어도 밀려 나가지 않고 이 폭 안에서 말줄임 처리된다
+                    flex: '0 1 auto', minWidth: 0, maxWidth: DRGM_TAB_MAXW,
                   }}>
                   {on && <span style={{ position: 'absolute', top: 0, left: 8, right: 8, height: 2, borderRadius: 2, backgroundColor: 'var(--warning)' }} />}
                   {drGmRenamingId === t.id ? (
@@ -2503,17 +2509,18 @@ function Tab2Section({
                         if (e.key === 'Escape') setDrGmRenamingId(null);
                       }}
                       onClick={(e) => e.stopPropagation()}
-                      style={{ width: 130, padding: '2px 6px', fontSize: '0.8125rem', fontWeight: 700,
+                      style={{ width: '100%', minWidth: 0, boxSizing: 'border-box', padding: '2px 6px', fontSize: '0.8125rem', fontWeight: 700,
                         color: 'var(--text-primary)', backgroundColor: 'var(--bg-base)',
                         border: '1px solid var(--warning)', borderRadius: 4, outline: 'none' }} />
                   ) : (
-                    <span>{t.name}</span>
+                    // minWidth 0 이라야 flex 안에서 줄어들고 말줄임이 걸린다. 전체 이름은 title로 확인
+                    <span style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{t.name}</span>
                   )}
                   {on && drGmTabs.length > 1 && (
                     <button type="button"
                       onClick={(e) => { e.stopPropagation(); deleteDrGmTab(t.id); }}
                       title="이 포트폴리오 삭제"
-                      style={{ width: 16, height: 16, lineHeight: '13px', padding: 0, borderRadius: 4,
+                      style={{ width: 16, height: 16, lineHeight: '13px', padding: 0, borderRadius: 4, flexShrink: 0,
                         border: '1px solid rgba(239,68,68,0.35)', backgroundColor: 'transparent',
                         color: '#EF4444', fontSize: 11, fontWeight: 700, cursor: 'pointer' }}>×</button>
                   )}
@@ -2523,7 +2530,7 @@ function Tab2Section({
             {drGmTabs.length < DRGM_MAX_TABS && (
               <button type="button" onClick={addDrGmTab} disabled={drGmTabBusy}
                 title={`포트폴리오 추가 (최대 ${DRGM_MAX_TABS}개)`}
-                style={{ width: 26, height: 26, marginLeft: 2, marginBottom: 1, padding: 0,
+                style={{ width: 26, height: 26, marginLeft: 2, marginBottom: 1, padding: 0, flexShrink: 0,
                   borderRadius: '7px 7px 0 0', border: '1px dashed var(--border-strong)', borderBottom: 'none',
                   backgroundColor: 'transparent', color: 'var(--text-muted)',
                   fontSize: '15px', fontWeight: 700, lineHeight: '22px',

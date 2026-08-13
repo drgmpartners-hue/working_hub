@@ -13,7 +13,7 @@ from sqlalchemy.sql import func
 from app.db.base import Base
 
 # 탭 개수 상한 — UI가 바인더 탭 형태라 한 줄에 들어가는 수로 제한한다
-MAX_PORTFOLIOS = 4
+MAX_PORTFOLIOS = 5
 
 
 class RecommendedPortfolio(Base):
