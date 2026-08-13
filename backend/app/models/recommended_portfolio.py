@@ -59,12 +59,12 @@ class RecommendedPortfolioItem(Base):
     )  # ETF/펀드/MMF 등
     region: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
     current_price: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
-    weight_pension: Mapped[Optional[float]] = mapped_column(
-        Float, nullable=True
-    )  # 연금저축 비중 0.0~1.0
-    weight_irp: Mapped[Optional[float]] = mapped_column(
-        Float, nullable=True
-    )  # IRP/퇴직연금 비중 0.0~1.0
+    # 투자비중 0.0~1.0 — 계좌 종류별 구분은 탭으로 대체되어 비중은 하나만 쓴다
+    weight: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    # 아래 둘은 탭 도입 이전의 연금저축/IRP 분리 비중. 더 이상 쓰지 않으며
+    # 과거 데이터 확인용으로만 남겨 둔다 (마이그레이션에서 weight로 이관 완료)
+    weight_pension: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    weight_irp: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
     memo: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
     seq: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     created_at: Mapped[datetime] = mapped_column(

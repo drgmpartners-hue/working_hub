@@ -35,8 +35,7 @@ class RecommendedPortfolioItemIn(BaseModel):
     product_type: Optional[str] = None
     region: Optional[str] = None
     current_price: Optional[float] = None
-    weight_pension: Optional[float] = None
-    weight_irp: Optional[float] = None
+    weight: Optional[float] = None       # 투자비중 0.0~1.0
     memo: Optional[str] = None
     seq: int = 0
 
@@ -48,8 +47,7 @@ class RecommendedPortfolioItemOut(BaseModel):
     product_type: Optional[str] = None
     region: Optional[str] = None
     current_price: Optional[float] = None
-    weight_pension: Optional[float] = None
-    weight_irp: Optional[float] = None
+    weight: Optional[float] = None
     memo: Optional[str] = None
     seq: int
 
@@ -292,8 +290,7 @@ async def save_recommended_portfolio(
                 product_type=item_in.product_type,
                 region=item_in.region,
                 current_price=item_in.current_price,
-                weight_pension=item_in.weight_pension,
-                weight_irp=item_in.weight_irp,
+                weight=item_in.weight,
                 memo=item_in.memo,
                 seq=item_in.seq,
             )

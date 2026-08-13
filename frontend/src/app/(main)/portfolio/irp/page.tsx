@@ -461,8 +461,7 @@ function Tab2Section({
     product_type: string;
     region: string;
     current_price: number;
-    weight_pension: number;
-    weight_irp: number;
+    weight: number;          // 투자비중 (%) — 계좌 종류 구분은 탭으로 대체
     memo: string;
     seq: number;
   }
@@ -494,7 +493,7 @@ function Tab2Section({
   const [drGmProductOpen, setDrGmProductOpen] = useState(false);
   const [drGmEditRowId, setDrGmEditRowId] = useState<string | null>(null); /* 상품 선택 대상 행 */
   const [drGmChecked, setDrGmChecked] = useState<Set<string>>(new Set());
-  const [drGmAccountType, setDrGmAccountType] = useState<'pension' | 'irp'>('pension'); /* 연금저축/IRP 토글 */
+  /* 연금저축/IRP 토글은 탭으로 대체되어 제거됨 — 비중은 탭마다 하나만 쓴다 */
   const [drGmMonthlyAmount, setDrGmMonthlyAmount] = useState<number>(0); /* 월적립금액 */
   const [drGmLumpSumAmount, setDrGmLumpSumAmount] = useState<number>(0); /* 거치금액 */
   const drGmRef = useRef<HTMLDivElement>(null);
@@ -527,8 +526,7 @@ function Tab2Section({
       product_type: it.product_type ?? '',
       region: it.region ?? '',
       current_price: it.current_price ?? 0,
-      weight_pension: it.weight_pension != null ? parseFloat((it.weight_pension * 100).toFixed(2)) : 0,
-      weight_irp: it.weight_irp != null ? parseFloat((it.weight_irp * 100).toFixed(2)) : 0,
+      weight: it.weight != null ? parseFloat((it.weight * 100).toFixed(2)) : 0,
       memo: it.memo ?? '',
       seq: it.seq ?? 0,
     })));
@@ -559,10 +557,9 @@ function Tab2Section({
         headers: { ...authLib.getAuthHeader() },
       });
       if (res.ok) applyDrGmItems(await res.json());
-      // 탭마다 기억해 둔 계좌 구분·금액을 함께 복원
+      // 탭마다 기억해 둔 투자 시뮬레이션 금액을 함께 복원
       const meta = drGmTabs.find((t) => t.id === id);
       if (meta) {
-        setDrGmAccountType(meta.account_type === 'irp' ? 'irp' : 'pension');
         setDrGmMonthlyAmount(meta.monthly_amount ?? 0);
         setDrGmLumpSumAmount(meta.lump_sum_amount ?? 0);
       }
@@ -584,7 +581,6 @@ function Tab2Section({
     setDrGmEditRowId(null);
     const meta = drGmTabs.find((t) => t.id === id);
     if (meta) {
-      setDrGmAccountType(meta.account_type === 'irp' ? 'irp' : 'pension');
       setDrGmMonthlyAmount(meta.monthly_amount ?? 0);
       setDrGmLumpSumAmount(meta.lump_sum_amount ?? 0);
     }
@@ -657,6 +653,84 @@ function Tab2Section({
     finally { setDrGmTabBusy(false); }
   }
 
+  /** 추천 포트폴리오 영역을 캡처해 canvas로 돌려준다 (다운로드·복사 공용).
+   *  원본을 건드리지 않도록 클론을 만들어 인쇄용으로 손질한 뒤 캡처한다. */
+  async function captureDrGm(): Promise<HTMLCanvasElement | null> {
+    if (!drGmRef.current) return null;
+    const html2canvas = (await import('html2canvas')).default;
+    const clone = drGmRef.current.cloneNode(true) as HTMLElement;
+    clone.style.position = 'fixed';
+    clone.style.top = '-9999px';
+    clone.style.left = '-9999px';
+    clone.style.width = `${Math.max(drGmRef.current.scrollWidth, 1200)}px`;
+    clone.style.backgroundColor = '#fff';
+    clone.style.padding = '20px';
+    clone.style.zIndex = '-1';
+    // input은 값이 캡처되지 않으므로 텍스트로 바꾼다
+    clone.querySelectorAll('input[type="number"], input[type="text"]').forEach((inp) => {
+      const el = inp as HTMLInputElement;
+      const span = document.createElement('span');
+      span.textContent = el.value || '-';
+      span.style.cssText = el.style.cssText;
+      span.style.display = 'inline-block';
+      span.style.textAlign = 'right';
+      span.style.minWidth = '40px';
+      el.replaceWith(span);
+    });
+    clone.querySelectorAll('td, th').forEach((td) => {
+      const el = td as HTMLElement;
+      el.style.verticalAlign = 'middle';
+      el.style.height = '44px';
+      el.style.lineHeight = '44px';
+      el.style.padding = '0 8px';
+      el.style.whiteSpace = 'nowrap';
+    });
+    // 버튼·체크박스 숨기기 (탭의 '+'·삭제 버튼도 함께 사라진다)
+    clone.querySelectorAll('button, input[type="checkbox"]').forEach((el) => {
+      (el as HTMLElement).style.display = 'none';
+    });
+    // 비활성 탭은 제외 — 지금 보고 있는 포트폴리오만 남긴다
+    clone.querySelectorAll('.drgm-tabs > div').forEach((el) => {
+      const active = (el as HTMLElement).style.fontWeight === '800';
+      if (!active) (el as HTMLElement).style.display = 'none';
+    });
+    document.body.appendChild(clone);
+    try {
+      return await html2canvas(clone, { scale: 2 });
+    } finally {
+      document.body.removeChild(clone);
+    }
+  }
+
+  async function downloadDrGmImage() {
+    const canvas = await captureDrGm();
+    if (!canvas) return;
+    const tabName = drGmTabs.find((t) => t.id === drGmTabId)?.name ?? '추천포트폴리오';
+    const link = document.createElement('a');
+    link.download = `DrGM_추천포트폴리오_${tabName}.png`;
+    link.href = canvas.toDataURL('image/png');
+    link.click();
+  }
+
+  /** 캡처 이미지를 클립보드에 넣어 바로 붙여넣을 수 있게 한다.
+   *  Clipboard 이미지 쓰기는 HTTPS(또는 localhost)에서만 동작한다. */
+  async function copyDrGmImage() {
+    try {
+      if (!navigator.clipboard || typeof ClipboardItem === 'undefined') {
+        showDrGmToast('이 브라우저에서는 이미지 복사를 지원하지 않습니다. 다운로드를 사용하세요.');
+        return;
+      }
+      const canvas = await captureDrGm();
+      if (!canvas) return;
+      const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, 'image/png'));
+      if (!blob) { showDrGmToast('이미지 생성 실패'); return; }
+      await navigator.clipboard.write([new ClipboardItem({ 'image/png': blob })]);
+      showDrGmToast('표 이미지가 복사되었습니다. 붙여넣기(Ctrl+V) 하세요.');
+    } catch {
+      showDrGmToast('이미지 복사 실패 — 보안 연결(HTTPS)에서만 동작합니다.');
+    }
+  }
+
   async function saveDrGmPortfolio() {
     setDrGmSaving(true);
     try {
@@ -666,26 +740,23 @@ function Tab2Section({
         product_type: r.product_type || null,
         region: r.region || null,
         current_price: r.current_price || null,
-        weight_pension: r.weight_pension > 0 ? r.weight_pension / 100 : null,
-        weight_irp: r.weight_irp > 0 ? r.weight_irp / 100 : null,
+        weight: r.weight > 0 ? r.weight / 100 : null,
         memo: r.memo || null,
         seq: idx,
       }));
       const res = await fetch(`${API_URL}/api/v1/recommended-portfolio${drGmQS(drGmTabId)}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json', ...authLib.getAuthHeader() },
-        // 계좌 구분·금액도 탭에 함께 저장해 다음에 열 때 그대로 복원되게 한다
+        // 투자 시뮬레이션 금액도 탭에 함께 저장해 다음에 열 때 그대로 복원되게 한다
         body: JSON.stringify({
           items,
-          account_type: drGmAccountType,
           monthly_amount: drGmMonthlyAmount,
           lump_sum_amount: drGmLumpSumAmount,
         }),
       });
       if (res.ok) {
-        // 탭 메타(계좌 구분·금액)도 로컬 상태에 반영해 탭 전환 시 되살아나게 한다
         setDrGmTabs((prev) => prev.map((t) => (t.id === drGmTabId
-          ? { ...t, account_type: drGmAccountType, monthly_amount: drGmMonthlyAmount, lump_sum_amount: drGmLumpSumAmount }
+          ? { ...t, monthly_amount: drGmMonthlyAmount, lump_sum_amount: drGmLumpSumAmount }
           : t)));
         applyDrGmItems(await res.json());
         const tabName = drGmTabs.find((t) => t.id === drGmTabId)?.name;
@@ -722,8 +793,7 @@ function Tab2Section({
       product_type: '',
       region: '',
       current_price: 0,
-      weight_pension: 0,
-      weight_irp: 0,
+      weight: 0,
       memo: '',
       seq: prev.length,
     }]);
@@ -827,7 +897,6 @@ function Tab2Section({
       showDrGmToast('먼저 수정 포트폴리오 데이터를 불러와 주세요.');
       return;
     }
-    const accountType = t2SelectedAccount?.account_type ?? 'irp';
     const existingCodes = new Set(t2RebalRows.map((r) => r.productCode).filter(Boolean));
     let addedCount = 0;
 
@@ -839,8 +908,8 @@ function Tab2Section({
     for (const gm of rowsToApply) {
       if (!gm.product_name) continue;
       if (gm.product_code && existingCodes.has(gm.product_code)) continue;
-      /* IRP → weight_irp, 연금저축(pension1/pension2) → weight_pension */
-      const weight = accountType === 'irp' ? gm.weight_irp : gm.weight_pension;
+      /* 계좌 종류 구분은 탭으로 대체 — 탭에 담긴 투자비중을 그대로 쓴다 */
+      const weight = gm.weight;
       /* 상품 마스터에서 위험도 조회 */
       const master = productMasters.find((pm) => pm.product_name === gm.product_name || pm.product_code === gm.product_code);
       newRows.push({
@@ -1785,6 +1854,12 @@ function Tab2Section({
     fontWeight: 700,
     color: 'var(--text-primary)',
   };
+  /* 추천 포트폴리오 헤더의 아이콘 버튼 (복사·다운로드) — 다른 버튼과 높이를 맞춘다 */
+  const drGmIconBtn: React.CSSProperties = {
+    width: 32, height: 32, padding: 0, display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+    color: 'var(--success)', backgroundColor: 'var(--success-bg)',
+    border: '1px solid rgba(16,185,129,0.35)', borderRadius: 7, cursor: 'pointer',
+  };
   const thStyle: React.CSSProperties = {
     padding: '9px 10px',
     fontSize: '0.75rem',
@@ -2367,34 +2442,23 @@ function Tab2Section({
                 · {drGmTabs.find((t) => t.id === drGmTabId)?.name}
               </span>
             )}
-            {/* 연금저축/IRP 토글 */}
-            <div style={{ marginLeft: 'auto', display: 'flex', borderRadius: 6, overflow: 'hidden', border: '1px solid var(--border)' }}>
-              <button onClick={() => setDrGmAccountType('pension')}
-                style={{ padding: '5px 14px', fontSize: '0.75rem', fontWeight: 600, border: 'none', cursor: 'pointer',
-                  backgroundColor: drGmAccountType === 'pension' ? '#F59E0B' : 'var(--bg-card)',
-                  color: drGmAccountType === 'pension' ? '#fff' : '#6B7280' }}>
-                연금저축
-              </button>
-              <button onClick={() => setDrGmAccountType('irp')}
-                style={{ padding: '5px 14px', fontSize: '0.75rem', fontWeight: 600, border: 'none', cursor: 'pointer',
-                  backgroundColor: drGmAccountType === 'irp' ? '#3B82F6' : 'var(--bg-card)',
-                  color: drGmAccountType === 'irp' ? '#fff' : '#6B7280' }}>
-                IRP
-              </button>
-            </div>
-            {/* 월적립금액 */}
-            <div style={{ display: 'flex', alignItems: 'center', gap: 4, marginLeft: 16 }}>
-              <span style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-secondary)', whiteSpace: 'nowrap' }}>월적립</span>
-              <input type="number" value={drGmMonthlyAmount || ''} onChange={(e) => setDrGmMonthlyAmount(parseInt(e.target.value) || 0)}
-                placeholder="0" style={{ width: 90, padding: '4px 6px', fontSize: '0.8125rem', textAlign: 'right', border: '1px solid var(--border)', borderRadius: 5, outline: 'none' }} />
-              <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>원</span>
-            </div>
-            {/* 거치금액 */}
-            <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-              <span style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-secondary)', whiteSpace: 'nowrap' }}>거치</span>
-              <input type="number" value={drGmLumpSumAmount || ''} onChange={(e) => setDrGmLumpSumAmount(parseInt(e.target.value) || 0)}
-                placeholder="0" style={{ width: 100, padding: '4px 6px', fontSize: '0.8125rem', textAlign: 'right', border: '1px solid var(--border)', borderRadius: 5, outline: 'none' }} />
-              <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>원</span>
+            {/* 투자 시뮬레이션 — 금액만 넣으면 아래 표의 투자비중대로 즉시 배분된다
+                (계좌 종류 구분은 탭으로 대체되어 연금저축/IRP 토글을 없앴다) */}
+            <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 10,
+              padding: '5px 12px', borderRadius: 8, border: '1px solid var(--border)', backgroundColor: 'var(--bg-surface)' }}>
+              <span style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--warning)', whiteSpace: 'nowrap' }}>투자 시뮬레이션</span>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                <span style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-secondary)', whiteSpace: 'nowrap' }}>월적립</span>
+                <input type="number" value={drGmMonthlyAmount || ''} onChange={(e) => setDrGmMonthlyAmount(parseInt(e.target.value) || 0)}
+                  placeholder="0" style={{ width: 100, padding: '4px 6px', fontSize: '0.8125rem', textAlign: 'right', border: '1px solid var(--border)', borderRadius: 5, outline: 'none' }} />
+                <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>원</span>
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                <span style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-secondary)', whiteSpace: 'nowrap' }}>거치</span>
+                <input type="number" value={drGmLumpSumAmount || ''} onChange={(e) => setDrGmLumpSumAmount(parseInt(e.target.value) || 0)}
+                  placeholder="0" style={{ width: 110, padding: '4px 6px', fontSize: '0.8125rem', textAlign: 'right', border: '1px solid var(--border)', borderRadius: 5, outline: 'none' }} />
+                <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>원</span>
+              </div>
             </div>
           </div>
           {/* 헤더 2열: 버튼들 */}
@@ -2419,58 +2483,22 @@ function Tab2Section({
               style={{ padding: '6px 14px', fontSize: '0.8125rem', fontWeight: 700, color: '#fff', backgroundColor: 'var(--blue-600)', border: 'none', borderRadius: 7, cursor: 'pointer' }}>
               수정 포트폴리오 적용 ↓
             </button>
-            <button onClick={async () => {
-              if (!drGmRef.current) return;
-              const html2canvas = (await import('html2canvas')).default;
-              // 클론 생성 → 가로 레이아웃 강제 → 캡처 → 클론 삭제
-              const clone = drGmRef.current.cloneNode(true) as HTMLElement;
-              clone.style.position = 'fixed';
-              clone.style.top = '-9999px';
-              clone.style.left = '-9999px';
-              clone.style.width = `${Math.max(drGmRef.current.scrollWidth, 1200)}px`;
-              clone.style.backgroundColor = '#fff';
-              clone.style.padding = '20px';
-              clone.style.zIndex = '-1';
-              // 클론 내 모든 input을 텍스트로 변환 (캡처용)
-              clone.querySelectorAll('input[type="number"], input[type="text"]').forEach((inp) => {
-                const el = inp as HTMLInputElement;
-                const span = document.createElement('span');
-                span.textContent = el.value || '-';
-                span.style.cssText = el.style.cssText;
-                span.style.display = 'inline-block';
-                span.style.textAlign = 'right';
-                span.style.minWidth = '40px';
-                el.replaceWith(span);
-              });
-              // 클론 내 모든 td/th에 세로 가운데 + 높이 고정
-              clone.querySelectorAll('td, th').forEach((td) => {
-                const el = td as HTMLElement;
-                el.style.verticalAlign = 'middle';
-                el.style.height = '44px';
-                el.style.lineHeight = '44px';
-                el.style.padding = '0 8px';
-                el.style.whiteSpace = 'nowrap';
-              });
-              // 버튼, 체크박스 숨기기 (탭의 '+ 탭 추가'·삭제 버튼도 여기서 함께 사라진다)
-              clone.querySelectorAll('button, input[type="checkbox"]').forEach((el) => {
-                (el as HTMLElement).style.display = 'none';
-              });
-              // 비활성 탭은 캡처에서 제외 — 현재 보고 있는 포트폴리오만 남긴다
-              clone.querySelectorAll('.drgm-tabs > div').forEach((el) => {
-                const active = (el as HTMLElement).style.fontWeight === '800';
-                if (!active) (el as HTMLElement).style.display = 'none';
-              });
-              document.body.appendChild(clone);
-              const canvas = await html2canvas(clone, { scale: 2 });
-              document.body.removeChild(clone);
-              const link = document.createElement('a');
-              const tabName = drGmTabs.find((t) => t.id === drGmTabId)?.name ?? '추천포트폴리오';
-              link.download = `DrGM_${tabName}_${drGmAccountType === 'pension' ? '연금저축' : 'IRP'}.png`;
-              link.href = canvas.toDataURL('image/png');
-              link.click();
-            }}
-              style={{ padding: '6px 14px', fontSize: '0.8125rem', fontWeight: 600, color: 'var(--success)', backgroundColor: 'var(--success-bg)', border: '1px solid rgba(16,185,129,0.35)', borderRadius: 7, cursor: 'pointer' }}>
-              이미지 다운로드
+            {/* 이미지 복사 — 클립보드에 넣어 메신저·문서에 바로 붙여넣는다 */}
+            <button onClick={copyDrGmImage} title="표를 이미지로 복사 (붙여넣기 가능)"
+              style={drGmIconBtn}>
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <rect x="9" y="9" width="13" height="13" rx="2" ry="2" />
+                <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
+              </svg>
+            </button>
+            {/* 이미지 다운로드 */}
+            <button onClick={downloadDrGmImage} title="표를 이미지 파일로 저장"
+              style={drGmIconBtn}>
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                <polyline points="7 10 12 15 17 10" />
+                <line x1="12" y1="15" x2="12" y2="3" />
+              </svg>
             </button>
           </div>
 
@@ -2553,8 +2581,7 @@ function Tab2Section({
                     <th style={{ ...thStyle, backgroundColor: 'var(--warning-bg)', textAlign: 'left', minWidth: 220, position: 'sticky', left: 36, zIndex: 2, borderRight: '2px solid var(--border)' }}>상품명</th>
                     <th style={{ ...thStyle, backgroundColor: 'var(--warning-bg)', minWidth: 80 }}>종목코드</th>
                     <th style={{ ...thStyle, backgroundColor: 'var(--warning-bg)', minWidth: 80 }}>현재가</th>
-                    <th style={{ ...thStyle, backgroundColor: 'var(--warning)', color: '#fff', minWidth: 90 }}>비중(연금저축)</th>
-                    <th style={{ ...thStyle, backgroundColor: 'var(--blue-600)', color: '#fff', minWidth: 100 }}>비중(IRP/퇴직연금)</th>
+                    <th style={{ ...thStyle, backgroundColor: 'var(--warning)', color: '#fff', minWidth: 100 }}>투자비중</th>
                     <th style={{ ...thStyle, backgroundColor: 'var(--success-bg)', minWidth: 90 }}>월적립투자</th>
                     <th style={{ ...thStyle, backgroundColor: 'rgba(56,189,248,0.16)', minWidth: 80 }}>거치투자</th>
                     <th style={{ ...thStyle, backgroundColor: 'rgba(56,189,248,0.16)', minWidth: 80 }}>구매좌수(거치)</th>
@@ -2568,10 +2595,10 @@ function Tab2Section({
                 </thead>
                 <tbody>
                   {drGmRows.length === 0 && (
-                    <tr><td colSpan={12} style={{ padding: 20, textAlign: 'center', color: 'var(--text-muted)' }}>등록된 추천 상품이 없습니다. [+ 행추가] 버튼으로 추가하세요.</td></tr>
+                    <tr><td colSpan={10} style={{ padding: 20, textAlign: 'center', color: 'var(--text-muted)' }}>등록된 추천 상품이 없습니다. [+ 행추가] 버튼으로 추가하세요.</td></tr>
                   )}
                   {drGmRows.map((r, idx) => {
-                    const weight = drGmAccountType === 'pension' ? r.weight_pension : r.weight_irp;
+                    const weight = r.weight;
                     const monthlyInv = drGmMonthlyAmount > 0 ? Math.floor(drGmMonthlyAmount * weight / 100 / 1000) * 1000 : 0;
                     const lumpInv = drGmLumpSumAmount > 0 ? Math.floor(drGmLumpSumAmount * weight / 100 / 1000) * 1000 : 0;
                     const lumpShares = lumpInv > 0 && r.current_price > 0 ? Math.floor(lumpInv / r.current_price) : 0;
@@ -2610,21 +2637,11 @@ function Tab2Section({
                       </td>
                       <td style={{ ...tdStyle, fontFamily: 'monospace', fontSize: '0.75rem', color: 'var(--text-muted)' }}>{r.product_code || '-'}</td>
                       <td style={tdStyle}>{r.current_price > 0 ? r.current_price.toLocaleString('ko-KR') : '-'}</td>
-                      <td style={{ ...tdStyle, padding: '5px 8px', backgroundColor: drGmAccountType === 'pension' ? 'rgba(245,158,11,0.18)' : undefined }}>
+                      <td style={{ ...tdStyle, padding: '5px 8px', backgroundColor: 'rgba(245,158,11,0.18)' }}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-                          <input type="number" step="0.01" min="0" max="100" value={r.weight_pension || ''}
-                            onChange={(e) => { const v = parseFloat(e.target.value); setDrGmRows((prev) => prev.map((rr) => rr.id !== r.id ? rr : { ...rr, weight_pension: isNaN(v) ? 0 : v })); }}
-                            style={{ width: 55, padding: '4px 6px', fontSize: '0.8125rem', textAlign: 'right', border: '1px solid rgba(245,158,11,0.35)', borderRadius: 5, outline: 'none' }} />
-                          <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>%</span>
-                        </div>
-                      </td>
-                      {/* 선택된 계좌 열 강조 — 다크 배경 위에서는 반투명으로 얹어야 한다
-                          (#DBEAFE 같은 불투명 라이트 색은 흰 덩어리로 튄다) */}
-                      <td style={{ ...tdStyle, padding: '5px 8px', backgroundColor: drGmAccountType === 'irp' ? 'rgba(59,130,246,0.20)' : undefined }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-                          <input type="number" step="0.01" min="0" max="100" value={r.weight_irp || ''}
-                            onChange={(e) => { const v = parseFloat(e.target.value); setDrGmRows((prev) => prev.map((rr) => rr.id !== r.id ? rr : { ...rr, weight_irp: isNaN(v) ? 0 : v })); }}
-                            style={{ width: 55, padding: '4px 6px', fontSize: '0.8125rem', textAlign: 'right', border: '1px solid rgba(56,189,248,0.35)', borderRadius: 5, outline: 'none' }} />
+                          <input type="number" step="0.01" min="0" max="100" value={r.weight || ''}
+                            onChange={(e) => { const v = parseFloat(e.target.value); setDrGmRows((prev) => prev.map((rr) => rr.id !== r.id ? rr : { ...rr, weight: isNaN(v) ? 0 : v })); }}
+                            style={{ width: 60, padding: '4px 6px', fontSize: '0.8125rem', textAlign: 'right', border: '1px solid rgba(245,158,11,0.35)', borderRadius: 5, outline: 'none' }} />
                           <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>%</span>
                         </div>
                       </td>
@@ -2651,17 +2668,13 @@ function Tab2Section({
                   })}
                 </tbody>
                 {drGmRows.length > 0 && (() => {
-                  const totalPension = drGmRows.reduce((s, r) => s + (r.weight_pension || 0), 0);
-                  const totalIrp = drGmRows.reduce((s, r) => s + (r.weight_irp || 0), 0);
-                  const activeWeight = drGmAccountType === 'pension' ? totalPension : totalIrp;
-                  const totalMonthly = drGmRows.reduce((s, r) => {
-                    const w = drGmAccountType === 'pension' ? r.weight_pension : r.weight_irp;
-                    return s + (drGmMonthlyAmount > 0 ? Math.floor(drGmMonthlyAmount * w / 100 / 1000) * 1000 : 0);
-                  }, 0);
-                  const totalLump = drGmRows.reduce((s, r) => {
-                    const w = drGmAccountType === 'pension' ? r.weight_pension : r.weight_irp;
-                    return s + (drGmLumpSumAmount > 0 ? Math.floor(drGmLumpSumAmount * w / 100 / 1000) * 1000 : 0);
-                  }, 0);
+                  const totalWeight = drGmRows.reduce((s, r) => s + (r.weight || 0), 0);
+                  const totalMonthly = drGmRows.reduce((s, r) =>
+                    s + (drGmMonthlyAmount > 0 ? Math.floor(drGmMonthlyAmount * r.weight / 100 / 1000) * 1000 : 0), 0);
+                  const totalLump = drGmRows.reduce((s, r) =>
+                    s + (drGmLumpSumAmount > 0 ? Math.floor(drGmLumpSumAmount * r.weight / 100 / 1000) * 1000 : 0), 0);
+                  // 합계가 100%가 아니면 배분이 어긋나므로 눈에 띄게 알린다
+                  const weightOff = Math.abs(totalWeight - 100) > 0.01;
                   return (
                   <tfoot>
                     <tr style={{ backgroundColor: 'var(--warning-bg)' }}>
@@ -2669,11 +2682,9 @@ function Tab2Section({
                       <td style={{ ...totalRowStyle, textAlign: 'left', position: 'sticky', left: 36, backgroundColor: 'var(--warning-bg)', zIndex: 1, borderRight: '2px solid var(--border)' }}>합계</td>
                       <td style={totalRowStyle} />
                       <td style={totalRowStyle} />
-                      <td style={{ ...totalRowStyle, backgroundColor: 'rgba(245,158,11,0.22)' }}>
-                        {totalPension.toFixed(2)}%
-                      </td>
-                      <td style={{ ...totalRowStyle, backgroundColor: 'rgba(56,189,248,0.20)' }}>
-                        {totalIrp.toFixed(2)}%
+                      <td style={{ ...totalRowStyle, backgroundColor: 'rgba(245,158,11,0.22)', color: weightOff ? '#F87171' : undefined }}
+                        title={weightOff ? '투자비중 합계가 100%가 아닙니다' : ''}>
+                        {totalWeight.toFixed(2)}%
                       </td>
                       <td style={{ ...totalRowStyle, color: 'var(--success)', backgroundColor: 'var(--success-bg)' }}>
                         {totalMonthly > 0 ? totalMonthly.toLocaleString('ko-KR') : '-'}
