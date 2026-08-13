@@ -301,6 +301,21 @@ function matchClients<T extends { name: string; unique_code?: string }>(list: T[
   return list.filter((c) => c.name.toLowerCase().includes(q) || (c.unique_code ?? '').includes(q));
 }
 
+/** 상품구분 배지 — 펀드 계열과 ETF 계열을 색으로 갈라 한눈에 구분되게 한다. */
+function drGmTypeBadge(type: string): React.CSSProperties {
+  const t = type.trim();
+  const c = t.includes('ETF') ? { bg: 'rgba(56,189,248,0.16)', fg: '#7CC0FF' }
+    : t.includes('펀드') ? { bg: 'rgba(245,158,11,0.18)', fg: '#FBBF24' }
+    : t === 'MMF' ? { bg: 'rgba(167,139,250,0.18)', fg: '#C4B5FD' }
+    : t.includes('주식') ? { bg: 'rgba(16,185,129,0.16)', fg: '#34D399' }
+    : { bg: 'rgba(148,163,184,0.16)', fg: 'var(--text-secondary)' };
+  return {
+    display: 'inline-block', padding: '2px 8px', borderRadius: 4,
+    fontSize: '0.6875rem', fontWeight: 700, whiteSpace: 'nowrap',
+    backgroundColor: c.bg, color: c.fg,
+  };
+}
+
 /** 검색 결과가 없을 때 입력칸 아래에 띄우는 안내.
  *  다른 입력들과 세로 정렬이 어긋나지 않도록 흐름 밖(absolute)에 둔다. */
 function ClientNoMatch() {
@@ -556,7 +571,13 @@ function Tab2Section({
       const res = await fetch(`${API_URL}/api/v1/recommended-portfolio${drGmQS(id)}`, {
         headers: { ...authLib.getAuthHeader() },
       });
-      if (res.ok) applyDrGmItems(await res.json());
+      if (res.ok) {
+        applyDrGmItems(await res.json());
+      } else {
+        // 조용히 넘기면 '저장은 되는데 목록이 빈' 상태로 보여 원인을 찾기 어렵다
+        const e = await res.json().catch(() => ({}));
+        showDrGmToast(`포트폴리오 불러오기 실패 (${res.status}) ${String((e as Record<string, unknown>)?.detail ?? '')}`.trim());
+      }
       // 탭마다 기억해 둔 투자 시뮬레이션 금액을 함께 복원
       const meta = drGmTabs.find((t) => t.id === id);
       if (meta) {
@@ -572,6 +593,13 @@ function Tab2Section({
     const id = await loadDrGmTabs(drGmTabId);
     await loadDrGmPortfolio(id);
   }
+
+  /* 고객·계좌 선택과 무관한 공통 템플릿이므로 탭에 들어오는 즉시 불러온다.
+     (이 컴포넌트는 '2. 데이터 확인' 탭이 열릴 때 마운트된다) */
+  useEffect(() => {
+    initDrGm();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   /** 탭 전환 — 저장하지 않은 편집 내용은 버려지므로 확인을 받는다 */
   async function switchDrGmTab(id: string) {
@@ -658,12 +686,18 @@ function Tab2Section({
   async function captureDrGm(): Promise<HTMLCanvasElement | null> {
     if (!drGmRef.current) return null;
     const html2canvas = (await import('html2canvas')).default;
+    // 화면이 다크 테마이므로 배경을 흰색으로 강제하면 밝은 글씨가 묻혀 안 보인다.
+    // 실제 카드 배경색을 그대로 써서 화면과 같은 그림이 나오게 한다.
+    const computedBg = getComputedStyle(drGmRef.current).backgroundColor;
+    const bg = computedBg && !/rgba?\(0,\s*0,\s*0,\s*0\)|transparent/.test(computedBg)
+      ? computedBg
+      : (getComputedStyle(document.documentElement).getPropertyValue('--bg-card').trim() || '#111A2B');
     const clone = drGmRef.current.cloneNode(true) as HTMLElement;
     clone.style.position = 'fixed';
     clone.style.top = '-9999px';
     clone.style.left = '-9999px';
     clone.style.width = `${Math.max(drGmRef.current.scrollWidth, 1200)}px`;
-    clone.style.backgroundColor = '#fff';
+    clone.style.backgroundColor = bg;
     clone.style.padding = '20px';
     clone.style.zIndex = '-1';
     // input은 값이 캡처되지 않으므로 텍스트로 바꾼다
@@ -675,6 +709,8 @@ function Tab2Section({
       span.style.display = 'inline-block';
       span.style.textAlign = 'right';
       span.style.minWidth = '40px';
+      // 입력칸의 실제 글자색을 그대로 옮긴다 (상속에 맡기면 배경과 같은 색이 될 수 있다)
+      span.style.color = getComputedStyle(el).color;
       el.replaceWith(span);
     });
     clone.querySelectorAll('td, th').forEach((td) => {
@@ -696,7 +732,8 @@ function Tab2Section({
     });
     document.body.appendChild(clone);
     try {
-      return await html2canvas(clone, { scale: 2 });
+      // html2canvas 기본 배경이 흰색이라 명시적으로 카드 배경을 넘긴다
+      return await html2canvas(clone, { scale: 2, backgroundColor: bg });
     } finally {
       document.body.removeChild(clone);
     }
@@ -762,9 +799,12 @@ function Tab2Section({
         const tabName = drGmTabs.find((t) => t.id === drGmTabId)?.name;
         showDrGmToast(`${tabName ? `'${tabName}' ` : ''}추천 포트폴리오가 저장되었습니다.`);
       } else {
-        showDrGmToast('저장 실패');
+        const e = await res.json().catch(() => ({}));
+        showDrGmToast(`저장 실패 (${res.status}) ${String((e as Record<string, unknown>)?.detail ?? '')}`.trim());
       }
-    } catch { showDrGmToast('저장 중 오류 발생'); }
+    } catch (e) {
+      showDrGmToast(`저장 중 오류 발생 — ${e instanceof Error ? e.message : String(e)}`);
+    }
     finally { setDrGmSaving(false); }
   }
 
@@ -776,12 +816,21 @@ function Tab2Section({
         headers: { ...authLib.getAuthHeader() },
       });
       if (res.ok) {
-        applyDrGmItems(await res.json());
-        showDrGmToast('현재가가 갱신되었습니다.');
+        const items = await res.json();
+        applyDrGmItems(items);
+        // 갱신된 게 없으면 '성공'이라고만 하면 왜 안 바뀌었는지 알 수 없다
+        const priced = items.filter((it: DrGmRow) => (it.current_price ?? 0) > 0).length;
+        showDrGmToast(priced > 0
+          ? `현재가가 갱신되었습니다. (${priced}/${items.length}개)`
+          : '조회된 현재가가 없습니다. 종목코드를 확인하세요. (펀드는 조회 대상이 아닙니다)');
       } else {
-        showDrGmToast('현재가 갱신 실패');
+        // 원인을 추측하지 않도록 서버가 준 상태코드와 사유를 그대로 보여준다
+        const e = await res.json().catch(() => ({}));
+        showDrGmToast(`현재가 갱신 실패 (${res.status}) ${String((e as Record<string, unknown>)?.detail ?? '')}`.trim());
       }
-    } catch { showDrGmToast('현재가 갱신 중 오류 발생'); }
+    } catch (e) {
+      showDrGmToast(`현재가 갱신 중 오류 발생 — ${e instanceof Error ? e.message : String(e)}`);
+    }
     finally { setDrGmRefreshing(false); }
   }
 
@@ -1291,7 +1340,7 @@ function Tab2Section({
       });
       setActiveSnapshot(snap);
       setT2ShowDetail(true);
-      initDrGm();
+      // 추천 포트폴리오는 탭 진입 시 이미 불러왔으므로 여기서 다시 부르지 않는다
 
       /* Build distribution data */
       const evalByRegion: Record<string, number> = {};
@@ -2430,8 +2479,10 @@ function Tab2Section({
 
       {/* ============================================================ */}
       {/* Area 4.5: Dr.GM 추천 포트폴리오 (전 고객 공통)                */}
+      {/* 고객·계좌 선택과 무관한 공통 템플릿이므로 탭에 들어오면 항상 보인다.
+          ('수정 포트폴리오 적용'만 대상 데이터가 필요하고, 그때 안내가 뜬다)  */}
       {/* ============================================================ */}
-      {t2ShowDetail && (
+      {(
         <div style={cardStyle} ref={drGmRef}>
           {/* 헤더 1열: 제목 + 토글 */}
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8, paddingBottom: 8, borderBottom: '1px solid var(--border)' }}>
@@ -2447,16 +2498,22 @@ function Tab2Section({
             <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 10,
               padding: '5px 12px', borderRadius: 8, border: '1px solid var(--border)', backgroundColor: 'var(--bg-surface)' }}>
               <span style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--warning)', whiteSpace: 'nowrap' }}>투자 시뮬레이션</span>
+              {/* 금액이 커서 자릿수를 세기 어려우므로 천단위 구분기호를 넣는다.
+                  type=number 는 콤마를 못 쓰므로 text + 숫자만 파싱 */}
               <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
                 <span style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-secondary)', whiteSpace: 'nowrap' }}>월적립</span>
-                <input type="number" value={drGmMonthlyAmount || ''} onChange={(e) => setDrGmMonthlyAmount(parseInt(e.target.value) || 0)}
-                  placeholder="0" style={{ width: 100, padding: '4px 6px', fontSize: '0.8125rem', textAlign: 'right', border: '1px solid var(--border)', borderRadius: 5, outline: 'none' }} />
+                <input type="text" inputMode="numeric"
+                  value={drGmMonthlyAmount > 0 ? drGmMonthlyAmount.toLocaleString('ko-KR') : ''}
+                  onChange={(e) => setDrGmMonthlyAmount(parseInt(e.target.value.replace(/\D/g, ''), 10) || 0)}
+                  placeholder="0" style={{ width: 110, padding: '4px 6px', fontSize: '0.8125rem', textAlign: 'right', border: '1px solid var(--border)', borderRadius: 5, outline: 'none' }} />
                 <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>원</span>
               </div>
               <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
                 <span style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-secondary)', whiteSpace: 'nowrap' }}>거치</span>
-                <input type="number" value={drGmLumpSumAmount || ''} onChange={(e) => setDrGmLumpSumAmount(parseInt(e.target.value) || 0)}
-                  placeholder="0" style={{ width: 110, padding: '4px 6px', fontSize: '0.8125rem', textAlign: 'right', border: '1px solid var(--border)', borderRadius: 5, outline: 'none' }} />
+                <input type="text" inputMode="numeric"
+                  value={drGmLumpSumAmount > 0 ? drGmLumpSumAmount.toLocaleString('ko-KR') : ''}
+                  onChange={(e) => setDrGmLumpSumAmount(parseInt(e.target.value.replace(/\D/g, ''), 10) || 0)}
+                  placeholder="0" style={{ width: 125, padding: '4px 6px', fontSize: '0.8125rem', textAlign: 'right', border: '1px solid var(--border)', borderRadius: 5, outline: 'none' }} />
                 <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>원</span>
               </div>
             </div>
@@ -2579,12 +2636,15 @@ function Tab2Section({
                   <tr style={{ backgroundColor: 'var(--warning-bg)' }}>
                     <th style={{ ...thStyle, backgroundColor: 'var(--warning-bg)', textAlign: 'center', minWidth: 36, position: 'sticky', left: 0, zIndex: 2 }}>No.</th>
                     <th style={{ ...thStyle, backgroundColor: 'var(--warning-bg)', textAlign: 'left', minWidth: 220, position: 'sticky', left: 36, zIndex: 2, borderRight: '2px solid var(--border)' }}>상품명</th>
+                    {/* 이름만으로는 펀드/ETF 구분이 어려워 상품 마스터의 유형을 함께 보여준다 */}
+                    <th style={{ ...thStyle, backgroundColor: 'var(--warning-bg)', textAlign: 'center', minWidth: 90 }}>상품구분</th>
                     <th style={{ ...thStyle, backgroundColor: 'var(--warning-bg)', minWidth: 80 }}>종목코드</th>
                     <th style={{ ...thStyle, backgroundColor: 'var(--warning-bg)', minWidth: 80 }}>현재가</th>
+                    {/* 색 강조는 편집 대상인 '투자비중'에만 — 나머지는 다른 열과 동일하게 */}
                     <th style={{ ...thStyle, backgroundColor: 'var(--warning)', color: '#fff', minWidth: 100 }}>투자비중</th>
-                    <th style={{ ...thStyle, backgroundColor: 'var(--success-bg)', minWidth: 90 }}>월적립투자</th>
-                    <th style={{ ...thStyle, backgroundColor: 'rgba(56,189,248,0.16)', minWidth: 80 }}>거치투자</th>
-                    <th style={{ ...thStyle, backgroundColor: 'rgba(56,189,248,0.16)', minWidth: 80 }}>구매좌수(거치)</th>
+                    <th style={{ ...thStyle, backgroundColor: 'var(--warning-bg)', minWidth: 90 }}>월적립투자</th>
+                    <th style={{ ...thStyle, backgroundColor: 'var(--warning-bg)', minWidth: 80 }}>거치투자</th>
+                    <th style={{ ...thStyle, backgroundColor: 'var(--warning-bg)', minWidth: 80 }}>구매좌수(거치)</th>
                     <th style={{ ...thStyle, backgroundColor: 'var(--warning-bg)', textAlign: 'left', minWidth: 90 }}>비고</th>
                     <th style={{ ...thStyle, backgroundColor: 'var(--warning-bg)', textAlign: 'center', minWidth: 36 }}>
                       <input type="checkbox" checked={drGmRows.length > 0 && drGmChecked.size === drGmRows.length}
@@ -2595,7 +2655,7 @@ function Tab2Section({
                 </thead>
                 <tbody>
                   {drGmRows.length === 0 && (
-                    <tr><td colSpan={10} style={{ padding: 20, textAlign: 'center', color: 'var(--text-muted)' }}>등록된 추천 상품이 없습니다. [+ 행추가] 버튼으로 추가하세요.</td></tr>
+                    <tr><td colSpan={11} style={{ padding: 20, textAlign: 'center', color: 'var(--text-muted)' }}>등록된 추천 상품이 없습니다. [+ 행추가] 버튼으로 추가하세요.</td></tr>
                   )}
                   {drGmRows.map((r, idx) => {
                     const weight = r.weight;
@@ -2635,23 +2695,29 @@ function Tab2Section({
                           </div>
                         </div>
                       </td>
+                      <td style={{ ...tdStyle, textAlign: 'center' }}>
+                        {r.product_type
+                          ? <span style={drGmTypeBadge(r.product_type)}>{r.product_type}</span>
+                          : <span style={{ color: 'var(--text-muted)' }}>-</span>}
+                      </td>
                       <td style={{ ...tdStyle, fontFamily: 'monospace', fontSize: '0.75rem', color: 'var(--text-muted)' }}>{r.product_code || '-'}</td>
                       <td style={tdStyle}>{r.current_price > 0 ? r.current_price.toLocaleString('ko-KR') : '-'}</td>
                       <td style={{ ...tdStyle, padding: '5px 8px', backgroundColor: 'rgba(245,158,11,0.18)' }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+                        {/* justifyContent flex-end — 안쪽 flex가 기본 flex-start라 다른 숫자 열과 정렬이 어긋났다 */}
+                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 2 }}>
                           <input type="number" step="0.01" min="0" max="100" value={r.weight || ''}
                             onChange={(e) => { const v = parseFloat(e.target.value); setDrGmRows((prev) => prev.map((rr) => rr.id !== r.id ? rr : { ...rr, weight: isNaN(v) ? 0 : v })); }}
                             style={{ width: 60, padding: '4px 6px', fontSize: '0.8125rem', textAlign: 'right', border: '1px solid rgba(245,158,11,0.35)', borderRadius: 5, outline: 'none' }} />
                           <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>%</span>
                         </div>
                       </td>
-                      <td style={{ ...tdStyle, textAlign: 'right', color: monthlyInv > 0 ? '#059669' : '#9CA3AF', backgroundColor: 'var(--success-bg)' }}>
+                      <td style={{ ...tdStyle, textAlign: 'right', color: monthlyInv > 0 ? 'var(--text-primary)' : 'var(--text-muted)' }}>
                         {monthlyInv > 0 ? monthlyInv.toLocaleString('ko-KR') : '-'}
                       </td>
-                      <td style={{ ...tdStyle, textAlign: 'right', color: lumpInv > 0 ? '#2563EB' : '#9CA3AF', backgroundColor: 'rgba(56,189,248,0.12)' }}>
+                      <td style={{ ...tdStyle, textAlign: 'right', color: lumpInv > 0 ? 'var(--text-primary)' : 'var(--text-muted)' }}>
                         {lumpInv > 0 ? lumpInv.toLocaleString('ko-KR') : '-'}
                       </td>
-                      <td style={{ ...tdStyle, textAlign: 'right', color: lumpShares > 0 ? '#2563EB' : '#9CA3AF', backgroundColor: 'rgba(56,189,248,0.12)' }}>
+                      <td style={{ ...tdStyle, textAlign: 'right', color: lumpShares > 0 ? 'var(--text-primary)' : 'var(--text-muted)' }}>
                         {lumpShares > 0 ? lumpShares.toLocaleString('ko-KR') : '-'}
                       </td>
                       <td style={{ ...tdStyle, padding: '5px 8px', textAlign: 'left' }}>
@@ -2675,26 +2741,30 @@ function Tab2Section({
                     s + (drGmLumpSumAmount > 0 ? Math.floor(drGmLumpSumAmount * r.weight / 100 / 1000) * 1000 : 0), 0);
                   // 합계가 100%가 아니면 배분이 어긋나므로 눈에 띄게 알린다
                   const weightOff = Math.abs(totalWeight - 100) > 0.01;
+                  // totalRowStyle에 --bg-surface가 박혀 있어 tr 배경을 덮는다.
+                  // 셀마다 같은 색을 명시해야 합계 행이 한 줄로 보인다 (html2canvas도 tr 배경을 못 그린다)
+                  const foot: React.CSSProperties = { ...totalRowStyle, backgroundColor: 'var(--warning-bg)' };
                   return (
                   <tfoot>
-                    <tr style={{ backgroundColor: 'var(--warning-bg)' }}>
-                      <td style={{ ...totalRowStyle, position: 'sticky', left: 0, backgroundColor: 'var(--warning-bg)', zIndex: 1 }} />
-                      <td style={{ ...totalRowStyle, textAlign: 'left', position: 'sticky', left: 36, backgroundColor: 'var(--warning-bg)', zIndex: 1, borderRight: '2px solid var(--border)' }}>합계</td>
-                      <td style={totalRowStyle} />
-                      <td style={totalRowStyle} />
-                      <td style={{ ...totalRowStyle, backgroundColor: 'rgba(245,158,11,0.22)', color: weightOff ? '#F87171' : undefined }}
+                    <tr>
+                      <td style={{ ...foot, position: 'sticky', left: 0, zIndex: 1 }} />
+                      <td style={{ ...foot, textAlign: 'left', position: 'sticky', left: 36, zIndex: 1, borderRight: '2px solid var(--border)' }}>합계</td>
+                      <td style={foot} />
+                      <td style={foot} />
+                      <td style={foot} />
+                      <td style={{ ...foot, color: weightOff ? '#F87171' : undefined }}
                         title={weightOff ? '투자비중 합계가 100%가 아닙니다' : ''}>
                         {totalWeight.toFixed(2)}%
                       </td>
-                      <td style={{ ...totalRowStyle, color: 'var(--success)', backgroundColor: 'var(--success-bg)' }}>
+                      <td style={foot}>
                         {totalMonthly > 0 ? totalMonthly.toLocaleString('ko-KR') : '-'}
                       </td>
-                      <td style={{ ...totalRowStyle, color: 'var(--blue-500)', backgroundColor: 'rgba(56,189,248,0.18)' }}>
+                      <td style={foot}>
                         {totalLump > 0 ? totalLump.toLocaleString('ko-KR') : '-'}
                       </td>
-                      <td style={totalRowStyle} />
-                      <td style={totalRowStyle} />
-                      <td style={totalRowStyle} />
+                      <td style={foot} />
+                      <td style={foot} />
+                      <td style={foot} />
                     </tr>
                   </tfoot>
                   );
