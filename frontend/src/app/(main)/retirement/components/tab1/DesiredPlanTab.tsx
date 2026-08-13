@@ -282,8 +282,9 @@ export function DesiredPlanTab() {
   const [rHoldIn, setRHoldIn] = useState('');          // 거치금액 (만)
 
   /* ---------- 시스템 ---------- */
-  const [showCurPlan, setShowCurPlan] = useState(true);    // 현재플랜 아코디언 (기본 펼침)
-  const [showRecPlan, setShowRecPlan] = useState(false);   // 추천플랜 아코디언 (기본 접힘)
+  // 진입 시 기본값 — 실제 작업 대상은 추천플랜이므로 그쪽을 펼치고 현재플랜은 접어 둔다
+  const [showCurPlan, setShowCurPlan] = useState(false);   // 현재플랜 아코디언 (기본 접힘)
+  const [showRecPlan, setShowRecPlan] = useState(true);    // 추천플랜 아코디언 (기본 펼침)
   const [saving, setSaving] = useState(false);
   // 시뮬레이션 그래프 보기 전환 — 'fund'(은퇴금액)가 기본이자 고정값
   const [gMode, setGMode] = useState<'fund' | 'penCur' | 'penRec'>('fund');

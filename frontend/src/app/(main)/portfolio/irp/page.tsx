@@ -252,42 +252,6 @@ async function getClientAccountId(row: ClientRowData): Promise<string> {
 }
 
 /* ------------------------------------------------------------------ */
-/*  Step indicator                                                      */
-/* ------------------------------------------------------------------ */
-
-function StepDot({ step, active, done }: { step: number; active: boolean; done: boolean }) {
-  const filled = done || active;
-  return (
-    <div
-      style={{
-        width: 28,
-        height: 28,
-        borderRadius: '50%',
-        boxSizing: 'border-box',
-        border: `2px solid ${filled ? '#3B82F6' : 'var(--border-strong)'}`,
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        backgroundColor: filled ? '#3B82F6' : 'transparent',
-        color: filled ? '#fff' : 'var(--text-muted)',
-        fontSize: '0.75rem',
-        fontWeight: 700,
-        flexShrink: 0,
-        transition: 'all 0.2s ease',
-      }}
-    >
-      {done ? (
-        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3">
-          <polyline points="20 6 9 17 4 12" />
-        </svg>
-      ) : (
-        step
-      )}
-    </div>
-  );
-}
-
-/* ------------------------------------------------------------------ */
 /*  Process result status icon                                          */
 /* ------------------------------------------------------------------ */
 
@@ -325,6 +289,28 @@ const TABS: TabItem[] = [
   { key: 'report', label: '3. 보고서' },
   { key: 'history', label: '4. 내역관리' },
 ];
+
+/* ------------------------------------------------------------------ */
+/*  고객 검색 (은퇴플랜 관리와 동일 동작)                                */
+/* ------------------------------------------------------------------ */
+
+/** 이름 또는 고유번호로 거른다. 검색어가 없으면 전체를 그대로 돌려준다. */
+function matchClients<T extends { name: string; unique_code?: string }>(list: T[], query: string): T[] {
+  const q = query.trim().toLowerCase();
+  if (!q) return list;
+  return list.filter((c) => c.name.toLowerCase().includes(q) || (c.unique_code ?? '').includes(q));
+}
+
+/** 검색 결과가 없을 때 입력칸 아래에 띄우는 안내.
+ *  다른 입력들과 세로 정렬이 어긋나지 않도록 흐름 밖(absolute)에 둔다. */
+function ClientNoMatch() {
+  return (
+    <div style={{ position: 'absolute', top: '100%', left: 0, marginTop: 3, fontSize: 11, lineHeight: '14px',
+      whiteSpace: 'nowrap', pointerEvents: 'none', color: 'var(--danger)', fontWeight: 600 }}>
+      일치하는 고객이 없습니다
+    </div>
+  );
+}
 
 /* ------------------------------------------------------------------ */
 /*  Tab2 Types                                                          */
@@ -480,6 +466,22 @@ function Tab2Section({
     memo: string;
     seq: number;
   }
+  /* 추천 포트폴리오 탭 — 연금저축용/IRP용처럼 구성이 다른 조합을 미리 저장해 둔다 */
+  interface DrGmTab {
+    id: string;
+    name: string;
+    seq: number;
+    account_type?: string | null;
+    monthly_amount?: number | null;
+    lump_sum_amount?: number | null;
+  }
+  const DRGM_MAX_TABS = 4;
+  const [drGmTabs, setDrGmTabs] = useState<DrGmTab[]>([]);
+  const [drGmTabId, setDrGmTabId] = useState<string | null>(null);
+  const [drGmRenamingId, setDrGmRenamingId] = useState<string | null>(null);
+  const [drGmRenameText, setDrGmRenameText] = useState('');
+  const [drGmTabBusy, setDrGmTabBusy] = useState(false);
+
   const [drGmRows, setDrGmRows] = useState<DrGmRow[]>([]);
   const [drGmLoading, setDrGmLoading] = useState(false);
   const [drGmSaving, setDrGmSaving] = useState(false);
@@ -511,29 +513,145 @@ function Tab2Section({
   }
 
   /* ---- Dr.GM 추천 포트폴리오 functions ---- */
-  async function loadDrGmPortfolio() {
-    setDrGmLoading(true);
+  // 모든 요청은 활성 탭에 귀속된다 — 탭을 지정하지 않으면 서버가 첫 번째 탭을 쓴다
+  const drGmQS = (id?: string | null) => (id ? `?portfolio_id=${encodeURIComponent(id)}` : '');
+
+  const applyDrGmItems = (items: DrGmRow[]) => {
+    setDrGmRows(items.map((it) => ({
+      id: it.id,
+      product_name: it.product_name,
+      product_code: it.product_code ?? '',
+      product_type: it.product_type ?? '',
+      region: it.region ?? '',
+      current_price: it.current_price ?? 0,
+      weight_pension: it.weight_pension != null ? parseFloat((it.weight_pension * 100).toFixed(2)) : 0,
+      weight_irp: it.weight_irp != null ? parseFloat((it.weight_irp * 100).toFixed(2)) : 0,
+      memo: it.memo ?? '',
+      seq: it.seq ?? 0,
+    })));
+  };
+
+  /** 탭 목록을 불러오고 활성 탭을 정한다. 반환값 = 활성 탭 id */
+  async function loadDrGmTabs(preferId?: string | null): Promise<string | null> {
     try {
-      const res = await fetch(`${API_URL}/api/v1/recommended-portfolio`, {
+      const res = await fetch(`${API_URL}/api/v1/recommended-portfolio/portfolios`, {
         headers: { ...authLib.getAuthHeader() },
       });
-      if (res.ok) {
-        const items = await res.json();
-        setDrGmRows(items.map((it: DrGmRow) => ({
-          id: it.id,
-          product_name: it.product_name,
-          product_code: it.product_code ?? '',
-          product_type: it.product_type ?? '',
-          region: it.region ?? '',
-          current_price: it.current_price ?? 0,
-          weight_pension: it.weight_pension != null ? parseFloat((it.weight_pension * 100).toFixed(2)) : 0,
-          weight_irp: it.weight_irp != null ? parseFloat((it.weight_irp * 100).toFixed(2)) : 0,
-          memo: it.memo ?? '',
-          seq: it.seq ?? 0,
-        })));
+      if (!res.ok) return null;
+      const tabs: DrGmTab[] = await res.json();
+      setDrGmTabs(tabs);
+      const keep = preferId && tabs.some((t) => t.id === preferId) ? preferId : null;
+      const next = keep ?? (tabs[0]?.id ?? null);
+      setDrGmTabId(next);
+      return next;
+    } catch { return null; }
+  }
+
+  /** 탭의 상품 목록 + 화면 설정(계좌 구분·금액)을 불러온다 */
+  async function loadDrGmPortfolio(tabId?: string | null) {
+    setDrGmLoading(true);
+    try {
+      const id = tabId ?? drGmTabId;
+      const res = await fetch(`${API_URL}/api/v1/recommended-portfolio${drGmQS(id)}`, {
+        headers: { ...authLib.getAuthHeader() },
+      });
+      if (res.ok) applyDrGmItems(await res.json());
+      // 탭마다 기억해 둔 계좌 구분·금액을 함께 복원
+      const meta = drGmTabs.find((t) => t.id === id);
+      if (meta) {
+        setDrGmAccountType(meta.account_type === 'irp' ? 'irp' : 'pension');
+        setDrGmMonthlyAmount(meta.monthly_amount ?? 0);
+        setDrGmLumpSumAmount(meta.lump_sum_amount ?? 0);
       }
     } catch { /* silent */ }
     finally { setDrGmLoading(false); }
+  }
+
+  /** 최초 진입: 탭 목록 → 활성 탭의 상품 목록 */
+  async function initDrGm() {
+    const id = await loadDrGmTabs(drGmTabId);
+    await loadDrGmPortfolio(id);
+  }
+
+  /** 탭 전환 — 저장하지 않은 편집 내용은 버려지므로 확인을 받는다 */
+  async function switchDrGmTab(id: string) {
+    if (id === drGmTabId) return;
+    setDrGmTabId(id);
+    setDrGmChecked(new Set());
+    setDrGmEditRowId(null);
+    const meta = drGmTabs.find((t) => t.id === id);
+    if (meta) {
+      setDrGmAccountType(meta.account_type === 'irp' ? 'irp' : 'pension');
+      setDrGmMonthlyAmount(meta.monthly_amount ?? 0);
+      setDrGmLumpSumAmount(meta.lump_sum_amount ?? 0);
+    }
+    await loadDrGmPortfolio(id);
+  }
+
+  async function addDrGmTab() {
+    if (drGmTabs.length >= DRGM_MAX_TABS) {
+      showDrGmToast(`추천 포트폴리오는 최대 ${DRGM_MAX_TABS}개까지 만들 수 있습니다.`);
+      return;
+    }
+    setDrGmTabBusy(true);
+    try {
+      const res = await fetch(`${API_URL}/api/v1/recommended-portfolio/portfolios`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...authLib.getAuthHeader() },
+        body: JSON.stringify({ name: `포트폴리오 ${drGmTabs.length + 1}` }),
+      });
+      if (!res.ok) {
+        const e = await res.json().catch(() => ({}));
+        showDrGmToast(String(e?.detail || '탭 추가 실패'));
+        return;
+      }
+      const created: DrGmTab = await res.json();
+      await loadDrGmTabs(created.id);
+      setDrGmRows([]);              // 새 탭은 빈 상태로 시작
+      setDrGmChecked(new Set());
+      setDrGmMonthlyAmount(0);
+      setDrGmLumpSumAmount(0);
+      showDrGmToast('새 포트폴리오 탭이 추가되었습니다.');
+    } catch { showDrGmToast('탭 추가 중 오류 발생'); }
+    finally { setDrGmTabBusy(false); }
+  }
+
+  async function renameDrGmTab(id: string, name: string) {
+    const trimmed = name.trim();
+    setDrGmRenamingId(null);
+    if (!trimmed) { showDrGmToast('이름은 비워 둘 수 없습니다.'); return; }
+    if (trimmed === drGmTabs.find((t) => t.id === id)?.name) return;
+    try {
+      const res = await fetch(`${API_URL}/api/v1/recommended-portfolio/portfolios/${id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json', ...authLib.getAuthHeader() },
+        body: JSON.stringify({ name: trimmed }),
+      });
+      if (!res.ok) { showDrGmToast('이름 변경 실패'); return; }
+      setDrGmTabs((prev) => prev.map((t) => (t.id === id ? { ...t, name: trimmed } : t)));
+    } catch { showDrGmToast('이름 변경 중 오류 발생'); }
+  }
+
+  async function deleteDrGmTab(id: string) {
+    if (drGmTabs.length <= 1) { showDrGmToast('마지막 포트폴리오는 삭제할 수 없습니다.'); return; }
+    const name = drGmTabs.find((t) => t.id === id)?.name ?? '';
+    if (!window.confirm(`'${name}' 포트폴리오를 삭제할까요?\n담긴 상품도 함께 삭제됩니다.`)) return;
+    setDrGmTabBusy(true);
+    try {
+      const res = await fetch(`${API_URL}/api/v1/recommended-portfolio/portfolios/${id}`, {
+        method: 'DELETE',
+        headers: { ...authLib.getAuthHeader() },
+      });
+      if (!res.ok) {
+        const e = await res.json().catch(() => ({}));
+        showDrGmToast(String(e?.detail || '삭제 실패'));
+        return;
+      }
+      const nextId = await loadDrGmTabs(id === drGmTabId ? null : drGmTabId);
+      await loadDrGmPortfolio(nextId);
+      showDrGmToast('포트폴리오가 삭제되었습니다.');
+    } catch { showDrGmToast('삭제 중 오류 발생'); }
+    finally { setDrGmTabBusy(false); }
   }
 
   async function saveDrGmPortfolio() {
@@ -550,26 +668,25 @@ function Tab2Section({
         memo: r.memo || null,
         seq: idx,
       }));
-      const res = await fetch(`${API_URL}/api/v1/recommended-portfolio`, {
+      const res = await fetch(`${API_URL}/api/v1/recommended-portfolio${drGmQS(drGmTabId)}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json', ...authLib.getAuthHeader() },
-        body: JSON.stringify({ items }),
+        // 계좌 구분·금액도 탭에 함께 저장해 다음에 열 때 그대로 복원되게 한다
+        body: JSON.stringify({
+          items,
+          account_type: drGmAccountType,
+          monthly_amount: drGmMonthlyAmount,
+          lump_sum_amount: drGmLumpSumAmount,
+        }),
       });
       if (res.ok) {
-        const saved = await res.json();
-        setDrGmRows(saved.map((it: DrGmRow) => ({
-          id: it.id,
-          product_name: it.product_name,
-          product_code: it.product_code ?? '',
-          product_type: it.product_type ?? '',
-          region: it.region ?? '',
-          current_price: it.current_price ?? 0,
-          weight_pension: it.weight_pension != null ? parseFloat((it.weight_pension * 100).toFixed(2)) : 0,
-          weight_irp: it.weight_irp != null ? parseFloat((it.weight_irp * 100).toFixed(2)) : 0,
-          memo: it.memo ?? '',
-          seq: it.seq ?? 0,
-        })));
-        showDrGmToast('Dr.GM 추천 포트폴리오가 저장되었습니다.');
+        // 탭 메타(계좌 구분·금액)도 로컬 상태에 반영해 탭 전환 시 되살아나게 한다
+        setDrGmTabs((prev) => prev.map((t) => (t.id === drGmTabId
+          ? { ...t, account_type: drGmAccountType, monthly_amount: drGmMonthlyAmount, lump_sum_amount: drGmLumpSumAmount }
+          : t)));
+        applyDrGmItems(await res.json());
+        const tabName = drGmTabs.find((t) => t.id === drGmTabId)?.name;
+        showDrGmToast(`${tabName ? `'${tabName}' ` : ''}추천 포트폴리오가 저장되었습니다.`);
       } else {
         showDrGmToast('저장 실패');
       }
@@ -580,24 +697,12 @@ function Tab2Section({
   async function refreshDrGmPrices() {
     setDrGmRefreshing(true);
     try {
-      const res = await fetch(`${API_URL}/api/v1/recommended-portfolio/refresh-prices`, {
+      const res = await fetch(`${API_URL}/api/v1/recommended-portfolio/refresh-prices${drGmQS(drGmTabId)}`, {
         method: 'POST',
         headers: { ...authLib.getAuthHeader() },
       });
       if (res.ok) {
-        const items = await res.json();
-        setDrGmRows(items.map((it: DrGmRow) => ({
-          id: it.id,
-          product_name: it.product_name,
-          product_code: it.product_code ?? '',
-          product_type: it.product_type ?? '',
-          region: it.region ?? '',
-          current_price: it.current_price ?? 0,
-          weight_pension: it.weight_pension != null ? parseFloat((it.weight_pension * 100).toFixed(2)) : 0,
-          weight_irp: it.weight_irp != null ? parseFloat((it.weight_irp * 100).toFixed(2)) : 0,
-          memo: it.memo ?? '',
-          seq: it.seq ?? 0,
-        })));
+        applyDrGmItems(await res.json());
         showDrGmToast('현재가가 갱신되었습니다.');
       } else {
         showDrGmToast('현재가 갱신 실패');
@@ -920,6 +1025,19 @@ function Tab2Section({
     return a.name.localeCompare(b.name, 'ko');
   });
 
+  /* ---- 고객 검색 → 결과가 정확히 1명이면 자동 선택 (은퇴플랜 관리와 동일) ----
+     여러 명일 때 첫 번째를 고르면 엉뚱한 고객이 잡히므로 1명일 때만 고른다.
+     타이핑 중 매 글자마다 조회가 나가지 않도록 250ms 지연시킨다. */
+  const t2Matches = matchClients(uniqueClients, t2ClientSearch);
+  const t2NoMatch = t2ClientSearch.trim().length > 0 && t2Matches.length === 0;
+  const t2AutoId = t2ClientSearch.trim() && t2Matches.length === 1 ? t2Matches[0].id : null;
+  useEffect(() => {
+    if (!t2AutoId || t2AutoId === histClientId) return;
+    const timer = setTimeout(() => handleT2ClientChange(t2AutoId), 250);
+    return () => clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [t2AutoId, histClientId]);
+
   /* ---- Derived: accounts for selected client (all accounts across same-name clients) ---- */
   /* When histClientId is set, find the name of that client, then collect all accounts from all clients with that name */
   const selectedClientName = clients.find((c) => c.id === histClientId)?.name ?? '';
@@ -1101,7 +1219,7 @@ function Tab2Section({
       });
       setActiveSnapshot(snap);
       setT2ShowDetail(true);
-      loadDrGmPortfolio();
+      initDrGm();
 
       /* Build distribution data */
       const evalByRegion: Record<string, number> = {};
@@ -1745,11 +1863,9 @@ function Tab2Section({
       {/* ============================================================ */}
       {/* Area 1: 고객 이력 조회                                        */}
       {/* ============================================================ */}
-      <div style={cardStyle}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 16, paddingBottom: 12, borderBottom: '1px solid var(--border)' }}>
-          <div style={{ width: 3, height: 18, borderRadius: 2, backgroundColor: 'var(--blue-600)', flexShrink: 0 }} />
-          <span style={sectionTitleStyle}>고객 이력 조회</span>
-        </div>
+      {/* padding 16 — 3·4번 탭의 컨트롤 바(<Card padding={16}>)와 높이를 맞춘다 */}
+      <div style={{ ...cardStyle, padding: 16 }}>
+        {/* 제목 줄 제거 — 입력 항목만으로 무엇을 하는 영역인지 충분히 읽힌다 */}
 
         {/* Row 1: search + client + account type */}
         <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'flex-end', marginBottom: 12 }}>
@@ -1766,13 +1882,15 @@ function Tab2Section({
                 placeholder="이름/고유번호"
                 value={t2ClientSearch}
                 onChange={(e) => setT2ClientSearch(e.target.value)}
-                style={{ width: '100%', padding: '8px 10px 8px 28px', fontSize: '0.8125rem', border: '1px solid var(--border)', borderRadius: 8, outline: 'none', color: 'var(--text-primary)', boxSizing: 'border-box' }}
+                onKeyDown={(e) => { if (e.key === 'Escape') setT2ClientSearch(''); }}
+                style={{ width: '100%', padding: '8px 10px 8px 28px', fontSize: '0.8125rem', border: `1px solid ${t2NoMatch ? 'var(--danger)' : 'var(--border)'}`, borderRadius: 8, outline: 'none', color: 'var(--text-primary)', boxSizing: 'border-box' }}
               />
+              {t2NoMatch && <ClientNoMatch />}
             </div>
           </div>
 
-          {/* 고객 선택 */}
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 5, minWidth: 220, flex: 1 }}>
+          {/* 고객 선택 — 고정 폭. flex:1이면 다음 항목(계좌 유형)까지 마우스 이동이 길어진다 */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 5, width: 260, minWidth: 260, flex: '0 0 auto' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
               <label style={{ fontSize: '0.8125rem', fontWeight: 600, color: 'var(--text-secondary)' }}>고객 선택</label>
               <button
@@ -1786,18 +1904,16 @@ function Tab2Section({
             <select
               value={histClientId}
               onChange={(e) => { handleT2ClientChange(e.target.value); setT2ClientSearch(''); }}
-              style={{ padding: '8px 10px', fontSize: '0.8125rem', border: '1px solid var(--border)', borderRadius: 8, outline: 'none', color: histClientId ? 'var(--text-primary)' : '#9CA3AF', backgroundColor: 'var(--bg-card)', cursor: 'pointer' }}
+              style={{ width: '100%', boxSizing: 'border-box', padding: '8px 10px', fontSize: '0.8125rem', border: '1px solid var(--border)', borderRadius: 8, outline: 'none', color: histClientId ? 'var(--text-primary)' : '#9CA3AF', backgroundColor: 'var(--bg-card)', cursor: 'pointer' }}
             >
               <option value="">-- 고객 선택 --</option>
-              {uniqueClients
-                .filter((c) => {
-                  if (!t2ClientSearch.trim()) return true;
-                  const q = t2ClientSearch.trim().toLowerCase();
-                  return c.name.toLowerCase().includes(q) || (c.unique_code ?? '').includes(q);
-                })
-                .map((c) => (
+              {t2NoMatch ? (
+                <option value="" disabled>검색 결과 없음</option>
+              ) : (
+                t2Matches.map((c) => (
                   <option key={c.name} value={c.id}>{clientLabel(c, clientLatestDates[c.id])}</option>
-                ))}
+                ))
+              )}
             </select>
           </div>
 
@@ -2045,8 +2161,10 @@ function Tab2Section({
               )}
 
               {/* ---- Holdings table ---- */}
-              <div style={{ overflowX: 'scroll', border: '1px solid var(--border)', borderRadius: 8 }}>
-                <table style={{ borderCollapse: 'collapse', fontSize: '0.8125rem', minWidth: !t2SelectedAccount?.account_type?.startsWith('pension') ? 1000 : 1100 }}>
+              {/* auto — 표가 폭을 다 쓰면 스크롤바가 필요 없다 (scroll이면 항상 떠 있었다) */}
+              <div style={{ overflowX: 'auto', border: '1px solid var(--border)', borderRadius: 8 }}>
+                {/* width 100% — minWidth만 있으면 넓은 화면에서 오른쪽이 빈 채로 남는다 */}
+                <table style={{ borderCollapse: 'collapse', fontSize: '0.8125rem', width: '100%', minWidth: !t2SelectedAccount?.account_type?.startsWith('pension') ? 1000 : 1100 }}>
                   <thead>
                     <tr style={{ backgroundColor: 'var(--bg-surface)' }}>
                       <th style={{ ...thStyle, position: 'sticky', left: 0, zIndex: 2, background: 'var(--bg-surface)', textAlign: 'center', minWidth: 36 }}>No.</th>
@@ -2241,6 +2359,11 @@ function Tab2Section({
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8, paddingBottom: 8, borderBottom: '1px solid var(--border)' }}>
             <div style={{ width: 3, height: 18, borderRadius: 2, backgroundColor: 'var(--warning)', flexShrink: 0 }} />
             <span style={sectionTitleStyle}>Dr.GM 추천 포트폴리오</span>
+            {drGmTabs.find((t) => t.id === drGmTabId) && (
+              <span style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--warning)' }}>
+                · {drGmTabs.find((t) => t.id === drGmTabId)?.name}
+              </span>
+            )}
             {/* 연금저축/IRP 토글 */}
             <div style={{ marginLeft: 'auto', display: 'flex', borderRadius: 6, overflow: 'hidden', border: '1px solid var(--border)' }}>
               <button onClick={() => setDrGmAccountType('pension')}
@@ -2325,15 +2448,21 @@ function Tab2Section({
                 el.style.padding = '0 8px';
                 el.style.whiteSpace = 'nowrap';
               });
-              // 버튼, 체크박스 숨기기
+              // 버튼, 체크박스 숨기기 (탭의 '+ 탭 추가'·삭제 버튼도 여기서 함께 사라진다)
               clone.querySelectorAll('button, input[type="checkbox"]').forEach((el) => {
                 (el as HTMLElement).style.display = 'none';
+              });
+              // 비활성 탭은 캡처에서 제외 — 현재 보고 있는 포트폴리오만 남긴다
+              clone.querySelectorAll('.drgm-tabs > div').forEach((el) => {
+                const active = (el as HTMLElement).style.fontWeight === '800';
+                if (!active) (el as HTMLElement).style.display = 'none';
               });
               document.body.appendChild(clone);
               const canvas = await html2canvas(clone, { scale: 2 });
               document.body.removeChild(clone);
               const link = document.createElement('a');
-              link.download = `DrGM_추천포트폴리오_${drGmAccountType === 'pension' ? '연금저축' : 'IRP'}.png`;
+              const tabName = drGmTabs.find((t) => t.id === drGmTabId)?.name ?? '추천포트폴리오';
+              link.download = `DrGM_${tabName}_${drGmAccountType === 'pension' ? '연금저축' : 'IRP'}.png`;
               link.href = canvas.toDataURL('image/png');
               link.click();
             }}
@@ -2342,10 +2471,70 @@ function Tab2Section({
             </button>
           </div>
 
+          {/* 바인더 탭 — 표 바로 위에 물려 있게 배치. 클릭하면 그 탭에 저장된 상품을 불러온다 */}
+          <div className="drgm-tabs" style={{ display: 'flex', alignItems: 'flex-end', gap: 3, paddingLeft: 10, marginBottom: -1, position: 'relative', zIndex: 3 }}>
+            {drGmTabs.map((t) => {
+              const on = t.id === drGmTabId;
+              return (
+                <div key={t.id}
+                  onClick={() => !drGmTabBusy && switchDrGmTab(t.id)}
+                  onDoubleClick={() => { setDrGmRenamingId(t.id); setDrGmRenameText(t.name); }}
+                  title={on ? '더블클릭하면 이름을 바꿉니다' : `'${t.name}' 불러오기 (더블클릭: 이름 변경)`}
+                  style={{
+                    display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer',
+                    // 활성 탭은 표 머리와 같은 배경 + 아래 테두리를 지워 표에 붙어 보이게 한다
+                    padding: on ? '8px 16px 10px' : '6px 14px 8px',
+                    borderRadius: '9px 9px 0 0',
+                    border: '1px solid var(--border)',
+                    borderBottom: on ? '1px solid var(--warning-bg)' : '1px solid var(--border)',
+                    backgroundColor: on ? 'var(--warning-bg)' : 'var(--bg-surface)',
+                    color: on ? 'var(--warning)' : 'var(--text-muted)',
+                    fontWeight: on ? 800 : 600, fontSize: '0.8125rem',
+                    position: 'relative', whiteSpace: 'nowrap',
+                    boxShadow: on ? '0 -3px 8px rgba(0,0,0,0.28)' : 'none',
+                  }}>
+                  {on && <span style={{ position: 'absolute', top: 0, left: 8, right: 8, height: 2, borderRadius: 2, backgroundColor: 'var(--warning)' }} />}
+                  {drGmRenamingId === t.id ? (
+                    <input autoFocus value={drGmRenameText}
+                      onChange={(e) => setDrGmRenameText(e.target.value)}
+                      onBlur={() => renameDrGmTab(t.id, drGmRenameText)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') renameDrGmTab(t.id, drGmRenameText);
+                        if (e.key === 'Escape') setDrGmRenamingId(null);
+                      }}
+                      onClick={(e) => e.stopPropagation()}
+                      style={{ width: 130, padding: '2px 6px', fontSize: '0.8125rem', fontWeight: 700,
+                        color: 'var(--text-primary)', backgroundColor: 'var(--bg-base)',
+                        border: '1px solid var(--warning)', borderRadius: 4, outline: 'none' }} />
+                  ) : (
+                    <span>{t.name}</span>
+                  )}
+                  {on && drGmTabs.length > 1 && (
+                    <button type="button"
+                      onClick={(e) => { e.stopPropagation(); deleteDrGmTab(t.id); }}
+                      title="이 포트폴리오 삭제"
+                      style={{ width: 16, height: 16, lineHeight: '13px', padding: 0, borderRadius: 4,
+                        border: '1px solid rgba(239,68,68,0.35)', backgroundColor: 'transparent',
+                        color: '#EF4444', fontSize: 11, fontWeight: 700, cursor: 'pointer' }}>×</button>
+                  )}
+                </div>
+              );
+            })}
+            {drGmTabs.length < DRGM_MAX_TABS && (
+              <button type="button" onClick={addDrGmTab} disabled={drGmTabBusy}
+                title={`포트폴리오 추가 (최대 ${DRGM_MAX_TABS}개)`}
+                style={{ width: 26, height: 26, marginLeft: 2, marginBottom: 1, padding: 0,
+                  borderRadius: '7px 7px 0 0', border: '1px dashed var(--border-strong)', borderBottom: 'none',
+                  backgroundColor: 'transparent', color: 'var(--text-muted)',
+                  fontSize: '15px', fontWeight: 700, lineHeight: '22px',
+                  cursor: drGmTabBusy ? 'not-allowed' : 'pointer' }}>+</button>
+            )}
+          </div>
+
           {drGmLoading ? (
             <div style={{ padding: 20, textAlign: 'center', color: 'var(--text-muted)' }}>불러오는 중...</div>
           ) : (
-            <div style={{ overflowX: 'auto', border: '1px solid var(--border)', borderRadius: 8 }}>
+            <div style={{ overflowX: 'auto', border: '1px solid var(--border)', borderRadius: '0 8px 8px 8px' }}>
               <table style={{ borderCollapse: 'collapse', fontSize: '0.8125rem', minWidth: 1100, width: '100%' }} className="drgm-table">
                 <style>{`
                   .drgm-table td, .drgm-table th { vertical-align: middle !important; height: 48px; box-sizing: border-box; }
@@ -2422,7 +2611,9 @@ function Tab2Section({
                           <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>%</span>
                         </div>
                       </td>
-                      <td style={{ ...tdStyle, padding: '5px 8px', backgroundColor: drGmAccountType === 'irp' ? '#DBEAFE' : undefined }}>
+                      {/* 선택된 계좌 열 강조 — 다크 배경 위에서는 반투명으로 얹어야 한다
+                          (#DBEAFE 같은 불투명 라이트 색은 흰 덩어리로 튄다) */}
+                      <td style={{ ...tdStyle, padding: '5px 8px', backgroundColor: drGmAccountType === 'irp' ? 'rgba(59,130,246,0.20)' : undefined }}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: 2 }}>
                           <input type="number" step="0.01" min="0" max="100" value={r.weight_irp || ''}
                             onChange={(e) => { const v = parseFloat(e.target.value); setDrGmRows((prev) => prev.map((rr) => rr.id !== r.id ? rr : { ...rr, weight_irp: isNaN(v) ? 0 : v })); }}
@@ -2610,9 +2801,10 @@ function Tab2Section({
             </div>
           </div>
 
-          {/* Single table with sticky No./상품명 columns, rest scrollable */}
-          <div style={{ overflowX: 'scroll', border: '1px solid var(--border)', borderRadius: 8 }}>
-            <table style={{ borderCollapse: 'collapse', fontSize: '0.8125rem', minWidth: 1200 }}>
+          {/* Single table with sticky No./상품명 columns, rest scrollable
+              auto + width 100% — 넓은 화면에서 오른쪽이 비지 않고, 좁을 때만 스크롤바가 뜬다 */}
+          <div style={{ overflowX: 'auto', border: '1px solid var(--border)', borderRadius: 8 }}>
+            <table style={{ borderCollapse: 'collapse', fontSize: '0.8125rem', width: '100%', minWidth: 1200 }}>
               <thead>
                 <tr style={{ backgroundColor: 'var(--bg-surface)' }}>
                   <th style={{ ...thStyle, position: 'sticky', left: 0, zIndex: 2, background: 'var(--bg-surface)', textAlign: 'center', minWidth: 36 }}>No.</th>
@@ -5360,8 +5552,6 @@ export default function IRPPage() {
 
   /* ---------- derived ---------- */
 
-  const stepIndex = TABS.findIndex((t) => t.key === activeTab);
-
   const filteredSnapshots = snapshots.filter((s) => {
     if (!searchClientName) return true;
     const account = clients
@@ -5389,6 +5579,27 @@ export default function IRPPage() {
     }
     return a.name.localeCompare(b.name, 'ko');
   });
+
+  /* ---- 고객 검색 → 결과가 정확히 1명이면 자동 선택 (3·4번 탭, 은퇴플랜 관리와 동일) ---- */
+  const tab3Matches = matchClients(mainUniqueClients, tab3ClientSearch);
+  const tab3NoMatch = tab3ClientSearch.trim().length > 0 && tab3Matches.length === 0;
+  const tab3AutoId = tab3ClientSearch.trim() && tab3Matches.length === 1 ? tab3Matches[0].id : null;
+  useEffect(() => {
+    if (!tab3AutoId || tab3AutoId === tab3ClientId) return;
+    const timer = setTimeout(() => handleTab3ClientChange(tab3AutoId), 250);
+    return () => clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tab3AutoId, tab3ClientId]);
+
+  const tab4Matches = matchClients(mainUniqueClients, tab4ClientSearch);
+  const tab4NoMatch = tab4ClientSearch.trim().length > 0 && tab4Matches.length === 0;
+  const tab4AutoId = tab4ClientSearch.trim() && tab4Matches.length === 1 ? tab4Matches[0].id : null;
+  useEffect(() => {
+    if (!tab4AutoId || tab4AutoId === tab4ClientId) return;
+    const timer = setTimeout(() => handleTab4ClientChange(tab4AutoId), 250);
+    return () => clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tab4AutoId, tab4ClientId]);
 
   const allAccountsForReport = clients.flatMap((c) =>
     c.accounts.map((a) => ({
@@ -5480,30 +5691,7 @@ export default function IRPPage() {
             </p>
           </div>
 
-          {/* Step indicator */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: 0, flexShrink: 0 }}>
-            {TABS.map((tab, i) => (
-              <div key={tab.key} style={{ display: 'flex', alignItems: 'center' }}>
-                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4 }}>
-                  <StepDot step={i + 1} active={activeTab === tab.key} done={i < stepIndex} />
-                  <span style={{ fontSize: '0.625rem', color: i < stepIndex ? '#3B82F6' : activeTab === tab.key ? '#3B82F6' : '#9CA3AF', fontWeight: 600, whiteSpace: 'nowrap' }}>
-                    {typeof tab.label === 'string' ? tab.label.replace(/^\d+\.\s/, '') : tab.label}
-                  </span>
-                </div>
-                {i < TABS.length - 1 && (
-                  <div
-                    style={{
-                      width: 32,
-                      height: 2,
-                      backgroundColor: i < stepIndex ? '#3B82F6' : 'var(--border-strong)',
-                      marginBottom: 18,
-                      transition: 'background-color 0.2s ease',
-                    }}
-                  />
-                )}
-              </div>
-            ))}
-          </div>
+          {/* Step indicator 제거 — 바로 아래 탭 바와 같은 정보라 중복이었다 */}
         </div>
       </div>
 
@@ -6128,13 +6316,16 @@ export default function IRPPage() {
                     placeholder="이름/고유번호"
                     value={tab3ClientSearch}
                     onChange={(e) => setTab3ClientSearch(e.target.value)}
-                    style={{ width: '100%', padding: '8px 10px 8px 28px', fontSize: '0.8125rem', border: '1px solid var(--border)', borderRadius: 8, outline: 'none', color: 'var(--text-primary)', boxSizing: 'border-box' }}
+                    onKeyDown={(e) => { if (e.key === 'Escape') setTab3ClientSearch(''); }}
+                    style={{ width: '100%', padding: '8px 10px 8px 28px', fontSize: '0.8125rem', border: `1px solid ${tab3NoMatch ? 'var(--danger)' : 'var(--border)'}`, borderRadius: 8, outline: 'none', color: 'var(--text-primary)', boxSizing: 'border-box' }}
                   />
+                  {tab3NoMatch && <ClientNoMatch />}
                 </div>
               </div>
 
-              {/* 고객 선택 */}
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 5, minWidth: 220, flex: 1 }}>
+              {/* 고객 선택 — flex:1로 폭을 다 먹으면 다음 항목(계좌 유형)까지 마우스 이동이 길어진다.
+                  고정 폭으로 묶어 고객 → 계좌를 연달아 고르기 쉽게 한다 */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 5, width: 260, minWidth: 260, flex: '0 0 auto' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                   <label style={{ fontSize: '0.8125rem', fontWeight: 600, color: 'var(--text-secondary)' }}>고객 선택</label>
                   <button
@@ -6148,18 +6339,16 @@ export default function IRPPage() {
                 <select
                   value={tab3ClientId}
                   onChange={(e) => { handleTab3ClientChange(e.target.value); setTab3ClientSearch(''); }}
-                  style={{ padding: '8px 10px', fontSize: '0.8125rem', border: '1px solid var(--border)', borderRadius: 8, outline: 'none', color: tab3ClientId ? 'var(--text-primary)' : '#9CA3AF', backgroundColor: 'var(--bg-card)', cursor: 'pointer' }}
+                  style={{ width: '100%', boxSizing: 'border-box', padding: '8px 10px', fontSize: '0.8125rem', border: '1px solid var(--border)', borderRadius: 8, outline: 'none', color: tab3ClientId ? 'var(--text-primary)' : '#9CA3AF', backgroundColor: 'var(--bg-card)', cursor: 'pointer' }}
                 >
                   <option value="">-- 고객 선택 --</option>
-                  {mainUniqueClients
-                    .filter((c) => {
-                      if (!tab3ClientSearch.trim()) return true;
-                      const q = tab3ClientSearch.trim().toLowerCase();
-                      return c.name.toLowerCase().includes(q) || (c.unique_code ?? '').includes(q);
-                    })
-                    .map((c) => (
+                  {tab3NoMatch ? (
+                    <option value="" disabled>검색 결과 없음</option>
+                  ) : (
+                    tab3Matches.map((c) => (
                       <option key={c.name} value={c.id}>{clientLabel(c, suggestionLatestDates[c.id])}</option>
-                    ))}
+                    ))
+                  )}
                 </select>
               </div>
 
@@ -6499,8 +6688,8 @@ export default function IRPPage() {
           {/* 고객 선택 + 필터 */}
           <Card padding={16}>
             <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'flex-end' }}>
-              {/* 고객 검색 */}
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 5, minWidth: 140 }}>
+              {/* 고객 검색 — 2·3번 탭과 동일한 고정 폭 */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 5, width: 120, minWidth: 120, flex: '0 0 auto' }}>
                 <label style={{ fontSize: '0.8125rem', fontWeight: 600, color: 'var(--text-secondary)' }}>고객 검색</label>
                 <div style={{ position: 'relative' }}>
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#9CA3AF" strokeWidth="2"
@@ -6511,29 +6700,29 @@ export default function IRPPage() {
                     type="text" placeholder="이름/고유번호"
                     value={tab4ClientSearch}
                     onChange={(e) => setTab4ClientSearch(e.target.value)}
-                    style={{ width: '100%', padding: '8px 10px 8px 28px', fontSize: '0.8125rem', border: '1px solid var(--border)', borderRadius: 8, outline: 'none', color: 'var(--text-primary)', boxSizing: 'border-box' }}
+                    onKeyDown={(e) => { if (e.key === 'Escape') setTab4ClientSearch(''); }}
+                    style={{ width: '100%', padding: '8px 10px 8px 28px', fontSize: '0.8125rem', border: `1px solid ${tab4NoMatch ? 'var(--danger)' : 'var(--border)'}`, borderRadius: 8, outline: 'none', color: 'var(--text-primary)', boxSizing: 'border-box' }}
                   />
+                  {tab4NoMatch && <ClientNoMatch />}
                 </div>
               </div>
 
-              {/* 고객 선택 */}
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 5, minWidth: 160, flex: 1 }}>
+              {/* 고객 선택 — 고정 폭. flex:1이면 다음 필터까지 마우스 이동이 길어진다 */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 5, width: 260, minWidth: 260, flex: '0 0 auto' }}>
                 <label style={{ fontSize: '0.8125rem', fontWeight: 600, color: 'var(--text-secondary)' }}>고객 선택</label>
                 <select
                   value={tab4ClientId}
                   onChange={(e) => { handleTab4ClientChange(e.target.value); setTab4ClientSearch(''); }}
-                  style={{ padding: '8px 10px', fontSize: '0.8125rem', border: '1px solid var(--border)', borderRadius: 8, outline: 'none', color: tab4ClientId ? 'var(--text-primary)' : '#9CA3AF', backgroundColor: 'var(--bg-card)', cursor: 'pointer' }}
+                  style={{ width: '100%', boxSizing: 'border-box', padding: '8px 10px', fontSize: '0.8125rem', border: '1px solid var(--border)', borderRadius: 8, outline: 'none', color: tab4ClientId ? 'var(--text-primary)' : '#9CA3AF', backgroundColor: 'var(--bg-card)', cursor: 'pointer' }}
                 >
                   <option value="">-- 고객 선택 --</option>
-                  {mainUniqueClients
-                    .filter((c) => {
-                      if (!tab4ClientSearch.trim()) return true;
-                      const q = tab4ClientSearch.trim().toLowerCase();
-                      return c.name.toLowerCase().includes(q) || (c.unique_code ?? '').includes(q);
-                    })
-                    .map((c) => (
+                  {tab4NoMatch ? (
+                    <option value="" disabled>검색 결과 없음</option>
+                  ) : (
+                    tab4Matches.map((c) => (
                       <option key={c.name} value={c.id}>{clientLabel(c, clientLatestDates[c.id])}</option>
-                    ))}
+                    ))
+                  )}
                 </select>
               </div>
 

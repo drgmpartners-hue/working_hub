@@ -838,15 +838,16 @@ const ReportView = forwardRef<HTMLDivElement, ReportViewProps>(
 
     if (!reportData) {
       return (
+        // 빈 상태는 화면 UI라 다크 토큰을 쓴다 (아래 pageStyle의 흰 배경은 인쇄용 보고서라 그대로 둔다)
         <div
           style={{
             padding: '60px 20px',
             textAlign: 'center',
-            color: '#9CA3AF',
+            color: 'var(--text-muted)',
             fontSize: '0.875rem',
-            border: '1px solid #E1E5EB',
+            border: '1px solid var(--border)',
             borderRadius: 12,
-            backgroundColor: '#FFFFFF',
+            backgroundColor: 'var(--bg-card)',
           }}
         >
           <svg
@@ -854,9 +855,9 @@ const ReportView = forwardRef<HTMLDivElement, ReportViewProps>(
             height="48"
             viewBox="0 0 24 24"
             fill="none"
-            stroke="#D1D5DB"
+            stroke="var(--text-muted)"
             strokeWidth="1"
-            style={{ margin: '0 auto 16px', display: 'block' }}
+            style={{ margin: '0 auto 16px', display: 'block', opacity: 0.6 }}
           >
             <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
             <polyline points="14 2 14 8 20 8" />
