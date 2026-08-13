@@ -67,6 +67,30 @@ def last_tx_order():
     )
 
 
+def _intraday_priority(t: DepositTransaction) -> int:
+    """같은 날짜에는 입금성 거래(입금·적립·이자·종결)를 투자·출금보다 먼저 반영한다.
+
+    동일자에 '투자 → 종결입금' 순으로 누적되면, 실제로는 회수한 돈으로 재투자한 것인데도
+    잔액이 일시적으로 크게 마이너스로 찍힌다.
+    """
+    is_credit = (t.credit_amount + (t.savings_amount or 0)) > 0 and t.debit_amount == 0
+    return 0 if is_credit else 1
+
+
+def apply_running_balance(txns: list[DepositTransaction]) -> list[DepositTransaction]:
+    """잔액 누적 순서(날짜 → 입금 우선 → id)로 정렬하고 balance를 채운다.
+
+    계산과 조회가 같은 함수를 쓰도록 해 두 경로의 규칙이 어긋나지 않게 한다.
+    """
+    ordered = sorted(txns, key=lambda t: (t.transaction_date, _intraday_priority(t), t.id))
+    balance = 0
+    for txn in ordered:
+        # 잔액 = 입금 + 적립 - 출금 누적
+        balance += txn.credit_amount + (txn.savings_amount or 0) - txn.debit_amount
+        txn.balance = balance
+    return ordered
+
+
 async def recalculate_balances(account_id: int, db: AsyncSession) -> None:
     """해당 계좌의 모든 거래를 날짜순으로 정렬하여 잔액 재계산.
 
@@ -84,21 +108,7 @@ async def recalculate_balances(account_id: int, db: AsyncSession) -> None:
         .where(DepositTransaction.deposit_account_id == account_id)
         .order_by(DepositTransaction.transaction_date, DepositTransaction.id)
     )
-    txns = result.scalars().all()
-
-    # 같은 날짜에는 입금성 거래(입금·적립·이자·종결)가 투자·출금보다 먼저 반영되도록 강제
-    # — 동일자에 '투자 → 입금' 순으로 계산되면 잔액이 일시 마이너스가 되는 비상식 방지
-    def _intraday_priority(t: DepositTransaction) -> int:
-        is_credit = (t.credit_amount + (t.savings_amount or 0)) > 0 and t.debit_amount == 0
-        return 0 if is_credit else 1
-
-    txns = sorted(txns, key=lambda t: (t.transaction_date, _intraday_priority(t), t.id))
-
-    balance = 0
-    for txn in txns:
-        # 잔액 = 입금 + 적립 - 출금 누적
-        balance += txn.credit_amount + (txn.savings_amount or 0) - txn.debit_amount
-        txn.balance = balance
+    apply_running_balance(list(result.scalars().all()))
 
 
 # ---------------------------------------------------------------------------
@@ -338,8 +348,10 @@ async def list_transactions(
         .order_by(DepositTransaction.transaction_date, DepositTransaction.id)
     )
     result = await db.execute(stmt)
-    txns = result.scalars().all()
-    return txns
+    # 저장된 balance를 그대로 믿지 않고 조회 시점에 다시 누적한다.
+    # 정렬 규칙이 바뀌기 전에 저장된 값이 남아 있으면 '입금인데 잔액이 줄어드는' 화면이 된다.
+    # (커밋하지 않으므로 DB는 건드리지 않는다 — 값을 굳히려면 '재계산'을 쓴다)
+    return apply_running_balance(list(result.scalars().all()))
 
 
 # ---------------------------------------------------------------------------
