@@ -20,7 +20,7 @@ from app.schemas.company_report import (
     CandidateSearchRequest, CompanyCreate, CompanyOut, CompanyUpdate, KeywordSet,
     KeywordSuggestRequest, PreviewRequest,
 )
-from app.services.company_report import company_finder
+from app.services.company_report import company_finder, search
 from app.services.company_report.timeutil import now_kst, today_kst
 
 logger = logging.getLogger(__name__)
@@ -138,6 +138,7 @@ async def create_company(body: CompanyCreate, background: BackgroundTasks,
     if not ks.required:
         ks.required = [body.name]
     await _replace_keywords(db, company.id, ks)
+    await search.index_company(db, company, ks.required + ks.boost)
     await db.commit()
     await db.refresh(company)
     if body.backfill_months > 0:
@@ -178,6 +179,9 @@ async def update_company(company_id: str, body: CompanyUpdate, current_user=Depe
         setattr(c, k, v)
     if body.keywords is not None:
         await _replace_keywords(db, c.id, body.keywords)
+    await db.flush()
+    ks = await _keywords(db, c.id)
+    await search.index_company(db, c, ks.required + ks.boost)
     await db.commit()
     await db.refresh(c)
     return _out(c, await _keywords(db, c.id))
@@ -191,6 +195,7 @@ async def deactivate_company(company_id: str, current_user=Depends(get_current_u
     if not c:
         raise HTTPException(404, "기업을 찾을 수 없습니다.")
     c.is_active = False
+    await search.index_company(db, c)
     await db.commit()
 
 
@@ -212,6 +217,9 @@ async def _run_collect(company_id: str) -> None:
         from app.services.company_report import summarizer
 
         await summarizer.summarize_pending(db, company_id=company_id, limit=100)
+        from app.services.company_report import facts
+
+        await facts.extract_pending(db, company_id=company_id, limit=100)
 
 
 # --------------------------------------------------------------------------- 기사·백필 기록
@@ -234,7 +242,7 @@ def _article_out(a: NewsArticle) -> dict:
 
 @router.get("/companies/{company_id}/articles")
 async def list_articles(company_id: str, tag: Optional[str] = None, source_type: Optional[str] = None,
-                        date_from: Optional[date] = None, date_to: Optional[date] = None,
+                        on_date: Optional[date] = Query(None, alias="date"), date_from: Optional[date] = None, date_to: Optional[date] = None,
                         include_hidden: bool = False, page: int = Query(1, ge=1), size: int = Query(30, ge=1, le=100),
                         current_user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
     """기업별 누적 기사(대표 기사만, 최신순). 날짜별 묶음은 화면에서 한다."""
@@ -245,6 +253,8 @@ async def list_articles(company_id: str, tag: Optional[str] = None, source_type:
         cond.append(NewsArticle.tag == tag)
     if source_type:
         cond.append(NewsArticle.source_type == source_type)
+    if on_date:
+        date_from = date_to = on_date
     if date_from:
         cond.append(NewsArticle.published_at >= datetime.combine(date_from, datetime.min.time()))
     if date_to:
@@ -273,6 +283,7 @@ async def patch_article(article_id: str, body: ArticlePatch, current_user=Depend
         if body.tag not in ("positive", "neutral", "caution"):
             raise HTTPException(422, "tag는 positive/neutral/caution 중 하나입니다.")
         a.tag = body.tag
+    await search.index_article(db, a)
     await db.commit()
     return _article_out(a)
 
@@ -526,3 +537,211 @@ async def send_now(current_user=Depends(get_current_user), db: AsyncSession = De
     from app.services.company_report import sender
 
     return await sender.send_daily(db)
+
+
+# --------------------------------------------------------------------------- P2: 기사 아카이브(달력·기간 요약)
+
+@router.get("/companies/{company_id}/article-dates")
+async def get_article_dates(company_id: str, month: str = Query(..., pattern=r"^\d{4}-\d{2}$"),
+                            current_user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    from app.services.company_report import period
+
+    return await period.article_dates(db, company_id, month)
+
+
+class PeriodSummaryBody(BaseModel):
+    date_from: date
+    date_to: date
+    refresh: bool = False
+
+
+@router.post("/companies/{company_id}/period-summary")
+async def post_period_summary(company_id: str, body: PeriodSummaryBody, current_user=Depends(get_current_user),
+                              db: AsyncSession = Depends(get_db)):
+    from app.services import llm_client
+    from app.services.company_report import period
+
+    if body.date_to < body.date_from or (body.date_to - body.date_from).days > 366:
+        raise HTTPException(422, "기간은 1년 이내로 골라 주세요.")
+    try:
+        return await period.period_summary(db, company_id, body.date_from, body.date_to, current_user.id, body.refresh)
+    except llm_client.LLMError as e:
+        raise HTTPException(502, f"기간 요약 실패: {e}")
+
+
+# --------------------------------------------------------------------------- P2: 기업 원장(사실·투자유치)
+
+class FactBody(BaseModel):
+    fact_type: str = "other"
+    fact_date: Optional[date] = None
+    title: str
+    detail: Optional[dict] = None
+
+
+class FactPatch(BaseModel):
+    status: Optional[str] = None  # confirmed/rejected/candidate
+    fact_type: Optional[str] = None
+    fact_date: Optional[date] = None
+    title: Optional[str] = None
+    detail: Optional[dict] = None
+
+
+@router.get("/companies/{company_id}/facts")
+async def list_facts(company_id: str, status: Optional[str] = None, fact_type: Optional[str] = None,
+                     include_history: bool = False, current_user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    from app.models.company_report import CompanyFact
+    from app.services.company_report import facts as facts_svc
+
+    cond = [CompanyFact.company_id == company_id]
+    if status:
+        cond.append(CompanyFact.status == status)
+    elif not include_history:
+        cond.append(CompanyFact.status.in_(["candidate", "confirmed"]))
+    if fact_type:
+        cond.append(CompanyFact.fact_type == fact_type)
+    rows = (await db.execute(select(CompanyFact).where(*cond))).scalars().all()
+    counts = dict((await db.execute(
+        select(CompanyFact.status, func.count()).where(CompanyFact.company_id == company_id).group_by(CompanyFact.status)
+    )).all())
+    return {"items": facts_svc.fact_timeline(list(rows)), "counts": counts, "types": facts_svc.FACT_TYPES}
+
+
+@router.post("/companies/{company_id}/facts", status_code=201)
+async def add_fact(company_id: str, body: FactBody, current_user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    from app.models.company_report import CompanyFact
+    from app.services.company_report import facts as facts_svc
+
+    if body.fact_type not in facts_svc.FACT_TYPES:
+        raise HTTPException(422, "알 수 없는 사실 유형입니다.")
+    f = CompanyFact(company_id=company_id, fact_type=body.fact_type, fact_date=body.fact_date, title=body.title.strip()[:300],
+                    detail=body.detail or {}, source_refs=[], status="confirmed", origin="manual",
+                    dedup_key=facts_svc.dedup_key(company_id, body.fact_type, body.title),
+                    confirmed_by=current_user.id, confirmed_at=now_kst())
+    db.add(f)
+    await db.flush()
+    await search.index_fact(db, f)
+    await db.commit()
+    return facts_svc.fact_timeline([f])[0]
+
+
+@router.patch("/facts/{fact_id}")
+async def patch_fact(fact_id: str, body: FactPatch, current_user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    from app.models.company_report import CompanyFact
+    from app.services.company_report import facts as facts_svc
+
+    f = await db.get(CompanyFact, fact_id)
+    if not f:
+        raise HTTPException(404, "사실을 찾을 수 없습니다.")
+    changes = body.model_dump(exclude_unset=True, exclude={"status"})
+    if changes:
+        f = await facts_svc.edit_fact(db, f, changes, current_user.id)
+    elif body.status:
+        if body.status not in ("confirmed", "rejected", "candidate"):
+            raise HTTPException(422, "status는 confirmed/rejected/candidate 중 하나입니다.")
+        f = await facts_svc.set_status(db, f, body.status, current_user.id)
+    await db.commit()
+    return facts_svc.fact_timeline([f])[0]
+
+
+class FundingBody(BaseModel):
+    round_date: Optional[date] = None
+    round_name: Optional[str] = None
+    amount: Optional[int] = None
+    amount_disclosed: Optional[bool] = None
+    investors: Optional[list[dict]] = None
+    valuation: Optional[int] = None
+    is_follow_on: Optional[bool] = None
+    status: Optional[str] = None
+
+
+@router.get("/companies/{company_id}/funding-rounds")
+async def list_funding(company_id: str, include_rejected: bool = False, current_user=Depends(get_current_user),
+                       db: AsyncSession = Depends(get_db)):
+    from app.models.company_report import CompanyFundingRound
+    from app.services.company_report import facts as facts_svc
+
+    cond = [CompanyFundingRound.company_id == company_id]
+    if not include_rejected:
+        cond.append(CompanyFundingRound.status != "rejected")
+    rows = (await db.execute(select(CompanyFundingRound).where(*cond)
+                             .order_by(CompanyFundingRound.round_date.desc().nullslast()))).scalars().all()
+    return [facts_svc.funding_out(r) for r in rows]
+
+
+@router.post("/companies/{company_id}/funding-rounds", status_code=201)
+async def add_funding(company_id: str, body: FundingBody, current_user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    from app.models.company_report import CompanyFundingRound
+    from app.services.company_report import facts as facts_svc
+
+    r = CompanyFundingRound(company_id=company_id, round_date=body.round_date, round_name=(body.round_name or "기타")[:50],
+                            amount=body.amount, amount_disclosed=body.amount_disclosed if body.amount_disclosed is not None else bool(body.amount),
+                            investors=body.investors or [], valuation=body.valuation, is_follow_on=bool(body.is_follow_on),
+                            source_refs=[], status="confirmed", origin="manual", confirmed_by=current_user.id, confirmed_at=now_kst())
+    db.add(r)
+    await db.flush()
+    await search.index_funding(db, r)
+    await db.commit()
+    return facts_svc.funding_out(r)
+
+
+@router.patch("/funding-rounds/{round_id}")
+async def patch_funding(round_id: str, body: FundingBody, current_user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    from app.models.company_report import CompanyFundingRound
+    from app.services.company_report import facts as facts_svc
+
+    r = await db.get(CompanyFundingRound, round_id)
+    if not r:
+        raise HTTPException(404, "투자유치 기록을 찾을 수 없습니다.")
+    data = body.model_dump(exclude_unset=True)
+    status = data.pop("status", None)
+    if status and status not in ("confirmed", "rejected", "candidate"):
+        raise HTTPException(422, "status는 confirmed/rejected/candidate 중 하나입니다.")
+    for k, v in data.items():
+        setattr(r, k, v)
+    if "amount" in data and "amount_disclosed" not in data:
+        r.amount_disclosed = bool(r.amount)
+    if status:
+        r.status = status
+    if status == "confirmed" or (data and r.status == "candidate"):
+        r.status, r.confirmed_by, r.confirmed_at = "confirmed", current_user.id, now_kst()
+    await search.index_funding(db, r)
+    await db.commit()
+    return facts_svc.funding_out(r)
+
+
+@router.post("/companies/{company_id}/extract-facts")
+async def extract_facts_now(company_id: str, background: BackgroundTasks, current_user=Depends(get_current_user)):
+    """아직 사실 추출이 안 된 기사에서 후보를 다시 뽑는다(백그라운드)."""
+    background.add_task(_run_extract, company_id)
+    return {"queued": True}
+
+
+async def _run_extract(company_id: str) -> None:
+    from app.services.company_report import facts as facts_svc
+
+    async with AsyncSessionLocal() as db:
+        await facts_svc.extract_pending(db, company_id=company_id, limit=400)
+
+
+# --------------------------------------------------------------------------- P2: 통합 검색
+
+@router.get("/search")
+async def do_search(q: str = Query(..., min_length=1, max_length=200), group: Optional[str] = None,
+                    company: Optional[list[str]] = Query(None), date_from: Optional[date] = None,
+                    date_to: Optional[date] = None, tag: Optional[str] = None, include_inactive: bool = True,
+                    sort: str = Query("relevance", pattern="^(relevance|recent)$"),
+                    page: int = Query(1, ge=1), size: int = Query(20, ge=1, le=100),
+                    current_user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    return await search.search(db, q, group=group, company_ids=company, date_from=date_from, date_to=date_to, tag=tag,
+                               include_inactive=include_inactive, sort=sort, page=page, size=size)
+
+
+@router.get("/search/suggest")
+async def search_suggest(q: str = "", current_user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    return await search.suggest(db, q)
+
+
+@router.post("/search/reindex")
+async def search_reindex(current_user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    require_admin(current_user)
+    return await search.reindex_all(db)

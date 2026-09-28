@@ -18,7 +18,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.news_briefing import NewsArticle, PortfolioCompany
 from app.services import llm_client
-from app.services.company_report import config
+from app.services.company_report import config, search
 from app.services.company_report.keys import get_service_key
 from app.services.company_report.timeutil import now_kst
 
@@ -128,6 +128,8 @@ async def summarize_pending(db: AsyncSession, company_id: Optional[str] = None, 
                 )
                 data = r.data if isinstance(r.data, dict) else {"items": r.data}
                 total += apply_result(chunk, data.get("items") or [])
+                for a in chunk:
+                    await search.index_article(db, a)
                 await db.commit()
             except llm_client.LLMError as e:
                 logger.warning("요약 실패(%s): %s", company.name, e)

@@ -91,6 +91,10 @@ from app.models.news_briefing import (
     PortfolioCompany, CompanyKeyword, NewsArticle, NewsBriefing, BriefingRecipient,
     BriefingSendLog, AIReviewLog, BackfillJob,
 )
+from app.models.company_report import (
+    CompanyFact, CompanyFundingRound, CompanyPeriodSummary, CompanyFile, CompanyFileDownload,
+    CompanyPublicData, SearchIndex,
+)
 
 __all__ = [
     "BrandSetting",
@@ -140,4 +144,11 @@ __all__ = [
     "BriefingSendLog",
     "AIReviewLog",
     "BackfillJob",
+    "CompanyFact",
+    "CompanyFundingRound",
+    "CompanyPeriodSummary",
+    "CompanyFile",
+    "CompanyFileDownload",
+    "CompanyPublicData",
+    "SearchIndex",
 ]

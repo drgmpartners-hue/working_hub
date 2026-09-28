@@ -18,6 +18,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.models.news_briefing import BackfillJob, CompanyKeyword, NewsArticle, PortfolioCompany
 from app.services.collectors import naver_news_client as naver
 from app.services.collectors.dart_client import DARTClient, dart_disclosure_url
+from app.services.company_report import search
 from app.services.company_report.dedup import group_similar, relevance, url_hash
 from app.services.company_report.keys import get_service_key
 from app.services.company_report.timeutil import now_kst, today_kst
@@ -119,11 +120,12 @@ async def _store(db: AsyncSession, company_id: str, items: list[dict], kw: dict,
         fresh.append(it)
 
     fresh.sort(key=lambda x: x.get("published_at") or datetime.min)
+    created: list[NewsArticle] = []
     for group in group_similar(fresh):
         gid = str(uuid.uuid4()) if len(group) > 1 else None
         for rank, idx in enumerate(group):
             it = fresh[idx]
-            db.add(NewsArticle(
+            art = NewsArticle(
                 company_id=company_id,
                 source_type=it.get("source_type", "news"),
                 source=it.get("source", "naver"),
@@ -137,7 +139,13 @@ async def _store(db: AsyncSession, company_id: str, items: list[dict], kw: dict,
                 relevance_score=it["_score"],
                 dup_group_id=gid,
                 is_representative=(rank == 0),  # 가장 이른 기사가 대표
-            ))
+            )
+            db.add(art)
+            created.append(art)
+    if created:
+        await db.flush()
+        for art in created:
+            await search.index_article(db, art)
     return {"new": len(fresh), "excluded": excluded}
 
 
@@ -215,6 +223,9 @@ async def basic_backfill(db: AsyncSession, company_id: str, months: int = 6,
         from app.services.company_report import summarizer
 
         await summarizer.summarize_pending(db, company_id=company_id, limit=400)
+        from app.services.company_report import facts
+
+        await facts.extract_pending(db, company_id=company_id, limit=400)
         return {"job_id": job.id, **stats}
     except Exception as e:
         logger.exception("기본 백필 실패: %s", e)

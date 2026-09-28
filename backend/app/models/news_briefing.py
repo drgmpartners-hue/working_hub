@@ -109,6 +109,7 @@ class NewsArticle(Base):
     tag: Mapped[Optional[str]] = mapped_column(String(10))  # positive/neutral/caution
     issue_type: Mapped[Optional[str]] = mapped_column(String(30))
     summarized_at: Mapped[Optional[datetime]] = mapped_column(DateTime)
+    facts_extracted_at: Mapped[Optional[datetime]] = mapped_column(DateTime)  # 사실 후보 추출 완료(P2)
 
 
 class NewsBriefing(Base):

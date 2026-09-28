@@ -163,3 +163,48 @@ export interface BriefingListItem {
   caution_count: number;
   is_fallback: boolean;
 }
+
+export interface SourceRef {
+  article_id?: string;
+  url?: string;
+  title?: string;
+  date?: string | null;
+}
+
+export interface Fact {
+  id: string;
+  fact_type: string;
+  type_label: string;
+  fact_date: string | null;
+  title: string;
+  detail: Record<string, unknown>;
+  source_refs: SourceRef[];
+  status: 'candidate' | 'confirmed' | 'rejected' | 'superseded';
+  origin: 'ai' | 'manual';
+  supersedes_id: string | null;
+}
+
+export interface FundingRound {
+  id: string;
+  round_date: string | null;
+  round_name: string | null;
+  amount: number | null;
+  currency: string;
+  amount_disclosed: boolean;
+  investors: { name: string; lead?: boolean; type?: string }[];
+  valuation: number | null;
+  is_follow_on: boolean;
+  source_refs: SourceRef[];
+  status: 'candidate' | 'confirmed' | 'rejected';
+  origin: 'ai' | 'manual';
+}
+
+export const FACT_STATUS: Record<string, { label: string; cls: string }> = {
+  candidate: { label: '후보', cls: 'warn' },
+  confirmed: { label: '확정', cls: 'pos' },
+  rejected: { label: '제외', cls: 'neg' },
+  superseded: { label: '이전 판', cls: 'info' },
+};
+
+export const fmtEok = (won: number | null | undefined) =>
+  won ? `${(won / 1e8).toLocaleString('ko-KR', { maximumFractionDigits: 1 })}억 원` : '비공개';

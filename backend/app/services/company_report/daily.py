@@ -19,7 +19,7 @@ from app.models.news_briefing import NewsArticle, NewsBriefing, PortfolioCompany
 from app.services import llm_client, settings_store
 from app.services.collectors import data_go_kr
 from app.services.collectors.market_indices import previous_day_indices
-from app.services.company_report import collector, config, cross_review, summarizer
+from app.services.company_report import collector, config, cross_review, facts, search, summarizer
 from app.services.company_report.keys import get_service_key
 from app.services.company_report.timeutil import now_kst, today_kst
 
@@ -210,6 +210,7 @@ async def build_daily(db: AsyncSession, day: Optional[date] = None, *, collect: 
         stats = await collector.collect_all(db, via="daily")
         logger.info("데일리 수집: %s", stats)
         await summarizer.summarize_pending(db, limit=400)
+        await facts.extract_pending(db, limit=300)
 
     start, end = await article_window(dg_key, day)
     companies = {c.id: c for c in (await db.execute(
@@ -273,6 +274,7 @@ async def build_daily(db: AsyncSession, day: Optional[date] = None, *, collect: 
     b.status = "draft" if need_approval else "approved"
     if b.status == "draft":
         b.approved_by = b.approved_at = None
+    await search.index_daily(db, b)
     await settings_store.set_value(db, config.LAST_RUN_AT, now_kst().isoformat(timespec="seconds"))
     await db.commit()
     return {"briefing_id": b.id, "status": b.status, "fallback": is_fallback,
