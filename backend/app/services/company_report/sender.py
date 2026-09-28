@@ -140,6 +140,7 @@ async def send_daily(db: AsyncSession, day: Optional[date] = None) -> dict:
     r = await _deliver(db, b, users, "daily")
     if r["success"]:
         b.status, b.sent_at = "sent", now_kst()
+        # 브리핑 PDF는 Volume이 붙은 웹 서비스의 file_worker가 '_포트폴리오 공통'에 저장한다
     else:
         b.status = "failed"
     await settings_store.set_value(db, config.LAST_SEND_AT, now_kst().isoformat(timespec="seconds"))

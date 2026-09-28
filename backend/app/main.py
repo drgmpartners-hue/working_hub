@@ -39,6 +39,17 @@ from app.api.v1 import company_report as company_report_router
 
 app = FastAPI(title="API", version="0.1.0")
 
+
+@app.on_event("startup")
+async def _start_company_db_worker() -> None:
+    """기업 리포트: Volume이 붙은 웹 서비스에서 기업DB 자동 파일을 만든다(Cron 컨테이너는 파일을 쓰지 않음)."""
+    import asyncio
+
+    from app.services.company_report import file_worker
+
+    if file_worker.enabled():
+        app.state.company_db_worker = asyncio.create_task(file_worker.loop())
+
 ALLOWED_ORIGINS = ["http://localhost:3000", "http://127.0.0.1:3000", "https://working-hub.vercel.app"]
 
 app.add_middleware(

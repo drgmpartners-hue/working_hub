@@ -5,9 +5,9 @@
  * 상단 탭: 투자기업 관리 · 브리핑 · 보고서 관리 · 기업DB · 발송 설정 (+ 공통 검색창)
  * 기업 상세(/companies/[id])는 투자기업 관리 탭 안에서 열린다.
  */
-import { useState } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
 import { Tab } from '@/components/common/Tab';
+import { SearchBar } from '@/components/company-report/SearchBar';
 
 const TABS = [
   { key: 'companies', label: '투자기업 관리', href: '/content/company-report/companies' },
@@ -20,13 +20,8 @@ const TABS = [
 export default function CompanyReportLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname() || '';
   const router = useRouter();
-  const [q, setQ] = useState('');
   const active = TABS.find((t) => pathname.startsWith(t.href))?.key ?? 'briefing';
 
-  const onSearch = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (q.trim()) router.push(`/content/company-report/search?q=${encodeURIComponent(q.trim())}`);
-  };
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
@@ -37,25 +32,7 @@ export default function CompanyReportLayout({ children }: { children: React.Reac
             투자기업 뉴스 브리핑 · 월간 브리핑 · 반기 기업 종합보고서
           </p>
         </div>
-        <form onSubmit={onSearch} style={{ display: 'flex', gap: 8 }}>
-          <input
-            value={q}
-            onChange={(e) => setQ(e.target.value)}
-            placeholder="기업명·키워드 통합 검색"
-            aria-label="통합 검색"
-            style={{
-              width: 260,
-              padding: '8px 12px',
-              fontSize: 14,
-              borderRadius: 8,
-              border: '1px solid var(--border)',
-              backgroundColor: 'var(--bg-card)',
-              color: 'var(--text-primary)',
-              outline: 'none',
-            }}
-          />
-          <button type="submit" className="wh-btn wh-btn-ghost wh-btn-sm">검색</button>
-        </form>
+        <SearchBar />
       </div>
       <Tab
         items={TABS.map(({ key, label }) => ({ key, label }))}

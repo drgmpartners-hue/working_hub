@@ -43,3 +43,38 @@ export const crPost = <T,>(path: string, body?: unknown) =>
 export const crPut = <T,>(path: string, body: unknown) => crFetch<T>(path, { method: 'PUT', body: JSON.stringify(body) });
 export const crPatch = <T,>(path: string, body: unknown) => crFetch<T>(path, { method: 'PATCH', body: JSON.stringify(body) });
 export const crDelete = <T,>(path: string) => crFetch<T>(path, { method: 'DELETE' });
+
+/** 인증이 필요한 파일 받기(미리보기·다운로드·zip) */
+export async function crBlob(path: string): Promise<{ blob: Blob; filename: string | null }> {
+  const token = authLib.getToken();
+  const res = await fetch(`${CR_BASE}${path}`, { headers: token ? { Authorization: `Bearer ${token}` } : {} });
+  if (!res.ok) {
+    let detail = `요청 실패 (${res.status})`;
+    try {
+      const b = await res.json();
+      if (b?.detail) detail = String(b.detail);
+    } catch {
+      /* 본문 없음 */
+    }
+    throw new ApiError(res.status, detail);
+  }
+  const cd = res.headers.get('Content-Disposition') || '';
+  const m = cd.match(/filename\*=UTF-8''([^;]+)/);
+  return { blob: await res.blob(), filename: m ? decodeURIComponent(m[1]) : null };
+}
+
+export async function crDownload(path: string, fallbackName = 'download') {
+  const { blob, filename } = await crBlob(path);
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename || fallbackName;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 5000);
+}
+
+export async function crUpload<T>(path: string, form: FormData): Promise<T> {
+  return crFetch<T>(path, { method: 'POST', body: form });
+}

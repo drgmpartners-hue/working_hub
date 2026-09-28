@@ -19,6 +19,9 @@ pytestmark = pytest.mark.skipif(not PG, reason="CR_PG_URL 없음(실제 PostgreS
 if PG:
     os.environ["DATABASE_URL"] = PG
     os.environ.setdefault("SECRET_KEY", "e2e-secret")
+    import tempfile
+
+    os.environ["COMPANY_DB_ROOT"] = tempfile.mkdtemp(prefix="cr-e2e-")
 
 
 def _fake_llm_factory():
@@ -141,7 +144,7 @@ async def _run(monkeypatch):
 
     # ---- 사용자
     async with AsyncSessionLocal() as db:
-        for t in ["search_index", "company_facts", "company_funding_rounds", "company_period_summaries", "ai_review_logs",
+        for t in ["company_file_downloads", "company_files", "company_public_data", "search_index", "company_facts", "company_funding_rounds", "company_period_summaries", "ai_review_logs",
                   "briefing_send_logs", "briefing_recipients", "news_briefings", "news_articles", "company_keywords",
                   "backfill_jobs", "portfolio_companies"]:
             await db.execute(text(f"DELETE FROM {t}"))
@@ -253,10 +256,51 @@ async def _run(monkeypatch):
         r = await c.get("/settings", headers=H)
         assert r.json()["send_logs"][0]["status"] == "requested"
 
+        # ---- 기업DB: 업로드(이름 규칙)·본문 검색·자동 파일·브리핑 PDF·zip
+        import io, zipfile
+        md = "# IR 요약\n매출 120억, 글로벌 임상 2상 진입".encode("utf-8")
+        r = await c.post("/db/files", headers=H, data={"company_id": cid, "folder": "docs", "doc_kind": "IR자료"},
+                         files={"file": ("IR 요약 (최종).md", md, "text/markdown")})
+        assert r.status_code == 201, r.text
+        up = r.json()
+        assert up["display_name"].startswith("테스트바이오_IR자료_") and up["display_name"].endswith("_IR요약(최종).md"), up
+        bad = await c.post("/db/files", headers=H, data={"company_id": cid, "folder": "docs"}, files={"file": ("x.exe", b"MZ", "application/octet-stream")})
+        assert bad.status_code == 422
+        r = await c.get("/db/files", params={"q": "임상"}, headers=HS)  # 본문 검색
+        assert r.json()["total"] == 1
+        r = await c.get("/db/files", params={"q": "테바"}, headers=HS)  # 별칭으로 기업 파일 찾기
+        assert r.json()["total"] >= 1
+        r = await c.get("/search", params={"q": "임상 2상"}, headers=HS)
+        assert r.json()["counts"].get("file") == 1
+        r = await c.get(f"/db/files/{up['id']}/download", headers=HS)
+        assert r.status_code == 200 and r.content == md and "filename*=UTF-8''" in r.headers["content-disposition"]
+        assert (await c.patch(f"/db/files/{up['id']}", headers=HS, json={"deleted": True})).status_code == 403  # 올린 사람 아님
+        r = await c.post(f"/db/companies/{cid}/refresh", headers=H)
+        assert set(r.json()["files"]) >= {"facts_xlsx", "funding_xlsx", "card_pdf"}, r.json()
+        from app.services.company_report import file_worker
+        fw = await file_worker.run_once(force=True)
+        assert fw["briefing_pdfs"] == 1, fw
+        r = await c.get("/db/tree", headers=H)
+        tr = r.json()
+        assert tr["portfolio"]["total"] == 1 and tr["companies"][0]["counts"]["info"] == 3 and tr["companies"][0]["counts"]["docs"] == 1, tr
+        r = await c.get("/db/files", params={"folder": "info", "company": cid}, headers=H)
+        card = next(f for f in r.json()["items"] if f["doc_kind"] == "기업카드")
+        pdf = (await c.get(f"/db/files/{card['id']}/download", headers=H)).content
+        assert pdf.startswith(b"%PDF")
+        r = await c.get(f"/db/companies/{cid}/zip", headers=H)
+        names = zipfile.ZipFile(io.BytesIO(r.content)).namelist()
+        assert any(n.startswith("테스트바이오/01_기업정보/테스트바이오_기업카드_") for n in names), names
+        assert any(n.startswith("테스트바이오/03_자료/") for n in names)
+        r = await c.patch(f"/db/files/{up['id']}", headers=H, json={"deleted": True})
+        assert r.json()["status"] == "deleted"
+        r = await c.get("/search", params={"q": "임상 2상"}, headers=HS)
+        assert r.json()["counts"].get("file", 0) == 0
+
         # ---- 재색인
         r = await c.post("/search/reindex", headers=H)
         st = r.json()
         assert st["company"] == 1 and st["article"] == 2 and st["fact"] == 1 and st["funding"] == 1 and st["daily"] == 1, st
+        assert st["file"] == 5, st  # 뉴스 md 1 + 원장·투자유치 xlsx 2 + 기업카드 1 + 브리핑 PDF 1
 
 
 def test_e2e(monkeypatch):

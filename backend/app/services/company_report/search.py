@@ -146,7 +146,8 @@ async def index_file(db: AsyncSession, f: CompanyFile, company_name: Optional[st
     body = " ".join(x for x in [company_name, f.original_name, f.doc_kind, f.memo, f.search_text] if x)
     doc_date = f.created_at.date() if f.created_at else None
     await index_entity(db, "file", f.id, company_id=f.company_id, title=f.display_name, body=body, doc_date=doc_date,
-                       tags=[f.folder, f.file_type, f.origin], url_path=f"{BASE}/db?file={f.id}")
+                       tags=[f.folder, f.file_type, f.origin],
+                       url_path=f"{BASE}/db?company={f.company_id}" if f.company_id else f"{BASE}/db?portfolio=1")
 
 
 # --------------------------------------------------------------------------- 검색

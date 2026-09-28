@@ -6,7 +6,7 @@ import logging
 from datetime import date, datetime, timedelta
 from typing import Optional
 
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query
+from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, HTTPException, Query, UploadFile
 from pydantic import BaseModel
 from sqlalchemy import and_, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -625,7 +625,8 @@ async def add_fact(company_id: str, body: FactBody, current_user=Depends(get_cur
 
 
 @router.patch("/facts/{fact_id}")
-async def patch_fact(fact_id: str, body: FactPatch, current_user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+async def patch_fact(fact_id: str, body: FactPatch, background: BackgroundTasks, current_user=Depends(get_current_user),
+                     db: AsyncSession = Depends(get_db)):
     from app.models.company_report import CompanyFact
     from app.services.company_report import facts as facts_svc
 
@@ -640,6 +641,7 @@ async def patch_fact(fact_id: str, body: FactPatch, current_user=Depends(get_cur
             raise HTTPException(422, "status는 confirmed/rejected/candidate 중 하나입니다.")
         f = await facts_svc.set_status(db, f, body.status, current_user.id)
     await db.commit()
+    background.add_task(_refresh_files_bg, f.company_id)
     return facts_svc.fact_timeline([f])[0]
 
 
@@ -685,7 +687,8 @@ async def add_funding(company_id: str, body: FundingBody, current_user=Depends(g
 
 
 @router.patch("/funding-rounds/{round_id}")
-async def patch_funding(round_id: str, body: FundingBody, current_user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+async def patch_funding(round_id: str, body: FundingBody, background: BackgroundTasks, current_user=Depends(get_current_user),
+                        db: AsyncSession = Depends(get_db)):
     from app.models.company_report import CompanyFundingRound
     from app.services.company_report import facts as facts_svc
 
@@ -706,6 +709,7 @@ async def patch_funding(round_id: str, body: FundingBody, current_user=Depends(g
         r.status, r.confirmed_by, r.confirmed_at = "confirmed", current_user.id, now_kst()
     await search.index_funding(db, r)
     await db.commit()
+    background.add_task(_refresh_files_bg, r.company_id)
     return facts_svc.funding_out(r)
 
 
@@ -745,3 +749,130 @@ async def search_suggest(q: str = "", current_user=Depends(get_current_user), db
 async def search_reindex(current_user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
     require_admin(current_user)
     return await search.reindex_all(db)
+
+
+# --------------------------------------------------------------------------- P2: 기업DB(파일)
+
+@router.get("/db/tree")
+async def db_tree(current_user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    from app.services.company_report import company_db
+
+    return await company_db.tree(db)
+
+
+@router.get("/db/files")
+async def db_files(company: Optional[list[str]] = Query(None), portfolio: bool = False, folder: Optional[str] = None,
+                   type: Optional[str] = None, origin: Optional[str] = None, status: Optional[str] = None,
+                   date_from: Optional[date] = None, date_to: Optional[date] = None, q: Optional[str] = None,
+                   include_inactive: bool = True, page: int = Query(1, ge=1), size: int = Query(50, ge=1, le=200),
+                   current_user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    from app.services.company_report import company_db
+
+    return await company_db.list_files(db, company_ids=company, portfolio=portfolio, folder=folder, file_type=type,
+                                       origin=origin, status=status, date_from=date_from, date_to=date_to, q=q,
+                                       include_inactive=include_inactive, page=page, size=size)
+
+
+@router.post("/db/files", status_code=201)
+async def db_upload(file: UploadFile = File(...), company_id: Optional[str] = Form(None), folder: str = Form("docs"),
+                    doc_kind: Optional[str] = Form(None), memo: Optional[str] = Form(None),
+                    current_user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    """업로드 — 파일명 규칙에 맞게 자동으로 이름이 바뀐다(원래 이름은 따로 보관)."""
+    from app.services.company_report import company_db
+
+    data = await file.read()
+    try:
+        f = await company_db.upload_file(db, company_id=company_id or None, folder=folder, filename=file.filename or "file",
+                                         data=data, user_id=current_user.id, doc_kind=(doc_kind or None), memo=memo)
+    except ValueError as e:
+        raise HTTPException(422, str(e))
+    await db.commit()
+    await db.refresh(f)
+    return company_db.file_out(f)
+
+
+class FilePatch(BaseModel):
+    memo: Optional[str] = None
+    doc_kind: Optional[str] = None
+    deleted: Optional[bool] = None
+
+
+@router.patch("/db/files/{file_id}")
+async def db_patch_file(file_id: str, body: FilePatch, current_user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    from app.models.company_report import CompanyFile
+    from app.services.company_report import company_db
+
+    f = await db.get(CompanyFile, file_id)
+    if not f or f.status == "deleted":
+        raise HTTPException(404, "파일을 찾을 수 없습니다.")
+    if body.deleted:
+        # 삭제는 올린 사람 또는 관리자만, 자동 파일은 삭제하지 않는다(파일은 남기고 목록에서만 뺀다)
+        if f.origin == "auto":
+            raise HTTPException(400, "자동으로 만들어지는 파일은 지울 수 없습니다.")
+        if f.created_by != current_user.id and not getattr(current_user, "is_superuser", False):
+            raise HTTPException(403, "올린 사람 또는 관리자만 지울 수 있습니다.")
+        f.status = "deleted"
+    if body.memo is not None:
+        f.memo = body.memo
+    if body.doc_kind is not None and f.origin == "upload":
+        cname = (await db.get(PortfolioCompany, f.company_id)).name if f.company_id else None
+        stem = company_db.split_ext(f.original_name or "")[0]
+        f.doc_kind = body.doc_kind.strip()[:40] or f.doc_kind
+        f.display_name = company_db.display_name(cname, f.doc_kind, f.period_label, f.version, f.file_type, extra=stem)
+    cname = (await db.get(PortfolioCompany, f.company_id)).name if f.company_id else None
+    await search.index_file(db, f, cname)
+    await db.commit()
+    await db.refresh(f)
+    return company_db.file_out(f, cname)
+
+
+@router.get("/db/files/{file_id}/download")
+async def db_download(file_id: str, inline: bool = False, current_user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    from urllib.parse import quote
+
+    from fastapi.responses import FileResponse
+
+    from app.models.company_report import CompanyFile
+    from app.services.company_report import company_db, storage
+
+    f = await db.get(CompanyFile, file_id)
+    if not f or f.status == "deleted" or not storage.exists(f.storage_key):
+        raise HTTPException(404, "파일을 찾을 수 없습니다.")
+    await company_db.log_download(db, file_id=f.id, company_id=f.company_id, user_id=current_user.id)
+    disp = "inline" if inline else "attachment"
+    return FileResponse(storage.path_of(f.storage_key), media_type=f.mime or "application/octet-stream",
+                        headers={"Content-Disposition": f"{disp}; filename*=UTF-8''{quote(f.display_name)}"})
+
+
+@router.get("/db/companies/{company_id}/zip")
+async def db_zip(company_id: str, current_user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    """기업 폴더 통째로 내려받기. company_id=_portfolio 이면 '_포트폴리오 공통'."""
+    from urllib.parse import quote
+
+    from fastapi.responses import Response
+
+    from app.services.company_report import company_db
+
+    cid = None if company_id == "_portfolio" else company_id
+    data, name = await company_db.zip_company(db, cid)
+    await company_db.log_download(db, file_id=None, company_id=cid, user_id=current_user.id, kind="zip")
+    return Response(content=data, media_type="application/zip",
+                    headers={"Content-Disposition": f"attachment; filename*=UTF-8''{quote(name)}"})
+
+
+@router.post("/db/companies/{company_id}/refresh")
+async def db_refresh(company_id: str, current_user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    """자동 파일(월별 뉴스 모음·사실 원장·투자유치 엑셀·기업카드) 지금 다시 만들기."""
+    from app.services.company_report import company_db
+
+    return await company_db.refresh_auto_files(db, company_id)
+
+
+async def _refresh_files_bg(company_id: str) -> None:
+    from app.services.company_report import company_db
+
+    async with AsyncSessionLocal() as db:
+        try:
+            await company_db.refresh_auto_files(db, company_id)
+        except Exception:
+            logger.exception("자동 파일 갱신 실패")

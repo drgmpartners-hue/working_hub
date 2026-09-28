@@ -208,3 +208,36 @@ export const FACT_STATUS: Record<string, { label: string; cls: string }> = {
 
 export const fmtEok = (won: number | null | undefined) =>
   won ? `${(won / 1e8).toLocaleString('ko-KR', { maximumFractionDigits: 1 })}억 원` : '비공개';
+
+export interface DbFile {
+  id: string;
+  company_id: string | null;
+  company_name: string | null;
+  folder: string;
+  folder_label: string;
+  path: string;
+  display_name: string;
+  original_name: string | null;
+  file_type: string;
+  size: number;
+  period_label: string | null;
+  doc_kind: string | null;
+  origin: 'auto' | 'upload';
+  version: number;
+  status: string;
+  memo: string | null;
+  created_at: string | null;
+  updated_at: string | null;
+}
+
+export const FOLDER_LABELS: Record<string, string> = {
+  info: '01_기업정보',
+  news: '02_뉴스',
+  docs: '03_자료',
+  reports: '04_보고서',
+  images: '05_이미지',
+  portfolio: '_포트폴리오 공통',
+};
+
+export const fmtSize = (n: number) =>
+  n >= 1048576 ? `${(n / 1048576).toFixed(1)}MB` : n >= 1024 ? `${Math.round(n / 1024)}KB` : `${n}B`;
