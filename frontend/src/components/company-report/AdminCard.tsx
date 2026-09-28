@@ -28,8 +28,8 @@ export function AdminCard({ me, onChanged }: { me: CrMe | null; onChanged: () =>
   const load = useCallback(async () => {
     try {
       const [a, r] = await Promise.all([crGet<AdminRow[]>('/admins'), crGet<{ staff: Staff[] }>('/recipients')]);
-      setAdmins(a);
-      setStaff(r.staff);
+      setAdmins(Array.isArray(a) ? a : []);
+      setStaff(Array.isArray(r?.staff) ? r.staff : []);
     } catch (e) {
       setError((e as Error).message);
     }

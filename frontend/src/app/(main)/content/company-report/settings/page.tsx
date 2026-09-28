@@ -30,6 +30,25 @@ interface Settings {
 }
 
 
+/** 서버가 이전 버전이거나 일부 값이 빠져도 화면이 깨지지 않게 기본값을 채운다. */
+function normalize(raw: Partial<Settings> | null | undefined): Settings {
+  const r = (raw || {}) as Partial<Settings>;
+  const au = (r.ai_usage || {}) as Partial<Settings['ai_usage']>;
+  const st = (r.storage || {}) as Partial<Settings['storage']>;
+  return {
+    ...(r as Settings),
+    regions: Array.isArray(r.regions) && r.regions.length ? r.regions : ['서울'],
+    ai_usage: { ...(au as Settings['ai_usage']), month: au.month || '', rows: Array.isArray(au.rows) ? au.rows : [], usd: Number(au.usd || 0) },
+    storage: { ...(st as Settings['storage']), files: Number(st.files || 0), bytes: Number(st.bytes || 0), persistent: !!st.persistent },
+    solapi_balance: r.solapi_balance || {},
+    keys: r.keys || {},
+    send_logs: Array.isArray(r.send_logs) ? r.send_logs : [],
+    models: { main: '', review: '', summary: '', ...(r.models || {}) },
+    template_daily: r.template_daily || '',
+    template_monthly: r.template_monthly || '',
+  };
+}
+
 const KEY_LABEL: Record<string, string> = {
   claude: 'Claude (작성·2차 검토·요약)',
   gemini: 'Gemini (1차 검토)',
@@ -54,7 +73,7 @@ export default function SettingsPage() {
 
   const load = useCallback(async () => {
     try {
-      const st = await crGet<Settings>('/settings');
+      const st = normalize(await crGet<Settings>('/settings'));
       setS(st);
       setTpl({ daily: st.template_daily, monthly: st.template_monthly });
       setModels(st.models);
@@ -72,7 +91,7 @@ export default function SettingsPage() {
     setBusy(true);
     setError(null);
     try {
-      setS(await crPut<Settings>('/settings', body));
+      setS(normalize(await crPut<Settings>('/settings', body)));
       setNotice(msg);
     } catch (e) {
       setError((e as Error).message);

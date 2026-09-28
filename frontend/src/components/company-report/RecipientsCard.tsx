@@ -44,7 +44,7 @@ export function RecipientsCard({ admin }: { admin: boolean }) {
   const load = useCallback(async () => {
     try {
       const r = await crGet<{ selected: Selected[] }>('/recipients');
-      setSelected(r.selected);
+      setSelected(Array.isArray(r?.selected) ? r.selected : []);
     } catch (e) {
       setError((e as Error).message);
     }
