@@ -20,7 +20,7 @@ from app.services.collectors import naver_news_client as naver
 from app.services.collectors.dart_client import DARTClient, dart_disclosure_url
 from app.services.company_report import search
 from app.services.company_report.dedup import group_similar, relevance, title_similarity, url_hash
-from app.services.company_report.keys import get_service_key
+from app.services.company_report.keys import get_service_key, release
 from app.services.company_report.timeutil import now_kst
 
 logger = logging.getLogger(__name__)
@@ -59,6 +59,7 @@ async def _fetch_naver(db: AsyncSession, kw: dict, since: Optional[datetime], co
     hit_limit: list[str] = []
     for q in _queries(kw, combos):
         try:
+            await release(db)
             res = await naver.search_since(key[0], key[1], q, since, max_items=max_items)
         except Exception as e:
             logger.info("네이버 수집 실패(%s): %s", q, e)
@@ -78,6 +79,7 @@ async def _fetch_dart(db: AsyncSession, company: PortfolioCompany, since: date, 
     if not key:
         return []
     try:
+        await release(db)
         rows = await DARTClient(key[0]).list_disclosures(company.corp_code, since.strftime("%Y%m%d"), until.strftime("%Y%m%d"))
     except Exception as e:
         logger.info("DART 공시 수집 실패: %s", e)

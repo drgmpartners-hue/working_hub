@@ -21,7 +21,7 @@ from app.models.news_briefing import PortfolioCompany
 from app.services import settings_store
 from app.services.collectors import public_data_clients as pdc
 from app.services.company_report import search
-from app.services.company_report.keys import get_service_key
+from app.services.company_report.keys import get_service_key, release
 from app.services.company_report.timeutil import today_kst
 
 logger = logging.getLogger(__name__)
@@ -82,6 +82,7 @@ async def snapshot_company(db: AsyncSession, company: PortfolioCompany, sources:
             out["nps"] = "no_key"
         else:
             try:
+                await release(db)
                 await _save(db, company.id, "nps", as_of, await pdc.nps_snapshot(dg[0], company.name, company.biz_reg_no), None)
                 out["nps"] = "ok"
             except Exception as e:
@@ -95,6 +96,7 @@ async def snapshot_company(db: AsyncSession, company: PortfolioCompany, sources:
             out["nts"] = "no_key"
         else:
             try:
+                await release(db)
                 res = nts_cache if nts_cache is not None else await pdc.nts_status(dg[0], [company.biz_reg_no])
                 st = res.get(pdc.digits(company.biz_reg_no))
                 await _save(db, company.id, "nts", as_of, st or {"b_stt": "조회 결과 없음"}, None)
@@ -114,6 +116,7 @@ async def snapshot_company(db: AsyncSession, company: PortfolioCompany, sources:
         else:
             try:
                 name = re.sub(r"\(주\)|㈜|주식회사", "", company.name).strip()
+                await release(db)
                 r = await pdc.kipris_patents(kp[0], name)
                 await _kipris_add(db, r["calls"])
                 await _save(db, company.id, "kipris", as_of, pdc.summarize_patents(r["items"], company.name, as_of.isoformat()), None)
@@ -128,6 +131,7 @@ async def snapshot_company(db: AsyncSession, company: PortfolioCompany, sources:
             try:
                 from app.services.collectors.kis_client import KISClient
 
+                await release(db)
                 await _save(db, company.id, "kis", as_of, await KISClient(*kis).get_price_info(company.stock_code), None)
                 out["kis"] = "ok"
             except Exception as e:
@@ -150,6 +154,7 @@ async def snapshot_due(db: AsyncSession, force: bool = False) -> dict:
     dg = await get_service_key(db, "data_go_kr")
     if dg and targets:
         try:
+            await release(db)
             nts_cache = await pdc.nts_status(dg[0], [c.biz_reg_no for c in targets if c.biz_reg_no])
         except Exception as e:
             logger.warning("국세청 일괄 조회 실패: %s", e)

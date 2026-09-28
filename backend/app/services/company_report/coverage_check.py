@@ -19,7 +19,7 @@ from app.models.news_briefing import NewsArticle, PortfolioCompany
 from app.services import llm_client
 from app.services.company_report import config
 from app.services.company_report.dedup import title_similarity
-from app.services.company_report.keys import get_service_key
+from app.services.company_report.keys import get_service_key, release
 
 logger = logging.getLogger(__name__)
 
@@ -149,6 +149,7 @@ async def key_events(db: AsyncSession, company: PortfolioCompany, start: date, e
     claude = await get_service_key(db, "claude")
     if claude:
         try:
+            await release(db)
             r = await llm_client.claude_json(claude[0], prompt, model=models["main"], web_search=True, max_tokens=3000)
             res["claude"] = [e for e in ((r.data or {}).get("events") or []) if isinstance(e, dict) and e.get("title")]
         except llm_client.LLMError as e:
@@ -156,6 +157,7 @@ async def key_events(db: AsyncSession, company: PortfolioCompany, start: date, e
     gemini = await get_service_key(db, "gemini")
     if gemini:
         try:
+            await release(db)
             r = await llm_client.gemini_json(gemini[0], prompt, model=models["review"], grounding=True)
             res["gemini"] = [e for e in ((r.data or {}).get("events") or []) if isinstance(e, dict) and e.get("title")]
         except llm_client.LLMError as e:

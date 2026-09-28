@@ -24,6 +24,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.news_briefing import AIReviewLog
 from app.services import llm_client
+from app.services.company_report.keys import release
 
 logger = logging.getLogger(__name__)
 
@@ -168,6 +169,7 @@ async def review_sentences(
     if gemini_key:
         p1 = REVIEW1_PROMPT.format(sources=src_txt, sentences=sen_txt)
         try:
+            await release(db)
             r1 = await llm_client.gemini_json(gemini_key, p1, model=models["review"], grounding=grounding)
             review1 = r1.data if isinstance(r1.data, dict) else {"reviews": r1.data}
             await _log(db, target_type, target_id, "review1", r1, models["review"], p1)
@@ -185,6 +187,7 @@ async def review_sentences(
     review2: dict | None = None
     r2_ok = True
     try:
+        await release(db)
         r2 = await llm_client.claude_json(claude_key, p2, model=models["main"], max_tokens=8000)
         review2 = r2.data if isinstance(r2.data, dict) else {"final": r2.data}
         await _log(db, target_type, target_id, "review2", r2, models["main"], p2)

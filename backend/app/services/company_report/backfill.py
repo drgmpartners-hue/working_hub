@@ -6,6 +6,7 @@
 """
 from __future__ import annotations
 
+import asyncio
 import logging
 from datetime import date, datetime, timedelta
 from typing import Optional
@@ -18,8 +19,11 @@ from app.services.collectors import google_news_rss
 from app.services.company_report import collector, coverage_check as cc, facts, summarizer
 from app.services.company_report.dedup import relevance
 from app.services.company_report.timeutil import now_kst, today_kst
+from app.services.company_report.keys import release
 
 logger = logging.getLogger(__name__)
+# 과거 데이터 구축은 한 번에 하나씩(여러 기업을 연달아 등록해도 DB 연결·외부 API 한도를 넘지 않게)
+_RUN_LOCK = asyncio.Lock()
 VERDICT_LABEL = {"sufficient": "충분", "needs_more": "보완 필요", "insufficient": "부족"}
 
 
@@ -60,6 +64,7 @@ async def _recover_events(db: AsyncSession, company: PortfolioCompany, kw: dict,
         d = cc._parse_date(ev.get("date"))
         if not d:
             continue
+        await release(db)
         r = await google_news_rss.search_range(f'"{company.name}"', d - timedelta(days=7), d + timedelta(days=7), step_days=15)
         items = [it for it in r["items"] if not relevance(it["title"], it.get("description", ""), kw["required"], kw["boost"], kw["exclude"]).excluded]
         if items:
@@ -79,10 +84,22 @@ async def run_backfill(db: AsyncSession, company_id: str, *, date_from: Optional
     start = date_from or (end - timedelta(days=30 * max(1, min(months, 12))))
     job = await db.get(BackfillJob, job_id) if job_id else None
     if not job:
-        job = BackfillJob(company_id=company_id, period_from=start, period_to=end, trigger=trigger, status="running", created_by=user_id)
+        job = BackfillJob(company_id=company_id, period_from=start, period_to=end, trigger=trigger, status="queued", created_by=user_id)
         db.add(job)
-    job.status, job.period_from, job.period_to, job.error = "running", start, end, None
+    job.period_from, job.period_to, job.error = start, end, None
+    if _RUN_LOCK.locked():
+        job.status = "queued"
+        job.coverage = {**(job.coverage or {}), "stage": "앞 기업 작업이 끝나기를 기다리는 중"}
     await db.commit()
+    async with _RUN_LOCK:
+        job.status = "running"
+        await db.commit()
+        return await _run_locked(db, company, job, start, end, with_ai_checks)
+
+
+async def _run_locked(db: AsyncSession, company: PortfolioCompany, job: BackfillJob, start: date, end: date,
+                      with_ai_checks: bool) -> dict:
+    company_id = company.id
     try:
         kw = await collector._keywords(db, company_id)
         if not kw["required"]:
@@ -91,6 +108,7 @@ async def run_backfill(db: AsyncSession, company_id: str, *, date_from: Optional
         await _progress(db, job, 5, "네이버 조합 검색")
         naver_raw, hit = await collector._fetch_naver(db, kw, datetime.combine(start, datetime.min.time()), combos=True)
         await _progress(db, job, 25, "구글 뉴스 RSS 기간 검색")
+        await release(db)
         g = await _google(kw, start, end)
         await _progress(db, job, 45, "DART 공시")
         dart = await collector._fetch_dart(db, company, start, end)
@@ -280,3 +298,16 @@ async def save_report(db: AsyncSession, job: BackfillJob, company: PortfolioComp
     except Exception as e:
         logger.warning("검증 결과서 저장 실패: %s", e)
         await db.rollback()
+
+
+async def fail_stale_jobs() -> int:
+    """서버가 다시 켜질 때: 진행 중·대기로 남은 작업은 중단된 것이므로 실패로 표시(다시 실행 가능하게)."""
+    from sqlalchemy import update
+
+    from app.db.session import AsyncSessionLocal
+
+    async with AsyncSessionLocal() as db:
+        res = await db.execute(update(BackfillJob).where(BackfillJob.status.in_(["queued", "running"])).values(
+            status="failed", error="서버 재시작으로 중단되었습니다. [과거 데이터 가져오기]로 다시 실행하세요.", finished_at=now_kst()))
+        await db.commit()
+        return res.rowcount or 0

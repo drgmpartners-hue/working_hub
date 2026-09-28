@@ -42,3 +42,13 @@ async def get_service_key(
         if found:
             return found
     return None
+
+
+async def release(db: AsyncSession) -> None:
+    """외부 API·AI처럼 오래 걸리는 호출 직전에 DB 연결을 풀에 돌려준다.
+
+    열린 트랜잭션이 있으면 수 분짜리 네트워크 대기 동안 연결을 붙잡아 연결 풀(QueuePool)이 바닥난다.
+    지금까지의 변경을 커밋하고 연결을 반납한다(다음 쿼리 때 새로 빌림, expire_on_commit=False라 객체는 그대로).
+    """
+    if db.in_transaction():
+        await db.commit()

@@ -49,6 +49,12 @@ async def _start_company_db_worker() -> None:
 
     if file_worker.enabled():
         app.state.company_db_worker = asyncio.create_task(file_worker.loop())
+    try:  # 재시작 전에 돌던 과거 데이터 구축 작업은 중단된 것으로 표시
+        from app.services.company_report import backfill
+
+        await backfill.fail_stale_jobs()
+    except Exception:  # DB가 아직 준비 안 됐어도 서버는 뜨게
+        pass
 
 ALLOWED_ORIGINS = ["http://localhost:3000", "http://127.0.0.1:3000", "https://working-hub.vercel.app"]
 

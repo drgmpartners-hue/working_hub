@@ -19,7 +19,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.models.news_briefing import NewsArticle, PortfolioCompany
 from app.services import llm_client
 from app.services.company_report import config, search
-from app.services.company_report.keys import get_service_key
+from app.services.company_report.keys import get_service_key, release
 from app.services.company_report.timeutil import now_kst
 
 logger = logging.getLogger(__name__)
@@ -118,6 +118,7 @@ async def summarize_pending(db: AsyncSession, company_id: Optional[str] = None, 
         for i in range(0, len(items), BATCH):
             chunk = items[i : i + BATCH]
             try:
+                await release(db)
                 r = await llm_client.claude_json(
                     key[0],
                     SUMMARY_PROMPT.format(

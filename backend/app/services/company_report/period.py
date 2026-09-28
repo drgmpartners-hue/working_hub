@@ -16,7 +16,7 @@ from app.models.company_report import CompanyPeriodSummary
 from app.models.news_briefing import NewsArticle, PortfolioCompany
 from app.services import llm_client
 from app.services.company_report import config
-from app.services.company_report.keys import get_service_key
+from app.services.company_report.keys import get_service_key, release
 
 logger = logging.getLogger(__name__)
 MAX_ARTICLES = 120
@@ -100,6 +100,7 @@ async def period_summary(db: AsyncSession, company_id: str, date_from: date, dat
                for i, a in enumerate(use, 1)]
     txt = "\n".join(f"[A{i}] ({(a.published_at.date().isoformat() if a.published_at else '-')}, {a.tag or '-'}) {a.title} — {a.summary or ''}"
                     for i, a in enumerate(use, 1))
+    await release(db)
     r = await llm_client.claude_json(key[0], PERIOD_PROMPT.format(name=company.name, date_from=date_from, date_to=date_to, articles=txt),
                                      model=models["summary"], max_tokens=2500)
     content = r.data if isinstance(r.data, dict) else {}

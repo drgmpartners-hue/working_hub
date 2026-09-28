@@ -20,7 +20,7 @@ from app.services import llm_client, settings_store
 from app.services.collectors import data_go_kr
 from app.services.collectors.market_indices import previous_day_indices
 from app.services.company_report import collector, config, cross_review, facts, search, summarizer
-from app.services.company_report.keys import get_service_key
+from app.services.company_report.keys import get_service_key, release
 from app.services.company_report.timeutil import now_kst, today_kst
 
 logger = logging.getLogger(__name__)
@@ -67,6 +67,7 @@ async def build_basic_info(db: AsyncSession, day: date) -> dict:
     dg = await get_service_key(db, "data_go_kr")
     kis = await get_service_key(db, "kis")
     region = await settings_store.get(db, config.WEATHER_REGION, config.DEFAULT_REGION) or config.DEFAULT_REGION
+    await release(db)
     weather, indices = await asyncio.gather(
         data_go_kr.get_weather(dg[0] if dg else None, day, region),
         previous_day_indices(day, kis),
@@ -172,6 +173,7 @@ async def _ai_briefing(db: AsyncSession, day: date, briefing_id: str, cards: lis
     sources, _ = build_sources(cards)
     src_txt = "\n".join(f"[{s['id']}] (company_id={s['company_id']}) {s['text']}" for s in sources)
     prompt = DRAFT_PROMPT.format(day=f"{day.isoformat()}({'월화수목금토일'[day.weekday()]})", sources=src_txt)
+    await release(db)
     r = await llm_client.claude_json(claude[0], prompt, model=models["main"], max_tokens=4000)
     await cross_review.log_draft(db, "daily", briefing_id, r, models["main"], prompt)
     draft = r.data if isinstance(r.data, dict) else {}

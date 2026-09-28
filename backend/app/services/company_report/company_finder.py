@@ -12,7 +12,7 @@ from app.services.collectors import naver_news_client as naver
 from app.services.collectors.dart_client import DARTClient, normalize_corp_name
 from app.services.company_report import config
 from app.services.company_report.dedup import relevance
-from app.services.company_report.keys import get_service_key
+from app.services.company_report.keys import get_service_key, release
 from app.services.company_report.timeutil import now_kst
 
 logger = logging.getLogger(__name__)
@@ -51,6 +51,7 @@ async def _news(db: AsyncSession, query: str, display: int = 30) -> list[dict]:
     if not key:
         return []
     try:
+        await release(db)
         page = await naver.search_page(key[0], key[1], query, display=display, sort="sim")
         return page["items"]
     except Exception as e:
@@ -91,11 +92,13 @@ async def search_candidates(db: AsyncSession, query: str, user_id: Optional[str]
     if dart_key:
         client = DARTClient(dart_key[0])
         try:
+            await release(db)
             found = await client.search_corps(query, limit=5)
         except Exception as e:
             logger.info("DART 회사 검색 실패: %s", e)
             found = []
         for base in found[:4]:
+            await release(db)
             info = await client.get_company(base["corp_code"])
             cards.append(_card_from_dart(info, base))
 
@@ -108,6 +111,7 @@ async def search_candidates(db: AsyncSession, query: str, user_id: Optional[str]
         if claude:
             models = await config.get_models(db)
             try:
+                await release(db)
                 r = await llm_client.claude_json(
                     claude[0], WEB_CANDIDATE_PROMPT.format(query=query),
                     model=models["summary"], web_search=True, max_tokens=2000,
@@ -149,6 +153,7 @@ async def suggest_keywords(db: AsyncSession, company: dict, user_id: Optional[st
     titles = "\n".join(f"- {n['title']}" for n in news[:30]) or "(검색 결과 없음)"
     models = await config.get_models(db)
     try:
+        await release(db)
         r = await llm_client.claude_json(
             claude[0],
             KEYWORD_PROMPT.format(
@@ -178,6 +183,7 @@ async def preview_search(db: AsyncSession, required: list[str], boost: list[str]
     rows: list[dict] = []
     for q in required[:4]:
         try:
+            await release(db)
             res = await naver.search_since(key[0], key[1], q, since, max_items=300)
         except Exception as e:
             logger.info("미리보기 검색 실패(%s): %s", q, e)

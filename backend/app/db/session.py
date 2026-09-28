@@ -9,6 +9,9 @@ engine = create_async_engine(
     echo=False,
     pool_pre_ping=True,
     pool_recycle=300,
+    # 기업 리포트 백그라운드 작업(수집·요약·검증)과 화면 요청이 겹쳐도 여유 있게(기본 5+10 → 10+20)
+    pool_size=10,
+    max_overflow=20,
 )
 AsyncSessionLocal = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
 
