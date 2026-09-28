@@ -1,0 +1,12 @@
+# 기업 리포트 배치(Cron) 서비스 전용 설정.
+# Railway 서비스 Settings > Config-as-code 경로에 /backend/railway.cron.toml 지정.
+# 시작 명령과 Cron Schedule은 서비스별로 Railway 화면에서 입력한다.
+#   briefing-build: python scripts/run_news_briefing.py daily-build   / 0 22 * * 0-4
+#   briefing-send : python scripts/run_news_briefing.py send          / 30 23 * * 0-4
+[build]
+builder = "DOCKERFILE"
+dockerfilePath = "Dockerfile"
+
+[deploy]
+# 실패해도 자동 재실행하지 않는다(발송 중복 방지). 다음 예약 시각에 다시 돈다.
+restartPolicyType = "NEVER"
