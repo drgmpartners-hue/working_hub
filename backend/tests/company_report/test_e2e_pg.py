@@ -62,6 +62,9 @@ def _fake_llm_factory():
             data = {"overall": [{"text": "테스트기업이 투자를 유치했다.", "source_ids": [srcs[0][0]]},
                                 {"text": "근거 없는 문장", "source_ids": []}],
                     "companies": [{"company_id": srcs[0][1], "text": "투자유치와 소송이 있었다.", "source_ids": [srcs[0][0]]}]}
+        elif "핵심 사건" in prompt:
+            data = {"events": [{"date": datetime.now().date().isoformat(), "type": "funding", "title": "테스트바이오 시리즈B 150억 투자 유치"},
+                               {"date": (datetime.now().date() - timedelta(days=40)).isoformat(), "type": "award", "title": "테스트바이오 혁신상 수상"}]}
         elif "최종 검토자" in prompt:
             sids = re.findall(r"^\[([oc]\d+)\]", prompt, re.M)
             data = {"final": [{"id": s, "decision": "keep"} for s in sids]}
@@ -70,6 +73,9 @@ def _fake_llm_factory():
         return llm_client.LLMResult(text="{}", data=data, model="fake-claude", usage={"input_tokens": 1})
 
     async def gemini_json(api_key, prompt, **kw):
+        if "핵심 사건" in prompt:
+            return llm_client.LLMResult(text="{}", data={"events": [{"date": datetime.now().date().isoformat(), "type": "funding",
+                                                                    "title": "테스트바이오, 시리즈B 150억원 유치"}]}, model="fake-gemini")
         sids = re.findall(r"^\[([oc]\d+)\]", prompt, re.M)
         return llm_client.LLMResult(text="{}", data={"reviews": [{"id": s, "verdict": "keep"} for s in sids], "missing": []},
                                     model="fake-gemini")
@@ -333,11 +339,60 @@ async def _run(monkeypatch):
             assert again["companies"] == 0  # 이번 달은 이미 있음
             assert await settings_store.get(db, f"kipris_calls_{today_kst().strftime('%Y%m')}") == "1"
 
+        # ---- 과거 데이터 구축(완성판) + 검증 ①~⑥
+        from app.services.collectors import google_news_rss
+        from app.services.company_report import backfill
+
+        async def fake_range(query, start, end, step_days=7, pause=0.6, client=None):
+            base = now_kst()
+            items = [
+                # 네이버와 같은 기사(다른 URL) → 묶음, 겹침으로 수집률 추정
+                {"title": "테스트바이오, 시리즈B 150억 투자 유치", "url": f"https://news.google.com/a/{uuid.uuid4().hex[:6]}",
+                 "press": "예시일보", "published_at": base - timedelta(hours=5), "description": "", "source": "google_rss"},
+                {"title": "테스트바이오 혁신상 수상", "url": "https://news.google.com/a/award", "press": "산업신문",
+                 "published_at": base - timedelta(days=40), "description": "테스트바이오", "source": "google_rss"},
+            ]
+            return {"items": items, "windows": 26, "saturated": [], "errors": 0}
+
+        monkeypatch.setattr(google_news_rss, "search_range", fake_range)
+        monkeypatch.setattr(backfill.cc, "get_service_key", fake_key)
+        r = await c.post("/companies/backfill", headers=H, json={"company_ids": [cid], "months": 3})
+        assert r.json()["queued"] == 1, r.json()
+        job_id = r.json()["job_ids"][0]
+        j = (await c.get(f"/backfill-jobs/{job_id}", headers=H)).json()
+        assert j["status"] == "done", j
+        assert j["source_stats"]["attached"] >= 1  # 구글 기사가 기존 네이버 기사 묶음에 붙음
+        ch = j["checks"]
+        assert ch["c3"]["pass"] is True and len(j["key_events"]["events"]) == 2, (ch["c3"], j["key_events"])
+        assert ch["c5"]["pass"] is None
+        assert j["verdict"] == "insufficient" and "기사" in j["reasons"][0], j  # 대표 기사 5건 미만 → 부족
+        assert ch["c4"]["pass"] is None  # DART 등록사 아님
+        assert j["report_file_id"]
+        zero = ch["c1"]["zero_months"]
+        s_ = (await c.get(f"/backfill-jobs/{job_id}/sample", headers=H)).json()
+        assert 1 <= len(s_["items"]) <= 20
+        answers = {a["id"]: True for a in s_["items"]}
+        r = await c.post(f"/backfill-jobs/{job_id}/sample-review", headers=H, json={"answers": answers})
+        assert r.json()["checks"]["c5"]["pass"] is True
+        if zero:
+            r = await c.post(f"/backfill-jobs/{job_id}/confirm-gaps", headers=H, json={"months": zero})
+        j = r.json()
+        assert j["checks"]["c1"]["pass"] is True, j["checks"]["c1"]
+        assert j["verdict"] == "insufficient"
+        # 판정 규칙(기사 충분할 때): ⑤ 대기면 보완 필요, 모두 통과면 충분
+        from app.services.company_report import coverage_check as cc
+        ok = {k: {"pass": True} for k in ("c1", "c2", "c3", "c4", "c5", "c6")}
+        assert cc.decide(ok, 30) == ("sufficient", [])
+        assert cc.decide({**ok, "c5": {"pass": None}}, 30)[0] == "needs_more"
+        assert cc.decide({**ok, "c2": {"pass": False, "note": "추정 수집률 80%"}}, 30)[1] == ["② 수집률 미통과: 추정 수집률 80%"]
+        r = await c.get(f"/db/files/{j['report_file_id']}/download", headers=H)
+        assert r.content.startswith(b"%PDF")
+
         # ---- 재색인
         r = await c.post("/search/reindex", headers=H)
         st = r.json()
-        assert st["company"] == 1 and st["article"] == 2 and st["fact"] == 2 and st["funding"] == 1 and st["daily"] == 1, st
-        assert st["file"] == 5, st  # 뉴스 md 1 + 원장·투자유치 xlsx 2 + 기업카드 1 + 브리핑 PDF 1
+        assert st["company"] == 1 and st["article"] == 3 and st["fact"] >= 2 and st["funding"] == 1 and st["daily"] == 1, st
+        assert st["file"] == 6, st  # 뉴스 md 1 + 원장·투자유치 xlsx 2 + 기업카드 1 + 브리핑 PDF 1 + 검증 결과서 1
 
 
 def test_e2e(monkeypatch):

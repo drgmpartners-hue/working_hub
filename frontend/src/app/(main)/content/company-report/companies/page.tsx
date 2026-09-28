@@ -36,6 +36,8 @@ export default function CompaniesPage() {
   const [showInactive, setShowInactive] = useState(false);
   const [modal, setModal] = useState(false);
   const [busy, setBusy] = useState<string | null>(null);
+  const [picked, setPicked] = useState<string[]>([]);
+  const [bfMonths, setBfMonths] = useState('6');
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -86,6 +88,18 @@ export default function CompaniesPage() {
     }
   };
 
+  const bulkBackfill = async () => {
+    if (!picked.length) return;
+    if (!window.confirm(`선택한 ${picked.length}개 기업의 최근 ${bfMonths}개월 기사·공시를 다시 모으고 검증할까요? 기업당 수 분이 걸립니다.`)) return;
+    try {
+      const r = await crPost<{ queued: number; skipped_running: number }>('/companies/backfill', { company_ids: picked, months: Number(bfMonths) });
+      setNotice(`${r.queued}개 기업 과거 데이터 구축을 시작했습니다${r.skipped_running ? `(진행 중 ${r.skipped_running}개 제외)` : ''}. 기업 상세 > 기업 원장에서 진행률을 볼 수 있습니다.`);
+      setPicked([]);
+    } catch (e) {
+      setError((e as Error).message);
+    }
+  };
+
   const toggleActive = async (c: Company) => {
     if (c.is_active && !window.confirm(`${c.name}을(를) 비활성으로 바꿀까요? 모은 기사는 그대로 남고 수집·발송만 멈춥니다.`)) return;
     setBusy(c.id);
@@ -131,9 +145,23 @@ export default function CompaniesPage() {
               비활성 기업 포함
             </label>
           </div>
-          <button type="button" className="wh-btn wh-btn-primary wh-btn-sm" onClick={() => setModal(true)}>
-            + 투자기업 등록
-          </button>
+          <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
+            {picked.length > 0 && (
+              <>
+                <select value={bfMonths} onChange={(e) => setBfMonths(e.target.value)} style={{ ...inputStyle, width: 'auto' }} aria-label="가져올 기간">
+                  <option value="3">3개월</option>
+                  <option value="6">6개월</option>
+                  <option value="12">12개월</option>
+                </select>
+                <button type="button" className="wh-btn wh-btn-ghost wh-btn-sm" onClick={() => void bulkBackfill()}>
+                  선택 {picked.length}곳 과거 데이터 가져오기
+                </button>
+              </>
+            )}
+            <button type="button" className="wh-btn wh-btn-primary wh-btn-sm" onClick={() => setModal(true)}>
+              + 투자기업 등록
+            </button>
+          </div>
         </div>
 
         <div style={{ padding: '0 16px' }}>
@@ -149,9 +177,17 @@ export default function CompaniesPage() {
           </div>
         ) : (
           <div style={{ overflowX: 'auto' }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 760 }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 800 }}>
               <thead>
                 <tr>
+                  <th style={{ ...th, width: 32 }}>
+                    <input
+                      type="checkbox"
+                      aria-label="전체 선택"
+                      checked={shown.filter((c) => c.is_active).length > 0 && shown.filter((c) => c.is_active).every((c) => picked.includes(c.id))}
+                      onChange={(e) => setPicked(e.target.checked ? shown.filter((c) => c.is_active).map((c) => c.id) : [])}
+                    />
+                  </th>
                   <th style={th}>기업</th>
                   <th style={th}>대표 · 업종</th>
                   <th style={{ ...th, textAlign: 'right' }}>오늘</th>
@@ -165,6 +201,15 @@ export default function CompaniesPage() {
               <tbody>
                 {shown.map((c) => (
                   <tr key={c.id} style={{ opacity: c.is_active ? 1 : 0.55 }}>
+                    <td style={td}>
+                      <input
+                        type="checkbox"
+                        aria-label={`${c.name} 선택`}
+                        disabled={!c.is_active}
+                        checked={picked.includes(c.id)}
+                        onChange={(e) => setPicked((p) => (e.target.checked ? [...p, c.id] : p.filter((x) => x !== c.id)))}
+                      />
+                    </td>
                     <td style={td}>
                       <Link href={`/content/company-report/companies/${c.id}`} style={{ color: 'var(--text-primary)', fontWeight: 600 }}>
                         {c.name}

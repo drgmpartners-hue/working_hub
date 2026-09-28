@@ -15,13 +15,13 @@ from typing import Optional
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models.news_briefing import BackfillJob, CompanyKeyword, NewsArticle, PortfolioCompany
+from app.models.news_briefing import CompanyKeyword, NewsArticle, PortfolioCompany
 from app.services.collectors import naver_news_client as naver
 from app.services.collectors.dart_client import DARTClient, dart_disclosure_url
 from app.services.company_report import search
-from app.services.company_report.dedup import group_similar, relevance, url_hash
+from app.services.company_report.dedup import group_similar, relevance, title_similarity, url_hash
 from app.services.company_report.keys import get_service_key
-from app.services.company_report.timeutil import now_kst, today_kst
+from app.services.company_report.timeutil import now_kst
 
 logger = logging.getLogger(__name__)
 
@@ -98,8 +98,32 @@ async def _fetch_dart(db: AsyncSession, company: PortfolioCompany, since: date, 
     return out
 
 
+async def _existing_near(db: AsyncSession, company_id: str, items: list[dict]) -> list[NewsArticle]:
+    dates = [it["published_at"] for it in items if it.get("published_at")]
+    if not dates:
+        return []
+    lo, hi = min(dates) - timedelta(days=2), max(dates) + timedelta(days=2)
+    return list((await db.execute(select(NewsArticle).where(
+        NewsArticle.company_id == company_id, NewsArticle.published_at >= lo, NewsArticle.published_at <= hi,
+        NewsArticle.is_representative == True,  # noqa: E712
+    ))).scalars().all())
+
+
+def match_existing(it: dict, existing: list[NewsArticle], threshold: float = 0.55) -> Optional[NewsArticle]:
+    """다른 출처(네이버·구글)에서 온 같은 기사: 날짜 ±2일, 제목 유사도 0.55 이상."""
+    pub = it.get("published_at")
+    best, best_sim = None, 0.0
+    for e in existing:
+        if pub and e.published_at and abs((e.published_at - pub).total_seconds()) > 2 * 86400:
+            continue
+        sim = title_similarity(e.title, it["title"])
+        if sim >= threshold and sim > best_sim:
+            best, best_sim = e, sim
+    return best
+
+
 async def _store(db: AsyncSession, company_id: str, items: list[dict], kw: dict, via: str) -> dict:
-    """정제 후 새 기사만 저장. 반환 통계."""
+    """정제 후 새 기사만 저장. URL 중복·제외어·관련도, 이미 있는 같은 기사(다른 출처)는 묶음에 붙인다."""
     known = await _existing_hashes(db, company_id)
     fresh: list[dict] = []
     excluded = 0
@@ -119,34 +143,51 @@ async def _store(db: AsyncSession, company_id: str, items: list[dict], kw: dict,
         it["_hash"], it["_score"] = h, score
         fresh.append(it)
 
-    fresh.sort(key=lambda x: x.get("published_at") or datetime.min)
+    existing = await _existing_near(db, company_id, fresh)
+    attach: list[tuple[dict, NewsArticle]] = []
+    rest: list[dict] = []
+    for it in fresh:
+        e = match_existing(it, existing) if it.get("source_type") != "dart" else None
+        (attach.append((it, e)) if e else rest.append(it))
+
+    def _article(it: dict, gid: Optional[str], rep: bool) -> NewsArticle:
+        return NewsArticle(
+            company_id=company_id,
+            source_type=it.get("source_type", "news"),
+            source=it.get("source", "naver"),
+            collected_via=via,
+            url=it["url"],
+            url_hash=it["_hash"],
+            title=it["title"][:1000],
+            description=it.get("description"),
+            press=(it.get("press") or "")[:100] or None,
+            published_at=it.get("published_at"),
+            relevance_score=it["_score"],
+            dup_group_id=gid,
+            is_representative=rep,
+        )
+
     created: list[NewsArticle] = []
-    for group in group_similar(fresh):
+    for it, e in attach:
+        if not e.dup_group_id:
+            e.dup_group_id = e.id
+        a = _article(it, e.dup_group_id, False)
+        db.add(a)
+        created.append(a)
+    rest.sort(key=lambda x: x.get("published_at") or datetime.min)
+    for group in group_similar(rest):
         gid = str(uuid.uuid4()) if len(group) > 1 else None
         for rank, idx in enumerate(group):
-            it = fresh[idx]
-            art = NewsArticle(
-                company_id=company_id,
-                source_type=it.get("source_type", "news"),
-                source=it.get("source", "naver"),
-                collected_via=via,
-                url=it["url"],
-                url_hash=it["_hash"],
-                title=it["title"][:1000],
-                description=it.get("description"),
-                press=(it.get("press") or "")[:100] or None,
-                published_at=it.get("published_at"),
-                relevance_score=it["_score"],
-                dup_group_id=gid,
-                is_representative=(rank == 0),  # 가장 이른 기사가 대표
-            )
-            db.add(art)
-            created.append(art)
+            a = _article(rest[idx], gid, rank == 0)  # 가장 이른 기사가 대표
+            db.add(a)
+            created.append(a)
     if created:
         await db.flush()
         for art in created:
-            await search.index_article(db, art)
-    return {"new": len(fresh), "excluded": excluded}
+            if art.is_representative:
+                await search.index_article(db, art)
+    return {"new": len(fresh), "excluded": excluded, "attached": len(attach),
+            "representative": sum(1 for a in created if a.is_representative)}
 
 
 async def collect_company(db: AsyncSession, company_id: str, via: str = "daily",
@@ -183,55 +224,3 @@ async def collect_all(db: AsyncSession, via: str = "daily") -> dict:
             total["failed"] += 1
     total["companies"] = len(ids)
     return dict(total)
-
-
-async def basic_backfill(db: AsyncSession, company_id: str, months: int = 6,
-                         user_id: Optional[str] = None, trigger: str = "register") -> dict:
-    """기본 백필(1단계): 네이버 조합 검색 + DART 기간 공시. 검증 ①~⑥은 2단계(P2-11·12)."""
-    company = await db.get(PortfolioCompany, company_id)
-    if not company:
-        return {}
-    today = today_kst()
-    start = today - timedelta(days=30 * months)
-    job = BackfillJob(company_id=company_id, period_from=start, period_to=today, trigger=trigger,
-                      status="running", created_by=user_id)
-    db.add(job)
-    await db.commit()
-    try:
-        kw = await _keywords(db, company_id)
-        if not kw["required"]:
-            kw["required"] = [company.name]
-        news, hit = await _fetch_naver(db, kw, datetime.combine(start, datetime.min.time()), combos=True)
-        job.progress = 50
-        dart = await _fetch_dart(db, company, start, today)
-        stats = await _store(db, company_id, news + dart, kw, via="backfill")
-        await db.flush()
-        # 월별 분포(기간 커버리지 ①의 기초 자료)
-        rows = (await db.execute(
-            select(NewsArticle.published_at).where(
-                NewsArticle.company_id == company_id, NewsArticle.is_hidden == False,  # noqa: E712
-                NewsArticle.published_at >= datetime.combine(start, datetime.min.time()),
-            )
-        )).all()
-        monthly = Counter(r[0].strftime("%Y-%m") for r in rows if r[0])
-        job.source_stats = {"naver": sum(1 for n in news), "dart": len(dart), "new": stats["new"], "excluded": stats["excluded"]}
-        job.coverage = {"monthly": dict(sorted(monthly.items())), "hit_limit_queries": hit}
-        job.status, job.progress, job.finished_at = "done", 100, now_kst()
-        company.last_collected_at = now_kst()
-        await db.commit()
-        # 백필한 기사 요약(대표 기사만)
-        from app.services.company_report import summarizer
-
-        await summarizer.summarize_pending(db, company_id=company_id, limit=400)
-        from app.services.company_report import facts
-
-        await facts.extract_pending(db, company_id=company_id, limit=400)
-        return {"job_id": job.id, **stats}
-    except Exception as e:
-        logger.exception("기본 백필 실패: %s", e)
-        await db.rollback()
-        job = await db.get(BackfillJob, job.id)
-        if job:
-            job.status, job.error, job.finished_at = "failed", str(e)[:1000], now_kst()
-            await db.commit()
-        return {"error": str(e)}

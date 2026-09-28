@@ -7,7 +7,7 @@ from datetime import date, datetime, timedelta
 from typing import Optional
 
 from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, HTTPException, Query, UploadFile
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqlalchemy import and_, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -147,11 +147,12 @@ async def create_company(body: CompanyCreate, background: BackgroundTasks,
 
 
 async def _run_initial_backfill(company_id: str, months: int, user_id: str) -> None:
-    """등록 직후 기본 백필(네이버·DART). 별도 세션에서 실행."""
-    from app.services.company_report import collector
+    """등록 직후 과거 데이터 구축(네이버·구글 RSS·DART + 검증). 별도 세션에서 실행."""
+
+    from app.services.company_report import backfill
 
     async with AsyncSessionLocal() as db:
-        await collector.basic_backfill(db, company_id, months=months, user_id=user_id)
+        await backfill.run_backfill(db, company_id, months=months, trigger="register", user_id=user_id)
 
 
 @router.get("/companies/{company_id}", response_model=CompanyOut)
@@ -163,8 +164,8 @@ async def get_company(company_id: str, current_user=Depends(get_current_user), d
 
 
 @router.put("/companies/{company_id}", response_model=CompanyOut)
-async def update_company(company_id: str, body: CompanyUpdate, current_user=Depends(get_current_user),
-                         db: AsyncSession = Depends(get_db)):
+async def update_company(company_id: str, body: CompanyUpdate, background: BackgroundTasks,
+                         current_user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
     c = await db.get(PortfolioCompany, company_id)
     if not c:
         raise HTTPException(404, "기업을 찾을 수 없습니다.")
@@ -177,13 +178,19 @@ async def update_company(company_id: str, body: CompanyUpdate, current_user=Depe
         c.aliases = aliases
     for k, v in data.items():
         setattr(c, k, v)
+    kw_changed = False
     if body.keywords is not None:
+        before = await _keywords(db, c.id)
+        kw_changed = any(sorted(getattr(before, k)) != sorted(getattr(body.keywords, k)) for k in ("required", "boost", "exclude"))
         await _replace_keywords(db, c.id, body.keywords)
     await db.flush()
     ks = await _keywords(db, c.id)
     await search.index_company(db, c, ks.required + ks.boost)
     await db.commit()
     await db.refresh(c)
+    if kw_changed and c.is_active:
+        # 바뀐 키워드로 최근 6개월을 다시 훑는다(이미 있는 기사는 건너뜀)
+        background.add_task(_run_backfill_jobs, [(c.id, None)], {"months": 6, "trigger": "keyword_change", "user_id": current_user.id})
     return _out(c, await _keywords(db, c.id))
 
 
@@ -288,18 +295,137 @@ async def patch_article(article_id: str, body: ArticlePatch, current_user=Depend
     return _article_out(a)
 
 
+def _job_out(j, full: bool = False) -> dict:
+    cov = j.coverage or {}
+    out = {
+        "id": j.id, "company_id": j.company_id, "period_from": j.period_from.isoformat(), "period_to": j.period_to.isoformat(),
+        "trigger": j.trigger, "status": j.status, "progress": j.progress, "stage": cov.get("stage"),
+        "source_stats": j.source_stats, "verdict": j.verdict, "estimated_recall": j.estimated_recall,
+        "reasons": cov.get("reasons") or [], "report_file_id": j.report_file_id, "error": j.error,
+        "created_at": j.created_at.isoformat() if j.created_at else None,
+        "finished_at": j.finished_at.isoformat() if j.finished_at else None,
+        "coverage": {"hit_limit_queries": (cov.get("checks") or {}).get("c1", {}).get("hit_limit") or cov.get("hit_limit_queries") or []},
+    }
+    if full:
+        out.update({"checks": cov.get("checks") or {}, "confirmed_gaps": cov.get("confirmed_gaps") or [],
+                    "key_events": j.key_events or {}, "sample": {k: v for k, v in (j.sample_review or {}).items() if k != "items"}})
+    return out
+
+
 @router.get("/companies/{company_id}/backfill-jobs")
 async def list_backfill_jobs(company_id: str, current_user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
     rows = (await db.execute(
         select(BackfillJob).where(BackfillJob.company_id == company_id).order_by(BackfillJob.created_at.desc()).limit(10)
     )).scalars().all()
-    return [{
-        "id": j.id, "period_from": j.period_from.isoformat(), "period_to": j.period_to.isoformat(),
-        "trigger": j.trigger, "status": j.status, "progress": j.progress, "source_stats": j.source_stats,
-        "coverage": j.coverage, "verdict": j.verdict, "error": j.error,
-        "created_at": j.created_at.isoformat() if j.created_at else None,
-        "finished_at": j.finished_at.isoformat() if j.finished_at else None,
-    } for j in rows]
+    return [_job_out(j) for j in rows]
+
+
+class BackfillBody(BaseModel):
+    company_ids: list[str]
+    months: Optional[int] = Field(default=6, ge=1, le=12)
+    date_from: Optional[date] = None
+    date_to: Optional[date] = None
+
+
+@router.post("/companies/backfill")
+async def start_backfill(body: BackfillBody, background: BackgroundTasks, current_user=Depends(get_current_user),
+                         db: AsyncSession = Depends(get_db)):
+    """[과거 데이터 가져오기] — 여러 기업·기간. 기업마다 작업을 만들고 차례로 실행."""
+    if not body.company_ids:
+        raise HTTPException(422, "기업을 골라 주세요.")
+    if body.date_from and body.date_to and ((body.date_to - body.date_from).days > 370 or body.date_to < body.date_from):
+        raise HTTPException(422, "기간은 최대 12개월입니다.")
+    running = (await db.execute(select(BackfillJob.company_id).where(
+        BackfillJob.company_id.in_(body.company_ids), BackfillJob.status.in_(["queued", "running"])))).scalars().all()
+    end = body.date_to or today_kst()
+    start = body.date_from or (end - timedelta(days=30 * (body.months or 6)))
+    jobs = []
+    for cid in body.company_ids:
+        if cid in running:
+            continue
+        j = BackfillJob(company_id=cid, period_from=start, period_to=end, trigger="manual", status="queued", created_by=current_user.id)
+        db.add(j)
+        jobs.append(j)
+    await db.commit()
+    background.add_task(_run_backfill_jobs, [(j.company_id, j.id) for j in jobs],
+                        {"date_from": start, "date_to": end, "trigger": "manual", "user_id": current_user.id})
+    return {"queued": len(jobs), "skipped_running": len(running), "job_ids": [j.id for j in jobs]}
+
+
+async def _run_backfill_jobs(pairs: list[tuple[str, Optional[str]]], opts: dict) -> None:
+    from app.services.company_report import backfill
+
+    for cid, job_id in pairs:
+        async with AsyncSessionLocal() as db:
+            try:
+                await backfill.run_backfill(db, cid, job_id=job_id, **opts)
+            except Exception:
+                logger.exception("백필 작업 실패(%s)", cid)
+
+
+@router.get("/backfill-jobs/{job_id}")
+async def get_backfill_job(job_id: str, current_user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    from app.services.company_report import backfill
+
+    j = await db.get(BackfillJob, job_id)
+    if not j:
+        raise HTTPException(404, "작업을 찾을 수 없습니다.")
+    return {**_job_out(j, full=True), "counts": await backfill.monthly_counts(db, j)}
+
+
+@router.get("/backfill-jobs/{job_id}/sample")
+async def get_backfill_sample(job_id: str, current_user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    j = await db.get(BackfillJob, job_id)
+    if not j:
+        raise HTTPException(404, "작업을 찾을 수 없습니다.")
+    sample = j.sample_review or {}
+    ids = [x["article_id"] for x in sample.get("items") or []]
+    arts = {a.id: a for a in (await db.execute(select(NewsArticle).where(NewsArticle.id.in_(ids or [""])))).scalars().all()}
+    return {"answers": sample.get("answers") or {}, "accuracy": sample.get("accuracy"),
+            "items": [_article_out(arts[i]) for i in ids if i in arts]}
+
+
+class SampleReviewBody(BaseModel):
+    answers: dict[str, bool]
+
+
+@router.post("/backfill-jobs/{job_id}/sample-review")
+async def post_sample_review(job_id: str, body: SampleReviewBody, current_user=Depends(get_current_user),
+                             db: AsyncSession = Depends(get_db)):
+    """⑤ 담당자 검수: 틀림(관련 없음)으로 고른 기사는 숨기고 다시 판정한다."""
+    from app.services.company_report import backfill
+
+    j = await db.get(BackfillJob, job_id)
+    if not j:
+        raise HTTPException(404, "작업을 찾을 수 없습니다.")
+    ids = {x["article_id"] for x in (j.sample_review or {}).get("items") or []}
+    answers = {k: v for k, v in body.answers.items() if k in ids}
+    for aid, ok in answers.items():
+        if not ok:
+            a = await db.get(NewsArticle, aid)
+            if a and not a.is_hidden:
+                a.is_hidden, a.hidden_at, a.hidden_by = True, now_kst(), current_user.id
+                await search.index_article(db, a)
+    j.sample_review = {**(j.sample_review or {}), "answers": answers, "reviewed_by": current_user.id}
+    await backfill.refresh_verdict(db, j)
+    return _job_out(j, full=True)
+
+
+class GapsBody(BaseModel):
+    months: list[str]
+
+
+@router.post("/backfill-jobs/{job_id}/confirm-gaps")
+async def post_confirm_gaps(job_id: str, body: GapsBody, current_user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    """① 기사 0건인 달을 '실제로 기사 없음'으로 확인."""
+    from app.services.company_report import backfill
+
+    j = await db.get(BackfillJob, job_id)
+    if not j:
+        raise HTTPException(404, "작업을 찾을 수 없습니다.")
+    j.coverage = {**(j.coverage or {}), "confirmed_gaps": sorted(set((j.coverage or {}).get("confirmed_gaps") or []) | set(body.months))}
+    await backfill.refresh_verdict(db, j)
+    return _job_out(j, full=True)
 
 
 @router.get("/me")
