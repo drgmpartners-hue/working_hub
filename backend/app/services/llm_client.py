@@ -33,6 +33,24 @@ class LLMError(RuntimeError):
     pass
 
 
+# 프로세스 안 사용량 누적(모델별 호출·토큰). company_report.usage.flush가 DB(app_settings)에 옮긴다.
+_USAGE: dict[str, dict[str, int]] = {}
+
+
+def _record(model: str, usage: dict) -> None:
+    u = _USAGE.setdefault(model or "unknown", {"calls": 0, "input": 0, "output": 0})
+    u["calls"] += 1
+    u["input"] += int(usage.get("input_tokens") or 0)
+    u["output"] += int(usage.get("output_tokens") or 0)
+
+
+def drain_usage() -> dict[str, dict[str, int]]:
+    """누적 사용량을 꺼내고 비운다."""
+    global _USAGE
+    out, _USAGE = _USAGE, {}
+    return out
+
+
 @dataclass
 class LLMResult:
     text: str
@@ -104,6 +122,7 @@ async def claude_text(
                 raise LLMError("Claude가 요청을 거절했습니다")
             text = "".join(b.get("text", "") for b in data.get("content", []) if b.get("type") == "text")
             usage = data.get("usage", {}) or {}
+            _record(data.get("model", model), usage)
             return LLMResult(text=text, model=data.get("model", model), usage=usage)
         except (LLMError, httpx.HTTPError) as e:
             last_err = e
@@ -168,6 +187,7 @@ async def gemini_json(
     for attempt in range(retries + 1):
         try:
             r = await asyncio.to_thread(_gemini_call, api_key, model, prompt, grounding, True)
+            _record(model, r.usage or {})
             r.data = parse_json(r.text)
             return r
         except Exception as e:  # SDK 예외 종류가 다양함

@@ -152,3 +152,17 @@ def test_public_data_parsers():
         {"applicantName": "다른회사", "applicationDate": "20260301"},
     ], "테스트바이오", "2026-09-28")
     assert s["total"] == 2 and s["registered"] == 1 and s["applied_12m"] == 1 and s["recent"][0]["title"] == "A"
+
+
+def test_usage_accumulate_and_price():
+    from app.services import llm_client
+    from app.services.company_report.usage import DEFAULT_PRICES, price_for
+
+    llm_client.drain_usage()
+    llm_client._record("claude-haiku-4-5", {"input_tokens": 1000, "output_tokens": 200})
+    llm_client._record("claude-haiku-4-5", {"input_tokens": 500})
+    got = llm_client.drain_usage()
+    assert got == {"claude-haiku-4-5": {"calls": 2, "input": 1500, "output": 200}}
+    assert llm_client.drain_usage() == {}
+    assert price_for("gemini-3.1-pro-preview", DEFAULT_PRICES) == (2.0, 12.0)
+    assert price_for("claude-opus-5", DEFAULT_PRICES) == (5.0, 25.0)

@@ -160,7 +160,18 @@ async def get_company(company_id: str, current_user=Depends(get_current_user), d
     c = await db.get(PortfolioCompany, company_id)
     if not c:
         raise HTTPException(404, "기업을 찾을 수 없습니다.")
-    return _out(c, await _keywords(db, c.id))
+    now = now_kst()
+    today0 = now.replace(hour=0, minute=0, second=0, microsecond=0)
+    week = now - timedelta(days=7)
+    row = (await db.execute(
+        select(
+            func.count().filter(NewsArticle.published_at >= today0),
+            func.count().filter(NewsArticle.published_at >= week),
+            func.count().filter(and_(NewsArticle.published_at >= week, NewsArticle.tag == "caution")),
+            func.count(),
+        ).where(NewsArticle.company_id == c.id, NewsArticle.is_hidden == False, NewsArticle.is_representative == True)  # noqa: E712
+    )).one()
+    return _out(c, await _keywords(db, c.id), {"today": row[0], "week": row[1], "caution_week": row[2], "total": row[3]})
 
 
 @router.put("/companies/{company_id}", response_model=CompanyOut)
@@ -595,7 +606,19 @@ async def _settings_out(db: AsyncSession) -> dict:
     keys["solapi"] = bool(app_settings.SOLAPI_API_KEY and app_settings.SOLAPI_API_SECRET and app_settings.SOLAPI_SENDER)
     keys["kakao_channel"] = bool(app_settings.SOLAPI_PF_ID)
     logs = (await db.execute(select(BriefingSendLog).order_by(BriefingSendLog.sent_at.desc()).limit(20))).scalars().all()
+    from app.services import solapi_service
+    from app.services.collectors.data_go_kr import REGIONS
+    from app.services.company_report import storage, usage
+
+    try:
+        balance = await solapi_service.get_balance(db) if keys["solapi"] else {"error": "SOLAPI 키 없음"}
+    except Exception as e:  # 잔액 조회 실패는 화면만 비운다
+        balance = {"error": str(e)[:100]}
     return {
+        "ai_usage": await usage.month_usage(db),
+        "solapi_balance": balance,
+        "regions": list(REGIONS),
+        "storage": storage.usage(),
         "enabled": await settings_store.get_bool(db, crcfg.BRIEFING_ENABLED, default=False),
         "review_until": until.isoformat() if until else None,
         "approval_required_today": await crcfg.approval_required(db, today),

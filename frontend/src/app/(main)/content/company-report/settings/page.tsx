@@ -9,6 +9,10 @@ import { crGet, crPost, crPut } from '@/lib/companyReportApi';
 import { useCrMe } from '@/lib/useCrMe';
 
 interface Settings {
+  ai_usage: { month: string; usd: number; rows: { model: string; calls: number; input: number; output: number; usd: number }[] };
+  solapi_balance: { balance?: number; point?: number; error?: string } & Record<string, unknown>;
+  regions: string[];
+  storage: { bytes: number; files: number; persistent: boolean };
   enabled: boolean;
   review_until: string | null;
   approval_required_today: boolean;
@@ -51,6 +55,7 @@ export default function SettingsPage() {
   const [picked, setPicked] = useState<string[]>([]);
   const [tpl, setTpl] = useState({ daily: '', monthly: '' });
   const [models, setModels] = useState({ main: '', review: '', summary: '' });
+  const [region, setRegion] = useState('서울');
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -61,6 +66,7 @@ export default function SettingsPage() {
       setS(st);
       setTpl({ daily: st.template_daily, monthly: st.template_monthly });
       setModels(st.models);
+      setRegion(st.weather_region || '서울');
       setRec(r);
       setPicked(r.filter((x) => x.selected).map((x) => x.user_id));
     } catch (e) {
@@ -239,16 +245,25 @@ export default function SettingsPage() {
                 type="button"
                 className="wh-btn wh-btn-ghost wh-btn-sm"
                 disabled={busy}
-                onClick={() => void save({ template_daily: tpl.daily, template_monthly: tpl.monthly, main_model: models.main, review_model: models.review, summary_model: models.summary }, '저장했습니다.')}
+                onClick={() => void save({ template_daily: tpl.daily, template_monthly: tpl.monthly, main_model: models.main, review_model: models.review, summary_model: models.summary, weather_region: region }, '저장했습니다.')}
               >
                 저장
               </button>
             )
           }
         >
-          알림톡 템플릿 · AI 모델
+          알림톡 템플릿 · AI 모델 · 날씨 지역
         </SectionTitle>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: 10 }}>
+          <Field label="날씨 지역(데일리 기본정보)">
+            <select style={inputStyle} disabled={!admin} value={region} onChange={(e) => setRegion(e.target.value)}>
+              {s.regions.map((r) => (
+                <option key={r} value={r}>
+                  {r}
+                </option>
+              ))}
+            </select>
+          </Field>
           <Field label="데일리 템플릿 B ID (비우면 LMS로 발송)">
             <input style={inputStyle} disabled={!admin} value={tpl.daily} onChange={(e) => setTpl({ ...tpl, daily: e.target.value })} placeholder="KA01TP…" />
           </Field>
@@ -278,6 +293,62 @@ export default function SettingsPage() {
           ))}
         </div>
       </Card>
+
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: 16 }}>
+        <Card padding={16}>
+          <SectionTitle right={<span style={mutedText}>{s.ai_usage.month}</span>}>AI 사용량(추정)</SectionTitle>
+          {s.ai_usage.rows.length === 0 ? (
+            <div style={mutedText}>이번 달 기록이 없습니다.</div>
+          ) : (
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+              <thead>
+                <tr>
+                  {['모델', '호출', '입력 토큰', '출력 토큰', '추정 금액'].map((h, i) => (
+                    <th key={h} style={{ textAlign: i ? 'right' : 'left', padding: '6px 4px', color: 'var(--text-muted)', fontWeight: 600, fontSize: 12, borderBottom: '1px solid var(--border)' }}>
+                      {h}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {s.ai_usage.rows.map((r) => (
+                  <tr key={r.model}>
+                    <td style={{ padding: '6px 4px', color: 'var(--text-secondary)' }}>{r.model}</td>
+                    <td style={{ padding: '6px 4px', textAlign: 'right', color: 'var(--text-secondary)' }}>{r.calls.toLocaleString('ko-KR')}</td>
+                    <td style={{ padding: '6px 4px', textAlign: 'right', color: 'var(--text-secondary)' }}>{r.input.toLocaleString('ko-KR')}</td>
+                    <td style={{ padding: '6px 4px', textAlign: 'right', color: 'var(--text-secondary)' }}>{r.output.toLocaleString('ko-KR')}</td>
+                    <td style={{ padding: '6px 4px', textAlign: 'right', color: 'var(--text-primary)' }}>${r.usd.toFixed(2)}</td>
+                  </tr>
+                ))}
+                <tr>
+                  <td colSpan={4} style={{ padding: '6px 4px', color: 'var(--text-muted)' }}>합계(공개 단가 기준 추정)</td>
+                  <td style={{ padding: '6px 4px', textAlign: 'right', color: 'var(--text-primary)', fontWeight: 700 }}>${s.ai_usage.usd.toFixed(2)}</td>
+                </tr>
+              </tbody>
+            </table>
+          )}
+        </Card>
+        <Card padding={16}>
+          <SectionTitle>SOLAPI 잔액 · 파일 저장소</SectionTitle>
+          <div style={{ fontSize: 13, color: 'var(--text-secondary)', lineHeight: 1.9 }}>
+            <div>
+              잔액:{' '}
+              {s.solapi_balance?.error ? (
+                <span style={mutedText}>{String(s.solapi_balance.error)}</span>
+              ) : (
+                <strong style={{ color: 'var(--text-primary)' }}>
+                  {Number(s.solapi_balance?.balance ?? 0).toLocaleString('ko-KR')}원
+                  {s.solapi_balance?.point ? ` · 포인트 ${Number(s.solapi_balance.point).toLocaleString('ko-KR')}` : ''}
+                </strong>
+              )}
+            </div>
+            <div>
+              기업DB 파일 {s.storage.files.toLocaleString('ko-KR')}개 · {(s.storage.bytes / 1048576).toFixed(1)}MB{' '}
+              {s.storage.persistent ? <span className="wh-badge pos">영구 저장소</span> : <span className="wh-badge warn">Volume 미연결</span>}
+            </div>
+          </div>
+        </Card>
+      </div>
 
       <Card padding={16}>
         <SectionTitle>최근 발송 기록</SectionTitle>

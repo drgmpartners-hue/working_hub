@@ -36,7 +36,7 @@
 
 ### P1-C 공통 서비스
 - [ ] **P1-C1** [BE] `services/llm_client.py`: Claude(Messages API, JSON 출력, 재시도, 토큰 기록)·Gemini 공용 호출. `report_service._call_claude_haiku` 호출부 교체
-  - 진행: `llm_client.py` 완료. 기존 `report_service` 교체는 기존 기능 영향 확인 후 별도 PR
+  - 진행: `llm_client.py` 완료(모든 호출 사용량 기록). 기존 `report_service._call_claude_haiku`는 기존 기능 영향 때문에 그대로 둠
 - [x] **P1-C2** [BE] `services/company_report/cross_review.py`: Opus 작성 → Gemini 1차 → Claude 2차(새 호출) 엔진, 합의 안 된 문장 처리, `ai_review_logs` 저장 (기획 5장)
 - [x] **P1-C3** [BE] 모델 ID `app_settings`(`report_main_model`, `report_review_model`, `briefing_summary_model`) 조회 헬퍼
 
@@ -73,20 +73,27 @@
 
 ## P2 — 기업 상세·원장·기업DB·공공데이터·검색·백필 검증·설정 (약 2주)
 
-- [ ] **P2-1** [FE/BE] 기업 상세 > 기사 아카이브: 달력(기사 있는 날 점, 주의 날 색), 날짜 클릭 목록, 기간 선택, 필터, '관련 없음' (`/article-dates`, `/articles?date=`)
-- [ ] **P2-2** [BE] 기간 요약 API + `company_period_summaries` 캐시
-- [ ] **P2-3** [DB/BE] `company_facts`, `company_funding_rounds` + 기사에서 사실·투자 라운드 후보 자동 추출 (`facts.py`)
-- [ ] **P2-4** [FE] 기업 원장 탭: 유형별 타임라인, 투자유치 표, [확정]/[제외]/수정, 월간 요약 목록
-- [ ] **P2-5** [DB/BE] 기업DB: `company_files`, `services/storage.py`(Railway Volume), 파일명 규칙 `{기업명}_{종류}_{기간}_{버전}`, 업로드 자동 이름 변경 (기획 7-2)
-- [ ] **P2-6** [BE] 자동 파일: 기업카드 PDF, 월별 뉴스 모음 MD, 투자유치·사실 원장 엑셀
-- [ ] **P2-7** [FE] 기업DB 화면: 폴더 트리, 파일 목록, 필터(기업·폴더·기간·형식·자동/업로드·상태), 미리보기, 폴더 zip
-- [ ] **P2-8** [DB/BE] `company_public_data` + 국민연금 사업장·KIPRIS·사업자 상태 월 1회 스냅샷
-- [ ] **P2-9** [DB/BE] `search_index` + 저장 시 색인 갱신(`index_entity`/`remove_entity`), 기존 데이터 일괄 색인, `/search` API (기획 7-4)
-- [ ] **P2-10** [FE] 통합 검색: 모든 탭 상단 검색창, 결과 화면(종류별 탭·필터·하이라이트·정렬)
-- [ ] **P2-11** [BE] 과거 데이터 구축 완성: 네이버 조합 검색, 구글 뉴스 RSS 주 단위 분할(100건 도달 시 일 단위), DART 기간, 웹 보강, 과거 월간 요약 생성 (기획 7-5)
-- [ ] **P2-12** [BE] 백필 검증 ①~⑥: 기간 커버리지, 출처 간 대조·수집률 추정, 핵심 사건 점검(Claude·Gemini), DART 대조, 샘플 검수, 사실 추출 점검 → 판정·결과서 PDF
-- [ ] **P2-13** [FE] 수집 현황 패널: 월별 막대, 출처별 건수, 판정, [과거 데이터 가져오기], 진행률, 샘플 검수 화면
-- [ ] **P2-14** [FE] 발송 설정 화면: 수신자, 승인 기간, 날씨 지역, 모델, 출처 연결 상태, AI 사용량, SOLAPI 잔액
+> 2026-09-28 코드 완료. 실제 PostgreSQL E2E(`tests/company_report/test_e2e_pg.py`)와 화면 확인 완료. 실데이터 확인(완료 기준)은 배포 후.
+
+- [x] **P2-1** [FE/BE] 기업 상세 > 기사 아카이브: 달력(기사 있는 날 점, 주의 날 색), 날짜 클릭 목록, 기간 선택, 필터, '관련 없음' (`/article-dates`, `/articles?date=`)
+- [x] **P2-2** [BE] 기간 요약 API + `company_period_summaries` 캐시
+- [x] **P2-3** [DB/BE] `company_facts`, `company_funding_rounds` + 기사에서 사실·투자 라운드 후보 자동 추출 (`facts.py`)
+- [x] **P2-4** [FE] 기업 원장 탭: 유형별 타임라인, 투자유치 표, [확정]/[제외]/수정, 월간 요약 목록
+  - 진행: 월간 요약 목록은 월간 요약 테이블을 만드는 P3에서 추가
+- [x] **P2-5** [DB/BE] 기업DB: `company_files`, `services/storage.py`(Railway Volume), 파일명 규칙 `{기업명}_{종류}_{기간}_{버전}`, 업로드 자동 이름 변경 (기획 7-2)
+- [x] **P2-6** [BE] 자동 파일: 기업카드 PDF, 월별 뉴스 모음 MD, 투자유치·사실 원장 엑셀
+  - 진행: 월별 뉴스 MD·사실원장/투자유치 xlsx·기업카드 PDF·데일리 브리핑 PDF. 한글 PDF 폰트는 Dockerfile의 fonts-nanum. 파일은 Volume이 붙은 웹 서비스의 file_worker가 만든다(Cron 컨테이너는 표시만)
+- [x] **P2-7** [FE] 기업DB 화면: 폴더 트리, 파일 목록, 필터(기업·폴더·기간·형식·자동/업로드·상태), 미리보기, 폴더 zip
+- [x] **P2-8** [DB/BE] `company_public_data` + 국민연금 사업장·KIPRIS·사업자 상태 월 1회 스냅샷
+- [x] **P2-9** [DB/BE] `search_index` + 저장 시 색인 갱신(`index_entity`/`remove_entity`), 기존 데이터 일괄 색인, `/search` API (기획 7-4)
+- [x] **P2-10** [FE] 통합 검색: 모든 탭 상단 검색창, 결과 화면(종류별 탭·필터·하이라이트·정렬)
+  - 진행: 결과 엑셀 내보내기·자주 쓰는 검색 저장·[AI로 정리]는 P5-6에서
+- [x] **P2-11** [BE] 과거 데이터 구축 완성: 네이버 조합 검색, 구글 뉴스 RSS 주 단위 분할(100건 도달 시 일 단위), DART 기간, 웹 보강, 과거 월간 요약 생성 (기획 7-5)
+  - 진행: '웹 보강'은 ③ 핵심 사건 대조에서 빠진 사건을 구글 RSS로 자동 보충하는 방식으로 구현. 과거 월간 요약 생성은 P3(월간 요약 테이블)에서
+- [x] **P2-12** [BE] 백필 검증 ①~⑥: 기간 커버리지, 출처 간 대조·수집률 추정, 핵심 사건 점검(Claude·Gemini), DART 대조, 샘플 검수, 사실 추출 점검 → 판정·결과서 PDF
+- [x] **P2-13** [FE] 수집 현황 패널: 월별 막대, 출처별 건수, 판정, [과거 데이터 가져오기], 진행률, 샘플 검수 화면
+- [x] **P2-14** [FE] 발송 설정 화면: 수신자, 승인 기간, 날씨 지역, 모델, 출처 연결 상태, AI 사용량, SOLAPI 잔액
+  - 진행: 날씨 지역·AI 사용량(추정 금액)·SOLAPI 잔액·저장소 사용량 추가
   - 진행: 1차 화면 완료(발송 켜기·승인 기간·수신자·템플릿 ID·모델·연결 상태·발송 기록). 날씨 지역 선택·AI 사용량·잔액은 남음
 - [x] **P2-15** [BE] DART 공시 데일리 병합
 - [ ] **P2-16** [수동] 구글 뉴스 RSS 날짜 구간 검색 실동작 확인(비공식 기능)
@@ -141,7 +148,7 @@
 
 - [ ] Railway PostgreSQL에서 `CREATE EXTENSION IF NOT EXISTS vector;` 가능 여부 (P5 전)
 - [ ] KIS 해외지수 조회 지원 여부 (yfinance 실패 대비) — 현재: 한국 지수만 KIS 대체 구현, 미국 지수는 실패 시 '조회 실패' 표시
-- [ ] 서버 시간대: Railway는 UTC. 기업 리포트 코드는 `timeutil.now_kst()`로 KST 저장·판단
+- [x] 서버 시간대: Railway는 UTC. 기업 리포트 코드는 `timeutil.now_kst()`로 KST 저장·판단
 - [ ] 구글 뉴스 RSS `after:`/`before:` 실동작 (P2-16)
 
 ## 테스트 (각 단계 공통, `backend/tests/api/` 패턴)
@@ -149,3 +156,7 @@
 - 중복 제거·제외어 사례, 데일리 멱등성, 승인 기간 자동 전환, 발송일 판정(주말·공휴일), 교차 검토 불합의 처리
 - 7개 형식 파서(샘플 파일), 미승인 보고서 출력 차단, 관리자 외 승인 차단, 이미지 2~10개 제한, 휴장일 증시 표시
 - LLM·SOLAPI·외부 API는 목킹
+
+- [x] Railway Volume은 한 서비스에만 붙음 → 기업DB 파일은 웹 서비스(file_worker)가 만들고, Cron은 `company_db_files_dirty_at` 표시만 남긴다
+- [x] (기존 버그) 새로고침하면 로그인 화면으로 가던 문제: zustand v5 첫 렌더 서버 스냅샷 때문 → ProtectedRoute에서 실제 저장 상태로 판단하도록 수정
+- [ ] 구글 뉴스 RSS·국민연금·KIPRIS·국세청 실응답 형식 확인(키 발급 후, 코드는 JSON/XML 모두 처리)

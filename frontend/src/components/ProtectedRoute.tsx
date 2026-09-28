@@ -25,7 +25,10 @@ export function ProtectedRoute({ children }: ProtectedRouteProps) {
 
   useEffect(() => {
     if (isLoading) return;
-    if (!token) {
+    // zustand v5는 첫 렌더에 서버 스냅샷(token=null)을 쓰므로, 판단은 실제 저장 상태로 한다
+    // (새로고침·알림톡 링크로 들어올 때 로그인된 사용자를 로그인 화면으로 보내지 않도록)
+    const current = token || useAuthStore.getState().token || authLib.getToken();
+    if (!current) {
       router.push(loginUrl());
       return;
     }

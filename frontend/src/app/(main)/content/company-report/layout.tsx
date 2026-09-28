@@ -20,7 +20,7 @@ const TABS = [
 export default function CompanyReportLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname() || '';
   const router = useRouter();
-  const active = TABS.find((t) => pathname.startsWith(t.href))?.key ?? 'briefing';
+  const active = TABS.find((t) => pathname.startsWith(t.href))?.key ?? (pathname.includes('/search') ? '' : 'briefing');
 
 
   return (

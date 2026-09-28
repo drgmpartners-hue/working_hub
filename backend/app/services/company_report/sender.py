@@ -66,7 +66,8 @@ def template_b_variables(b: NewsBriefing) -> dict[str, str]:
     d = b.briefing_date
     return {
         "#{날짜}": f"{d.month}/{d.day}({info.get('weekday', '')})",
-        "#{날씨}": w.get("text") if w.get("available") else "조회 실패",
+        "#{날씨}": ((f"({w.get('region')}) " if w.get("region") and w.get("region") != "서울" else "") + (w.get("text") or ""))
+        if w.get("available") else "조회 실패",
         "#{전일증시}": market_lines(info.get("markets") or []) or "조회 실패",
         "#{기업수}": str(info.get("company_with_news", 0)),
         "#{기사수}": str(b.article_count or 0),

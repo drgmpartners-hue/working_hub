@@ -81,6 +81,11 @@ async def loop() -> None:
     await asyncio.sleep(60)  # 기동 직후 마이그레이션·요청 처리 먼저
     while True:
         try:
+            from app.db.session import AsyncSessionLocal
+            from app.services.company_report import usage
+
+            async with AsyncSessionLocal() as db:
+                await usage.flush(db)
             r = await run_once()
             if r.get("ran") or r.get("briefing_pdfs"):
                 logger.info("기업DB 자동 파일: %s", r)

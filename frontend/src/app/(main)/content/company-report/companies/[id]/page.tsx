@@ -53,9 +53,10 @@ function DetailInner() {
   const saveKw = async () => {
     if (!editKw) return;
     try {
-      setCompany(await crPut<Company>(`/companies/${id}`, { keywords: editKw }));
+      await crPut<Company>(`/companies/${id}`, { keywords: editKw });
+      await load();
       setEditKw(null);
-      setNotice('키워드를 저장했습니다. 다음 수집부터 적용됩니다.');
+      setNotice('키워드를 저장했습니다. 바뀐 키워드로 최근 6개월 기사를 다시 모으고 검증합니다(기업 원장 탭에서 진행률 확인).');
     } catch (e) {
       setError((e as Error).message);
     }

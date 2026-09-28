@@ -74,6 +74,9 @@ async def main() -> int:
             _print("public-data", await public_data.snapshot_due(db, force=a.force))
         elif a.cmd == "reindex":
             _print("reindex", await search.reindex_all(db))
+        from app.services.company_report import usage
+
+        await usage.flush(db)  # AI 사용량 기록
     return 0
 
 
