@@ -5,6 +5,8 @@ import Link from 'next/link';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Card } from '@/components/common/Card';
 import { CompanyRegisterModal } from '@/components/company-report/CompanyRegisterModal';
+import { PurgeModal, TrashModal } from '@/components/company-report/CompanyDeleteModals';
+import { useCrMe } from '@/lib/useCrMe';
 import type { Company } from '@/components/company-report/types';
 import { ErrorBox, Spinner, fmtDate, inputStyle, mutedText } from '@/components/company-report/ui';
 import { crDelete, crGet, crPost, crPut } from '@/lib/companyReportApi';
@@ -38,12 +40,22 @@ export default function CompaniesPage() {
   const [busy, setBusy] = useState<string | null>(null);
   const [picked, setPicked] = useState<string[]>([]);
   const [bfMonths, setBfMonths] = useState('6');
+  const [trashView, setTrashView] = useState(false);
+  const [trashed, setTrashed] = useState<Company[]>([]);
+  const [trashTarget, setTrashTarget] = useState<{ id: string; name: string } | null>(null);
+  const [purgeTarget, setPurgeTarget] = useState<{ id: string; name: string } | null>(null);
+  const me = useCrMe();
 
   const load = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
-      setItems(await crGet<Company[]>(showInactive ? '/companies' : '/companies?active=true'));
+      const [list, del] = await Promise.all([
+        crGet<Company[]>(showInactive ? '/companies' : '/companies?active=true'),
+        crGet<Company[]>('/companies?deleted=true'),
+      ]);
+      setItems(list);
+      setTrashed(del);
     } catch (e) {
       setError((e as Error).message);
     } finally {
@@ -100,6 +112,19 @@ export default function CompaniesPage() {
     }
   };
 
+  const restore = async (c: Company) => {
+    setBusy(c.id);
+    try {
+      await crPost(`/companies/${c.id}/restore`);
+      setNotice(`${c.name}을(를) 복구했습니다. 수집이 다시 시작됩니다.`);
+      await load();
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setBusy(null);
+    }
+  };
+
   const toggleActive = async (c: Company) => {
     if (c.is_active && !window.confirm(`${c.name}을(를) 비활성으로 바꿀까요? 모은 기사는 그대로 남고 수집·발송만 멈춥니다.`)) return;
     setBusy(c.id);
@@ -144,6 +169,14 @@ export default function CompaniesPage() {
               <input type="checkbox" checked={showInactive} onChange={(e) => setShowInactive(e.target.checked)} />
               비활성 기업 포함
             </label>
+            <button
+              type="button"
+              className={`wh-btn wh-btn-sm ${trashView ? 'wh-btn-primary' : 'wh-btn-ghost'}`}
+              onClick={() => setTrashView((v) => !v)}
+              aria-pressed={trashView}
+            >
+              삭제된 기업 {trashed.length}
+            </button>
           </div>
           <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
             {picked.length > 0 && (
@@ -169,7 +202,55 @@ export default function CompaniesPage() {
           {notice && <div style={{ ...mutedText, marginBottom: 12, color: 'var(--success)' }}>{notice}</div>}
         </div>
 
-        {loading ? (
+        {trashView ? (
+          trashed.length === 0 ? (
+            <div style={{ ...mutedText, padding: '32px 16px', textAlign: 'center' }}>삭제된 기업이 없습니다.</div>
+          ) : (
+            <div style={{ overflowX: 'auto' }}>
+              <div style={{ ...mutedText, fontSize: 12, padding: '0 16px 8px' }}>
+                화면에서만 지운 기업입니다. 기사·원장·폴더 파일은 남아 있어 [복구]할 수 있습니다. [폴더까지 완전 삭제]는 관리자만, 되돌릴 수 없습니다.
+              </div>
+              <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 640 }}>
+                <thead>
+                  <tr>
+                    <th style={th}>기업</th>
+                    <th style={th}>삭제한 날</th>
+                    <th style={{ ...th, textAlign: 'right' }}>누적 기사</th>
+                    <th style={{ ...th, textAlign: 'right' }}>작업</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {trashed.map((c) => (
+                    <tr key={c.id}>
+                      <td style={td}>
+                        <Link href={`/content/company-report/companies/${c.id}`} style={{ color: 'var(--text-secondary)', fontWeight: 600 }}>
+                          {c.name}
+                        </Link>
+                      </td>
+                      <td style={{ ...td, fontSize: 13 }}>{fmtDate(c.deleted_at, true)}</td>
+                      <td style={num}>{c.stats.total}</td>
+                      <td style={{ ...td, textAlign: 'right', whiteSpace: 'nowrap' }}>
+                        <button type="button" className="wh-btn wh-btn-ghost wh-btn-sm" disabled={busy === c.id} onClick={() => void restore(c)}>
+                          복구
+                        </button>{' '}
+                        {me?.is_admin && (
+                          <button
+                            type="button"
+                            className="wh-btn wh-btn-ghost wh-btn-sm"
+                            onClick={() => setPurgeTarget({ id: c.id, name: c.name })}
+                            style={{ color: 'var(--danger)', borderColor: 'var(--danger)' }}
+                          >
+                            폴더까지 완전 삭제
+                          </button>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )
+        ) : loading ? (
           <Spinner />
         ) : shown.length === 0 ? (
           <div style={{ ...mutedText, padding: '32px 16px', textAlign: 'center' }}>
@@ -242,6 +323,15 @@ export default function CompaniesPage() {
                       )}
                       <button type="button" className="wh-btn wh-btn-ghost wh-btn-sm" disabled={busy === c.id} onClick={() => void toggleActive(c)}>
                         {c.is_active ? '비활성' : '다시 활성'}
+                      </button>{' '}
+                      <button
+                        type="button"
+                        className="wh-btn wh-btn-ghost wh-btn-sm"
+                        disabled={busy === c.id}
+                        onClick={() => setTrashTarget({ id: c.id, name: c.name })}
+                        style={{ color: 'var(--danger)' }}
+                      >
+                        삭제
                       </button>
                     </td>
                   </tr>
@@ -251,6 +341,24 @@ export default function CompaniesPage() {
           </div>
         )}
       </Card>
+
+      <TrashModal
+        target={trashTarget}
+        onClose={() => setTrashTarget(null)}
+        onDone={(name) => {
+          setNotice(`${name}을(를) 화면에서 삭제했습니다. [삭제된 기업]에서 복구하거나 완전 삭제할 수 있습니다.`);
+          setPicked((p) => p.filter((x) => x !== trashTarget?.id));
+          void load();
+        }}
+      />
+      <PurgeModal
+        target={purgeTarget}
+        onClose={() => setPurgeTarget(null)}
+        onDone={(name) => {
+          setNotice(`${name}의 데이터와 폴더를 완전히 삭제했습니다.`);
+          void load();
+        }}
+      />
 
       <CompanyRegisterModal
         open={modal}

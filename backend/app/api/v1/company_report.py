@@ -85,9 +85,11 @@ def _out(c: PortfolioCompany, ks: KeywordSet, stats: Optional[dict] = None) -> C
 
 
 @router.get("/companies", response_model=list[CompanyOut])
-async def list_companies(active: Optional[bool] = None, q: Optional[str] = None,
+async def list_companies(active: Optional[bool] = None, q: Optional[str] = None, deleted: bool = False,
                          current_user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
-    stmt = select(PortfolioCompany)
+    """deleted=true 이면 '삭제된 기업'(1단계 삭제) 목록만."""
+    stmt = select(PortfolioCompany).where(
+        PortfolioCompany.deleted_at.is_not(None) if deleted else PortfolioCompany.deleted_at.is_(None))
     if active is not None:
         stmt = stmt.where(PortfolioCompany.is_active == active)
     if q:
@@ -129,6 +131,8 @@ async def create_company(body: CompanyCreate, background: BackgroundTasks,
         (PortfolioCompany.corp_code == body.corp_code) if body.corp_code else (PortfolioCompany.name == body.name)
     ))).scalars().first()
     if dup:
+        if dup.deleted_at:
+            raise HTTPException(409, f"'{dup.name}'은(는) 삭제된 기업 목록에 있습니다. 목록의 [삭제된 기업]에서 복구하세요.")
         raise HTTPException(409, f"이미 등록된 기업입니다: {dup.name}")
     data = body.model_dump(exclude={"keywords", "backfill_months"})
     company = PortfolioCompany(**data)
@@ -1045,3 +1049,67 @@ async def refresh_public_data(company_id: str, current_user=Depends(get_current_
         raise HTTPException(404, "기업을 찾을 수 없습니다.")
     result = await public_data.snapshot_company(db, c)
     return {"result": result, **(await public_data.company_public_data(db, company_id))}
+
+
+# --------------------------------------------------------------------------- 투자기업 2단계 삭제
+
+@router.post("/companies/{company_id}/trash")
+async def trash_company(company_id: str, current_user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    """1단계 · 화면에서 삭제: 목록·검색·수집에서 빠진다. 데이터·폴더는 남고 복구할 수 있다."""
+    from app.services.company_report import company_delete
+
+    c = await db.get(PortfolioCompany, company_id)
+    if not c:
+        raise HTTPException(404, "기업을 찾을 수 없습니다.")
+    try:
+        await company_delete.trash(db, c, current_user.id)
+    except company_delete.DeleteError as e:
+        raise HTTPException(409, str(e))
+    await db.commit()
+    return {"id": c.id, "name": c.name, "deleted_at": c.deleted_at.isoformat()}
+
+
+@router.post("/companies/{company_id}/restore")
+async def restore_company(company_id: str, current_user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    from app.services.company_report import company_delete
+
+    c = await db.get(PortfolioCompany, company_id)
+    if not c:
+        raise HTTPException(404, "기업을 찾을 수 없습니다.")
+    dup = (await db.execute(select(PortfolioCompany.id).where(
+        PortfolioCompany.name == c.name, PortfolioCompany.id != c.id, PortfolioCompany.deleted_at.is_(None)))).first()
+    if dup:
+        raise HTTPException(409, "같은 이름의 기업이 이미 목록에 있어 복구할 수 없습니다.")
+    r = await company_delete.restore(db, c)
+    await db.commit()
+    return {"id": c.id, "name": c.name, **r}
+
+
+@router.get("/companies/{company_id}/purge-summary")
+async def purge_summary(company_id: str, current_user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    """2단계 전에 지워질 데이터 건수·파일 용량."""
+    from app.services.company_report import company_delete
+
+    c = await db.get(PortfolioCompany, company_id)
+    if not c:
+        raise HTTPException(404, "기업을 찾을 수 없습니다.")
+    return {"name": c.name, "trashed": bool(c.deleted_at), **(await company_delete.summary(db, company_id))}
+
+
+class PurgeBody(BaseModel):
+    confirm_name: str
+
+
+@router.post("/companies/{company_id}/purge")
+async def purge_company(company_id: str, body: PurgeBody, current_user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    """2단계 · 폴더까지 완전 삭제(관리자). 1단계로 지운 기업만, 기업명을 정확히 입력해야 한다. 되돌릴 수 없다."""
+    from app.services.company_report import company_delete
+
+    require_admin(current_user)
+    c = await db.get(PortfolioCompany, company_id)
+    if not c:
+        raise HTTPException(404, "기업을 찾을 수 없습니다.")
+    try:
+        return await company_delete.purge(db, c, body.confirm_name, current_user.id)
+    except company_delete.DeleteError as e:
+        raise HTTPException(409, str(e))

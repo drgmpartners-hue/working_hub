@@ -394,6 +394,45 @@ async def _run(monkeypatch):
         assert st["company"] == 1 and st["article"] == 3 and st["fact"] >= 2 and st["funding"] == 1 and st["daily"] == 1, st
         assert st["file"] == 6, st  # 뉴스 md 1 + 원장·투자유치 xlsx 2 + 기업카드 1 + 브리핑 PDF 1 + 검증 결과서 1
 
+        # ---- 2단계 삭제: 1단계(화면에서 삭제) → 복구 → 다시 1단계 → 2단계(폴더까지 완전 삭제)
+        from pathlib import Path
+
+        from app.services.company_report import storage
+        folder = Path(storage.root()) / cid
+        assert folder.exists()
+        assert (await c.post(f"/companies/{cid}/purge", headers=H, json={"confirm_name": "테스트바이오"})).status_code == 409  # 1단계 전
+        assert (await c.post(f"/companies/{cid}/trash", headers=HS)).status_code == 200  # 직원도 1단계 가능
+        assert all(x["id"] != cid for x in (await c.get("/companies", headers=H)).json())
+        assert [x["id"] for x in (await c.get("/companies", params={"deleted": "true"}, headers=H)).json()] == [cid]
+        res = (await c.get("/search", params={"q": "테스트바이오"}, headers=H)).json()
+        assert all(i["company_id"] != cid for i in res["items"]) and set(res["counts"]) <= {"briefing", "file", "all"}, res
+        # 남는 것은 지난 데일리 브리핑(발송 기록)과 그 PDF뿐
+        assert (await c.get("/search/suggest", params={"q": "테스"}, headers=H)).json() == []
+        assert all(x["id"] != cid for x in (await c.get("/db/tree", headers=H)).json()["companies"])
+        r = await c.post("/companies", headers=H, json={"name": "테스트바이오", "backfill_months": 0})
+        assert r.status_code == 409 and "삭제된 기업" in r.json()["detail"]
+        assert folder.exists()  # 1단계는 폴더 유지
+        r = await c.post(f"/companies/{cid}/restore", headers=H)
+        assert r.status_code == 200 and r.json()["articles"] >= 1
+        assert (await c.get("/search", params={"q": "시리즈B"}, headers=H)).json()["total"] >= 1  # 색인 복구
+        assert (await c.post(f"/companies/{cid}/trash", headers=H)).status_code == 200
+        ps = (await c.get(f"/companies/{cid}/purge-summary", headers=H)).json()
+        assert ps["trashed"] and ps["articles"] >= 3 and ps["files"] >= 4, ps
+        assert (await c.post(f"/companies/{cid}/purge", headers=HS, json={"confirm_name": "테스트바이오"})).status_code == 403
+        assert (await c.post(f"/companies/{cid}/purge", headers=H, json={"confirm_name": "테스트"})).status_code == 409
+        r = await c.post(f"/companies/{cid}/purge", headers=H, json={"confirm_name": "테스트바이오"})
+        assert r.status_code == 200 and r.json()["folder_removed"] is True, r.text
+        assert (await c.get(f"/companies/{cid}", headers=H)).status_code == 404
+        assert not folder.exists()
+        async with AsyncSessionLocal() as db:
+            left = (await db.execute(text("select (select count(*) from news_articles where company_id=:c) + "
+                                          "(select count(*) from company_facts where company_id=:c) + "
+                                          "(select count(*) from company_files where company_id=:c) + "
+                                          "(select count(*) from search_index where company_id=:c)"), {"c": cid})).scalar()
+            assert left == 0
+        r = await c.get("/briefings/daily", params={"date": tomorrow.isoformat()}, headers=H)
+        assert r.status_code == 200  # 지난 브리핑(발송 기록)은 남는다
+
 
 def test_e2e(monkeypatch):
     asyncio.run(_run(monkeypatch))

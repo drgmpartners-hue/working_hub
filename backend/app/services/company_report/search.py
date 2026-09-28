@@ -237,7 +237,8 @@ async def suggest(db: AsyncSession, q: str, limit: int = 8) -> list[dict]:
     like = f"%{q}%"
     rows = (await db.execute(
         select(PortfolioCompany.id, PortfolioCompany.name, PortfolioCompany.is_active)
-        .where(or_(PortfolioCompany.name.ilike(like), PortfolioCompany.name_en.ilike(like),
+        .where(PortfolioCompany.deleted_at.is_(None),
+               or_(PortfolioCompany.name.ilike(like), PortfolioCompany.name_en.ilike(like),
                    func.cast(PortfolioCompany.aliases, type_=_text_type()).ilike(like)))
         .order_by(PortfolioCompany.is_active.desc(), func.length(PortfolioCompany.name)).limit(limit)
     )).all()
@@ -259,20 +260,24 @@ async def reindex_all(db: AsyncSession) -> dict[str, int]:
     kws: dict[str, list[str]] = {}
     for cid, kw in (await db.execute(select(CompanyKeyword.company_id, CompanyKeyword.keyword))).all():
         kws.setdefault(cid, []).append(kw)
-    companies = (await db.execute(select(PortfolioCompany))).scalars().all()
+    companies = (await db.execute(select(PortfolioCompany).where(PortfolioCompany.deleted_at.is_(None)))).scalars().all()
+    live = {c.id for c in companies}
     for c in companies:
         await index_company(db, c, kws.get(c.id, []))
     stats["company"] = len(companies)
     n = 0
     for a in (await db.execute(select(NewsArticle).where(NewsArticle.is_hidden == False, NewsArticle.is_representative == True))).scalars():  # noqa: E712
-        await index_article(db, a)
-        n += 1
+        if a.company_id in live:
+            await index_article(db, a)
+            n += 1
     stats["article"] = n
-    facts = (await db.execute(select(CompanyFact).where(CompanyFact.status.in_(["candidate", "confirmed"])))).scalars().all()
+    facts = [f for f in (await db.execute(select(CompanyFact).where(CompanyFact.status.in_(["candidate", "confirmed"])))).scalars().all()
+             if f.company_id in live]
     for f in facts:
         await index_fact(db, f)
     stats["fact"] = len(facts)
-    rounds = (await db.execute(select(CompanyFundingRound).where(CompanyFundingRound.status != "rejected"))).scalars().all()
+    rounds = [r for r in (await db.execute(select(CompanyFundingRound).where(CompanyFundingRound.status != "rejected"))).scalars().all()
+              if r.company_id in live]
     for r in rounds:
         await index_funding(db, r)
     stats["funding"] = len(rounds)
@@ -281,7 +286,8 @@ async def reindex_all(db: AsyncSession) -> dict[str, int]:
         await index_daily(db, b)
     stats["daily"] = len(briefings)
     names = {c.id: c.name for c in companies}
-    files = (await db.execute(select(CompanyFile).where(CompanyFile.status != "deleted"))).scalars().all()
+    files = [f for f in (await db.execute(select(CompanyFile).where(CompanyFile.status != "deleted"))).scalars().all()
+             if f.company_id is None or f.company_id in live]
     for f in files:
         await index_file(db, f, names.get(f.company_id))
     stats["file"] = len(files)
@@ -292,10 +298,12 @@ async def reindex_all(db: AsyncSession) -> dict[str, int]:
 async def check_missing(db: AsyncSession) -> dict[str, int]:
     """누락 점검: 원천 수와 색인 수가 다르면 전체 재색인."""
     idx = dict((await db.execute(select(SearchIndex.entity_type, func.count()).group_by(SearchIndex.entity_type))).all())
+    live = select(PortfolioCompany.id).where(PortfolioCompany.deleted_at.is_(None))
     src = {
-        "company": (await db.execute(select(func.count()).select_from(PortfolioCompany))).scalar_one(),
+        "company": (await db.execute(select(func.count()).select_from(PortfolioCompany).where(PortfolioCompany.deleted_at.is_(None)))).scalar_one(),
         "article": (await db.execute(select(func.count()).select_from(NewsArticle).where(
-            NewsArticle.is_hidden == False, NewsArticle.is_representative == True))).scalar_one(),  # noqa: E712
+            NewsArticle.is_hidden == False, NewsArticle.is_representative == True,  # noqa: E712
+            NewsArticle.company_id.in_(live)))).scalar_one(),
         "daily": (await db.execute(select(func.count()).select_from(NewsBriefing))).scalar_one(),
     }
     diff = {k: src[k] - idx.get(k, 0) for k in src if src[k] != idx.get(k, 0)}

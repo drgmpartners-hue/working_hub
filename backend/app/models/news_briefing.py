@@ -54,6 +54,9 @@ class PortfolioCompany(Base):
     memo: Mapped[Optional[str]] = mapped_column(Text)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     last_collected_at: Mapped[Optional[datetime]] = mapped_column(DateTime)
+    # 1단계 삭제(화면에서 삭제): 목록·검색·수집에서 빠지고 데이터·폴더는 남는다. 2단계(완전 삭제) 전까지 복구 가능
+    deleted_at: Mapped[Optional[datetime]] = mapped_column(DateTime, index=True)
+    deleted_by: Mapped[Optional[str]] = mapped_column(String(36))
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now(), nullable=False)
     updated_at: Mapped[datetime] = mapped_column(
         DateTime, server_default=func.now(), onupdate=func.now(), nullable=False

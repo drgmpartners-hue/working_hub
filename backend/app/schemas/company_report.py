@@ -81,6 +81,7 @@ class CompanyOut(CompanyBase):
     id: str
     is_active: bool
     last_collected_at: Optional[datetime] = None
+    deleted_at: Optional[datetime] = None
     created_at: datetime
     keywords: KeywordSet = KeywordSet()
     stats: dict = {}

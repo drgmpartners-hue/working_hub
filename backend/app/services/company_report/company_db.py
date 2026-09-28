@@ -431,7 +431,8 @@ async def save_briefing_pdf(db: AsyncSession, b: NewsBriefing) -> Optional[Compa
 # --------------------------------------------------------------------------- 조회·zip
 
 async def tree(db: AsyncSession) -> dict:
-    companies = (await db.execute(select(PortfolioCompany).order_by(PortfolioCompany.name))).scalars().all()
+    companies = (await db.execute(select(PortfolioCompany).where(PortfolioCompany.deleted_at.is_(None))
+                                  .order_by(PortfolioCompany.name))).scalars().all()
     names = folder_names(list(companies))
     counts: dict[Optional[str], dict[str, int]] = defaultdict(dict)
     rows = (await db.execute(select(CompanyFile.company_id, CompanyFile.folder, func.count())
@@ -460,6 +461,7 @@ async def list_files(db: AsyncSession, *, company_ids: Optional[list[str]] = Non
                      status: Optional[str] = None, date_from: Optional[date] = None, date_to: Optional[date] = None,
                      q: Optional[str] = None, include_inactive: bool = True, page: int = 1, size: int = 50) -> dict:
     cond = [CompanyFile.status != "deleted"] if not status else [CompanyFile.status == status]
+    cond.append(PortfolioCompany.deleted_at.is_(None))  # 1단계 삭제된 기업 파일은 목록에서 뺀다(폴더는 남음)
     if portfolio:
         cond.append(CompanyFile.company_id.is_(None))
     elif company_ids:

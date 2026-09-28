@@ -33,6 +33,7 @@ export interface Company {
   memo: string | null;
   is_active: boolean;
   last_collected_at: string | null;
+  deleted_at?: string | null;
   created_at: string;
   keywords: KeywordSet;
   stats: CompanyStats;

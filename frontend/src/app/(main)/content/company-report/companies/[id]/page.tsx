@@ -94,14 +94,38 @@ function DetailInner() {
           <button type="button" className="wh-btn wh-btn-ghost wh-btn-sm" onClick={() => setShowInfo((v) => !v)} aria-expanded={showInfo}>
             {showInfo ? '정보 접기' : '기본 정보·키워드'}
           </button>
-          <button type="button" className="wh-btn wh-btn-ghost wh-btn-sm" onClick={() => void collect()}>
-            지금 수집
-          </button>
+          {!company.deleted_at && (
+            <button type="button" className="wh-btn wh-btn-ghost wh-btn-sm" onClick={() => void collect()}>
+              지금 수집
+            </button>
+          )}
         </div>
       </div>
 
       <ErrorBox message={error} />
       {notice && <div style={{ ...mutedText, color: 'var(--success)' }}>{notice}</div>}
+      {company.deleted_at && (
+        <div
+          role="status"
+          style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap', padding: '10px 14px', borderRadius: 10, background: 'var(--warning-bg)', color: 'var(--warning)', fontSize: 13 }}
+        >
+          화면에서 삭제된 기업입니다({company.deleted_at.slice(0, 10)}). 수집이 멈춰 있고 목록·검색에 나오지 않습니다.
+          <button
+            type="button"
+            className="wh-btn wh-btn-ghost wh-btn-sm"
+            onClick={() =>
+              void crPost(`/companies/${id}/restore`)
+                .then(() => {
+                  setNotice('복구했습니다. 수집이 다시 시작됩니다.');
+                  return load();
+                })
+                .catch((e) => setError((e as Error).message))
+            }
+          >
+            복구
+          </button>
+        </div>
+      )}
 
       {showInfo && (
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: 16 }}>
