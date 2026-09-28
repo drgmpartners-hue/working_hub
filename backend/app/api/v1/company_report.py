@@ -80,7 +80,10 @@ async def _replace_keywords(db: AsyncSession, company_id: str, ks: KeywordSet, s
 
 
 def _out(c: PortfolioCompany, ks: KeywordSet, stats: Optional[dict] = None) -> CompanyOut:
+    from app.services.company_report.ksic import industry_label
+
     data = {k: getattr(c, k) for k in CompanyOut.model_fields if hasattr(c, k) and k not in ("keywords", "stats")}
+    data["industry"] = industry_label(data.get("industry"))  # 이미 저장된 DART 숫자 업종코드도 이름으로 보여준다
     return CompanyOut(**data, keywords=ks, stats=stats or {})
 
 

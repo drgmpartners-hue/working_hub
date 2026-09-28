@@ -13,6 +13,7 @@ from app.services.collectors import naver_news_client as naver
 from app.services.collectors.dart_client import DARTClient, normalize_corp_name
 from app.services.company_report import config
 from app.services.company_report.dedup import relevance
+from app.services.company_report.ksic import industry_label
 from app.services.company_report.keys import get_service_key, release
 from app.services.company_report.timeutil import now_kst
 
@@ -41,7 +42,7 @@ def _card_from_dart(info: dict, base: dict) -> dict:
         "established_at": _fmt_date(info.get("est_dt", "")),
         "address": info.get("adres"),
         "homepage": info.get("hm_url"),
-        "industry": info.get("induty_code"),
+        "industry": industry_label(info.get("induty_code")),
         "biz_reg_no": info.get("bizr_no"),
         "evidence": [],
     }

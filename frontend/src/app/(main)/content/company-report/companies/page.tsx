@@ -19,6 +19,12 @@ const th: React.CSSProperties = {
   color: 'var(--text-muted)',
   borderBottom: '1px solid var(--border)',
   whiteSpace: 'nowrap',
+  // 표 머리 고정: 목록만 스크롤
+  position: 'sticky',
+  top: 0,
+  zIndex: 2,
+  backgroundColor: 'var(--bg-card)',
+  boxShadow: '0 1px 0 var(--border)',
 };
 const td: React.CSSProperties = {
   padding: '12px',
@@ -206,7 +212,7 @@ export default function CompaniesPage() {
           trashed.length === 0 ? (
             <div style={{ ...mutedText, padding: '32px 16px', textAlign: 'center' }}>삭제된 기업이 없습니다.</div>
           ) : (
-            <div style={{ overflowX: 'auto' }}>
+            <div style={{ overflow: 'auto', maxHeight: 'max(360px, calc(100vh - 380px))' }}>
               <div style={{ ...mutedText, fontSize: 12, padding: '0 16px 8px' }}>
                 화면에서만 지운 기업입니다. 기사·원장·폴더 파일은 남아 있어 [복구]할 수 있습니다. [폴더까지 완전 삭제]는 관리자만, 되돌릴 수 없습니다.
               </div>
@@ -257,7 +263,7 @@ export default function CompaniesPage() {
             {items.length === 0 ? '등록된 투자기업이 없습니다. [+ 투자기업 등록]으로 시작하세요.' : '조건에 맞는 기업이 없습니다.'}
           </div>
         ) : (
-          <div style={{ overflowX: 'auto' }}>
+          <div style={{ overflow: 'auto', maxHeight: 'max(360px, calc(100vh - 380px))' }}>
             <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 800 }}>
               <thead>
                 <tr>
