@@ -52,7 +52,7 @@ const PROGRAMS = [
   { ic: I.receipt, t: '증권사 수당정산', d: '정산·검증', href: '/commission/securities' },
   { ic: I.shield, t: '은퇴플랜 관리', d: '현금흐름 설계', href: '/retirement' },
   { ic: I.trend, t: '주식·ETF 추천', d: 'AI 추천', href: '/investment/stock-recommend' },
-  { ic: I.trend, t: '테마 ETF 추천&관리', d: '리서치·시그널', href: '/content/etf-radar' },
+  { ic: I.doc, t: '기업 리포트', d: '투자기업 브리핑·보고서', href: '/content/company-report' },
 ];
 
 const STATS = [

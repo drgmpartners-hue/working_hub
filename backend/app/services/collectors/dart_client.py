@@ -138,3 +138,111 @@ class DARTClient:
             }
             for d in (res.json().get("list") or [])
         ]
+
+    # ------------------------------------------------ 기업 리포트(비상장 포함)
+    async def _load_corp_list(self) -> list[dict]:
+        """DART 등록 회사 전체(비상장 포함) [{corp_code, corp_name, corp_eng_name, stock_code}].
+
+        corpCode.xml을 내려받아 캐시(7일)한다. 기존 상장사 매핑 캐시도 함께 갱신한다.
+        """
+        import time
+
+        if _CORP_LIST_FILE.exists() and time.time() - _CORP_LIST_FILE.stat().st_mtime < 7 * 86400:
+            try:
+                return json.loads(_CORP_LIST_FILE.read_text(encoding="utf-8"))
+            except Exception:
+                pass
+        async with httpx.AsyncClient(timeout=60) as client:
+            res = await client.get(f"{_BASE}/corpCode.xml", params={"crtfc_key": self.api_key})
+        if res.status_code != 200:
+            raise RuntimeError(f"DART corpCode 다운로드 실패 (status={res.status_code})")
+        with zipfile.ZipFile(io.BytesIO(res.content)) as zf:
+            xml_bytes = zf.read(zf.namelist()[0])
+        root = ET.fromstring(xml_bytes)
+        rows: list[dict] = []
+        mapping: dict[str, str] = {}
+        for item in root.iter("list"):
+            code = (item.findtext("corp_code") or "").strip()
+            name = (item.findtext("corp_name") or "").strip()
+            if not code or not name:
+                continue
+            stock = (item.findtext("stock_code") or "").strip()
+            rows.append({
+                "corp_code": code,
+                "corp_name": name,
+                "corp_eng_name": (item.findtext("corp_eng_name") or "").strip(),
+                "stock_code": stock,
+            })
+            if stock:
+                mapping[stock] = code
+        _CORP_LIST_FILE.write_text(json.dumps(rows, ensure_ascii=False), encoding="utf-8")
+        if mapping:
+            _CORP_MAP_FILE.write_text(json.dumps(mapping), encoding="utf-8")
+        return rows
+
+    async def search_corps(self, query: str, limit: int = 10) -> list[dict]:
+        """회사명(국문·영문) 부분 일치 검색. 정확히 같은 이름 → 앞부분 일치 → 포함 순."""
+        q = normalize_corp_name(query)
+        if not q:
+            return []
+        rows = await self._load_corp_list()
+        exact, prefix, contains = [], [], []
+        for r in rows:
+            n = normalize_corp_name(r["corp_name"])
+            e = normalize_corp_name(r.get("corp_eng_name") or "")
+            if q == n or (e and q == e):
+                exact.append(r)
+            elif n.startswith(q) or (e and e.startswith(q)):
+                prefix.append(r)
+            elif q in n or (e and q in e):
+                contains.append(r)
+        # 상장사·짧은 이름 우선
+        key = lambda r: (0 if r.get("stock_code") else 1, len(r["corp_name"]))  # noqa: E731
+        return (sorted(exact, key=key) + sorted(prefix, key=key) + sorted(contains, key=key))[:limit]
+
+    async def get_company(self, corp_code: str) -> dict:
+        """기업개황(company.json). 실패 시 빈 dict."""
+        async with httpx.AsyncClient(timeout=10) as client:
+            res = await client.get(f"{_BASE}/company.json", params={"crtfc_key": self.api_key, "corp_code": corp_code})
+        if res.status_code != 200:
+            return {}
+        d = res.json()
+        if d.get("status") != "000":
+            return {}
+        return d
+
+    async def list_disclosures(self, corp_code: str, bgn_de: str, end_de: str, max_pages: int = 10) -> list[dict]:
+        """기간 공시 목록(YYYYMMDD). 페이지를 끝까지 넘긴다."""
+        out: list[dict] = []
+        async with httpx.AsyncClient(timeout=15) as client:
+            for page in range(1, max_pages + 1):
+                res = await client.get(
+                    f"{_BASE}/list.json",
+                    params={
+                        "crtfc_key": self.api_key, "corp_code": corp_code,
+                        "bgn_de": bgn_de, "end_de": end_de, "page_no": page, "page_count": 100,
+                    },
+                )
+                if res.status_code != 200:
+                    break
+                d = res.json()
+                if d.get("status") != "000":
+                    break
+                out.extend(d.get("list") or [])
+                if page >= int(d.get("total_page") or 1):
+                    break
+        return out
+
+
+_CORP_LIST_FILE = _CACHE_DIR / "dart_corplist.json"
+
+_CORP_SUFFIX_RE = __import__("re").compile(r"\(주\)|㈜|주식회사|\(유\)|유한회사|\s+|[.,·]")
+
+
+def normalize_corp_name(name: str) -> str:
+    """'(주)에이비씨 바이오' → '에이비씨바이오' (비교용)."""
+    return _CORP_SUFFIX_RE.sub("", (name or "")).lower()
+
+
+def dart_disclosure_url(rcept_no: str) -> str:
+    return f"https://dart.fss.or.kr/dsaf001/main.do?rcpNo={rcept_no}"

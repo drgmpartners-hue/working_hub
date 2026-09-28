@@ -86,6 +86,12 @@ from app.models.deposit_account import DepositAccount
 # Depends on deposit_accounts (transaction history + auto balance)
 from app.models.deposit_transaction import DepositTransaction
 
+# 기업 리포트 (depends on users)
+from app.models.news_briefing import (
+    PortfolioCompany, CompanyKeyword, NewsArticle, NewsBriefing, BriefingRecipient,
+    BriefingSendLog, AIReviewLog, BackfillJob,
+)
+
 __all__ = [
     "BrandSetting",
     "AIAPISetting",
@@ -126,4 +132,12 @@ __all__ = [
     "PensionPlan",
     "DepositAccount",
     "DepositTransaction",
+    "PortfolioCompany",
+    "CompanyKeyword",
+    "NewsArticle",
+    "NewsBriefing",
+    "BriefingRecipient",
+    "BriefingSendLog",
+    "AIReviewLog",
+    "BackfillJob",
 ]

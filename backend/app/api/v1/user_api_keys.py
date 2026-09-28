@@ -50,7 +50,7 @@ def _safe_mask(enc: Optional[str]) -> Optional[str]:
 
 # --- Schemas ---
 
-VALID_PROVIDERS = ["kiwoom", "claude", "gemini", "solapi", "notion", "kis", "dart", "naver_search"]
+VALID_PROVIDERS = ["kiwoom", "claude", "gemini", "solapi", "notion", "kis", "dart", "naver_search", "data_go_kr", "kipris"]
 
 
 class ApiKeyCreate(BaseModel):
@@ -184,6 +184,10 @@ async def test_api_key(
             return await _test_dart(body.api_key)
         elif provider == "naver_search":
             return await _test_naver_search(body.api_key, body.api_secret or "")
+        elif provider == "data_go_kr":
+            return await _test_data_go_kr(body.api_key)
+        elif provider == "kipris":
+            return await _test_kipris(body.api_key)
         return TestResult(success=False, message="이 제공자는 연결 테스트를 지원하지 않습니다.")
     except Exception as e:
         return TestResult(success=False, message=f"테스트 중 오류: {str(e)}")
@@ -238,6 +242,10 @@ async def test_saved_api_key(
             return await _test_dart(api_key)
         elif provider == "naver_search":
             return await _test_naver_search(api_key, api_secret)
+        elif provider == "data_go_kr":
+            return await _test_data_go_kr(api_key)
+        elif provider == "kipris":
+            return await _test_kipris(api_key)
         return TestResult(success=False, message="이 제공자는 연결 테스트를 지원하지 않습니다.")
     except Exception as e:
         return TestResult(success=False, message=f"테스트 중 오류: {str(e)}")
@@ -493,3 +501,31 @@ async def _test_naver_search(client_id: str, client_secret: str) -> TestResult:
         except Exception:
             detail = res.text[:100] if res.text else ""
         return TestResult(success=False, message=f"API 응답 오류 (status={res.status_code}): {detail}")
+
+
+async def _test_data_go_kr(service_key: str) -> TestResult:
+    """공공데이터포털 인증키 — 특일 정보(공휴일) API로 확인. 활용 신청이 승인된 API만 호출 가능."""
+    async with httpx.AsyncClient(timeout=10) as client:
+        res = await client.get(
+            "https://apis.data.go.kr/B090041/openapi/service/SpcdeInfoService/getRestDeInfo",
+            params={"serviceKey": service_key, "solYear": "2026", "solMonth": "10", "_type": "json"},
+        )
+    text = res.text[:300]
+    if res.status_code == 200 and ('"resultCode":"00"' in text.replace(" ", "") or "<resultCode>00</resultCode>" in text):
+        return TestResult(success=True, message="연결 성공! 공공데이터포털 인증키 확인됨(특일 정보)")
+    if "SERVICE_KEY_IS_NOT_REGISTERED" in text or "SERVICE KEY" in text.upper():
+        return TestResult(success=False, message="인증 실패: 등록되지 않은 키이거나 특일 정보 API 활용 신청이 승인되지 않았습니다.")
+    return TestResult(success=False, message=f"API 응답 오류 (status={res.status_code}): {text[:100]}")
+
+
+async def _test_kipris(access_key: str) -> TestResult:
+    """KIPRIS Plus 인증키 — 특허 키워드 검색 1건으로 확인."""
+    async with httpx.AsyncClient(timeout=10) as client:
+        res = await client.get(
+            "http://plus.kipris.or.kr/kipo-api/kipi/patUtiModInfoSearchSevice/getWordSearch",
+            params={"word": "인공지능", "numOfRows": 1, "ServiceKey": access_key},
+        )
+    text = res.text[:500]
+    if res.status_code == 200 and "<successYN>Y</successYN>" in text:
+        return TestResult(success=True, message="연결 성공! KIPRIS Plus 인증키 확인됨")
+    return TestResult(success=False, message=f"인증 실패 또는 응답 오류 (status={res.status_code}): {text[:120]}")

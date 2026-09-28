@@ -179,8 +179,10 @@ async def send_alimtalk(
     variables: dict[str, str],
     fallback_text: str = "",
     sender: Optional[str] = None,
+    disable_sms: bool = True,
 ) -> dict:
-    """Send KakaoTalk 알림톡 to a single recipient via Solapi."""
+    """Send KakaoTalk 알림톡 to a single recipient via Solapi.
+    disable_sms=False이고 fallback_text가 있으면 알림톡 실패 시 SMS/LMS로 대체 발송된다."""
     api_key, api_secret, default_sender = await _get_solapi_keys(db)
     if not api_key or not api_secret:
         return {"success": False, "error": "솔라피 API Key가 등록되지 않았습니다."}
@@ -203,7 +205,7 @@ async def send_alimtalk(
             "pfId": pf_id,
             "templateId": template_id,
             "variables": variables,
-            "disableSms": True,
+            "disableSms": disable_sms,
         },
     }
     # SMS 대체 발송용 텍스트 (알림톡 실패 시)
@@ -211,7 +213,7 @@ async def send_alimtalk(
         message["text"] = fallback_text
 
     body = {"message": message}
-    print(f"[ALIMTALK DEBUG] template={template_id}, variables={variables}", flush=True)
+    logger.debug("알림톡 요청 template=%s, variables=%s", template_id, list(variables))
 
     try:
         async with httpx.AsyncClient(timeout=15) as client:
@@ -232,6 +234,59 @@ async def send_alimtalk(
 
     except Exception as e:
         logger.error("Solapi 알림톡 error: %s", e)
+        return {"success": False, "error": str(e)}
+
+
+async def send_many_alimtalk(
+    db: AsyncSession,
+    messages: list[dict],
+    sender: Optional[str] = None,
+) -> dict:
+    """여러 명에게 알림톡(또는 LMS)을 한 번에 보낸다(send-many).
+
+    messages: [{"to", "text", "template_id"?, "variables"?, "subject"?}]
+    - template_id가 있으면 알림톡, 실패 시 text로 LMS 대체(disableSms=False)
+    - template_id가 없으면 text로 LMS만 발송(템플릿 심사 전 운영용)
+    """
+    api_key, api_secret, default_sender = await _get_solapi_keys(db)
+    if not api_key or not api_secret:
+        return {"success": False, "error": "솔라피 API Key가 등록되지 않았습니다."}
+    from_number = (sender or default_sender or "").replace("-", "")
+    if not from_number:
+        return {"success": False, "error": "발신번호가 설정되지 않았습니다."}
+    pf_id = settings.SOLAPI_PF_ID
+
+    out = []
+    for m in messages:
+        msg: dict = {"to": m["to"].replace("-", "").replace(" ", ""), "from": from_number, "text": m.get("text", "")}
+        if m.get("subject"):
+            msg["subject"] = m["subject"][:40]
+        if m.get("template_id"):
+            if not pf_id:
+                return {"success": False, "error": "카카오 채널 ID(SOLAPI_PF_ID)가 설정되지 않았습니다."}
+            msg["kakaoOptions"] = {
+                "pfId": pf_id,
+                "templateId": m["template_id"],
+                "variables": m.get("variables") or {},
+                "disableSms": not bool(m.get("text")),
+            }
+        out.append(msg)
+
+    auth = _make_auth_header(api_key, api_secret)
+    try:
+        async with httpx.AsyncClient(timeout=30) as client:
+            res = await client.post(
+                f"{SOLAPI_BASE}/messages/v4/send-many",
+                json={"messages": out},
+                headers={"Authorization": auth, "Content-Type": "application/json"},
+            )
+        result = res.json() if res.status_code < 500 else {"error": res.text}
+        if res.status_code >= 400:
+            logger.error("Solapi send-many failed: %s %s", res.status_code, result)
+            return {"success": False, "status_code": res.status_code, **(result if isinstance(result, dict) else {})}
+        return {"success": True, "status_code": res.status_code, **(result if isinstance(result, dict) else {})}
+    except Exception as e:
+        logger.error("Solapi send-many error: %s", e)
         return {"success": False, "error": str(e)}
 
 

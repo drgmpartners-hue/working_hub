@@ -22,6 +22,14 @@ declare global {
   }
 }
 
+/** 로그인 후 돌아갈 경로(?next=). 같은 사이트의 상대 경로만 허용해 외부 리다이렉트를 막는다. */
+function safeNext(): string {
+  if (typeof window === 'undefined') return '/dashboard';
+  const next = new URLSearchParams(window.location.search).get('next');
+  if (next && next.startsWith('/') && !next.startsWith('//')) return next;
+  return '/dashboard';
+}
+
 export default function LoginPage() {
   const router = useRouter();
   const { login, googleLogin, isLoading, error, clearError } = useAuthStore();
@@ -30,7 +38,7 @@ export default function LoginPage() {
     clearError();
     try {
       await googleLogin(response.credential);
-      router.push('/dashboard');
+      router.push(safeNext());
     } catch {
       // Error handled by store
     }
@@ -99,7 +107,7 @@ export default function LoginPage() {
 
     try {
       await login(formData);
-      router.push('/dashboard');
+      router.push(safeNext());
     } catch {
       // Error is handled by store
     }

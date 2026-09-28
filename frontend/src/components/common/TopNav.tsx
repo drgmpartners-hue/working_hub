@@ -84,7 +84,7 @@ const NAV: NavGroup[] = [
     label: '콘텐츠 제작',
     match: ['/content'],
     items: [
-      { title: '테마 ETF 추천&관리', desc: '테마 ETF 리서치·시그널 추적', href: '/content/etf-radar', icon: ic.trend },
+      { title: '기업 리포트', desc: '투자기업 브리핑·반기 보고서', href: '/content/company-report', icon: ic.doc },
     ],
   },
 ];

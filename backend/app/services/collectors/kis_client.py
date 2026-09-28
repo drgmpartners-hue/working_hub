@@ -132,7 +132,7 @@ class KISClient:
                     {
                         "date": r.get("stck_bsop_date"),
                         "close": float(r[close_key]),
-                        "open": float(r.get("stck_oprc") or 0),
+                        "open": float(r.get("stck_oprc") or r.get("bstp_nmix_oprc") or 0),
                         "high": float(r.get("stck_hgpr") or 0),
                         "low": float(r.get("stck_lwpr") or 0),
                         "volume": int(float(r.get("acml_vol") or 0)),

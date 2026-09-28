@@ -160,6 +160,43 @@ const API_PROVIDERS: ProviderDef[] = [
     },
   },
   {
+    key: 'data_go_kr',
+    label: '공공데이터포털 (data.go.kr)',
+    description: '기업 리포트: 공휴일(특일 정보), 날씨(기상청 단기예보), 국민연금 가입 사업장, 국세청 사업자 상태조회에 사용됩니다. 무료.',
+    icon: '🏢',
+    color: '#1565C0',
+    fields: [
+      { name: 'api_key', label: '일반 인증키(Decoding)', placeholder: '공공데이터포털 일반 인증키를 입력하세요' },
+    ],
+    guide: {
+      title: '공공데이터포털 인증키 발급 방법',
+      steps: [
+        '공공데이터포털(https://www.data.go.kr)에 로그인합니다.',
+        '특일 정보, 기상청 단기예보 조회서비스, 국민연금공단 가입 사업장 내역, 국세청 사업자등록정보 진위확인 및 상태조회를 각각 [활용신청] 합니다.',
+        '[마이페이지] > [데이터 활용] 에서 일반 인증키(Decoding)를 복사합니다.',
+        '활용 신청 승인까지 몇 시간~며칠이 걸릴 수 있습니다.',
+      ],
+    },
+  },
+  {
+    key: 'kipris',
+    label: 'KIPRIS Plus (특허청)',
+    description: '기업 리포트: 투자기업의 특허·상표 출원·등록 정보 조회에 사용됩니다.',
+    icon: '📜',
+    color: '#6A1B9A',
+    fields: [
+      { name: 'api_key', label: 'Access Key', placeholder: 'KIPRIS Plus Access Key를 입력하세요' },
+    ],
+    guide: {
+      title: 'KIPRIS Plus 키 발급 방법',
+      steps: [
+        'KIPRIS Plus(https://plus.kipris.or.kr)에 회원가입 후 로그인합니다.',
+        '[Open API] 에서 특허·실용신안 검색 서비스를 신청합니다.',
+        '승인 후 [마이페이지]에서 Access Key를 복사합니다.',
+      ],
+    },
+  },
+  {
     key: 'notion',
     label: 'Notion API',
     description: '고객 데이터, 상담 기록 등을 Notion 워크스페이스와 연동합니다.',
