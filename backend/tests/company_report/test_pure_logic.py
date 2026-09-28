@@ -127,3 +127,28 @@ def test_template_b_variables_limits():
     assert "S&P500 5,812.4(+0.4%)" in v["#{전일증시}"] and "코스피 조회실패" in v["#{전일증시}"]
     assert "[주의]" in v["#{기업별요약}"]
     assert "briefing?date=2026-09-28" in sender.render_text(b)
+
+
+# ---------------------------------------------------------------- 공공데이터
+def test_public_data_parsers():
+    import httpx
+
+    from app.services.collectors import public_data_clients as pdc
+
+    xml = ("<response><header><resultCode>00</resultCode><resultMsg>NORMAL SERVICE.</resultMsg></header><body><items>"
+           "<item><wkplNm>(주)테스트바이오</wkplNm><bzowrRgstNo>123456</bzowrRgstNo><seq>9</seq><wkplJnngStcd>1</wkplJnngStcd>"
+           "<dataCrtYm>202608</dataCrtYm></item>"
+           "<item><wkplNm>테스트바이오식당</wkplNm><bzowrRgstNo>999999</bzowrRgstNo><seq>10</seq></item>"
+           "</items><totalCount>2</totalCount></body></response>")
+    items, header = pdc.parse_items(httpx.Response(200, text=xml, headers={"content-type": "application/xml"}))
+    assert len(items) == 2 and header["resultCode"] == "00" and header["totalCount"] == "2"
+    assert pdc.pick_nps_workplace(items, "테스트바이오", "123-45-67890")["seq"] == "9"
+    assert pdc.pick_nps_workplace(items, "테스트바이오", "555-55-55555") is None  # 사업자번호가 다르면 이름만 비슷해도 버림
+    assert pdc.pick_nps_workplace(items, "(주)테스트바이오", None)["seq"] == "9"  # 정확한 이름 우선
+
+    s = pdc.summarize_patents([
+        {"applicantName": "주식회사 테스트바이오", "applicationDate": "20260301", "registerStatus": "등록", "inventionTitle": "A"},
+        {"applicantName": "테스트바이오", "applicationDate": "20240101", "registerStatus": "공개", "inventionTitle": "B"},
+        {"applicantName": "다른회사", "applicationDate": "20260301"},
+    ], "테스트바이오", "2026-09-28")
+    assert s["total"] == 2 and s["registered"] == 1 and s["applied_12m"] == 1 and s["recent"][0]["title"] == "A"

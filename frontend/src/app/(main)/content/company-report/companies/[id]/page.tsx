@@ -186,7 +186,7 @@ function DetailInner() {
           top={
             <>
               <CoveragePanel companyId={id} />
-              <PublicDataPanel companyId={id} />
+              <PublicDataPanel companyId={id} bizRegNo={company.biz_reg_no} onBizSaved={() => void load()} />
             </>
           }
         />

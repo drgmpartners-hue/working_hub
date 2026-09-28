@@ -8,6 +8,7 @@
   facts       [--limit N]                                    사실·투자유치 후보 추출
   reindex-check                                              검색 색인 누락 점검(매일 04:00 KST, cron: 0 19 * * *)
   reindex                                                    검색 색인 전체 재구축
+  public-data [--force]                                      공공데이터 스냅샷(국민연금·국세청·KIPRIS·KIS)
 월간(monthly)·반기(half-year)·재색인(reindex)은 P3~P5에서 추가한다.
 """
 import argparse
@@ -36,7 +37,7 @@ def _print(title: str, obj) -> None:
 
 async def main() -> int:
     p = argparse.ArgumentParser()
-    p.add_argument("cmd", choices=["daily-build", "send", "collect", "summarize", "facts", "reindex-check", "reindex"])
+    p.add_argument("cmd", choices=["daily-build", "send", "collect", "summarize", "facts", "reindex-check", "reindex", "public-data"])
     p.add_argument("--date")
     p.add_argument("--no-collect", action="store_true")
     p.add_argument("--force", action="store_true")
@@ -47,6 +48,12 @@ async def main() -> int:
     async with AsyncSessionLocal() as db:
         if a.cmd == "daily-build":
             _print("daily-build", await daily.build_daily(db, day, collect=not a.no_collect, force=a.force))
+            try:  # 공공데이터 월 1회 스냅샷(이번 달 것이 없는 기업만)
+                from app.services.company_report import public_data
+
+                _print("public-data", await public_data.snapshot_due(db))
+            except Exception as e:
+                print(f"[public-data] 실패: {e}", flush=True)
             await mark_files_dirty(db)
         elif a.cmd == "send":
             _print("send", await sender.send_daily(db, day))
@@ -61,6 +68,10 @@ async def main() -> int:
             _print("facts", await facts.extract_pending(db, limit=a.limit))
         elif a.cmd == "reindex-check":
             _print("reindex-check", await search.check_missing(db))
+        elif a.cmd == "public-data":
+            from app.services.company_report import public_data
+
+            _print("public-data", await public_data.snapshot_due(db, force=a.force))
         elif a.cmd == "reindex":
             _print("reindex", await search.reindex_all(db))
     return 0

@@ -148,6 +148,8 @@ async def _run(monkeypatch):
                   "briefing_send_logs", "briefing_recipients", "news_briefings", "news_articles", "company_keywords",
                   "backfill_jobs", "portfolio_companies"]:
             await db.execute(text(f"DELETE FROM {t}"))
+        await db.execute(text("DELETE FROM app_settings WHERE key LIKE 'kipris_calls_%' OR key LIKE 'news_briefing_%' "
+                              "OR key LIKE 'company_db_files_%'"))
         await db.execute(delete(User).where(User.email.like("e2e-%")))
         admin = User(email=f"e2e-{uuid.uuid4().hex[:6]}@x.com", hashed_password=get_password_hash("pw"), nickname="관리자",
                      phone="010-1111-2222", is_active=True, is_superuser=True)
@@ -296,10 +298,45 @@ async def _run(monkeypatch):
         r = await c.get("/search", params={"q": "임상 2상"}, headers=HS)
         assert r.json()["counts"].get("file", 0) == 0
 
+        # ---- 공공데이터(가짜 응답): 국민연금 추이·국세청 폐업 → 주의 사실 후보·KIPRIS 한도 기록
+        from app.services.collectors import public_data_clients as pdc
+        from app.services.company_report import public_data
+
+        async def pd_key(db, provider, user_id=None):
+            return ("dg", "") if provider in ("data_go_kr", "kipris") else None
+
+        monkeypatch.setattr(public_data, "get_service_key", pd_key)
+
+        async def fake_nps(key, name, biz):
+            return {"found": True, "members": 42, "data_month": "202608", "joined": 3, "left": 1, "status": "가입"}
+
+        async def fake_nts(key, nums):
+            return {pdc.digits(n): {"b_stt": "폐업자", "b_stt_cd": "03", "tax_type": "", "end_dt": "20260901"} for n in nums}
+
+        async def fake_kipris(key, applicant, max_pages=2, rows=100):
+            return {"total": 1, "calls": 1, "items": [{"applicantName": "(주)테스트바이오", "applicationDate": "20260101",
+                                                         "registerStatus": "등록", "inventionTitle": "진단 키트"}]}
+
+        monkeypatch.setattr(pdc, "nps_snapshot", fake_nps)
+        monkeypatch.setattr(pdc, "nts_status", fake_nts)
+        monkeypatch.setattr(pdc, "kipris_patents", fake_kipris)
+        assert (await c.put(f"/companies/{cid}", headers=H, json={"biz_reg_no": "1234567890"})).status_code == 200
+        r = await c.post(f"/companies/{cid}/public-data/refresh", headers=H)
+        pd = r.json()
+        assert pd["result"] == {"nps": "ok", "nts": "ok", "kipris": "ok"}, pd["result"]
+        assert pd["latest"]["nps"]["data"]["members"] == 42 and pd["latest"]["kipris"]["data"]["total"] == 1
+        assert pd["nps_trend"][0]["members"] == 42
+        r = await c.get(f"/companies/{cid}/facts", params={"status": "candidate"}, headers=H)
+        assert any("폐업자" in f["title"] for f in r.json()["items"])
+        async with AsyncSessionLocal() as db:
+            again = await public_data.snapshot_due(db)
+            assert again["companies"] == 0  # 이번 달은 이미 있음
+            assert await settings_store.get(db, f"kipris_calls_{today_kst().strftime('%Y%m')}") == "1"
+
         # ---- 재색인
         r = await c.post("/search/reindex", headers=H)
         st = r.json()
-        assert st["company"] == 1 and st["article"] == 2 and st["fact"] == 1 and st["funding"] == 1 and st["daily"] == 1, st
+        assert st["company"] == 1 and st["article"] == 2 and st["fact"] == 2 and st["funding"] == 1 and st["daily"] == 1, st
         assert st["file"] == 5, st  # 뉴스 md 1 + 원장·투자유치 xlsx 2 + 기업카드 1 + 브리핑 PDF 1
 
 

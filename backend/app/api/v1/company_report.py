@@ -876,3 +876,23 @@ async def _refresh_files_bg(company_id: str) -> None:
             await company_db.refresh_auto_files(db, company_id)
         except Exception:
             logger.exception("자동 파일 갱신 실패")
+
+
+# --------------------------------------------------------------------------- P2: 공공데이터
+
+@router.get("/companies/{company_id}/public-data")
+async def get_public_data(company_id: str, current_user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    from app.services.company_report import public_data
+
+    return await public_data.company_public_data(db, company_id)
+
+
+@router.post("/companies/{company_id}/public-data/refresh")
+async def refresh_public_data(company_id: str, current_user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    from app.services.company_report import public_data
+
+    c = await db.get(PortfolioCompany, company_id)
+    if not c:
+        raise HTTPException(404, "기업을 찾을 수 없습니다.")
+    result = await public_data.snapshot_company(db, c)
+    return {"result": result, **(await public_data.company_public_data(db, company_id))}
