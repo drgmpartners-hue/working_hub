@@ -22,7 +22,13 @@ export async function crFetch<T = unknown>(path: string, init: RequestInit = {})
     ...(token ? { Authorization: `Bearer ${token}` } : {}),
     ...((init.headers as Record<string, string>) || {}),
   };
-  const res = await fetch(`${CR_BASE}${path}`, { ...init, headers });
+  let res: Response;
+  try {
+    res = await fetch(`${CR_BASE}${path}`, { ...init, headers });
+  } catch {
+    // 'Failed to fetch': 서버가 응답하지 않음(재배포 중·연결 끊김·응답 시간 초과)
+    throw new ApiError(0, '서버가 응답하지 않습니다. 배포 중이거나 연결이 잠시 끊겼을 수 있어요. 30초쯤 뒤 다시 시도해 주세요.');
+  }
   if (!res.ok) {
     let detail = `요청 실패 (${res.status})`;
     try {

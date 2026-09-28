@@ -6,6 +6,7 @@
 """
 from __future__ import annotations
 
+import asyncio
 import io
 import json
 import zipfile
@@ -141,44 +142,34 @@ class DARTClient:
 
     # ------------------------------------------------ 기업 리포트(비상장 포함)
     async def _load_corp_list(self) -> list[dict]:
-        """DART 등록 회사 전체(비상장 포함) [{corp_code, corp_name, corp_eng_name, stock_code}].
+        """DART 등록 회사 전체(비상장 포함) [{corp_code, corp_name, corp_eng_name, stock_code, _n, _e}].
 
-        corpCode.xml을 내려받아 캐시(7일)한다. 기존 상장사 매핑 캐시도 함께 갱신한다.
+        corpCode.xml(약 10만 건)을 내려받아 파일로 7일 캐시하고, 프로세스 메모리에도 한 번만 올린다.
+        큰 XML 해석·JSON 읽기는 별도 스레드에서 해서 다른 요청이 멈추지 않게 한다.
         """
         import time
 
-        if _CORP_LIST_FILE.exists() and time.time() - _CORP_LIST_FILE.stat().st_mtime < 7 * 86400:
-            try:
-                return json.loads(_CORP_LIST_FILE.read_text(encoding="utf-8"))
-            except Exception:
-                pass
-        async with httpx.AsyncClient(timeout=60) as client:
-            res = await client.get(f"{_BASE}/corpCode.xml", params={"crtfc_key": self.api_key})
-        if res.status_code != 200:
-            raise RuntimeError(f"DART corpCode 다운로드 실패 (status={res.status_code})")
-        with zipfile.ZipFile(io.BytesIO(res.content)) as zf:
-            xml_bytes = zf.read(zf.namelist()[0])
-        root = ET.fromstring(xml_bytes)
-        rows: list[dict] = []
-        mapping: dict[str, str] = {}
-        for item in root.iter("list"):
-            code = (item.findtext("corp_code") or "").strip()
-            name = (item.findtext("corp_name") or "").strip()
-            if not code or not name:
-                continue
-            stock = (item.findtext("stock_code") or "").strip()
-            rows.append({
-                "corp_code": code,
-                "corp_name": name,
-                "corp_eng_name": (item.findtext("corp_eng_name") or "").strip(),
-                "stock_code": stock,
-            })
-            if stock:
-                mapping[stock] = code
-        _CORP_LIST_FILE.write_text(json.dumps(rows, ensure_ascii=False), encoding="utf-8")
-        if mapping:
-            _CORP_MAP_FILE.write_text(json.dumps(mapping), encoding="utf-8")
-        return rows
+        global _CORP_MEM, _CORP_MEM_AT
+        if _CORP_MEM is not None and time.time() - _CORP_MEM_AT < 7 * 86400:
+            return _CORP_MEM
+        async with _CORP_LOCK:
+            if _CORP_MEM is not None and time.time() - _CORP_MEM_AT < 7 * 86400:
+                return _CORP_MEM
+            rows = None
+            if _CORP_LIST_FILE.exists() and time.time() - _CORP_LIST_FILE.stat().st_mtime < 7 * 86400:
+                try:
+                    rows = await asyncio.to_thread(lambda: json.loads(_CORP_LIST_FILE.read_text(encoding="utf-8")))
+                except Exception:
+                    rows = None
+            if rows is None:
+                async with httpx.AsyncClient(timeout=60) as client:
+                    res = await client.get(f"{_BASE}/corpCode.xml", params={"crtfc_key": self.api_key})
+                if res.status_code != 200:
+                    raise RuntimeError(f"DART corpCode 다운로드 실패 (status={res.status_code})")
+                rows = await asyncio.to_thread(_parse_corp_zip, res.content)
+            await asyncio.to_thread(_index_rows, rows)
+            _CORP_MEM, _CORP_MEM_AT = rows, time.time()
+            return rows
 
     async def search_corps(self, query: str, limit: int = 10) -> list[dict]:
         """회사명(국문·영문) 부분 일치 검색. 정확히 같은 이름 → 앞부분 일치 → 포함 순."""
@@ -186,19 +177,7 @@ class DARTClient:
         if not q:
             return []
         rows = await self._load_corp_list()
-        exact, prefix, contains = [], [], []
-        for r in rows:
-            n = normalize_corp_name(r["corp_name"])
-            e = normalize_corp_name(r.get("corp_eng_name") or "")
-            if q == n or (e and q == e):
-                exact.append(r)
-            elif n.startswith(q) or (e and e.startswith(q)):
-                prefix.append(r)
-            elif q in n or (e and q in e):
-                contains.append(r)
-        # 상장사·짧은 이름 우선
-        key = lambda r: (0 if r.get("stock_code") else 1, len(r["corp_name"]))  # noqa: E731
-        return (sorted(exact, key=key) + sorted(prefix, key=key) + sorted(contains, key=key))[:limit]
+        return await asyncio.to_thread(_match_rows, rows, q, limit)
 
     async def get_company(self, corp_code: str) -> dict:
         """기업개황(company.json). 실패 시 빈 dict."""
@@ -242,6 +221,59 @@ _CORP_SUFFIX_RE = __import__("re").compile(r"\(주\)|㈜|주식회사|\(유\)|�
 def normalize_corp_name(name: str) -> str:
     """'(주)에이비씨 바이오' → '에이비씨바이오' (비교용)."""
     return _CORP_SUFFIX_RE.sub("", (name or "")).lower()
+
+
+_CORP_MEM: Optional[list] = None
+_CORP_MEM_AT: float = 0.0
+_CORP_LOCK = asyncio.Lock()
+
+
+def _parse_corp_zip(content: bytes) -> list[dict]:
+    """corpCode.xml(zip) → 목록. 파일 캐시와 상장사 매핑 캐시도 갱신(스레드에서 실행)."""
+    with zipfile.ZipFile(io.BytesIO(content)) as zf:
+        xml_bytes = zf.read(zf.namelist()[0])
+    root = ET.fromstring(xml_bytes)
+    rows: list[dict] = []
+    mapping: dict[str, str] = {}
+    for item in root.iter("list"):
+        code = (item.findtext("corp_code") or "").strip()
+        name = (item.findtext("corp_name") or "").strip()
+        if not code or not name:
+            continue
+        stock = (item.findtext("stock_code") or "").strip()
+        rows.append({"corp_code": code, "corp_name": name,
+                     "corp_eng_name": (item.findtext("corp_eng_name") or "").strip(), "stock_code": stock})
+        if stock:
+            mapping[stock] = code
+    del root
+    _CORP_LIST_FILE.parent.mkdir(parents=True, exist_ok=True)
+    _CORP_LIST_FILE.write_text(json.dumps(rows, ensure_ascii=False), encoding="utf-8")
+    if mapping:
+        _CORP_MAP_FILE.write_text(json.dumps(mapping), encoding="utf-8")
+    return rows
+
+
+def _index_rows(rows: list[dict]) -> None:
+    """검색용 정규화 이름을 미리 계산(검색할 때마다 10만 번 정규식을 돌리지 않게)."""
+    for r in rows:
+        if "_n" not in r:
+            r["_n"] = normalize_corp_name(r["corp_name"])
+            r["_e"] = normalize_corp_name(r.get("corp_eng_name") or "")
+
+
+def _match_rows(rows: list[dict], q: str, limit: int) -> list[dict]:
+    exact, prefix, contains = [], [], []
+    for r in rows:
+        n, e = r["_n"], r["_e"]
+        if q == n or (e and q == e):
+            exact.append(r)
+        elif n.startswith(q) or (e and e.startswith(q)):
+            prefix.append(r)
+        elif q in n or (e and q in e):
+            contains.append(r)
+    key = lambda r: (0 if r.get("stock_code") else 1, len(r["corp_name"]))  # noqa: E731  상장사·짧은 이름 우선
+    out = sorted(exact, key=key) + sorted(prefix, key=key) + sorted(contains, key=key)
+    return [{k: v for k, v in r.items() if not k.startswith("_")} for r in out[:limit]]
 
 
 def dart_disclosure_url(rcept_no: str) -> str:

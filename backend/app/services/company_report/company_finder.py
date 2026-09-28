@@ -1,6 +1,7 @@
 """기업 등록 — 검색어 → 후보 카드 → [반영]/[다시 찾기], 키워드 제안, 검색 미리보기 (기획 3장 F1)."""
 from __future__ import annotations
 
+import asyncio
 import logging
 from datetime import timedelta
 from typing import Optional
@@ -87,6 +88,7 @@ async def search_candidates(db: AsyncSession, query: str, user_id: Optional[str]
     if not query:
         return {"query": query, "candidates": []}
     cards: list[dict] = []
+    notice: Optional[str] = None
 
     dart_key = await get_service_key(db, "dart", user_id)
     if dart_key:
@@ -97,10 +99,11 @@ async def search_candidates(db: AsyncSession, query: str, user_id: Optional[str]
         except Exception as e:
             logger.info("DART 회사 검색 실패: %s", e)
             found = []
-        for base in found[:4]:
+        if found:
             await release(db)
-            info = await client.get_company(base["corp_code"])
-            cards.append(_card_from_dart(info, base))
+            infos = await asyncio.gather(*(client.get_company(b["corp_code"]) for b in found[:4]), return_exceptions=True)
+            for base, info in zip(found[:4], infos):
+                cards.append(_card_from_dart(info if isinstance(info, dict) else {}, base))
 
     news = await _news(db, query)
     for c in cards:
@@ -112,21 +115,25 @@ async def search_candidates(db: AsyncSession, query: str, user_id: Optional[str]
             models = await config.get_models(db)
             try:
                 await release(db)
-                r = await llm_client.claude_json(
+                # 웹 검색은 오래 걸릴 수 있어 60초에서 끊는다(화면이 응답 없이 끊기지 않게)
+                r = await asyncio.wait_for(llm_client.claude_json(
                     claude[0], WEB_CANDIDATE_PROMPT.format(query=query),
-                    model=models["summary"], web_search=True, max_tokens=2000,
-                )
+                    model=models["summary"], web_search=True, max_tokens=2000, timeout=55, retries=0,
+                ), timeout=60)
                 for c in (r.data or {}).get("candidates", [])[:3]:
                     c.update({"source": "web", "corp_code": None, "stock_code": None, "is_listed": False})
                     if not c.get("evidence"):
                         c["evidence"] = _evidence_for(c.get("name") or "", news)
                     cards.append(c)
+            except asyncio.TimeoutError:
+                notice = "웹 검색이 60초 안에 끝나지 않았습니다. 검색어를 바꿔 [다시 찾기]를 누르거나 [직접 등록]을 쓰세요."
             except llm_client.LLMError as e:
                 logger.info("웹 후보 검색 실패: %s", e)
+                notice = f"웹 검색 실패: {e}"
 
     # 이름이 뉴스 근거와 맞는 후보를 앞으로
     cards.sort(key=lambda c: -len(c.get("evidence") or []))
-    return {"query": query, "candidates": cards}
+    return {"query": query, "candidates": cards, "notice": notice}
 
 
 KEYWORD_PROMPT = """투자기업 뉴스 모니터링용 검색 키워드를 제안하라.

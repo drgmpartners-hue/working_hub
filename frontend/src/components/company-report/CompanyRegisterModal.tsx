@@ -98,8 +98,9 @@ export function CompanyRegisterModal({
     setSearching(true);
     setError(null);
     try {
-      const res = await crPost<{ candidates: Candidate[] }>('/companies/search-candidates', { query: query.trim() });
+      const res = await crPost<{ candidates: Candidate[]; notice?: string | null }>('/companies/search-candidates', { query: query.trim() });
       setCandidates(res.candidates || []);
+      if (res.notice) setError(res.notice);
       setSearched(true);
     } catch (e) {
       setError((e as Error).message);
@@ -238,7 +239,7 @@ export function CompanyRegisterModal({
             </button>
           </form>
 
-          {searching && <Spinner label="공시·뉴스·웹에서 후보를 찾고 있어요 (최대 20초)" />}
+          {searching && <Spinner label="공시·뉴스·웹에서 후보를 찾고 있어요 (공시에 없는 회사는 웹 검색까지 최대 1분)" />}
 
           {!searching && searched && candidates.length === 0 && (
             <div style={{ ...mutedText, padding: '12px 0' }}>
