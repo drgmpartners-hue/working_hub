@@ -9,6 +9,7 @@ from typing import Optional
 from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, HTTPException, Query, UploadFile
 from pydantic import BaseModel, Field
 from sqlalchemy import and_, func, select
+from sqlalchemy.orm import aliased
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.deps import get_current_user
@@ -28,9 +29,11 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/company-report", tags=["company-report"])
 
 
-def require_admin(user) -> None:
-    if not getattr(user, "is_superuser", False):
-        raise HTTPException(403, "관리자 계정만 할 수 있습니다.")
+async def require_admin(db: AsyncSession, user) -> None:
+    from app.services.company_report import admin
+
+    if not await admin.is_admin(db, user):
+        raise HTTPException(403, "기업 리포트 관리자만 할 수 있습니다. 발송 설정 화면에서 관리자를 지정하세요.")
 
 
 # --------------------------------------------------------------------------- 후보·키워드·미리보기
@@ -447,9 +450,48 @@ async def post_confirm_gaps(job_id: str, body: GapsBody, current_user=Depends(ge
 
 
 @router.get("/me")
-async def me(current_user=Depends(get_current_user)):
-    """화면에서 관리자 전용 버튼(승인 등) 표시 여부."""
-    return {"id": current_user.id, "is_admin": bool(getattr(current_user, "is_superuser", False))}
+async def me(current_user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    """화면에서 관리자 전용 버튼(승인 등) 표시 여부. can_claim: 아직 관리자가 없어 내가 지정할 수 있음."""
+    from app.services.company_report import admin
+
+    return {"id": current_user.id, "name": getattr(current_user, "nickname", ""),
+            "is_admin": await admin.is_admin(db, current_user), "can_claim": await admin.can_claim(db)}
+
+
+@router.post("/admins/claim")
+async def claim_admin(current_user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    """기업 리포트 관리자가 아직 없을 때만: 내 계정을 첫 관리자로 지정."""
+    from app.services.company_report import admin
+
+    if not await admin.can_claim(db):
+        raise HTTPException(409, "이미 관리자가 있습니다. 관리자에게 추가를 요청하세요.")
+    await admin.set_admins(db, [current_user.id])
+    return {"is_admin": True}
+
+
+@router.get("/admins")
+async def list_admins(current_user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    from app.models.user import User
+    from app.services.company_report import admin
+
+    ids = await admin.admin_ids(db)
+    users = (await db.execute(select(User).where((User.id.in_(ids or [""])) | (User.is_superuser == True)))).scalars().all()  # noqa: E712
+    return [{"user_id": u.id, "name": u.nickname, "email": u.email, "superuser": bool(u.is_superuser)} for u in users]
+
+
+class AdminsBody(BaseModel):
+    user_ids: list[str]
+
+
+@router.put("/admins")
+async def put_admins(body: AdminsBody, current_user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    from app.services.company_report import admin
+
+    await require_admin(db, current_user)
+    ids = list(body.user_ids)
+    if not getattr(current_user, "is_superuser", False) and current_user.id not in ids:
+        ids.append(current_user.id)  # 자기 자신은 빼지 못하게(관리자가 0명이 되는 것 방지)
+    return {"user_ids": await admin.set_admins(db, ids)}
 
 
 # --------------------------------------------------------------------------- 데일리 브리핑
@@ -500,9 +542,10 @@ class BuildRequest(BaseModel):
 
 
 @router.post("/briefings/daily/build")
-async def build_daily_now(body: BuildRequest, background: BackgroundTasks, current_user=Depends(get_current_user)):
+async def build_daily_now(body: BuildRequest, background: BackgroundTasks, current_user=Depends(get_current_user),
+                          db: AsyncSession = Depends(get_db)):
     """관리자: 브리핑을 지금 다시 만든다(휴일이어도, 마감 시간 제한 없이)."""
-    require_admin(current_user)
+    await require_admin(db, current_user)
     background.add_task(_run_build_daily, body.briefing_date, body.collect)
     return {"queued": True}
 
@@ -520,7 +563,7 @@ async def _run_build_daily(day: Optional[date], collect: bool) -> None:
 @router.post("/briefings/daily/{briefing_id}/approve")
 async def approve_daily(briefing_id: str, current_user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
     """관리자 승인(승인 기간 동안만 필요). 승인된 브리핑은 08:30 발송 배치가 보낸다."""
-    require_admin(current_user)
+    await require_admin(db, current_user)
     b = await db.get(NewsBriefing, briefing_id)
     if not b:
         raise HTTPException(404, "브리핑이 없습니다.")
@@ -533,46 +576,135 @@ async def approve_daily(briefing_id: str, current_user=Depends(get_current_user)
 
 # --------------------------------------------------------------------------- 발송: 수신자·설정·테스트
 
-class RecipientsBody(BaseModel):
-    user_ids: list[str]
+def _mask_phone(p: Optional[str]) -> Optional[str]:
+    d = "".join(ch for ch in (p or "") if ch.isdigit())
+    return f"{d[:3]}-****-{d[-4:]}" if len(d) >= 8 else None
 
 
 @router.get("/recipients")
 async def get_recipients(current_user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
-    """직원 명단 + 선택 여부. 휴대폰 번호가 없으면 선택할 수 없다."""
+    """선택된 수신자 + 직원 계정 목록(빠른 선택용)."""
+    from app.models.user import User
+    from app.services.company_report import sender
+
+    targets = await sender.recipient_targets(db, include_no_phone=True)
+    selected = [{"id": t.recipient_id, "kind": t.kind, "ref_id": t.user_id or t.client_id, "name": t.name,
+                 "phone_masked": _mask_phone(t.phone), "has_phone": bool(t.phone)} for t in targets]
+    chosen_users = {t.user_id for t in targets if t.user_id}
+    users = (await db.execute(select(User).where(User.is_active == True).order_by(User.nickname))).scalars().all()  # noqa: E712
+    staff = [{"kind": "user", "ref_id": u.id, "name": u.nickname, "detail": u.email, "phone_masked": _mask_phone(u.phone),
+              "has_phone": bool(u.phone), "selected": u.id in chosen_users} for u in users]
+    return {"selected": selected, "staff": staff}
+
+
+@router.get("/recipients/search")
+async def search_recipients(q: str = Query(..., min_length=1, max_length=50), current_user=Depends(get_current_user),
+                            db: AsyncSession = Depends(get_db)):
+    """이름으로 찾기: 데이터 관리 > 고객 정보 관리(clients) + 직원 계정(users)."""
+    from app.models.client import Client
     from app.models.user import User
 
-    selected = set((await db.execute(
-        select(BriefingRecipient.user_id).where(BriefingRecipient.is_active == True)  # noqa: E712
-    )).scalars().all())
-    users = (await db.execute(select(User).where(User.is_active == True).order_by(User.nickname))).scalars().all()  # noqa: E712
-    return [{
-        "user_id": u.id, "nickname": u.nickname, "email": u.email,
-        "phone_masked": (u.phone[:3] + "-****-" + u.phone[-4:]) if u.phone and len(u.phone) >= 8 else None,
-        "has_phone": bool(u.phone), "selected": u.id in selected,
-    } for u in users]
+    like = f"%{q.strip()}%"
+    chosen = set((await db.execute(select(BriefingRecipient.client_id).where(BriefingRecipient.client_id.is_not(None)))).scalars().all())
+    chosen_u = set((await db.execute(select(BriefingRecipient.user_id).where(BriefingRecipient.user_id.is_not(None)))).scalars().all())
+    owners = aliased(User)
+    rows = (await db.execute(
+        select(Client, owners.nickname).outerjoin(owners, owners.id == Client.user_id)
+        .where(Client.name.ilike(like)).order_by(Client.name).limit(30)
+    )).all()
+    out = [{"kind": "client", "ref_id": c.id, "name": c.name,
+            "detail": " · ".join(x for x in ["고객 정보 관리", f"고유번호 {c.unique_code}" if c.unique_code else "",
+                                             f"담당 {owner}" if owner else "",
+                                             f"{c.birth_date.year}년생" if c.birth_date else ""] if x),
+            "phone_masked": _mask_phone(c.phone), "has_phone": bool(c.phone), "selected": c.id in chosen}
+           for c, owner in rows]
+    users = (await db.execute(select(User).where(User.is_active == True, User.nickname.ilike(like)).limit(10))).scalars().all()  # noqa: E712
+    out += [{"kind": "user", "ref_id": u.id, "name": u.nickname, "detail": f"직원 계정 · {u.email}",
+             "phone_masked": _mask_phone(u.phone), "has_phone": bool(u.phone), "selected": u.id in chosen_u} for u in users]
+    return out
+
+
+class RecipientAdd(BaseModel):
+    kind: str  # client/user
+    ref_id: str
+
+
+@router.post("/recipients", status_code=201)
+async def add_recipient(body: RecipientAdd, current_user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    from app.models.client import Client
+    from app.models.user import User
+
+    await require_admin(db, current_user)
+    count = (await db.execute(select(func.count()).select_from(BriefingRecipient).where(BriefingRecipient.is_active == True))).scalar_one()  # noqa: E712
+    if body.kind == "client":
+        c = await db.get(Client, body.ref_id)
+        if not c:
+            raise HTTPException(404, "고객 정보를 찾을 수 없습니다.")
+        if not c.phone:
+            raise HTTPException(422, f"{c.name}님은 고객 정보에 휴대폰 번호가 없습니다. 고객 정보 관리에서 먼저 입력하세요.")
+        r = (await db.execute(select(BriefingRecipient).where(BriefingRecipient.client_id == c.id))).scalar_one_or_none()
+        name = c.name
+    elif body.kind == "user":
+        u = await db.get(User, body.ref_id)
+        if not u:
+            raise HTTPException(404, "직원 계정을 찾을 수 없습니다.")
+        if not u.phone:
+            raise HTTPException(422, f"{u.nickname}님 계정에 휴대폰 번호가 없습니다. 고객 정보 관리에서 이름으로 찾아 추가해 보세요.")
+        r = (await db.execute(select(BriefingRecipient).where(BriefingRecipient.user_id == u.id))).scalar_one_or_none()
+        name = u.nickname
+    else:
+        raise HTTPException(422, "kind는 client 또는 user입니다.")
+    if r and r.is_active:
+        raise HTTPException(409, f"{name}님은 이미 수신자입니다.")
+    if count >= 5:
+        raise HTTPException(422, "수신자는 최대 5명입니다.")
+    if r:
+        r.is_active, r.name = True, name
+    else:
+        db.add(BriefingRecipient(user_id=body.ref_id if body.kind == "user" else None,
+                                 client_id=body.ref_id if body.kind == "client" else None, name=name, is_active=True))
+    await db.commit()
+    return {"name": name}
+
+
+@router.delete("/recipients/{recipient_id}", status_code=204)
+async def remove_recipient(recipient_id: str, current_user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    await require_admin(db, current_user)
+    r = await db.get(BriefingRecipient, recipient_id)
+    if not r:
+        raise HTTPException(404, "수신자를 찾을 수 없습니다.")
+    await db.delete(r)
+    await db.commit()
+
+
+class RecipientsBody(BaseModel):
+    user_ids: list[str]
 
 
 @router.put("/recipients")
 async def put_recipients(body: RecipientsBody, current_user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
-    require_admin(current_user)
+    """(이전 방식) 직원 계정 목록으로 한 번에 지정. 고객 정보에서 추가한 수신자는 유지한다."""
+    await require_admin(db, current_user)
     from app.models.user import User
 
     ids = list(dict.fromkeys(body.user_ids))
-    if len(ids) > 5:
-        raise HTTPException(422, "수신자는 최대 5명입니다.")
     users = (await db.execute(select(User).where(User.id.in_(ids or [""])))).scalars().all()
     no_phone = [u.nickname for u in users if not u.phone]
     if no_phone:
         raise HTTPException(422, f"휴대폰 번호가 없는 직원: {', '.join(no_phone)}")
-    existing = {r.user_id: r for r in (await db.execute(select(BriefingRecipient))).scalars().all()}
+    clients_n = (await db.execute(select(func.count()).select_from(BriefingRecipient).where(
+        BriefingRecipient.client_id.is_not(None), BriefingRecipient.is_active == True))).scalar_one()  # noqa: E712
+    if len(ids) + clients_n > 5:
+        raise HTTPException(422, "수신자는 최대 5명입니다.")
+    existing = {r.user_id: r for r in (await db.execute(select(BriefingRecipient).where(BriefingRecipient.user_id.is_not(None)))).scalars().all()}
+    names = {u.id: u.nickname for u in users}
     for uid, r in existing.items():
         r.is_active = uid in ids
     for uid in ids:
         if uid not in existing:
-            db.add(BriefingRecipient(user_id=uid, is_active=True))
+            db.add(BriefingRecipient(user_id=uid, name=names.get(uid), is_active=True))
     await db.commit()
-    return {"count": len(ids)}
+    return {"count": len(ids) + clients_n}
 
 
 class SettingsBody(BaseModel):
@@ -652,7 +784,7 @@ async def get_settings(current_user=Depends(get_current_user), db: AsyncSession 
 
 @router.put("/settings")
 async def put_settings(body: SettingsBody, current_user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
-    require_admin(current_user)
+    await require_admin(db, current_user)
     from app.services import settings_store
     from app.services.company_report import config as crcfg
 
@@ -676,11 +808,26 @@ async def put_settings(body: SettingsBody, current_user=Depends(get_current_user
 
 
 @router.post("/briefings/daily/{briefing_id}/test-send")
-async def test_send(briefing_id: str, current_user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
-    """본인 휴대폰으로 테스트 발송(상태 변화 없음)."""
+async def test_send(briefing_id: str, recipient_id: Optional[str] = None, current_user=Depends(get_current_user),
+                    db: AsyncSession = Depends(get_db)):
+    """테스트 발송(상태 변화 없음): recipient_id가 있으면 그 수신자에게, 없으면 본인에게."""
     from app.services.company_report import sender
 
-    r = await sender.send_test(db, briefing_id, current_user)
+    r = await sender.send_test(db, briefing_id, current_user, recipient_id)
+    if not r.get("success"):
+        raise HTTPException(400, f"테스트 발송 실패: {r.get('error')}")
+    return r
+
+
+@router.post("/recipients/{recipient_id}/test-send")
+async def test_send_latest(recipient_id: str, current_user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    """발송 설정 화면: 가장 최근 데일리 브리핑을 이 수신자에게 테스트 발송."""
+    from app.services.company_report import sender
+
+    b = (await db.execute(select(NewsBriefing).order_by(NewsBriefing.briefing_date.desc()).limit(1))).scalars().first()
+    if not b:
+        raise HTTPException(404, "아직 만들어진 브리핑이 없습니다. 브리핑 탭에서 [지금 만들기]를 먼저 누르세요.")
+    r = await sender.send_test(db, b.id, current_user, recipient_id)
     if not r.get("success"):
         raise HTTPException(400, f"테스트 발송 실패: {r.get('error')}")
     return r
@@ -689,7 +836,7 @@ async def test_send(briefing_id: str, current_user=Depends(get_current_user), db
 @router.post("/briefings/daily/send-now")
 async def send_now(current_user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
     """관리자: 오늘 브리핑을 지금 발송(배치와 같은 조건·중복 차단)."""
-    require_admin(current_user)
+    await require_admin(db, current_user)
     from app.services.company_report import sender
 
     return await sender.send_daily(db)
@@ -903,7 +1050,7 @@ async def search_suggest(q: str = "", current_user=Depends(get_current_user), db
 
 @router.post("/search/reindex")
 async def search_reindex(current_user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
-    require_admin(current_user)
+    await require_admin(db, current_user)
     return await search.reindex_all(db)
 
 
@@ -965,7 +1112,9 @@ async def db_patch_file(file_id: str, body: FilePatch, current_user=Depends(get_
         # 삭제는 올린 사람 또는 관리자만, 자동 파일은 삭제하지 않는다(파일은 남기고 목록에서만 뺀다)
         if f.origin == "auto":
             raise HTTPException(400, "자동으로 만들어지는 파일은 지울 수 없습니다.")
-        if f.created_by != current_user.id and not getattr(current_user, "is_superuser", False):
+        from app.services.company_report import admin as cr_admin
+
+        if f.created_by != current_user.id and not await cr_admin.is_admin(db, current_user):
             raise HTTPException(403, "올린 사람 또는 관리자만 지울 수 있습니다.")
         f.status = "deleted"
     if body.memo is not None:
@@ -1108,7 +1257,7 @@ async def purge_company(company_id: str, body: PurgeBody, current_user=Depends(g
     """2단계 · 폴더까지 완전 삭제(관리자). 1단계로 지운 기업만, 기업명을 정확히 입력해야 한다. 되돌릴 수 없다."""
     from app.services.company_report import company_delete
 
-    require_admin(current_user)
+    await require_admin(db, current_user)
     c = await db.get(PortfolioCompany, company_id)
     if not c:
         raise HTTPException(404, "기업을 찾을 수 없습니다.")

@@ -95,32 +95,64 @@ def render_text(b: NewsBriefing) -> str:
     )
 
 
-async def recipients(db: AsyncSession) -> list[User]:
+class Target:
+    """발송 대상 한 명(직원 계정 또는 고객 정보)."""
+
+    def __init__(self, recipient_id: Optional[str], name: str, phone: Optional[str], user_id: Optional[str] = None,
+                 client_id: Optional[str] = None, kind: str = "user"):
+        self.recipient_id, self.name, self.phone = recipient_id, name, phone
+        self.user_id, self.client_id, self.kind = user_id, client_id, kind
+
+
+async def recipient_targets(db: AsyncSession, include_no_phone: bool = False) -> list[Target]:
+    """활성 수신자 → 지금 원본(계정·고객 정보)의 휴대폰 번호로."""
+    from app.models.client import Client
+
     rows = (await db.execute(
-        select(User).join(BriefingRecipient, BriefingRecipient.user_id == User.id)
-        .where(BriefingRecipient.is_active == True, User.is_active == True)  # noqa: E712
-    )).scalars().all()
-    return [u for u in rows if u.phone]
+        select(BriefingRecipient, User, Client)
+        .outerjoin(User, User.id == BriefingRecipient.user_id)
+        .outerjoin(Client, Client.id == BriefingRecipient.client_id)
+        .where(BriefingRecipient.is_active == True)  # noqa: E712
+        .order_by(BriefingRecipient.created_at)
+    )).all()
+    out: list[Target] = []
+    for r, u, c in rows:
+        if u is not None:
+            if not u.is_active:
+                continue
+            t = Target(r.id, u.nickname, u.phone, user_id=u.id, kind="user")
+        elif c is not None:
+            t = Target(r.id, c.name, c.phone, client_id=c.id, kind="client")
+        else:
+            continue
+        if t.phone or include_no_phone:
+            out.append(t)
+    return out
 
 
-async def _deliver(db: AsyncSession, b: NewsBriefing, users: list[User], briefing_type: str) -> dict:
+async def recipients(db: AsyncSession) -> list[Target]:
+    return await recipient_targets(db)
+
+
+async def _deliver(db: AsyncSession, b: NewsBriefing, targets: list, briefing_type: str) -> dict:
     template_id = await settings_store.get(db, config.TEMPLATE_DAILY)
     text = render_text(b)
     variables = template_b_variables(b)
     msgs = [{
-        "to": u.phone, "text": text, "subject": "투자기업 데일리 브리핑",
+        "to": t.phone, "text": text, "subject": "투자기업 데일리 브리핑",
         **({"template_id": template_id, "variables": variables} if template_id else {}),
-    } for u in users]
+    } for t in targets]
     res = await solapi_service.send_many_alimtalk(db, msgs)
     ok = bool(res.get("success"))
     channel = "alimtalk" if template_id else "lms"
-    for u in users:
+    for t in targets:
         db.add(BriefingSendLog(
-            briefing_type=briefing_type, briefing_id=b.id, user_id=u.id, phone=u.phone, channel=channel,
+            briefing_type=briefing_type, briefing_id=b.id, user_id=getattr(t, "user_id", None) or getattr(t, "id", None),
+            phone=t.phone, channel=channel,
             status="requested" if ok else "failed", solapi_group_id=res.get("groupId") or (res.get("groupInfo") or {}).get("groupId"),
             error=None if ok else str(res.get("error") or res.get("errorMessage") or res)[:1000],
         ))
-    return {"success": ok, "channel": channel, "count": len(users), "error": None if ok else res.get("error") or res.get("errorMessage")}
+    return {"success": ok, "channel": channel, "count": len(targets), "error": None if ok else res.get("error") or res.get("errorMessage")}
 
 
 async def send_daily(db: AsyncSession, day: Optional[date] = None) -> dict:
@@ -149,13 +181,22 @@ async def send_daily(db: AsyncSession, day: Optional[date] = None) -> dict:
     return r
 
 
-async def send_test(db: AsyncSession, briefing_id: str, user: User) -> dict:
-    """테스트 발송: 요청한 본인에게만. 브리핑 상태는 바꾸지 않는다."""
+async def send_test(db: AsyncSession, briefing_id: str, user: User, recipient_id: Optional[str] = None) -> dict:
+    """테스트 발송: 지정한 수신자 한 명(없으면 요청한 본인). 브리핑 상태는 바꾸지 않는다."""
     b = await db.get(NewsBriefing, briefing_id)
     if not b:
         return {"success": False, "error": "브리핑이 없습니다."}
-    if not user.phone:
-        return {"success": False, "error": "내 계정에 휴대폰 번호가 없습니다."}
-    r = await _deliver(db, b, [user], "test")
+    if recipient_id:
+        t = next((x for x in await recipient_targets(db, include_no_phone=True) if x.recipient_id == recipient_id), None)
+        if not t:
+            return {"success": False, "error": "수신자를 찾을 수 없습니다."}
+        if not t.phone:
+            return {"success": False, "error": f"{t.name}님의 휴대폰 번호가 없습니다."}
+        target = t
+    else:
+        if not user.phone:
+            return {"success": False, "error": "내 계정에 휴대폰 번호가 없습니다. 발송 설정의 수신자 옆 [테스트]로 보내 보세요."}
+        target = Target(None, user.nickname, user.phone, user_id=user.id)
+    r = await _deliver(db, b, [target], "test")
     await db.commit()
-    return r
+    return {**r, "to": target.name}

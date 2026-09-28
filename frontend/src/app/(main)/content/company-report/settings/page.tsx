@@ -7,6 +7,8 @@ import { Card } from '@/components/common/Card';
 import { ErrorBox, Field, SectionTitle, Spinner, fmtDate, inputStyle, mutedText } from '@/components/company-report/ui';
 import { crGet, crPost, crPut } from '@/lib/companyReportApi';
 import { useCrMe } from '@/lib/useCrMe';
+import { AdminCard } from '@/components/company-report/AdminCard';
+import { RecipientsCard } from '@/components/company-report/RecipientsCard';
 
 interface Settings {
   ai_usage: { month: string; usd: number; rows: { model: string; calls: number; input: number; output: number; usd: number }[] };
@@ -27,14 +29,6 @@ interface Settings {
   send_logs: { briefing_type: string; phone: string; channel: string; status: string; error: string | null; sent_at: string | null }[];
 }
 
-interface Recipient {
-  user_id: string;
-  nickname: string;
-  email: string;
-  phone_masked: string | null;
-  has_phone: boolean;
-  selected: boolean;
-}
 
 const KEY_LABEL: Record<string, string> = {
   claude: 'Claude (작성·2차 검토·요약)',
@@ -48,11 +42,9 @@ const KEY_LABEL: Record<string, string> = {
 };
 
 export default function SettingsPage() {
-  const me = useCrMe();
+  const [me, reloadMe] = useCrMe(true);
   const admin = !!me?.is_admin;
   const [s, setS] = useState<Settings | null>(null);
-  const [rec, setRec] = useState<Recipient[]>([]);
-  const [picked, setPicked] = useState<string[]>([]);
   const [tpl, setTpl] = useState({ daily: '', monthly: '' });
   const [models, setModels] = useState({ main: '', review: '', summary: '' });
   const [region, setRegion] = useState('서울');
@@ -62,13 +54,11 @@ export default function SettingsPage() {
 
   const load = useCallback(async () => {
     try {
-      const [st, r] = await Promise.all([crGet<Settings>('/settings'), crGet<Recipient[]>('/recipients')]);
+      const st = await crGet<Settings>('/settings');
       setS(st);
       setTpl({ daily: st.template_daily, monthly: st.template_monthly });
       setModels(st.models);
       setRegion(st.weather_region || '서울');
-      setRec(r);
-      setPicked(r.filter((x) => x.selected).map((x) => x.user_id));
     } catch (e) {
       setError((e as Error).message);
     }
@@ -84,24 +74,6 @@ export default function SettingsPage() {
     try {
       setS(await crPut<Settings>('/settings', body));
       setNotice(msg);
-    } catch (e) {
-      setError((e as Error).message);
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  const saveRecipients = async () => {
-    if (picked.length < 2 || picked.length > 5) {
-      setError('수신자는 2~5명을 골라 주세요.');
-      return;
-    }
-    setBusy(true);
-    setError(null);
-    try {
-      await crPut('/recipients', { user_ids: picked });
-      setNotice(`수신자 ${picked.length}명을 저장했습니다.`);
-      void load();
     } catch (e) {
       setError((e as Error).message);
     } finally {
@@ -129,7 +101,7 @@ export default function SettingsPage() {
     <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
       <ErrorBox message={error} />
       {notice && <div style={{ ...mutedText, color: 'var(--success)' }}>{notice}</div>}
-      {!admin && <div style={mutedText}>설정 변경은 관리자 계정만 할 수 있습니다.</div>}
+      <AdminCard me={me} onChanged={() => { reloadMe(); void load(); }} />
 
       <Card padding={16}>
         <SectionTitle
@@ -191,51 +163,7 @@ export default function SettingsPage() {
         </div>
       </Card>
 
-      <Card padding={16}>
-        <SectionTitle
-          right={
-            admin && (
-              <button type="button" className="wh-btn wh-btn-primary wh-btn-sm" disabled={busy} onClick={() => void saveRecipients()}>
-                수신자 저장 ({picked.length})
-              </button>
-            )
-          }
-        >
-          수신자 (2~5명 · 데일리·월간 공통)
-        </SectionTitle>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: 8 }}>
-          {rec.map((r) => {
-            const on = picked.includes(r.user_id);
-            return (
-              <label
-                key={r.user_id}
-                style={{
-                  display: 'flex',
-                  gap: 8,
-                  alignItems: 'center',
-                  padding: '10px 12px',
-                  borderRadius: 8,
-                  border: `1px solid ${on ? 'var(--blue-400)' : 'var(--border)'}`,
-                  background: 'var(--bg-surface)',
-                  opacity: r.has_phone ? 1 : 0.5,
-                  cursor: admin && r.has_phone ? 'pointer' : 'not-allowed',
-                }}
-              >
-                <input
-                  type="checkbox"
-                  checked={on}
-                  disabled={!admin || !r.has_phone || (!on && picked.length >= 5)}
-                  onChange={(e) => setPicked((p) => (e.target.checked ? [...p, r.user_id] : p.filter((x) => x !== r.user_id)))}
-                />
-                <span style={{ fontSize: 14, color: 'var(--text-primary)' }}>
-                  {r.nickname}
-                  <span style={{ ...mutedText, fontSize: 12, display: 'block' }}>{r.has_phone ? r.phone_masked : '휴대폰 번호 없음'}</span>
-                </span>
-              </label>
-            );
-          })}
-        </div>
-      </Card>
+      <RecipientsCard admin={admin} />
 
       <Card padding={16}>
         <SectionTitle

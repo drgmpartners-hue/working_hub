@@ -155,7 +155,8 @@ async def _run(monkeypatch):
                   "backfill_jobs", "portfolio_companies"]:
             await db.execute(text(f"DELETE FROM {t}"))
         await db.execute(text("DELETE FROM app_settings WHERE key LIKE 'kipris_calls_%' OR key LIKE 'news_briefing_%' "
-                              "OR key LIKE 'company_db_files_%'"))
+                              "OR key LIKE 'company_db_files_%' OR key = 'company_report_admin_ids'"))
+        await db.execute(text("DELETE FROM clients WHERE name = '김민호'"))
         await db.execute(delete(User).where(User.email.like("e2e-%")))
         admin = User(email=f"e2e-{uuid.uuid4().hex[:6]}@x.com", hashed_password=get_password_hash("pw"), nickname="관리자",
                      phone="010-1111-2222", is_active=True, is_superuser=True)
@@ -432,6 +433,43 @@ async def _run(monkeypatch):
             assert left == 0
         r = await c.get("/briefings/daily", params={"date": tomorrow.isoformat()}, headers=H)
         assert r.status_code == 200  # 지난 브리핑(발송 기록)은 남는다
+
+        # ---- 수신자: 고객 정보 관리(clients)에서 이름으로 찾아 추가 → 발송 대상에 포함
+        from app.models.client import Client
+        async with AsyncSessionLocal() as db:
+            cl = Client(user_id=admin_id, name="김민호", phone="010-5555-6666")
+            cl2 = Client(user_id=admin_id, name="김민호", phone=None)
+            db.add_all([cl, cl2])
+            await db.commit()
+            cl_id, cl2_id = cl.id, cl2.id
+        r = await c.get("/recipients/search", params={"q": "민호"}, headers=HS)
+        found = [x for x in r.json() if x["kind"] == "client"]
+        assert {x["ref_id"] for x in found} >= {cl_id, cl2_id} and any(x["phone_masked"] == "010-****-6666" for x in found)
+        assert (await c.post("/recipients", headers=HS, json={"kind": "client", "ref_id": cl_id})).status_code == 403  # 관리자만
+        assert (await c.post("/recipients", headers=H, json={"kind": "client", "ref_id": cl2_id})).status_code == 422  # 번호 없음
+        assert (await c.post("/recipients", headers=H, json={"kind": "client", "ref_id": cl_id})).status_code == 201
+        assert (await c.post("/recipients", headers=H, json={"kind": "client", "ref_id": cl_id})).status_code == 409
+        sel = (await c.get("/recipients", headers=H)).json()["selected"]
+        assert {x["name"] for x in sel} == {"관리자", "직원", "김민호"}, sel
+        rid = next(x["id"] for x in sel if x["kind"] == "client")
+        sent.clear()
+        r = await c.post(f"/recipients/{rid}/test-send", headers=H)
+        assert r.status_code == 200 and r.json()["to"] == "김민호" and sent[0]["to"] == "010-5555-6666", r.text
+        async with AsyncSessionLocal() as db:
+            tg = await sender.recipient_targets(db)
+            assert sorted(t.phone for t in tg) == ["010-1111-2222", "010-3333-4444", "010-5555-6666"]
+        assert (await c.delete(f"/recipients/{rid}", headers=H)).status_code == 204
+
+        # ---- 관리자 지정: 기업 리포트 관리자가 없으면 첫 사용자가 지정, 그다음부터는 관리자만 추가
+        me_s = (await c.get("/me", headers=HS)).json()
+        assert me_s["is_admin"] is False and me_s["can_claim"] is True
+        assert (await c.put("/settings", headers=HS, json={"weather_region": "부산"})).status_code == 403
+        assert (await c.post("/admins/claim", headers=HS)).status_code == 200
+        assert (await c.get("/me", headers=HS)).json() == {**me_s, "is_admin": True, "can_claim": False}
+        assert (await c.put("/settings", headers=HS, json={"weather_region": "부산"})).status_code == 200
+        assert (await c.post("/admins/claim", headers=H)).status_code == 409
+        names = {a["name"] for a in (await c.get("/admins", headers=HS)).json()}
+        assert names == {"관리자", "직원"}
 
 
 def test_e2e(monkeypatch):

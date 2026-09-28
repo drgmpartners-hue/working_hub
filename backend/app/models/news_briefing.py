@@ -141,14 +141,22 @@ class NewsBriefing(Base):
 
 
 class BriefingRecipient(Base):
-    """브리핑 수신 직원(2~5명). 데일리·월간 공통."""
+    """브리핑 수신자(2~5명). 데일리·월간 공통.
+
+    직원 계정(user_id) 또는 데이터 관리 > 고객 정보 관리(client_id)에서 이름으로 찾아 추가한다.
+    휴대폰 번호는 발송할 때마다 원본(계정·고객 정보)에서 다시 읽는다.
+    """
 
     __tablename__ = "briefing_recipients"
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
-    user_id: Mapped[str] = mapped_column(
-        String(36), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, unique=True
+    user_id: Mapped[Optional[str]] = mapped_column(
+        String(36), ForeignKey("users.id", ondelete="CASCADE"), nullable=True, unique=True
     )
+    client_id: Mapped[Optional[str]] = mapped_column(
+        String(36), ForeignKey("clients.id", ondelete="CASCADE"), nullable=True, unique=True
+    )
+    name: Mapped[Optional[str]] = mapped_column(String(100))
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now(), nullable=False)
 
