@@ -88,6 +88,9 @@ def mask_keys(text: str) -> str:
 _NPS_OPS = {"bass": "getBassInfoSearch", "detail": "getDetailInfoSearch", "period": "getPdAcctoSttusInfoSearch"}
 _NPS_SNAKE = {"wkplNm": "wkpl_nm", "bzowrRgstNo": "bzowr_rgst_no", "dataCrtYm": "data_crt_ym", "seq": "seq"}
 NPS_VARIANTS = [
+    # 현재 공공데이터포털 문서 기준(서비스 이름에도 V2): …/NpsBplcInfoInqireServiceV2/getBassInfoSearchV2
+    ("https://apis.data.go.kr/B552015/NpsBplcInfoInqireServiceV2", "V2", False),
+    ("https://apis.data.go.kr/B552015/NpsBplcInfoInqireServiceV2", "V2", True),
     ("https://apis.data.go.kr/B552015/NpsBplcInfoInqireSvc", "V2", False),
     ("https://apis.data.go.kr/B552015/NpsBplcInfoInqireSvc", "", False),
     ("https://apis.data.go.kr/B552015/NpsBplcInfoInqireSvc", "", True),
@@ -113,6 +116,10 @@ async def _nps_get(client: httpx.AsyncClient, key: str, kind: str, params: dict)
         order.insert(0, _nps_ok)
     last = ""
     auth = False
+    if re.search(r"%[0-9A-Fa-f]{2}", key or ""):  # 인코딩 키를 넣었으면 한 번 풀어 디코딩 키로
+        from urllib.parse import unquote
+
+        key = unquote(key)
     for i in order:
         base, suffix, snake = NPS_VARIANTS[i]
         q = {(_NPS_SNAKE.get(k, k) if snake else k): v for k, v in params.items()}

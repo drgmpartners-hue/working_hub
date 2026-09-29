@@ -186,9 +186,9 @@ def test_nps_variant_fallback_and_masking():
 
     def handler(req: httpx.Request) -> httpx.Response:
         seen.append(str(req.url))
-        if "V2" in req.url.path:
+        if not req.url.path.endswith("NpsBplcInfoInqireServiceV2/getBassInfoSearchV2") or "wkpl_nm" in req.url.params:
             return httpx.Response(400, text="Bad Request")
-        assert "wkplNm" in req.url.params  # 두 번째 판: 예전 기능 이름 + camelCase
+        assert "wkplNm" in req.url.params  # 첫 번째 판: ServiceV2 + V2 + camelCase
         return httpx.Response(200, text=ok_xml, headers={"content-type": "application/xml"})
 
     async def run(h):
@@ -197,7 +197,14 @@ def test_nps_variant_fallback_and_masking():
 
     pdc._nps_ok = None
     items = asyncio.run(run(handler))
-    assert items[0]["seq"] == "1" and pdc._nps_ok == 1 and len(seen) == 2
+    assert items[0]["seq"] == "1" and pdc._nps_ok == 0 and len(seen) == 1 and "NpsBplcInfoInqireServiceV2" in seen[0]
+    # 다른 판만 되는 경우에도 차례로 내려가 찾는다
+    def legacy(req):
+        if req.url.path.endswith("NpsBplcInfoInqireSvc/getBassInfoSearch") and "wkpl_nm" in req.url.params:
+            return httpx.Response(200, text=ok_xml)
+        return httpx.Response(400, text="Bad Request")
+    pdc._nps_ok = None
+    assert asyncio.run(run(legacy))[0]["seq"] == "1" and pdc._nps_ok == 4
 
     def denied(req):
         return httpx.Response(200, text="<OpenAPI_ServiceResponse><cmmMsgHeader><returnAuthMsg>SERVICE_KEY_IS_NOT_REGISTERED_ERROR"
