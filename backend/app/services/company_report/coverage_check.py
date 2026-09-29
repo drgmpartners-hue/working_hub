@@ -150,7 +150,7 @@ async def key_events(db: AsyncSession, company: PortfolioCompany, start: date, e
     if claude:
         try:
             await release(db)
-            r = await llm_client.claude_json(claude[0], prompt, model=models["main"], web_search=True, max_tokens=3000)
+            r = await llm_client.claude_json(claude[0], prompt, model=models["writer"], web_search=True, max_tokens=3000)
             res["claude"] = [e for e in ((r.data or {}).get("events") or []) if isinstance(e, dict) and e.get("title")]
         except llm_client.LLMError as e:
             errors["claude"] = str(e)

@@ -7,13 +7,14 @@ from typing import Optional
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.services import settings_store
-from app.services.llm_client import DEFAULT_MAIN_MODEL, DEFAULT_REVIEW_MODEL, DEFAULT_SUMMARY_MODEL
+from app.services.llm_client import DEFAULT_MAIN_MODEL, DEFAULT_REVIEW_MODEL, DEFAULT_SUMMARY_MODEL, DEFAULT_WRITER_MODEL
 
 # 키
 BRIEFING_ENABLED = "news_briefing_enabled"            # "1"/"0"
 REVIEW_UNTIL = "news_briefing_review_until"           # YYYY-MM-DD, 이 날까지 승인 후 발송
 WEATHER_REGION = "briefing_weather_region"            # 기본 서울
-MAIN_MODEL = "report_main_model"
+MAIN_MODEL = "report_main_model"                    # 2차 검토(Opus)
+WRITER_MODEL = "report_writer_model"                # 작성(Sonnet)
 REVIEW_MODEL = "report_review_model"
 SUMMARY_MODEL = "briefing_summary_model"
 LAST_RUN_AT = "news_briefing_last_run_at"
@@ -31,6 +32,7 @@ DEFAULT_REGION = "서울"
 async def get_models(db: AsyncSession) -> dict[str, str]:
     return {
         "main": await settings_store.get(db, MAIN_MODEL, DEFAULT_MAIN_MODEL) or DEFAULT_MAIN_MODEL,
+        "writer": await settings_store.get(db, WRITER_MODEL, DEFAULT_WRITER_MODEL) or DEFAULT_WRITER_MODEL,
         "review": await settings_store.get(db, REVIEW_MODEL, DEFAULT_REVIEW_MODEL) or DEFAULT_REVIEW_MODEL,
         "summary": await settings_store.get(db, SUMMARY_MODEL, DEFAULT_SUMMARY_MODEL) or DEFAULT_SUMMARY_MODEL,
     }

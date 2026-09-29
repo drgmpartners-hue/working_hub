@@ -22,7 +22,8 @@ ANTHROPIC_URL = "https://api.anthropic.com/v1/messages"
 ANTHROPIC_VERSION = "2023-06-01"
 
 # 기본 모델(설정 화면·app_settings로 바꿀 수 있음)
-DEFAULT_MAIN_MODEL = "claude-opus-5"
+DEFAULT_MAIN_MODEL = "claude-opus-5-5"      # 2차 검토(최종 판정)
+DEFAULT_WRITER_MODEL = "claude-sonnet-5-5"  # 작성(초안·기업별 요약·사실 확인) — 비용 절감
 DEFAULT_SUMMARY_MODEL = "claude-haiku-4-5"
 DEFAULT_REVIEW_MODEL = "gemini-3.1-pro-preview"
 

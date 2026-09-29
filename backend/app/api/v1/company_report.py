@@ -924,6 +924,7 @@ class SettingsBody(BaseModel):
     template_monthly: Optional[str] = None
     weather_region: Optional[str] = None
     main_model: Optional[str] = None
+    writer_model: Optional[str] = None
     review_model: Optional[str] = None
     summary_model: Optional[str] = None
 
@@ -1009,7 +1010,7 @@ async def put_settings(body: SettingsBody, current_user=Depends(get_current_user
     elif body.review_until is not None:
         await settings_store.set_value(db, crcfg.REVIEW_UNTIL, body.review_until.isoformat())
     for field, key in (("template_daily", crcfg.TEMPLATE_DAILY), ("template_monthly", crcfg.TEMPLATE_MONTHLY),
-                       ("weather_region", crcfg.WEATHER_REGION), ("main_model", crcfg.MAIN_MODEL),
+                       ("weather_region", crcfg.WEATHER_REGION), ("main_model", crcfg.MAIN_MODEL), ("writer_model", crcfg.WRITER_MODEL),
                        ("review_model", crcfg.REVIEW_MODEL), ("summary_model", crcfg.SUMMARY_MODEL)):
         v = getattr(body, field)
         if v is not None:

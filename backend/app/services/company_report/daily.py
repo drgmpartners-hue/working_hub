@@ -174,8 +174,8 @@ async def _ai_briefing(db: AsyncSession, day: date, briefing_id: str, cards: lis
     src_txt = "\n".join(f"[{s['id']}] (company_id={s['company_id']}) {s['text']}" for s in sources)
     prompt = DRAFT_PROMPT.format(day=f"{day.isoformat()}({'월화수목금토일'[day.weekday()]})", sources=src_txt)
     await release(db)
-    r = await llm_client.claude_json(claude[0], prompt, model=models["main"], max_tokens=4000)
-    await cross_review.log_draft(db, "daily", briefing_id, r, models["main"], prompt)
+    r = await llm_client.claude_json(claude[0], prompt, model=models["writer"], max_tokens=4000)
+    await cross_review.log_draft(db, "daily", briefing_id, r, models["writer"], prompt)
     draft = r.data if isinstance(r.data, dict) else {}
     sentences = draft_sentences(draft)
     outcome = await cross_review.review_sentences(

@@ -23,7 +23,7 @@ interface Settings {
   template_daily: string;
   template_monthly: string;
   weather_region: string;
-  models: { main: string; review: string; summary: string };
+  models: { main: string; writer?: string; review: string; summary: string };
   last_run_at: string | null;
   last_send_at: string | null;
   keys: Record<string, boolean>;
@@ -44,7 +44,7 @@ function normalize(raw: Partial<Settings> | null | undefined): Settings {
     solapi_balance: r.solapi_balance || {},
     keys: r.keys || {},
     send_logs: Array.isArray(r.send_logs) ? r.send_logs : [],
-    models: { main: '', review: '', summary: '', ...(r.models || {}) },
+    models: { main: '', writer: '', review: '', summary: '', ...(r.models || {}) },
     template_daily: r.template_daily || '',
     template_monthly: r.template_monthly || '',
   };
@@ -66,7 +66,7 @@ export default function SettingsPage() {
   const admin = !!me?.is_admin;
   const [s, setS] = useState<Settings | null>(null);
   const [tpl, setTpl] = useState({ daily: '', monthly: '' });
-  const [models, setModels] = useState({ main: '', review: '', summary: '' });
+  const [models, setModels] = useState({ main: '', writer: '', review: '', summary: '' });
   const [region, setRegion] = useState('서울');
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
@@ -77,7 +77,7 @@ export default function SettingsPage() {
       const st = normalize(await crGet<Settings>('/settings'));
       setS(st);
       setTpl({ daily: st.template_daily, monthly: st.template_monthly });
-      setModels(st.models);
+      setModels({ ...st.models, writer: st.models.writer || '' });
       setRegion(st.weather_region || '서울');
     } catch (e) {
       setError((e as Error).message);
@@ -214,7 +214,7 @@ export default function SettingsPage() {
                 type="button"
                 className="wh-btn wh-btn-ghost wh-btn-sm"
                 disabled={busy}
-                onClick={() => void save({ template_daily: tpl.daily, template_monthly: tpl.monthly, main_model: models.main, review_model: models.review, summary_model: models.summary, weather_region: region }, '저장했습니다.')}
+                onClick={() => void save({ template_daily: tpl.daily, template_monthly: tpl.monthly, main_model: models.main, writer_model: models.writer, review_model: models.review, summary_model: models.summary, weather_region: region }, '저장했습니다.')}
               >
                 저장
               </button>
@@ -239,8 +239,11 @@ export default function SettingsPage() {
           <Field label="월간 템플릿 ID (승인된 v1, 비우면 문자로)">
             <input style={inputStyle} disabled={!admin} value={tpl.monthly} onChange={(e) => setTpl({ ...tpl, monthly: e.target.value })} placeholder="KA01TP…" />
           </Field>
-          <Field label="작성·2차 검토 모델">
-            <input style={inputStyle} disabled={!admin} value={models.main} onChange={(e) => setModels({ ...models, main: e.target.value })} />
+          <Field label="작성 모델 (초안·기업별 요약·사실 확인)">
+            <input style={inputStyle} disabled={!admin} value={models.writer || ''} onChange={(e) => setModels({ ...models, writer: e.target.value })} placeholder="claude-sonnet-5-5" />
+          </Field>
+          <Field label="2차 검토 모델 (최종 판정)">
+            <input style={inputStyle} disabled={!admin} value={models.main} onChange={(e) => setModels({ ...models, main: e.target.value })} placeholder="claude-opus-5-5" />
           </Field>
           <Field label="1차 검토 모델">
             <input style={inputStyle} disabled={!admin} value={models.review} onChange={(e) => setModels({ ...models, review: e.target.value })} />

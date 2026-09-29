@@ -440,7 +440,7 @@ async def _build(db: AsyncSession, mb: MonthlyBriefing) -> dict:
 
     async def one(c: PortfolioCompany):
         async with sem:
-            return await _digest_ai(claude[0], models["main"], c, month, per_company[c.id], prev.get(c.id))
+            return await _digest_ai(claude[0], models["writer"], c, month, per_company[c.id], prev.get(c.id))
 
     results = await asyncio.gather(*(one(c) for c in order))
     drafts: dict[str, dict] = {}
@@ -448,7 +448,7 @@ async def _build(db: AsyncSession, mb: MonthlyBriefing) -> dict:
     ai_errors: list[str] = []
     for idx, (c, (res, prompt, err)) in enumerate(zip(order, results), 1):
         if res is not None:
-            await cross_review.log_draft(db, "monthly", mb.id, res, models["main"], prompt)
+            await cross_review.log_draft(db, "monthly", mb.id, res, models["writer"], prompt)
         if err or res is None or not isinstance(res.data, dict):
             ai_errors.append(f"{c.name}: {err or '응답 형식 오류'}")
             continue
@@ -470,8 +470,8 @@ async def _build(db: AsyncSession, mb: MonthlyBriefing) -> dict:
         p = OVERALL_PROMPT.format(label=month_label(month), month=month, stats=stat_txt, digests="\n\n".join(dig_txt))
         await release(db)
         try:
-            r = await llm_client.claude_json(claude[0], p, model=models["main"], max_tokens=3000)
-            await cross_review.log_draft(db, "monthly", mb.id, r, models["main"], p)
+            r = await llm_client.claude_json(claude[0], p, model=models["writer"], max_tokens=3000)
+            await cross_review.log_draft(db, "monthly", mb.id, r, models["writer"], p)
             overall_draft = r.data if isinstance(r.data, dict) else {}
         except llm_client.LLMError as e:
             ai_errors.append(f"월간 종합: {e}")
@@ -516,7 +516,7 @@ async def _build(db: AsyncSession, mb: MonthlyBriefing) -> dict:
     for c in companies:
         st = stat_by.get(c.id, {})
         content = rebuild_company(kept.get(c.id, [])) if c.id in drafts else None
-        await _save_digest(db, c.id, month, st, content, table, models["main"] if content else None)
+        await _save_digest(db, c.id, month, st, content, table, models["writer"] if content else None)
         if not content or not any([content["summary"], content["facts"], content["client_explain"]]):
             continue
         company_sections.append({"company_id": c.id, "name": c.name, "article_count": st.get("total", 0),

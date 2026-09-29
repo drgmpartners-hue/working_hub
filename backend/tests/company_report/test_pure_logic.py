@@ -255,7 +255,7 @@ def test_usage_accumulate_and_price():
     assert got == {"claude-haiku-4-5": {"calls": 2, "input": 1500, "output": 200}}
     assert llm_client.drain_usage() == {}
     assert price_for("gemini-3.1-pro-preview", DEFAULT_PRICES) == (2.0, 12.0)
-    assert price_for("claude-opus-5", DEFAULT_PRICES) == (5.0, 25.0)
+    assert price_for("claude-opus-5-5", DEFAULT_PRICES) == (4.0, 20.0) and price_for("claude-sonnet-5-5", DEFAULT_PRICES) == (2.0, 10.0)
 
 
 # ---------------------------------------------------------------- 국민연금 API 판(버전) 전환·키 가리기

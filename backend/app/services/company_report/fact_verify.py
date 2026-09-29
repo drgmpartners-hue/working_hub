@@ -179,7 +179,7 @@ async def verify_fact(db: AsyncSession, fact: CompanyFact, company: PortfolioCom
     prompt = CHECK_PROMPT.format(name=company.name, aliases=f" (다른 이름: {', '.join(aliases)})" if aliases else "",
                                  fact_type=fact.fact_type, fact_date=fdate, title=fact.title, detail=detail,
                                  articles=articles_txt)
-    r = await llm_client.claude_json(claude_key, prompt, model=models["main"], max_tokens=1200)
+    r = await llm_client.claude_json(claude_key, prompt, model=models["writer"], max_tokens=1200)
     check = r.data if isinstance(r.data, dict) else {}
 
     search_res: Optional[dict] = None
@@ -204,7 +204,7 @@ async def verify_fact(db: AsyncSession, fact: CompanyFact, company: PortfolioCom
         "search": {"verdict": (search_res or {}).get("verdict"), "note": str((search_res or {}).get("note") or "")[:300],
                    "sources": [s for s in ((search_res or {}).get("sources") or []) if isinstance(s, dict)][:5]}
         if search_res else None,
-        "checked_at": now_kst().isoformat(timespec="seconds"), "model": models["main"],
+        "checked_at": now_kst().isoformat(timespec="seconds"), "model": models["writer"],
     }
 
 

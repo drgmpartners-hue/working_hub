@@ -16,8 +16,8 @@ from app.services.company_report.timeutil import today_kst
 # 백만 토큰당 USD(입력, 출력) — 모델 이름에 들어 있는 단어로 찾는다. 설정 'ai_price_table'(JSON)로 덮어쓸 수 있다.
 DEFAULT_PRICES = {
     "haiku": (1.0, 5.0),
-    "sonnet": (3.0, 15.0),
-    "opus": (5.0, 25.0),
+    "sonnet": (2.0, 10.0),   # Sonnet 5.5
+    "opus": (4.0, 20.0),     # Opus 5.5
     "gemini-3.1-pro": (2.0, 12.0),
     "gemini": (2.0, 12.0),
 }
