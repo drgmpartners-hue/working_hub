@@ -67,17 +67,33 @@ function Line({ s, nums, sources, style }: { s: MSentence; nums: Numbering; sour
   );
 }
 
+/** 그래프 축에는 '주식회사'·'(주)'를 뺀 짧은 이름(전체 이름은 툴팁에) */
+export function shortName(name: string): string {
+  const s = (name || '').replace(/주식회사|\(주\)|㈜|\(유\)|유한회사/g, '').replace(/\s+/g, ' ').trim();
+  return s || name;
+}
+
+const MAX_LABEL = 12;
+
 function TrendChart({ rows }: { rows: MStatRow[] }) {
-  const data = rows.filter((r) => r.total > 0 || r.prev_total > 0).slice(0, 15);
+  const data = rows
+    .filter((r) => r.total > 0 || r.prev_total > 0)
+    .slice(0, 15)
+    .map((r) => {
+      const sn = shortName(r.name);
+      return { ...r, short: sn.length > MAX_LABEL ? `${sn.slice(0, MAX_LABEL - 1)}…` : sn };
+    });
   if (!data.length) return <div style={{ ...mutedText, padding: '12px 0' }}>이번 달 기사가 없습니다.</div>;
   const h = Math.max(160, data.length * 30 + 60);
+  // 가장 긴 이름에 맞춘 축 너비(한글 12px ≈ 13px/자)
+  const axisW = Math.min(170, Math.max(64, Math.max(...data.map((r) => r.short.length)) * 13 + 12));
   return (
     <div style={{ width: '100%', height: h }} role="img" aria-label="기업별 기사 수(긍정·중립·주의)">
       <ResponsiveContainer>
         <BarChart data={data} layout="vertical" margin={{ top: 4, right: 16, bottom: 4, left: 8 }} barCategoryGap={8}>
           <CartesianGrid horizontal={false} stroke="#243049" />
           <XAxis type="number" allowDecimals={false} tickLine={false} axisLine={false} tick={{ fontSize: 11, fill: '#AAB6C8' }} />
-          <YAxis type="category" dataKey="name" width={96} tickLine={false} axisLine={false} tick={{ fontSize: 12, fill: '#DCE3EE' }} />
+          <YAxis type="category" dataKey="short" width={axisW} interval={0} tickLine={false} axisLine={false} tick={{ fontSize: 12, fill: '#DCE3EE' }} />
           <Tooltip
             cursor={{ fill: 'rgba(255,255,255,0.04)' }}
             contentStyle={{ background: '#0F172A', border: '1px solid #243049', borderRadius: 8, fontSize: 12 }}
@@ -86,7 +102,7 @@ function TrendChart({ rows }: { rows: MStatRow[] }) {
             formatter={(v, n) => [`${v}건`, n]}
             labelFormatter={(label, payload) => {
               const r = payload?.[0]?.payload as MStatRow | undefined;
-              return r ? `${label} · 전월 ${r.prev_total}건 (${r.change >= 0 ? '+' : ''}${r.change})` : String(label);
+              return r ? `${r.name} · 전월 ${r.prev_total}건 (${r.change >= 0 ? '+' : ''}${r.change})` : String(label);
             }}
           />
           <Legend wrapperStyle={{ fontSize: 12, color: '#AAB6C8' }} itemSorter={null} />
