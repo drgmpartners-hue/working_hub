@@ -377,7 +377,7 @@ def briefing_pdf(b: NewsBriefing) -> bytes:
     blocks.append(("p", f"{b.briefing_date.isoformat()}({info.get('weekday', '')}) · 서울 {w.get('text') or '-'} · 기사 {b.article_count}건 · 주의 {b.caution_count}건"))
     mk = info.get("markets") or []
     if mk:
-        blocks += [("h", "전일 증시"), ("table", [["지수", "시가", "종가", "변동", "%"]] + [
+        blocks += [("h", "전일 증시·금·환율"), ("table", [["지표", "시가", "종가", "변동", "%"]] + [
             [m.get("name"), m.get("open") or "-", m.get("close") or "-", m.get("change") or "-", m.get("change_pct") or "-"]
             if m.get("available") else [m.get("name"), "조회 실패", "", "", ""] for m in mk])]
     overall = (b.review_summary or {}).get("overall") or [{"text": t} for t in (b.overall_summary or "").split("\n") if t]

@@ -58,7 +58,11 @@ function MarketTable({ rows }: { rows: MarketRow[] }) {
               {r.available ? (
                 <>
                   <td style={{ ...cell, color: 'var(--text-secondary)' }}>{n2(r.open)}</td>
-                  <td style={{ ...cell, color: 'var(--text-primary)', fontWeight: 600 }}>{n2(r.close)}</td>
+                  <td style={{ ...cell, color: 'var(--text-primary)', fontWeight: 600 }}>
+                    {r.unit === '$' ? '$' : ''}
+                    {n2(r.close)}
+                    {r.unit && r.unit !== '$' ? r.unit : ''}
+                  </td>
                   <td style={{ ...cell, color: tone(r.change) }}>
                     {r.change !== null && r.change !== undefined && r.change > 0 ? '+' : ''}
                     {n2(r.change)}
