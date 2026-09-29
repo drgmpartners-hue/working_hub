@@ -34,6 +34,13 @@ function BriefingInner() {
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [toolbarEl, setToolbarEl] = useState<HTMLDivElement | null>(null);
+
+  // 탭을 바꾸면 이전 탭의 안내·오류는 지운다(데일리 테스트 발송 문구가 월간에 남지 않게)
+  useEffect(() => {
+    setNotice(null);
+    setError(null);
+  }, [tab]);
 
   const go = (q: Record<string, string>) => router.push(`${pathname}?${new URLSearchParams(q)}`);
 
@@ -112,6 +119,7 @@ function BriefingInner() {
             월간
           </button>
         </div>
+        {tab === 'monthly' && <div ref={setToolbarEl} style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }} />}
         {tab === 'daily' && (
           <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
             <select
@@ -151,7 +159,7 @@ function BriefingInner() {
       {notice && <div style={{ ...mutedText, color: 'var(--success)' }}>{notice}</div>}
 
       {tab === 'monthly' ? (
-        <MonthlyPanel month={month} isAdmin={!!me?.is_admin} onMonth={(m) => go(m ? { month: m } : { tab: 'monthly' })} />
+        <MonthlyPanel month={month} isAdmin={!!me?.is_admin} toolbarEl={toolbarEl} onMonth={(m) => go(m ? { month: m } : { tab: 'monthly' })} />
       ) : loading ? (
         <Spinner />
       ) : b ? (

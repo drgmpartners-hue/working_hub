@@ -2,6 +2,7 @@
 
 /** 브리핑 > 월간 탭 — 월 선택, 상태, 관리자 동작(발송 허용·보류·지금 발송·다시 만들기), 테스트 발송 */
 import { useCallback, useEffect, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { Card } from '@/components/common/Card';
 import { MonthlyBriefingView } from './MonthlyBriefingView';
 import type { MonthlyBriefing, MonthlyListItem } from './types';
@@ -16,7 +17,18 @@ const M_STATUS: Record<string, { label: string; cls: string }> = {
   failed: { label: '발송 실패', cls: 'neg' },
 };
 
-export function MonthlyPanel({ month, isAdmin, onMonth }: { month: string; isAdmin: boolean; onMonth: (m: string) => void }) {
+/** toolbarEl: 브리핑 화면 맨 위 줄(데일리·월간 버튼 오른쪽) — 데일리와 같은 자리에 월 선택·버튼을 놓는다 */
+export function MonthlyPanel({
+  month,
+  isAdmin,
+  onMonth,
+  toolbarEl,
+}: {
+  month: string;
+  isAdmin: boolean;
+  onMonth: (m: string) => void;
+  toolbarEl?: HTMLElement | null;
+}) {
   const [mb, setMb] = useState<MonthlyBriefing | null>(null);
   const [list, setList] = useState<MonthlyListItem[]>([]);
   const [loading, setLoading] = useState(true);
@@ -76,9 +88,22 @@ export function MonthlyPanel({ month, isAdmin, onMonth }: { month: string; isAdm
     }, '발송했습니다.');
   };
 
+  const testSend = async () => {
+    if (!mb) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const r = await crPost<{ channel?: string }>(`/briefings/monthly/${mb.id}/test-send`);
+      setNotice(`내 휴대폰으로 테스트 발송했습니다(${r?.channel === 'alimtalk' ? '알림톡' : '문자'}).`);
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const cur = mb ? M_STATUS[mb.status] : null;
-  return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+  const controls = (
       <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
         <select
           aria-label="월간 브리핑 월"
@@ -113,7 +138,7 @@ export function MonthlyPanel({ month, isAdmin, onMonth }: { month: string; isAdm
         )}
         {mb && mb.status !== 'generating' && (
           <button type="button" className="wh-btn wh-btn-ghost wh-btn-sm" disabled={busy}
-            onClick={() => void act(() => crPost(`/briefings/monthly/${mb.id}/test-send`), '내 휴대폰으로 테스트 발송했습니다.')}>
+            onClick={() => void testSend()}>
             나에게 테스트 발송
           </button>
         )}
@@ -123,6 +148,11 @@ export function MonthlyPanel({ month, isAdmin, onMonth }: { month: string; isAdm
           </button>
         )}
       </div>
+  );
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+      {toolbarEl ? createPortal(controls, toolbarEl) : controls}
 
       <ErrorBox message={error} />
       {notice && <div style={{ ...mutedText, color: 'var(--success)' }}>{notice}</div>}
