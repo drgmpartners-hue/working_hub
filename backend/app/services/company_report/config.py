@@ -47,6 +47,7 @@ async def review_until(db: AsyncSession) -> Optional[date]:
 
 
 async def approval_required(db: AsyncSession, today: date) -> bool:
-    """승인 모드 여부. 종료일이 없거나 오늘이 종료일 이하이면 승인 필요(시작 전 안전 기본값)."""
+    """승인 모드 여부. 기본은 승인 없이 자동 발송(2026-09-29 결정).
+    관리자가 [승인 기간 다시 시작]으로 종료일을 정했을 때만 그날까지 승인 후 발송."""
     until = await review_until(db)
-    return until is None or today <= until
+    return until is not None and today <= until

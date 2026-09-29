@@ -1001,9 +1001,7 @@ async def put_settings(body: SettingsBody, current_user=Depends(get_current_user
     today = today_kst()
     if body.enabled is not None:
         await settings_store.set_value(db, crcfg.BRIEFING_ENABLED, "1" if body.enabled else "0")
-        # 처음 켤 때 승인 기간(평일 7일) 시작
-        if body.enabled and not await crcfg.review_until(db):
-            await settings_store.set_value(db, crcfg.REVIEW_UNTIL, _add_business_days(today, crcfg.APPROVAL_DAYS).isoformat())
+        # 켜면 바로 자동 발송(승인 기간 없음). 필요하면 [승인 기간 다시 시작]으로만 승인 모드
     if body.monthly_enabled is not None:
         await settings_store.set_value(db, crcfg.MONTHLY_ENABLED, "1" if body.monthly_enabled else "0")
     if body.restart_approval:

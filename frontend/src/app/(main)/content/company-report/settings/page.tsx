@@ -164,24 +164,27 @@ export default function SettingsPage() {
             )}
           </div>
           <div>
-            <div style={mutedText}>승인 모드</div>
-            {s.review_until ? (
-              s.approval_required_today ? (
+            <div style={mutedText}>발송 방식</div>
+            {s.approval_required_today ? (
+              <>
                 <span>
                   {s.review_until}까지 승인 후 발송 <strong style={{ color: 'var(--warning)' }}>(남은 {s.approval_days_left}일)</strong>
                 </span>
-              ) : (
-                <span>자동 발송 중 ({s.review_until} 승인 기간 종료)</span>
-              )
+                {admin && (
+                  <div style={{ marginTop: 6 }}>
+                    <button
+                      type="button"
+                      className="wh-btn wh-btn-ghost wh-btn-sm"
+                      disabled={busy}
+                      onClick={() => void save({ review_until: new Date(Date.now() - 86400000).toISOString().slice(0, 10) }, '승인 없이 자동 발송으로 바꿨습니다.')}
+                    >
+                      승인 없이 자동 발송으로
+                    </button>
+                  </div>
+                )}
+              </>
             ) : (
-              <span>발송을 켜면 평일 7일간 승인 모드로 시작</span>
-            )}
-            {admin && s.review_until && (
-              <div style={{ marginTop: 6 }}>
-                <button type="button" className="wh-btn wh-btn-ghost wh-btn-sm" disabled={busy} onClick={() => void save({ restart_approval: true }, '승인 기간을 오늘부터 다시 시작했습니다.')}>
-                  승인 기간 다시 시작
-                </button>
-              </div>
+              <span>승인 없이 평일 08:30 자동 발송</span>
             )}
           </div>
           <div>
