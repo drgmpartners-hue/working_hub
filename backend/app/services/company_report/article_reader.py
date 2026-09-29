@@ -130,7 +130,31 @@ def extract(html: bytes | str, url: str = "") -> dict:
     return {"title": title, "paragraphs": out, "chars": total}
 
 
-async def _fetch(client: httpx.AsyncClient, url: str) -> tuple[bytes, str]:
+FRAME_HOSTS = ("working-hub.vercel.app", "localhost:3000", "127.0.0.1:3000")
+
+
+def frame_allowed(headers: dict, final_url: str) -> bool:
+    """원문 페이지를 우리 화면 안(iframe)에 띄울 수 있는지(순수 함수).
+    - https가 아니면 불가(브라우저가 섞인 콘텐츠를 막음)
+    - X-Frame-Options: DENY/SAMEORIGIN 이면 불가
+    - CSP frame-ancestors가 있고 * 나 우리 주소가 없으면 불가"""
+    if urlparse(final_url or "").scheme != "https":
+        return False
+    h = {k.lower(): v for k, v in (headers or {}).items()}
+    xfo = (h.get("x-frame-options") or "").strip().lower()
+    if xfo.startswith("deny") or xfo.startswith("sameorigin"):
+        return False
+    csp = h.get("content-security-policy") or ""
+    m = re.search(r"frame-ancestors([^;]*)", csp, re.I)
+    if m:
+        vals = m.group(1).split()
+        if "*" not in vals and not any(any(host in v for host in FRAME_HOSTS) for v in vals) and not any(
+                v in ("https:", "https://*") for v in vals):
+            return False
+    return True
+
+
+async def _fetch(client: httpx.AsyncClient, url: str) -> tuple[bytes, str, dict]:
     async with client.stream("GET", url, headers=HEADERS) as res:
         res.raise_for_status()
         ctype = res.headers.get("content-type", "")
@@ -141,11 +165,11 @@ async def _fetch(client: httpx.AsyncClient, url: str) -> tuple[bytes, str]:
             buf.extend(chunk)
             if len(buf) > MAX_BYTES:
                 break
-        return bytes(buf), str(res.url)
+        return bytes(buf), str(res.url), dict(res.headers)
 
 
 async def read(url: str) -> dict:
-    """{ok, url(최종 주소), title, paragraphs, error}"""
+    """{ok, url(최종 주소), frame_ok(화면 안에 원문을 띄울 수 있는지), title, paragraphs, error}"""
     url = (url or "").strip()
     cached = _cache_get(url)
     if cached:
@@ -159,12 +183,13 @@ async def read(url: str) -> dict:
             target = url
             if google_article_id(url):
                 target = await resolve_google(client, url) or url
-            html, final = await _fetch(client, target)
+            html, final, headers = await _fetch(client, target)
+        frame_ok = frame_allowed(headers, final)
         data = await asyncio.to_thread(extract, html, final)
         if data["chars"] < MIN_CHARS:
-            result = {"ok": False, "url": final, "error": "이 사이트는 본문을 자동으로 읽을 수 없습니다."}
+            result = {"ok": False, "url": final, "frame_ok": frame_ok, "error": "이 사이트는 본문을 자동으로 읽을 수 없습니다."}
         else:
-            result = {"ok": True, "url": final, **data}
+            result = {"ok": True, "url": final, "frame_ok": frame_ok, **data}
     except httpx.TimeoutException:
         result = {"ok": False, "url": url, "error": "기사 사이트가 응답하지 않습니다."}
     except httpx.HTTPStatusError as e:

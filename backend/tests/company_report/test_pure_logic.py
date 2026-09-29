@@ -240,3 +240,15 @@ def test_article_reader_extract_and_google():
     assert ar.google_article_id("https://www.edaily.co.kr/news/1") is None
     raw = ')]}\'\n\n[["wrb.fr","Fbv4je","[\\"garturlres\\",\\"https://www.edaily.co.kr/news/1\\",1]",null,null,null,"generic"]]'
     assert ar._parse_batchexecute(raw) == "https://www.edaily.co.kr/news/1"
+
+
+def test_article_frame_allowed():
+    from app.services.company_report.article_reader import frame_allowed
+
+    assert frame_allowed({}, "https://www.mediapen.com/news/1")
+    assert not frame_allowed({}, "http://www.mediapen.com/news/1")
+    assert not frame_allowed({"X-Frame-Options": "SAMEORIGIN"}, "https://a.com/1")
+    assert not frame_allowed({"x-frame-options": "DENY"}, "https://a.com/1")
+    assert not frame_allowed({"Content-Security-Policy": "default-src 'self'; frame-ancestors 'self'"}, "https://a.com/1")
+    assert frame_allowed({"Content-Security-Policy": "frame-ancestors *"}, "https://a.com/1")
+    assert frame_allowed({"Content-Security-Policy": "script-src 'self'"}, "https://a.com/1")
