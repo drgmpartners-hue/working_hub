@@ -150,7 +150,7 @@ async def _run(monkeypatch):
 
     # ---- 사용자
     async with AsyncSessionLocal() as db:
-        for t in ["company_file_downloads", "company_files", "company_public_data", "search_index", "company_facts", "company_funding_rounds", "company_period_summaries", "ai_review_logs",
+        for t in ["monthly_briefings", "company_monthly_digests", "company_file_downloads", "company_files", "company_public_data", "search_index", "company_facts", "company_funding_rounds", "company_period_summaries", "ai_review_logs",
                   "briefing_send_logs", "briefing_recipients", "news_briefings", "news_articles", "company_keywords",
                   "backfill_jobs", "portfolio_companies"]:
             await db.execute(text(f"DELETE FROM {t}"))

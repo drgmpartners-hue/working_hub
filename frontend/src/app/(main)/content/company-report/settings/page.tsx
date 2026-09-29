@@ -16,6 +16,7 @@ interface Settings {
   regions: string[];
   storage: { bytes: number; files: number; persistent: boolean };
   enabled: boolean;
+  monthly_enabled?: boolean;
   review_until: string | null;
   approval_required_today: boolean;
   approval_days_left: number | null;
@@ -143,6 +144,24 @@ export default function SettingsPage() {
           <div>
             <div style={mutedText}>상태</div>
             <span className={`wh-badge ${s.enabled ? 'pos' : 'neg'}`}>{s.enabled ? '켜짐 · 평일 08:30' : '꺼짐'}</span>
+          </div>
+          <div>
+            <div style={mutedText}>월간 브리핑</div>
+            <span className={`wh-badge ${s.enabled && s.monthly_enabled !== false ? 'pos' : 'neg'}`}>
+              {s.monthly_enabled === false ? '꺼짐' : s.enabled ? '켜짐 · 매월 1일(휴일이면 다음 영업일)' : '데일리 발송이 꺼져 있어 보내지 않음'}
+            </span>
+            {admin && (
+              <div style={{ marginTop: 6 }}>
+                <button
+                  type="button"
+                  className="wh-btn wh-btn-ghost wh-btn-sm"
+                  disabled={busy}
+                  onClick={() => void save({ monthly_enabled: s.monthly_enabled === false }, s.monthly_enabled === false ? '월간 발송을 켰습니다.' : '월간 발송을 껐습니다.')}
+                >
+                  {s.monthly_enabled === false ? '월간 켜기' : '월간 끄기'}
+                </button>
+              </div>
+            )}
           </div>
           <div>
             <div style={mutedText}>승인 모드</div>

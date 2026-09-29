@@ -172,3 +172,42 @@ class SearchIndex(Base):
     url_path: Mapped[Optional[str]] = mapped_column(String(300))
     is_latest: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     updated_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now(), onupdate=func.now(), nullable=False)
+
+
+class CompanyMonthlyDigest(Base):
+    """기업별 월간 요약(P3). 월간 브리핑의 기업별 정리이자 반기 보고서의 재료."""
+
+    __tablename__ = "company_monthly_digests"
+    __table_args__ = (UniqueConstraint("company_id", "month", name="uq_monthly_digest_company_month"),)
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    company_id: Mapped[str] = _company_fk()
+    month: Mapped[str] = mapped_column(String(7), nullable=False, index=True)  # YYYY-MM
+    summary: Mapped[Optional[str]] = mapped_column(Text)  # 검토를 통과한 핵심 요약(2~3문장)
+    content: Mapped[Optional[dict]] = mapped_column(JSONB)  # facts·meaning·client_explain·qa·caution·checkpoints
+    key_fact_ids: Mapped[Optional[list]] = mapped_column(JSONB)
+    article_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    positive_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    caution_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    model: Mapped[Optional[str]] = mapped_column(String(80))
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now(), nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now(), onupdate=func.now(), nullable=False)
+
+
+class MonthlyBriefing(Base):
+    """월간 브리핑 1건(월별). status: generating/ready/held/sent/failed"""
+
+    __tablename__ = "monthly_briefings"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    month: Mapped[str] = mapped_column(String(7), unique=True, nullable=False)  # YYYY-MM
+    status: Mapped[str] = mapped_column(String(12), default="generating", nullable=False)
+    content: Mapped[Optional[dict]] = mapped_column(JSONB)  # summary·companies·cautions·checkpoints·sources
+    stats: Mapped[Optional[dict]] = mapped_column(JSONB)    # 포트폴리오 동향(기업별 건수·전월 대비)·커버리지 점검
+    review_summary: Mapped[Optional[dict]] = mapped_column(JSONB)
+    hold_reason: Mapped[Optional[str]] = mapped_column(Text)
+    approved_by: Mapped[Optional[str]] = mapped_column(String(36))
+    approved_at: Mapped[Optional[datetime]] = mapped_column(DateTime)
+    sent_at: Mapped[Optional[datetime]] = mapped_column(DateTime)
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now(), nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now(), onupdate=func.now(), nullable=False)

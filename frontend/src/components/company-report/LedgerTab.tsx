@@ -5,6 +5,7 @@ import { ReactNode, useCallback, useEffect, useMemo, useState } from 'react';
 import { Card } from '@/components/common/Card';
 import { Modal } from '@/components/common/Modal';
 import { crGet, crPatch, crPost } from '@/lib/companyReportApi';
+import { MonthlyDigestsCard } from './MonthlyDigestsCard';
 import type { Fact, FundingRound, SourceRef } from './types';
 import { FACT_STATUS, fmtEok } from './types';
 import { ErrorBox, Field, SectionTitle, Spinner, inputStyle, mutedText } from './ui';
@@ -370,6 +371,8 @@ export function LedgerTab({ companyId, top }: { companyId: string; top?: ReactNo
           </ul>
         )}
       </Card>
+
+      <MonthlyDigestsCard companyId={companyId} />
 
       <Modal open={!!factForm} onClose={() => setFactForm(null)} title={factForm?.id ? '사실 수정(새 판으로 저장)' : '사실 추가'}>
         {factForm && (

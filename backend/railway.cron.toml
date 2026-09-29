@@ -2,7 +2,8 @@
 # Railway 서비스 Settings > Config-as-code 경로에 /backend/railway.cron.toml 지정.
 # 시작 명령과 Cron Schedule은 서비스별로 Railway 화면에서 입력한다.
 #   briefing-build: python scripts/run_news_briefing.py daily-build   / 0 22 * * 0-4
-#   briefing-send : python scripts/run_news_briefing.py send          / 30 23 * * 0-4
+#   briefing-send : python scripts/run_news_briefing.py send          / 30 23 * * 0-4   (월간도 함께 발송)
+#   briefing-monthly: python scripts/run_news_briefing.py monthly     / 0 18 * * *      (매일 03:00 KST, 1일에만 실행)
 [build]
 builder = "DOCKERFILE"
 dockerfilePath = "Dockerfile"

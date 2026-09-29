@@ -1,11 +1,11 @@
 'use client';
 
-/** 브리핑 — 데일리(날짜별)·월간 탭. 알림톡 버튼이 여는 화면: ?date=YYYY-MM-DD */
+/** 브리핑 — 데일리(날짜별)·월간 탭. 알림톡 버튼이 여는 화면: ?date=YYYY-MM-DD / ?month=YYYY-MM */
 import { Suspense, useCallback, useEffect, useState } from 'react';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { Card } from '@/components/common/Card';
-import { ComingSoon } from '@/components/company-report/ComingSoon';
 import { DailyBriefingView } from '@/components/company-report/DailyBriefingView';
+import { MonthlyPanel } from '@/components/company-report/MonthlyPanel';
 import type { BriefingListItem, DailyBriefing } from '@/components/company-report/types';
 import { ErrorBox, Spinner, inputStyle, mutedText } from '@/components/company-report/ui';
 import { ApiError, crGet, crPost } from '@/lib/companyReportApi';
@@ -26,6 +26,7 @@ function BriefingInner() {
   const me = useCrMe();
   const tab = params.get('month') ? 'monthly' : params.get('tab') === 'monthly' ? 'monthly' : 'daily';
   const date = params.get('date') || '';
+  const month = params.get('month') || '';
 
   const [b, setB] = useState<DailyBriefing | null>(null);
   const [list, setList] = useState<BriefingListItem[]>([]);
@@ -150,7 +151,7 @@ function BriefingInner() {
       {notice && <div style={{ ...mutedText, color: 'var(--success)' }}>{notice}</div>}
 
       {tab === 'monthly' ? (
-        <ComingSoon title="월간 브리핑" phase="P3" desc="매월 1일(휴일이면 다음 영업일) 데일리와 함께 발송되는 월간 브리핑이 여기에 표시됩니다." />
+        <MonthlyPanel month={month} isAdmin={!!me?.is_admin} onMonth={(m) => go(m ? { month: m } : { tab: 'monthly' })} />
       ) : loading ? (
         <Spinner />
       ) : b ? (

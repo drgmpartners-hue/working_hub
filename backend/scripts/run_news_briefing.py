@@ -9,7 +9,9 @@
   reindex-check                                              검색 색인 누락 점검(매일 04:00 KST, cron: 0 19 * * *)
   reindex                                                    검색 색인 전체 재구축
   public-data [--force]                                      공공데이터 스냅샷(국민연금·국세청·KIPRIS·KIS)
-월간(monthly)·반기(half-year)·재색인(reindex)은 P3~P5에서 추가한다.
+  monthly     [--month YYYY-MM] [--force]                    매일 03:00 KST, 1일에만 지난 달 월간 브리핑 작성(cron: 0 18 * * *)
+  send-monthly [--date YYYY-MM-DD]                           월간 발송만(보통은 send가 함께 보냄)
+반기(half-year)는 P4에서 추가한다.
 """
 import argparse
 import asyncio
@@ -37,11 +39,12 @@ def _print(title: str, obj) -> None:
 
 async def main() -> int:
     p = argparse.ArgumentParser()
-    p.add_argument("cmd", choices=["daily-build", "send", "collect", "summarize", "facts", "reindex-check", "reindex", "public-data"])
+    p.add_argument("cmd", choices=["daily-build", "send", "collect", "summarize", "facts", "reindex-check", "reindex", "public-data", "monthly", "send-monthly"])
     p.add_argument("--date")
     p.add_argument("--no-collect", action="store_true")
     p.add_argument("--force", action="store_true")
     p.add_argument("--limit", type=int, default=400)
+    p.add_argument("--month")
     a = p.parse_args()
     day = date.fromisoformat(a.date) if a.date else None
 
@@ -57,7 +60,17 @@ async def main() -> int:
             await mark_files_dirty(db)
         elif a.cmd == "send":
             _print("send", await sender.send_daily(db, day))
+            try:  # 지난 달 월간 브리핑이 준비돼 있으면 함께(1일이 휴일이면 다음 영업일)
+                _print("send-monthly", await sender.send_monthly(db, day))
+            except Exception as e:
+                print(f"[send-monthly] 실패: {e}", flush=True)
             await mark_files_dirty(db)
+        elif a.cmd == "send-monthly":
+            _print("send-monthly", await sender.send_monthly(db, day))
+        elif a.cmd == "monthly":
+            from app.services.company_report import monthly
+
+            _print("monthly", await monthly.build_monthly(db, a.month, force=a.force or bool(a.month)))
         elif a.cmd == "collect":
             _print("collect", await collector.collect_all(db, via="manual"))
             _print("summarize", await summarizer.summarize_pending(db, limit=a.limit))

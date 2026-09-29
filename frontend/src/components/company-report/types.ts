@@ -242,3 +242,100 @@ export const FOLDER_LABELS: Record<string, string> = {
 
 export const fmtSize = (n: number) =>
   n >= 1048576 ? `${(n / 1048576).toFixed(1)}MB` : n >= 1024 ? `${Math.round(n / 1024)}KB` : `${n}B`;
+
+// ---------------------------------------------------------------- 월간 브리핑(P3)
+export interface MSentence {
+  text: string;
+  source_ids: string[];
+}
+
+export interface MSource {
+  type: 'article' | 'fact' | 'funding';
+  id: string;
+  company_id: string;
+  title: string;
+  url?: string;
+  date?: string;
+  press?: string;
+  tag?: string;
+}
+
+export interface MCaution {
+  what: MSentence;
+  impact?: MSentence;
+  check?: MSentence;
+}
+
+export interface MCompanySection {
+  company_id: string;
+  name: string;
+  article_count: number;
+  caution_count: number;
+  summary: MSentence[];
+  facts: (MSentence & { date?: string })[];
+  meaning: MSentence | null;
+  client_explain: MSentence | null;
+  qa: { q: string; a: string; source_ids: string[] }[];
+  caution: MCaution | null;
+  checkpoints: (MSentence & { when?: string })[];
+}
+
+export interface MStatRow {
+  company_id: string;
+  name: string;
+  total: number;
+  positive: number;
+  neutral: number;
+  caution: number;
+  prev_total: number;
+  change: number;
+  avg3: number;
+}
+
+export interface MonthlyBriefing {
+  id: string;
+  month: string;
+  status: 'generating' | 'ready' | 'held' | 'sent' | 'failed';
+  content: {
+    summary?: MSentence[];
+    highlights?: (MSentence & { company_id: string; name: string })[];
+    companies?: MCompanySection[];
+    cautions?: (MCaution & { company_id: string; name: string })[];
+    checkpoints?: (MSentence & { company_id: string; name: string; when?: string })[];
+    sources?: Record<string, MSource>;
+  };
+  stats: {
+    month?: string;
+    prev_month?: string;
+    company_total?: number;
+    company_with_news?: number;
+    article_count?: number;
+    positive_count?: number;
+    caution_count?: number;
+    prev_article_count?: number;
+    companies?: MStatRow[];
+    coverage_alerts?: { company_id: string; name: string; total: number; avg3: number; note: string }[];
+  };
+  review_summary: { total?: number; removed?: number; removed_ratio?: number; review_ok?: boolean; ai_errors?: string[] };
+  hold_reason: string | null;
+  approved_at: string | null;
+  sent_at: string | null;
+  updated_at: string | null;
+}
+
+export interface MonthlyListItem {
+  id: string;
+  month: string;
+  status: MonthlyBriefing['status'];
+  article_count: number;
+  caution_count: number;
+}
+
+export interface MonthlyDigest {
+  month: string;
+  summary: string | null;
+  content: Omit<MCompanySection, 'company_id' | 'name' | 'article_count' | 'caution_count'> | null;
+  article_count: number;
+  positive_count: number;
+  caution_count: number;
+}

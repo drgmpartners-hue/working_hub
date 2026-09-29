@@ -589,6 +589,146 @@ async def approve_daily(briefing_id: str, current_user=Depends(get_current_user)
     return _briefing_out(b)
 
 
+# --------------------------------------------------------------------------- 월간 브리핑(P3)
+
+MONTH_PATTERN = r"^\d{4}-(0[1-9]|1[0-2])$"
+
+
+def _monthly_out(mb) -> dict:
+    return {
+        "id": mb.id, "month": mb.month, "status": mb.status, "content": mb.content or {}, "stats": mb.stats or {},
+        "review_summary": mb.review_summary or {}, "hold_reason": mb.hold_reason,
+        "approved_by": mb.approved_by, "approved_at": mb.approved_at.isoformat() if mb.approved_at else None,
+        "sent_at": mb.sent_at.isoformat() if mb.sent_at else None,
+        "created_at": mb.created_at.isoformat() if mb.created_at else None,
+        "updated_at": mb.updated_at.isoformat() if mb.updated_at else None,
+    }
+
+
+async def _get_monthly(db: AsyncSession, monthly_id: str):
+    from app.models.company_report import MonthlyBriefing
+
+    mb = await db.get(MonthlyBriefing, monthly_id)
+    if not mb:
+        raise HTTPException(404, "월간 브리핑이 없습니다.")
+    return mb
+
+
+@router.get("/briefings/monthly")
+async def get_monthly_briefing(month: Optional[str] = Query(None, pattern=MONTH_PATTERN), current_user=Depends(get_current_user),
+                               db: AsyncSession = Depends(get_db)):
+    """해당 월 월간 브리핑. 월이 없으면 가장 최근 것."""
+    from app.models.company_report import MonthlyBriefing
+
+    stmt = select(MonthlyBriefing)
+    stmt = stmt.where(MonthlyBriefing.month == month) if month else stmt.order_by(MonthlyBriefing.month.desc()).limit(1)
+    mb = (await db.execute(stmt)).scalars().first()
+    if not mb:
+        raise HTTPException(404, "월간 브리핑이 없습니다.")
+    return _monthly_out(mb)
+
+
+@router.get("/briefings/monthly/list")
+async def list_monthly_briefings(limit: int = Query(24, ge=1, le=60), current_user=Depends(get_current_user),
+                                 db: AsyncSession = Depends(get_db)):
+    from app.models.company_report import MonthlyBriefing
+
+    rows = (await db.execute(select(MonthlyBriefing).order_by(MonthlyBriefing.month.desc()).limit(limit))).scalars().all()
+    return [{"id": m.id, "month": m.month, "status": m.status, "article_count": (m.stats or {}).get("article_count", 0),
+             "caution_count": (m.stats or {}).get("caution_count", 0)} for m in rows]
+
+
+class MonthlyBuildRequest(BaseModel):
+    month: Optional[str] = Field(None, pattern=MONTH_PATTERN)
+
+
+@router.post("/briefings/monthly/build")
+async def build_monthly_now(body: MonthlyBuildRequest, background: BackgroundTasks, current_user=Depends(get_current_user),
+                            db: AsyncSession = Depends(get_db)):
+    """관리자: 월간 브리핑을 지금 (다시) 만든다. 월이 없으면 지난 달. 기업 수에 따라 5~20분 걸린다."""
+    await require_admin(db, current_user)
+    from app.models.company_report import MonthlyBriefing
+    from app.services.company_report import monthly
+
+    month = body.month or monthly.target_month_for(today_kst())
+    mb = (await db.execute(select(MonthlyBriefing).where(MonthlyBriefing.month == month))).scalar_one_or_none()
+    if mb and mb.status == "sent":
+        raise HTTPException(409, "이미 발송된 월간 브리핑은 다시 만들 수 없습니다.")
+    if mb and mb.status == "generating" and mb.updated_at and (now_kst() - mb.updated_at).total_seconds() < 3600:
+        raise HTTPException(409, "지금 만드는 중입니다. 잠시 뒤 새로고침하세요.")
+    background.add_task(_run_build_monthly, month)
+    return {"queued": True, "month": month}
+
+
+async def _run_build_monthly(month: str) -> None:
+    from app.services.company_report import monthly
+
+    async with AsyncSessionLocal() as db:
+        try:
+            await monthly.build_monthly(db, month, force=True)
+        except Exception:
+            logger.exception("수동 월간 작성 실패")
+
+
+class HoldBody(BaseModel):
+    reason: Optional[str] = None
+
+
+@router.post("/briefings/monthly/{monthly_id}/release")
+async def release_monthly(monthly_id: str, current_user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    """관리자: 보류(held)된 월간 브리핑을 확인하고 [발송 허용] → ready."""
+    await require_admin(db, current_user)
+    from app.services.company_report import monthly
+
+    mb = await _get_monthly(db, monthly_id)
+    try:
+        return _monthly_out(await monthly.set_hold(db, mb, False, current_user.id))
+    except ValueError as e:
+        raise HTTPException(409, str(e))
+
+
+@router.post("/briefings/monthly/{monthly_id}/hold")
+async def hold_monthly(monthly_id: str, body: HoldBody, current_user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    await require_admin(db, current_user)
+    from app.services.company_report import monthly
+
+    mb = await _get_monthly(db, monthly_id)
+    try:
+        return _monthly_out(await monthly.set_hold(db, mb, True, current_user.id, body.reason))
+    except ValueError as e:
+        raise HTTPException(409, str(e))
+
+
+@router.post("/briefings/monthly/{monthly_id}/test-send")
+async def test_send_monthly(monthly_id: str, recipient_id: Optional[str] = None, current_user=Depends(get_current_user),
+                            db: AsyncSession = Depends(get_db)):
+    from app.services.company_report import sender
+
+    r = await sender.send_monthly_test(db, monthly_id, current_user, recipient_id)
+    if not r.get("success"):
+        raise HTTPException(400, f"테스트 발송 실패: {r.get('error')}")
+    return r
+
+
+@router.post("/briefings/monthly/{monthly_id}/send-now")
+async def send_monthly_now(monthly_id: str, current_user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    """관리자: 발송 허용(ready)된 월간 브리핑을 지금 수신자 전원에게 보낸다(중복 발송 차단)."""
+    await require_admin(db, current_user)
+    from app.services.company_report import monthly, sender
+
+    mb = await _get_monthly(db, monthly_id)
+    nm = monthly.next_month(mb.month)
+    return await sender.send_monthly(db, date(int(nm[:4]), int(nm[5:7]), 1), ignore_day=True)
+
+
+@router.get("/companies/{company_id}/digests")
+async def company_digests(company_id: str, current_user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    """기업 원장 탭의 월간 요약 목록."""
+    from app.services.company_report import monthly
+
+    return await monthly.digests_for(db, company_id)
+
+
 # --------------------------------------------------------------------------- 발송: 수신자·설정·테스트
 
 def _mask_phone(p: Optional[str]) -> Optional[str]:
@@ -724,6 +864,7 @@ async def put_recipients(body: RecipientsBody, current_user=Depends(get_current_
 
 class SettingsBody(BaseModel):
     enabled: Optional[bool] = None
+    monthly_enabled: Optional[bool] = None
     review_until: Optional[date] = None
     restart_approval: bool = False
     template_daily: Optional[str] = None
@@ -774,6 +915,7 @@ async def _settings_out(db: AsyncSession) -> dict:
         "regions": list(REGIONS),
         "storage": storage.usage(),
         "enabled": await settings_store.get_bool(db, crcfg.BRIEFING_ENABLED, default=False),
+        "monthly_enabled": await settings_store.get_bool(db, crcfg.MONTHLY_ENABLED, default=True),
         "review_until": until.isoformat() if until else None,
         "approval_required_today": await crcfg.approval_required(db, today),
         "approval_days_left": max(0, (until - today).days + 1) if until else None,
@@ -809,6 +951,8 @@ async def put_settings(body: SettingsBody, current_user=Depends(get_current_user
         # 처음 켤 때 승인 기간(평일 7일) 시작
         if body.enabled and not await crcfg.review_until(db):
             await settings_store.set_value(db, crcfg.REVIEW_UNTIL, _add_business_days(today, crcfg.APPROVAL_DAYS).isoformat())
+    if body.monthly_enabled is not None:
+        await settings_store.set_value(db, crcfg.MONTHLY_ENABLED, "1" if body.monthly_enabled else "0")
     if body.restart_approval:
         await settings_store.set_value(db, crcfg.REVIEW_UNTIL, _add_business_days(today, crcfg.APPROVAL_DAYS).isoformat())
     elif body.review_until is not None:

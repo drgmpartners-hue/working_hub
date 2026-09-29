@@ -285,6 +285,15 @@ async def reindex_all(db: AsyncSession) -> dict[str, int]:
     for b in briefings:
         await index_daily(db, b)
     stats["daily"] = len(briefings)
+    from app.models.company_report import MonthlyBriefing
+    from app.services.company_report.monthly import index_monthly
+
+    mbs = (await db.execute(select(MonthlyBriefing).where(MonthlyBriefing.status != "generating"))).scalars().all()
+    for mb in mbs:
+        c = mb.content or {}
+        c["companies"] = [x for x in c.get("companies") or [] if x.get("company_id") in live]
+        await index_monthly(db, mb)
+    stats["monthly"] = len(mbs)
     names = {c.id: c.name for c in companies}
     files = [f for f in (await db.execute(select(CompanyFile).where(CompanyFile.status != "deleted"))).scalars().all()
              if f.company_id is None or f.company_id in live]

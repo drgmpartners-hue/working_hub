@@ -20,6 +20,7 @@ LAST_RUN_AT = "news_briefing_last_run_at"
 TEMPLATE_DAILY = "briefing_template_daily"          # 솔라피 템플릿 B ID(심사 승인 후 입력). 없으면 LMS로 보냄
 TEMPLATE_MONTHLY = "briefing_template_monthly"      # 템플릿 C
 LAST_SEND_AT = "news_briefing_last_send_at"
+MONTHLY_ENABLED = "monthly_briefing_enabled"         # "1"/"0", 기본 켜짐(데일리 발송이 켜져 있을 때만)
 
 WEB_BASE = "https://working-hub.vercel.app"
 APPROVAL_DAYS = 7                                   # 시작 후 승인 필요 영업일 수
