@@ -49,12 +49,13 @@ def market_lines(markets: list[dict]) -> str:
     return "\n".join(x for x in (f"미 {us}" if us else "", f"한 {kr}" if kr else "") if x)
 
 
-# --------------------------------------------------------------------------- 데일리(템플릿 B v2 — 본문에 기사 링크)
-# 카톡에서 바로 읽도록: 요약 문장 끝에 [1][2] 번호, 맨 아래 '■ 기사 원문 링크'에 번호별 짧은 주소.
-# 알림톡은 변수를 채운 뒤 1,000자 이내, LMS 대체 발송은 2,000바이트 이내여야 해서 줄 수를 자동으로 줄인다.
+# --------------------------------------------------------------------------- 데일리(승인된 템플릿 B v1)
+# 카톡 본문은 요약만. [브리핑 보기] 버튼 → 로그인 없는 폰 전용 화면(/m/daily)에서 문장별 [1][2]를 누르면 원문 기사.
+# 버튼 주소의 #{날짜코드} 자리에 날짜 대신 수신자별 열쇠값(mobile_link)을 넣는다.
+# 알림톡은 변수를 채운 뒤 1,000자, 문자(LMS) 대체 발송은 2,000바이트 이내여야 해서 줄 수를 자동으로 줄인다.
 
 TEMPLATE_B = """[사내 업무용 메시지]
-#{담당자명} 담당자님, 오늘의 투자기업 데일리 브리핑입니다.
+#{담당자명} 담당자님, 오늘의 투자기업 데일리 브리핑이 준비되었습니다.
 
 본 메시지는 사내 업무 시스템(Working Hub)에 투자기업 브리핑 수신자로 등록된 임직원께 평일 오전 발송되는 업무 알림입니다.
 
@@ -69,12 +70,11 @@ TEMPLATE_B = """[사내 업무용 메시지]
 ■ 기업별 브리핑
 #{기업별요약}
 
-■ 기사 원문 링크
-#{기사링크}"""
+전체 기사와 원문 링크는 아래 버튼에서 확인해 주세요."""
 
+LMS_TAIL = "전체 기사와 원문 링크는 아래 주소에서 확인해 주세요(로그인 없이 열림).\n"
 MAX_CHARS = 990      # 알림톡 1,000자
 MAX_BYTES = 1990     # LMS 2,000바이트(EUC-KR 기준 한글 2바이트)
-MAX_REFS = 2         # 문장 하나에 붙이는 번호 수
 LINE_CUT = 60        # 기업별 한 줄 길이
 
 
@@ -89,28 +89,10 @@ def _fits(text: str) -> bool:
     return len(text) <= MAX_CHARS and len(text.encode("euc-kr", errors="replace")) <= MAX_BYTES
 
 
-class _Numbers:
-    """본문에 나오는 순서대로 기사 번호를 매긴다(링크가 있는 기사만)."""
-
-    def __init__(self, links: dict[str, str]):
-        self.links, self.order = links, []
-
-    def ref(self, keys: list[str]) -> str:
-        out = []
-        for k in keys:
-            if k not in self.links:
-                continue
-            if k not in self.order:
-                self.order.append(k)
-            n = self.order.index(k) + 1
-            if n not in out:
-                out.append(n)
-            if len(out) >= MAX_REFS:
-                break
-        return "".join(f"[{n}]" for n in out)
-
-    def block(self) -> str:
-        return "\n".join(f"[{i}] {self.links[k]}" for i, k in enumerate(self.order, 1))
+def to_lms(alimtalk_text: str, button_tail: str, page_url: str) -> str:
+    """알림톡 본문의 '아래 버튼…' 줄을 폰 화면 주소로 바꾼 문자(LMS) 본문."""
+    body = alimtalk_text[: -len(button_tail)] if alimtalk_text.endswith(button_tail) else alimtalk_text
+    return body + LMS_TAIL + page_url
 
 
 def _daily_parts(b: NewsBriefing) -> tuple[list[dict], list[dict]]:
@@ -129,28 +111,12 @@ def _daily_parts(b: NewsBriefing) -> tuple[list[dict], list[dict]]:
     return lines, cards
 
 
-def daily_link_candidates(b: NewsBriefing) -> list[tuple[str, str]]:
-    """짧은 주소를 만들 기사 [(url, article_id)] — 종합 문장 출처 + 기업별 대표 기사."""
-    lines, cards = _daily_parts(b)
-    urls = {a["id"]: a.get("url") for c in cards for a in c.get("articles") or [] if a.get("url")}
-    want: list[str] = []
-    for ln in lines:
-        want += ln["article_ids"][:MAX_REFS]
-    for c in cards:
-        top = next((a for a in c.get("articles") or [] if not a.get("more")), None)
-        if top:
-            want.append(top["id"])
-    seen, out = set(), []
-    for aid in want:
-        if aid in urls and aid not in seen:
-            seen.add(aid)
-            out.append((urls[aid], aid))
-    return out
+DAILY_BUTTON_TAIL = "전체 기사와 원문 링크는 아래 버튼에서 확인해 주세요."
 
 
-def template_b_variables(b: NewsBriefing, name: str = "", links: Optional[dict[str, str]] = None) -> dict[str, str]:
-    """links: 기사 id → 짧은 주소. 1,000자에 맞춰 기업·문장 수를 줄인다."""
-    links = links or {}
+def template_b_variables(b: NewsBriefing, name: str = "", token: Optional[str] = None,
+                         extra_len: int = 0) -> dict[str, str]:
+    """token: 버튼 주소의 #{날짜코드}에 넣을 열쇠값(없으면 날짜). extra_len: 문자 발송 때 늘어나는 글자 수."""
     info = b.basic_info or {}
     w = info.get("weather") or {}
     lines, cards = _daily_parts(b)
@@ -164,36 +130,28 @@ def template_b_variables(b: NewsBriefing, name: str = "", links: Optional[dict[s
         "#{기업수}": str(info.get("company_with_news", 0)),
         "#{기사수}": str(b.article_count or 0),
         "#{주의수}": str(b.caution_count or 0),
-        "#{날짜코드}": d.isoformat(),  # v1 템플릿(버튼) 호환
+        "#{날짜코드}": token or d.isoformat(),
     }
 
     def build(n_over: int, n_comp: int, cut_over: int) -> dict[str, str]:
-        nums = _Numbers(links)
-        over = []
-        for ln in lines[:n_over]:
-            r = nums.ref(ln["article_ids"])
-            over.append(f"- {_cut(ln['text'], cut_over)}{(' ' + r) if r else ''}")
-        comp = []
-        for c in cards[:n_comp]:
-            top = next((a for a in c.get("articles") or [] if not a.get("more")), None)
-            r = nums.ref([top["id"]]) if top else ""
-            flag = " [주의]" if c.get("caution_count") else ""
-            comp.append(f"· {c['name']}{flag}: {_cut(c.get('one_liner') or '', LINE_CUT)}{(' ' + r) if r else ''}")
+        over = [f"- {_cut(ln['text'], cut_over)}" for ln in lines[:n_over]]
+        comp = [f"· {c['name']}{' [주의]' if c.get('caution_count') else ''}: {_cut(c.get('one_liner') or '', LINE_CUT)}"
+                for c in cards[:n_comp]]
         if len(cards) > n_comp:
-            comp.append(f"외 {len(cards) - n_comp}개 기업(Working Hub에서 확인)")
-        return {**base,
-                "#{종합브리핑}": "\n".join(over) or "-",
-                "#{기업별요약}": "\n".join(comp) or "새 기사가 없습니다.",
-                "#{기사링크}": nums.block() or "(링크 없음)"}
+            comp.append(f"외 {len(cards) - n_comp}개 기업")
+        return {**base, "#{종합브리핑}": "\n".join(over) or "-", "#{기업별요약}": "\n".join(comp) or "새 기사가 없습니다."}
 
-    n_over, n_comp, cut_over = min(len(lines), 4), min(len(cards), 5), 110
+    def fits(v):
+        return _fits(fill(TEMPLATE_B, v) + "x" * extra_len)
+
+    n_over, n_comp, cut_over = min(len(lines), 5), min(len(cards), 8), 120
     v = build(n_over, n_comp, cut_over)
-    while not _fits(fill(TEMPLATE_B, v)):
-        if n_comp > 3:
+    while not fits(v):
+        if n_comp > 4:
             n_comp -= 1
-        elif cut_over > 60:
+        elif cut_over > 70:
             cut_over -= 10
-        elif n_over > 2:
+        elif n_over > 3:
             n_over -= 1
         elif n_comp > 1:
             n_comp -= 1
@@ -212,18 +170,22 @@ def briefing_url(d: date) -> str:
 INTRO = "본 메시지는 사내 업무 시스템(Working Hub)에 투자기업 브리핑 수신자로 등록된 임직원께 평일 오전 발송되는 업무 알림입니다."
 
 
-def render_text(b: NewsBriefing, name: str = "", links: Optional[dict[str, str]] = None) -> str:
-    """템플릿 B v2와 같은 본문(LMS 대체 발송·미리보기)."""
-    return fill(TEMPLATE_B, template_b_variables(b, name, links))
+def render_text(b: NewsBriefing, name: str = "", token: Optional[str] = None) -> str:
+    """알림톡(템플릿 B v1)과 같은 본문. token이 있으면 문자(LMS)용: 버튼 문구 대신 폰 화면 주소."""
+    from app.services.company_report import mobile_link
+
+    if not token:
+        return fill(TEMPLATE_B, template_b_variables(b, name))
+    url = mobile_link.page_url("d", token)
+    extra = len(LMS_TAIL) + len(url) - len(DAILY_BUTTON_TAIL)
+    return to_lms(fill(TEMPLATE_B, template_b_variables(b, name, token, extra_len=max(0, extra))), DAILY_BUTTON_TAIL, url)
 
 
-async def daily_links(db: AsyncSession, b: NewsBriefing) -> dict[str, str]:
-    """기사 id → 짧은 주소."""
-    from app.services.company_report import shortlink
+def daily_token(b: NewsBriefing, t) -> str:
+    from app.services.company_report import mobile_link
 
-    cands = daily_link_candidates(b)
-    by_url = await shortlink.codes_for(db, cands)
-    return {aid: by_url[u] for u, aid in cands if u in by_url}
+    return mobile_link.make("d", b.briefing_date.isoformat(),
+                            mobile_link.subject_for(getattr(t, "recipient_id", None), getattr(t, "user_id", None)))
 
 
 class Target:
@@ -266,13 +228,17 @@ async def recipients(db: AsyncSession) -> list[Target]:
 
 
 async def _deliver_generic(db: AsyncSession, briefing_id: str, targets: list, briefing_type: str, template_key: str,
-                           subject: str, text_fn, vars_fn) -> dict:
+                           subject: str, template_text: str, lms_fn, vars_fn) -> dict:
+    """템플릿 ID가 있으면 알림톡(본문 = 승인된 템플릿에 변수를 채운 것, 실패 시 같은 내용 문자로 대체),
+    없으면 문자(LMS) — 문자는 버튼이 없으니 본문 끝에 폰 화면 주소를 넣는다."""
     template_id = await settings_store.get(db, template_key)
-    # 수신자마다 #{담당자명}이 달라서 본문·변수를 한 명씩 만든다
-    msgs = [{
-        "to": t.phone, "text": text_fn(t.name), "subject": subject,
-        **({"template_id": template_id, "variables": vars_fn(t.name)} if template_id else {}),
-    } for t in targets]
+    msgs = []
+    for t in targets:  # 수신자마다 이름·열쇠값(폰 화면 링크)이 다르다
+        if template_id:
+            v = vars_fn(t)
+            msgs.append({"to": t.phone, "text": fill(template_text, v), "subject": subject, "template_id": template_id, "variables": v})
+        else:
+            msgs.append({"to": t.phone, "text": lms_fn(t), "subject": subject})
     res = await solapi_service.send_many_alimtalk(db, msgs)
     ok = bool(res.get("success"))
     channel = "alimtalk" if template_id else "lms"
@@ -287,10 +253,9 @@ async def _deliver_generic(db: AsyncSession, briefing_id: str, targets: list, br
 
 
 async def _deliver(db: AsyncSession, b: NewsBriefing, targets: list, briefing_type: str) -> dict:
-    links = await daily_links(db, b)
     return await _deliver_generic(
-        db, b.id, targets, briefing_type, config.TEMPLATE_DAILY, "[사내] 투자기업 데일리 브리핑",
-        lambda name: render_text(b, name, links), lambda name: template_b_variables(b, name, links),
+        db, b.id, targets, briefing_type, config.TEMPLATE_DAILY, "[사내] 투자기업 데일리 브리핑", TEMPLATE_B,
+        lambda t: render_text(b, t.name, daily_token(b, t)), lambda t: template_b_variables(b, t.name, daily_token(b, t)),
     )
 
 
@@ -345,13 +310,8 @@ async def send_test(db: AsyncSession, briefing_id: str, user: User, recipient_id
 
 MONTHLY_INTRO = "본 메시지는 사내 업무 시스템(Working Hub)에 투자기업 브리핑 수신자로 등록된 임직원께 매월 초 발송되는 업무 알림입니다."
 
-
-def monthly_url(month: str) -> str:
-    return f"{config.WEB_BASE}/content/company-report/briefing?month={month}"
-
-
 TEMPLATE_C = """[사내 업무용 메시지]
-#{담당자명} 담당자님, #{월} 투자기업 월간 브리핑입니다.
+#{담당자명} 담당자님, #{월} 투자기업 월간 브리핑이 준비되었습니다.
 
 본 메시지는 사내 업무 시스템(Working Hub)에 투자기업 브리핑 수신자로 등록된 임직원께 매월 초 발송되는 업무 알림입니다.
 
@@ -367,69 +327,38 @@ TEMPLATE_C = """[사내 업무용 메시지]
 ■ 다음 달 체크포인트
 #{체크포인트}
 
-■ 기사 원문 링크
-#{기사링크}"""
+기업별 정리와 고객 상담 참고 사항은 아래 버튼에서 확인해 주세요."""
+MONTHLY_BUTTON_TAIL = "기업별 정리와 고객 상담 참고 사항은 아래 버튼에서 확인해 주세요."
 
 
-def monthly_link_candidates(mb, fact_urls: Optional[dict[str, str]] = None) -> list[tuple[str, str]]:
-    """출처 id(A#/F#) 중 링크가 되는 것 [(url, 출처 id)]. 사실(F#)은 근거 기사 주소를 쓴다."""
-    c = mb.content or {}
-    src = c.get("sources") or {}
-    fact_urls = fact_urls or {}
-    ids: list[str] = []
-    for x in (c.get("summary") or []) + (c.get("highlights") or []):
-        ids += (x.get("source_ids") or [])[:MAX_REFS]
-    for x in c.get("cautions") or []:
-        ids += ((x.get("what") or {}).get("source_ids") or [])[:MAX_REFS]
-    for x in c.get("checkpoints") or []:
-        ids += (x.get("source_ids") or [])[:1]
-    out, seen = [], set()
-    for sid in ids:
-        if sid in seen or sid not in src:
-            continue
-        seen.add(sid)
-        info = src[sid]
-        url = info.get("url") if info.get("type") == "article" else fact_urls.get(info.get("id", ""))
-        if url:
-            out.append((url, sid))
-    return out
+def monthly_url(month: str) -> str:
+    return f"{config.WEB_BASE}/content/company-report/briefing?month={month}"
 
 
-def template_c_variables(mb, name: str = "", links: Optional[dict[str, str]] = None) -> dict[str, str]:
-    """links: 출처 id → 짧은 주소. 1,000자에 맞춰 줄 수를 줄인다."""
-    links = links or {}
+def template_c_variables(mb, name: str = "", token: Optional[str] = None, extra_len: int = 0) -> dict[str, str]:
     c = mb.content or {}
     m = mb.month
     st = mb.stats or {}
-    base = {"#{담당자명}": (name or "").strip() or "사내", "#{월}": f"{int(m[5:7])}월", "#{월코드}": m}
+    base = {"#{담당자명}": (name or "").strip() or "사내", "#{월}": f"{int(m[5:7])}월", "#{월코드}": token or m}
 
     def when_txt(x):
         w = x.get("when") or ""
         return f"{int(w[5:7])}월 " if len(w) == 7 and w[4] == "-" else ""
 
     def build(n: int, cut: int) -> dict[str, str]:
-        nums = _Numbers(links)
-
-        def line(prefix: str, text: str, ids: list[str]) -> str:
-            r = nums.ref(ids or [])
-            return f"{prefix}{_cut(text, cut)}{(' ' + r) if r else ''}"
-
-        summ = [line("- ", x["text"], x.get("source_ids")) for x in (c.get("summary") or [])[:n + 1]]
-        hi = [line(f"· {x.get('name') or ''}: ", x["text"], x.get("source_ids")) for x in (c.get("highlights") or [])[:n]]
-        cau = [line(f"· {x['name']}: ", (x.get("what") or {}).get("text", ""), (x.get("what") or {}).get("source_ids"))
-               for x in (c.get("cautions") or [])[:n]]
-        cps = [line(f"· {when_txt(x)}{x['name']}: ", x["text"], (x.get("source_ids") or [])[:1])
-               for x in (c.get("checkpoints") or [])[:n]]
+        summ = [f"- {_cut(x['text'], cut)}" for x in (c.get("summary") or [])[:n + 1]]
+        hi = [f"· {x.get('name') or ''}: {_cut(x['text'], cut)}" for x in (c.get("highlights") or [])[:n]]
+        cau = [f"· {x['name']}: {_cut((x.get('what') or {}).get('text', ''), cut)}" for x in (c.get("cautions") or [])[:n]]
+        cps = [f"· {when_txt(x)}{x['name']}: {_cut(x['text'], cut)}" for x in (c.get("checkpoints") or [])[:n]]
         return {**base,
                 "#{월간요약}": "\n".join(summ) or f"- 기사 {st.get('article_count', 0)}건, 주의 {st.get('caution_count', 0)}건",
                 "#{주목기업}": "\n".join(hi) or "없음",
                 "#{주의기업}": "\n".join(cau) or "없음",
-                "#{체크포인트}": "\n".join(cps) or "없음",
-                "#{기사링크}": nums.block() or "(링크 없음)"}
+                "#{체크포인트}": "\n".join(cps) or "없음"}
 
-    n, cut = 4, 90
+    n, cut = 5, 100
     v = build(n, cut)
-    while not _fits(fill(TEMPLATE_C, v)):
+    while not _fits(fill(TEMPLATE_C, v) + "x" * extra_len):
         if cut > 60:
             cut -= 10
         elif n > 1:
@@ -440,37 +369,27 @@ def template_c_variables(mb, name: str = "", links: Optional[dict[str, str]] = N
     return v
 
 
-def monthly_url(month: str) -> str:
-    return f"{config.WEB_BASE}/content/company-report/briefing?month={month}"
+def render_monthly_text(mb, name: str = "", token: Optional[str] = None) -> str:
+    from app.services.company_report import mobile_link
+
+    if not token:
+        return fill(TEMPLATE_C, template_c_variables(mb, name))
+    url = mobile_link.page_url("m", token)
+    extra = len(LMS_TAIL) + len(url) - len(MONTHLY_BUTTON_TAIL)
+    return to_lms(fill(TEMPLATE_C, template_c_variables(mb, name, token, extra_len=max(0, extra))), MONTHLY_BUTTON_TAIL, url)
 
 
-def render_monthly_text(mb, name: str = "", links: Optional[dict[str, str]] = None) -> str:
-    return fill(TEMPLATE_C, template_c_variables(mb, name, links))
+def monthly_token(mb, t) -> str:
+    from app.services.company_report import mobile_link
 
-
-async def monthly_links(db: AsyncSession, mb) -> dict[str, str]:
-    """출처 id → 짧은 주소. 사실(F#)은 원장 사실의 근거 기사 주소로."""
-    from app.models.company_report import CompanyFact
-    from app.services.company_report import shortlink
-
-    src = (mb.content or {}).get("sources") or {}
-    fact_ids = [v["id"] for v in src.values() if v.get("type") == "fact" and v.get("id")]
-    fact_urls: dict[str, str] = {}
-    if fact_ids:
-        for f in (await db.execute(select(CompanyFact).where(CompanyFact.id.in_(fact_ids)))).scalars():
-            u = next((r.get("url") for r in f.source_refs or [] if isinstance(r, dict) and r.get("url")), None)
-            if u:
-                fact_urls[f.id] = u
-    cands = monthly_link_candidates(mb, fact_urls)
-    by_url = await shortlink.codes_for(db, cands)
-    return {sid: by_url[u] for u, sid in cands if u in by_url}
+    return mobile_link.make("m", mb.month, mobile_link.subject_for(getattr(t, "recipient_id", None), getattr(t, "user_id", None)))
 
 
 async def _deliver_monthly(db: AsyncSession, mb, targets: list, briefing_type: str) -> dict:
-    links = await monthly_links(db, mb)
     return await _deliver_generic(
-        db, mb.id, targets, briefing_type, config.TEMPLATE_MONTHLY, "[사내] 투자기업 월간 브리핑",
-        lambda name: render_monthly_text(mb, name, links), lambda name: template_c_variables(mb, name, links),
+        db, mb.id, targets, briefing_type, config.TEMPLATE_MONTHLY, "[사내] 투자기업 월간 브리핑", TEMPLATE_C,
+        lambda t: render_monthly_text(mb, t.name, monthly_token(mb, t)),
+        lambda t: template_c_variables(mb, t.name, monthly_token(mb, t)),
     )
 
 

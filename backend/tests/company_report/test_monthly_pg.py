@@ -8,6 +8,7 @@ import asyncio
 import os
 import re
 import uuid
+from types import SimpleNamespace
 from datetime import date, datetime, timedelta
 
 import pytest
@@ -184,16 +185,20 @@ async def _run(monkeypatch):
         assert "11월" in v["#{체크포인트}"]
         txt = sender.render_monthly_text(mb, "관리자")
         assert txt.startswith("[사내 업무용 메시지]\n관리자 담당자님, 8월") and len(txt) < 1000
-        links = await sender.monthly_links(db, mb)
+        assert txt.endswith("아래 버튼에서 확인해 주세요.")
+        # 수신자별 열쇠값: 알림톡 버튼 #{월코드} 자리, 문자는 본문 끝에 폰 화면 주소
+        rcp = (await db.execute(select(BriefingRecipient))).scalars().first()
+        t = SimpleNamespace(name="관리자", recipient_id=rcp.id, user_id=None)
+        mtok = sender.monthly_token(mb, t)
+        assert sender.template_c_variables(mb, "관리자", mtok)["#{월코드}"] == mtok
+        lms = sender.render_monthly_text(mb, "관리자", mtok)
+        assert lms.endswith(f"/m/monthly?t={mtok}") and len(lms) <= 1000
+        # 짧은 링크(/r) — 나중에 쓸 수 있게 남겨 둔 기능
+        from app.services.company_report import shortlink
+
+        sl = await shortlink.codes_for(db, [("https://n.example.com/x", None)])
         await db.commit()
-        assert links and all(u.startswith("https://working-hub.vercel.app/r/") for u in links.values())
-        v2 = sender.template_c_variables(mb, "관리자", links)
-        assert "[1]" in v2["#{월간요약}"] + v2["#{주목기업}"] and v2["#{기사링크}"].startswith("[1] https://")
-        txt2 = sender.render_monthly_text(mb, "관리자", links)
-        assert len(txt2) <= 1000 and "#{" not in txt2
-        code = v2["#{기사링크}"].split("/r/")[1].split("\n")[0]
-        again = await sender.monthly_links(db, mb)
-        assert again == links  # 같은 기사는 같은 짧은 주소
+        code = sl["https://n.example.com/x"].rsplit("/", 1)[1]
 
     transport = httpx.ASGITransport(app=app)
     async with httpx.AsyncClient(transport=transport, base_url="http://t/api/v1/company-report") as cl:
@@ -202,6 +207,14 @@ async def _run(monkeypatch):
         assert r.status_code == 302 and r.headers["location"].startswith("http") and "/r/" not in r.headers["location"]
         r = await cl.get("/r/NoSuch1")
         assert r.status_code == 302 and r.headers["location"] == "https://working-hub.vercel.app"
+        # 폰 전용 화면: 로그인 없이 열쇠값으로, 문장마다 원문 번호
+        r = await cl.get("/m/monthly", params={"t": mtok})
+        assert r.status_code == 200, r.text
+        mv = r.json()
+        assert mv["month"] == month and mv["summary"][0]["refs"] and mv["refs"][0]["url"].startswith("https://")
+        assert mv["companies"] and mv["companies"][0]["client_explain"]["text"] and "review_summary" not in mv
+        assert (await cl.get("/m/monthly", params={"t": mtok[:-2] + "zz"})).status_code == 403
+        assert (await cl.get("/m/daily", params={"t": mtok})).status_code == 403  # 월간 열쇠로 데일리 불가
         r = await cl.get("/briefings/monthly", params={"month": month}, headers=H)
         assert r.status_code == 200 and r.json()["status"] == "ready"
         assert (await cl.get("/briefings/monthly", params={"month": "2026-13"}, headers=H)).status_code == 422
@@ -223,7 +236,7 @@ async def _run(monkeypatch):
 
         sent.clear()
         r = await cl.post(f"/briefings/monthly/{mb_id}/test-send", headers=H)
-        assert r.status_code == 200 and sent[0]["to"] == "010-1111-2222" and "■ 기사 원문 링크" in sent[0]["text"], r.text
+        assert r.status_code == 200 and sent[0]["to"] == "010-1111-2222" and "/m/monthly?t=" in sent[0]["text"], r.text
         async with AsyncSessionLocal() as db:
             mb = await db.get(MonthlyBriefing, mb_id)
             assert mb.status == "ready"  # 테스트 발송은 상태를 바꾸지 않음

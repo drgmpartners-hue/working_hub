@@ -261,7 +261,10 @@ async def _run(monkeypatch):
             assert res["success"] and res["count"] == 2 and res["channel"] == "lms", res
             again = await sender.send_daily(db, tomorrow)
             assert again.get("skipped") == "이미 발송됨"
-        assert len(sent) == 2 and "■ 기사 원문 링크" in sent[0]["text"] and "/r/" in sent[0]["text"]
+        assert len(sent) == 2 and "/m/daily?t=" in sent[0]["text"]
+        tok = sent[0]["text"].rsplit("?t=", 1)[1]
+        r = await c.get("/m/daily", params={"t": tok})  # 로그인 없이 폰 화면
+        assert r.status_code == 200 and r.json()["companies"] and r.json()["refs"], r.text
         r = await c.get("/settings", headers=H)
         assert r.json()["send_logs"][0]["status"] == "requested"
 

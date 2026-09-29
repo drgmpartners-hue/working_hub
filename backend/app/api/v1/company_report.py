@@ -316,6 +316,48 @@ async def patch_article(article_id: str, body: ArticlePatch, current_user=Depend
     return _article_out(a)
 
 
+# --------------------------------------------------------------------------- 폰 전용 화면(로그인 없음, 열쇠값 필요)
+
+async def _mobile_subject(db: AsyncSession, kind: str, t: str) -> str:
+    from app.services.company_report import mobile_link
+
+    try:
+        key, subject = mobile_link.parse(kind, t)
+    except mobile_link.LinkError as e:
+        raise HTTPException(403, str(e))
+    if not await mobile_link.subject_active(db, subject):
+        raise HTTPException(403, "브리핑 수신자가 아니거나 해제되었습니다. Working Hub에 로그인해서 확인해 주세요.")
+    return key
+
+
+@router.get("/m/daily")
+async def mobile_daily(t: str = Query(..., max_length=200), db: AsyncSession = Depends(get_db)):
+    """카톡 [브리핑 보기] → 폰 화면용 데일리 브리핑(요약 + 문장별 원문 링크). 로그인 없이 열쇠값으로."""
+    from app.services.company_report import mobile_view
+
+    key = await _mobile_subject(db, "d", t)
+    try:
+        day = date.fromisoformat(key)
+    except ValueError:
+        raise HTTPException(404, "브리핑이 없습니다.")
+    b = (await db.execute(select(NewsBriefing).where(NewsBriefing.briefing_date == day))).scalar_one_or_none()
+    if not b:
+        raise HTTPException(404, "브리핑이 없습니다.")
+    return mobile_view.daily_view(b)
+
+
+@router.get("/m/monthly")
+async def mobile_monthly(t: str = Query(..., max_length=200), db: AsyncSession = Depends(get_db)):
+    from app.models.company_report import MonthlyBriefing
+    from app.services.company_report import mobile_view
+
+    key = await _mobile_subject(db, "m", t)
+    mb = (await db.execute(select(MonthlyBriefing).where(MonthlyBriefing.month == key))).scalar_one_or_none()
+    if not mb:
+        raise HTTPException(404, "월간 브리핑이 없습니다.")
+    return await mobile_view.monthly_view(db, mb)
+
+
 @router.get("/r/{code}", include_in_schema=False)
 async def short_link_redirect(code: str, db: AsyncSession = Depends(get_db)):
     """카톡 브리핑의 짧은 기사 링크(로그인 불필요) → 원문 기사로 이동."""

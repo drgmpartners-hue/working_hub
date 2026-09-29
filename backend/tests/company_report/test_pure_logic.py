@@ -119,61 +119,91 @@ def test_template_b_variables_limits():
                     "markets": [{"name": "S&P500", "market": "US", "available": True, "close": 5812.43, "change_pct": 0.41},
                                 {"name": "코스피", "market": "KR", "available": False}]},
         review_summary={"overall": [{"text": "가" * 400}]},
-        company_summaries=[{"name": f"기업{i}", "caution_count": int(i == 0), "one_liner": "한줄" * 30} for i in range(7)],
+        company_summaries=[{"name": f"기업{i}", "caution_count": int(i == 0), "one_liner": "한줄" * 30} for i in range(12)],
     )
     v = sender.template_b_variables(b)
     assert v["#{날짜}"] == "9/28(월)" and v["#{날짜코드}"] == "2026-09-28"
     assert v["#{담당자명}"] == "사내" and v["#{날씨}"].startswith("서울 ")
     assert "S&P500 5,812.4(+0.4%)" in v["#{전일증시}"] and "코스피 조회실패" in v["#{전일증시}"]
-    assert "[주의]" in v["#{기업별요약}"]
+    assert "[주의]" in v["#{기업별요약}"] and "외 " in v["#{기업별요약}"]
     t = sender.render_text(b, "김민호")
     assert t.startswith("[사내 업무용 메시지]\n김민호 담당자님,") and len(t) <= 1000
-    assert "■ 기사 원문 링크" in t and "#{" not in t
+    assert t.endswith("아래 버튼에서 확인해 주세요.") and "#{" not in t  # 승인된 v1 문구 그대로
 
 
-def test_daily_kakao_links_numbering_and_budget():
-    """종합 문장 [번호] → 기사 원문 링크 목록. 기업이 많아도 1,000자·2,000바이트 안."""
-    cards = []
-    for i in range(9):
-        arts = [{"id": f"a{i}_{j}", "url": f"https://news.example.com/{i}/{j}", "title": "t", "summary": "s",
-                 "tag": "caution" if (i == 0 and j == 0) else "neutral", "issue_type": "제품", "published_at": "2026-09-28T08:00:00"}
-                for j in range(4)]
-        arts = arts[:3] + [{**a, "more": True} for a in arts[3:]]
-        cards.append({"company_id": f"c{i}", "name": f"기업{i}", "caution_count": int(i == 0), "article_count": 4,
-                      "one_liner": f"기업{i}가 새 제품을 출시하고 대형 고객사와 공급 계약을 맺었다는 보도가 이어졌다", "articles": arts})
+def test_mobile_link_token_and_lms():
+    """버튼 주소의 #{날짜코드} 자리에 수신자별 열쇠값 → 폰 화면. 문자로 나갈 땐 본문 끝에 폰 화면 주소."""
+    from app.services.company_report import mobile_link as ml
+
+    rid = "3f2a9c1e-1111-4222-8333-444455556666"
+    tok = ml.make("d", "2026-09-30", rid, today=date(2026, 9, 30))
+    assert tok.startswith("2026-09-30." + rid + ".20261114.") and all(ch.isalnum() or ch in ".-_" for ch in tok)
+    assert ml.parse("d", tok, today=date(2026, 10, 10)) == ("2026-09-30", rid)
+    for bad in [tok[:-1] + ("A" if tok[-1] != "A" else "B"), tok.replace("09-30", "09-29"), "2026-09-30", ""]:
+        try:
+            ml.parse("d", bad, today=date(2026, 10, 1))
+            raise AssertionError(bad)
+        except ml.LinkError:
+            pass
+    try:
+        ml.parse("d", tok, today=date(2026, 11, 15))  # 45일 지남
+        raise AssertionError("expired")
+    except ml.LinkError as e:
+        assert "45일" in str(e)
+    try:
+        ml.parse("m", tok)  # 데일리 열쇠로 월간을 열 수 없다
+        raise AssertionError("kind")
+    except ml.LinkError:
+        pass
+    utok = ml.make("m", "2026-09", ml.subject_for(None, "9b1deb4d-3b7d-4bad-9bdd-2b0d7b3dcb6d"))
+    assert ml.parse("m", utok)[1].startswith("u")
+
+    b = SimpleNamespace(
+        briefing_date=date(2026, 9, 30), article_count=40, caution_count=1, overall_summary="",
+        basic_info={"weekday": "수", "company_with_news": 10, "weather": {"available": True, "text": "맑음, 14~25℃, 강수확률 10%"},
+                    "markets": [{"name": n, "market": mk, "available": True, "close": 5812.4, "change_pct": 0.4}
+                                for n, mk in [("S&P500", "US"), ("나스닥", "US"), ("다우존스", "US"), ("코스피", "KR"), ("코스닥", "KR")]]},
+        review_summary={"overall": [{"text": "문장 " + "가" * 90, "source_ids": []} for _ in range(5)]},
+        company_summaries=[{"name": f"기업{i}", "caution_count": 0, "one_liner": "새 제품을 출시하고 대형 고객사와 공급 계약을 맺었다는 보도가 이어졌다"}
+                           for i in range(10)],
+    )
+    t = SimpleNamespace(name="김민호", recipient_id=rid, user_id=None)
+    token = sender.daily_token(b, t)
+    v = sender.template_b_variables(b, "김민호", token)
+    assert v["#{날짜코드}"] == token
+    alim = sender.fill(sender.TEMPLATE_B, v)
+    assert len(alim) <= 1000 and alim.endswith("아래 버튼에서 확인해 주세요.")
+    lms = sender.render_text(b, "김민호", token)
+    assert lms.endswith(f"https://working-hub.vercel.app/m/daily?t={token}") and "아래 버튼" not in lms
+    assert len(lms) <= 1000 and len(lms.encode("euc-kr", errors="replace")) <= 2000
+
+
+def test_mobile_daily_view_refs():
+    """폰 화면: 문장마다 근거 기사 번호, 번호별 원문 주소(같은 기사는 같은 번호)."""
+    from app.services.company_report import mobile_view
     from app.services.company_report.daily import build_sources
 
+    cards = []
+    for i in range(3):
+        arts = [{"id": f"a{i}_{j}", "url": f"https://news.example.com/{i}/{j}", "title": f"기사 {i}-{j}", "press": "매체",
+                 "summary": "s", "tag": "neutral", "issue_type": "제품", "source_type": "news", "published_at": "2026-09-29T08:00:00"} for j in range(4)]
+        cards.append({"company_id": f"c{i}", "name": f"기업{i}", "caution_count": 0, "article_count": 4,
+                      "one_liner": f"기업{i} 한 줄", "articles": arts[:3] + [{**a, "more": True} for a in arts[3:]]})
     _, mapping = build_sources(cards)
     rev = {v: k for k, v in mapping.items()}
     b = SimpleNamespace(
-        briefing_date=date(2026, 9, 29), article_count=36, caution_count=1, overall_summary="",
-        basic_info={"weekday": "화", "company_with_news": 9, "weather": {"available": True, "text": "맑음, 14~25℃, 강수확률 10%"},
-                    "markets": [{"name": n, "market": mk, "available": True, "close": 5812.4, "change_pct": 0.4}
-                                for n, mk in [("S&P500", "US"), ("나스닥", "US"), ("다우존스", "US"), ("코스피", "KR"), ("코스닥", "KR")]]},
-        review_summary={"overall": [
-            {"text": "기업0에서 대표 교체 관련 주의 기사가 나왔고 회사 측 확인이 필요하다.", "source_ids": [rev["a0_0"]]},
-            {"text": "기업1과 기업2는 신제품 출시 소식이 이어졌다.", "source_ids": [rev["a1_0"], rev["a2_1"], rev["a2_0"]]},
-            {"text": "기업3은 해외 공급 계약을 맺었다.", "source_ids": [rev["a3_0"]]},
-        ]},
+        briefing_date=date(2026, 9, 30), article_count=12, caution_count=0, overall_summary="", is_fallback=False,
+        basic_info={"weekday": "수", "company_with_news": 3, "weather": {"available": True, "text": "맑음"}, "markets": []},
+        review_summary={"overall": [{"text": "첫 문장", "source_ids": [rev["a1_0"], rev["a1_1"]]},
+                                    {"text": "둘째 문장", "source_ids": [rev["a0_0"]]}], "source_map": mapping},
         company_summaries=cards,
     )
-    cands = sender.daily_link_candidates(b)
-    links = {aid: f"https://working-hub.vercel.app/r/X{n:05d}" for n, (_, aid) in enumerate(cands)}
-    txt = sender.render_text(b, "김민호", links)
-    assert len(txt) <= 1000 and len(txt.encode("euc-kr", errors="replace")) <= 2000, (len(txt), txt)
-    v = sender.template_b_variables(b, "김민호", links)
-    over = v["#{종합브리핑}"].split("\n")
-    assert over[0].endswith("[1]") and over[1].endswith("[2][3]")  # 문장당 번호 최대 2개
-    comp = v["#{기업별요약}"].split("\n")
-    assert comp[0].startswith("· 기업0 [주의]:") and comp[0].endswith("[1]")  # 이미 나온 기사는 같은 번호
-    assert comp[-1].startswith("외 ")
-    lines = v["#{기사링크}"].split("\n")
-    assert lines[0] == f"[1] {links['a0_0']}" and lines[1] == f"[2] {links['a1_0']}"
-    n_max = max(int(x) for x in __import__("re").findall(r"\[(\d+)\]", v["#{종합브리핑}"] + v["#{기업별요약}"]))
-    assert n_max == len(lines)  # 본문에 나온 번호 = 링크 수
-    # 링크가 없으면 번호도 없다
-    v0 = sender.template_b_variables(b, "", {})
-    assert "[1]" not in v0["#{종합브리핑}"] and v0["#{기사링크}"] == "(링크 없음)"
+    v = mobile_view.daily_view(b)
+    assert v["overall"][0] == {"text": "첫 문장", "refs": [1, 2]} and v["overall"][1]["refs"] == [3]
+    assert v["companies"][1]["refs"] == [1]  # 기업1 대표 기사 = 이미 나온 [1]
+    assert v["refs"][0] == {"n": 1, "url": "https://news.example.com/1/0", "title": "기사 1-0", "press": "매체", "date": "2026-09-29"}
+    assert len(v["companies"][0]["articles"]) == 4 and v["weather"] == "서울 맑음"
+    assert "review_summary" not in v and "source_map" not in str(v)
 
 
 # ---------------------------------------------------------------- 공공데이터
