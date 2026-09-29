@@ -86,7 +86,7 @@ async def snapshot_company(db: AsyncSession, company: PortfolioCompany, sources:
                 await _save(db, company.id, "nps", as_of, await pdc.nps_snapshot(dg[0], company.name, company.biz_reg_no), None)
                 out["nps"] = "ok"
             except Exception as e:
-                await _save(db, company.id, "nps", as_of, None, str(e)[:500])
+                await _save(db, company.id, "nps", as_of, None, pdc.mask_keys(str(e))[:500])
                 out["nps"] = "error"
 
     if "nts" in sources:
@@ -104,7 +104,7 @@ async def snapshot_company(db: AsyncSession, company: PortfolioCompany, sources:
                     await _nts_flag(db, company, st)
                 out["nts"] = "ok"
             except Exception as e:
-                await _save(db, company.id, "nts", as_of, None, str(e)[:500])
+                await _save(db, company.id, "nts", as_of, None, pdc.mask_keys(str(e))[:500])
                 out["nts"] = "error"
 
     if "kipris" in sources:
@@ -122,7 +122,7 @@ async def snapshot_company(db: AsyncSession, company: PortfolioCompany, sources:
                 await _save(db, company.id, "kipris", as_of, pdc.summarize_patents(r["items"], company.name, as_of.isoformat()), None)
                 out["kipris"] = "ok"
             except Exception as e:
-                await _save(db, company.id, "kipris", as_of, None, str(e)[:500])
+                await _save(db, company.id, "kipris", as_of, None, pdc.mask_keys(str(e))[:500])
                 out["kipris"] = "error"
 
     if "kis" in sources and company.is_listed and company.stock_code:
@@ -135,7 +135,7 @@ async def snapshot_company(db: AsyncSession, company: PortfolioCompany, sources:
                 await _save(db, company.id, "kis", as_of, await KISClient(*kis).get_price_info(company.stock_code), None)
                 out["kis"] = "ok"
             except Exception as e:
-                await _save(db, company.id, "kis", as_of, None, str(e)[:500])
+                await _save(db, company.id, "kis", as_of, None, pdc.mask_keys(str(e))[:500])
                 out["kis"] = "error"
     await db.commit()
     return out
@@ -172,7 +172,7 @@ async def company_public_data(db: AsyncSession, company_id: str) -> dict:
     latest: dict[str, dict] = {}
     nps_trend = []
     for r in rows:
-        latest[r.source] = {"as_of": r.as_of.isoformat(), "data": r.data, "error": r.error}
+        latest[r.source] = {"as_of": r.as_of.isoformat(), "data": r.data, "error": pdc.mask_keys(r.error) if r.error else None}
         if r.source == "nps" and r.data and r.data.get("found"):
             nps_trend.append({"as_of": r.as_of.isoformat(), "data_month": r.data.get("data_month"), "members": r.data.get("members")})
     return {"latest": latest, "nps_trend": nps_trend}

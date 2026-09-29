@@ -16,10 +16,6 @@ import httpx
 
 logger = logging.getLogger(__name__)
 
-NPS_BASES = [
-    "https://apis.data.go.kr/B552015/NpsBplcInfoInqireService",
-    "https://apis.data.go.kr/B552015/NpsBplcInfoInqireSvc",
-]
 NTS_STATUS_URL = "https://api.odcloud.kr/api/nts-businessman/v1/status"
 KIPRIS_ADV_URL = "http://plus.kipris.or.kr/kipo-api/kipi/patUtiModInfoSearchSevice/getAdvancedSearch"
 
@@ -79,20 +75,74 @@ def digits(v: Optional[str]) -> str:
 
 # --------------------------------------------------------------------------- 국민연금
 
-async def _nps_get(client: httpx.AsyncClient, key: str, op: str, params: dict) -> list[dict]:
-    last: Exception | None = None
-    for base in NPS_BASES:
+_KEY_RE = re.compile(r"((?:service|Service|access)Key=)[^&'\"\s]+")
+
+
+def mask_keys(text: str) -> str:
+    """오류 문구에 들어간 인증키를 가린다(화면·DB에 키가 남지 않게)."""
+    return _KEY_RE.sub(r"\1***", text or "")
+
+
+# 국민연금 가입 사업장 API는 판(버전)마다 기능 이름·변수 이름이 다르다.
+# 최신판(V2, camelCase)부터 시도하고, 안 되면 예전 판(snake_case)으로 내려간다. 성공한 판은 기억해 둔다.
+_NPS_OPS = {"bass": "getBassInfoSearch", "detail": "getDetailInfoSearch", "period": "getPdAcctoSttusInfoSearch"}
+_NPS_SNAKE = {"wkplNm": "wkpl_nm", "bzowrRgstNo": "bzowr_rgst_no", "dataCrtYm": "data_crt_ym", "seq": "seq"}
+NPS_VARIANTS = [
+    ("https://apis.data.go.kr/B552015/NpsBplcInfoInqireSvc", "V2", False),
+    ("https://apis.data.go.kr/B552015/NpsBplcInfoInqireSvc", "", False),
+    ("https://apis.data.go.kr/B552015/NpsBplcInfoInqireSvc", "", True),
+    ("https://apis.data.go.kr/B552015/NpsBplcInfoInqireService", "", True),
+]
+_nps_ok: Optional[int] = None
+NPS_NOT_REGISTERED = ("공공데이터포털에서 '국민연금공단_국민연금 가입 사업장 내역' 활용신청이 필요합니다"
+                      "(같은 인증키를 쓰지만 API마다 따로 신청해야 합니다. 승인 후 1~2시간 뒤 반영).")
+
+
+def _auth_problem(text: str) -> bool:
+    t = text or ""
+    return any(k in t for k in ("SERVICE_KEY_IS_NOT_REGISTERED", "SERVICE ACCESS DENIED", "등록되지 않은", "Unauthorized",
+                                "SERVICE_ACCESS_DENIED", "LIMITED_NUMBER_OF_SERVICE_REQUESTS"))
+
+
+async def _nps_get(client: httpx.AsyncClient, key: str, kind: str, params: dict) -> list[dict]:
+    """kind: bass/detail/period, params는 camelCase(wkplNm·bzowrRgstNo·seq·dataCrtYm)."""
+    global _nps_ok
+    order = list(range(len(NPS_VARIANTS)))
+    if _nps_ok is not None:
+        order.remove(_nps_ok)
+        order.insert(0, _nps_ok)
+    last = ""
+    auth = False
+    for i in order:
+        base, suffix, snake = NPS_VARIANTS[i]
+        q = {(_NPS_SNAKE.get(k, k) if snake else k): v for k, v in params.items()}
         try:
-            res = await client.get(f"{base}/{op}", params={"serviceKey": key, "numOfRows": 100, "pageNo": 1, **params})
-            if res.status_code == 404:
-                continue
-            res.raise_for_status()
+            res = await client.get(f"{base}/{_NPS_OPS[kind]}{suffix}",
+                                   params={"serviceKey": key, "numOfRows": 100, "pageNo": 1, "_type": "xml", **q})
+        except httpx.HTTPError as e:
+            last = f"연결 실패({type(e).__name__})"
+            continue
+        head = res.text[:300]
+        if res.status_code in (401, 403) or _auth_problem(head):
+            auth = True
+            last = f"인증 거부({res.status_code})"
+            continue
+        if res.status_code >= 400:
+            last = f"{res.status_code} {head[:80]}"
+            continue
+        try:
             items, header = parse_items(res)
-            _check_header(header, res.text[:200])
-            return items
-        except (httpx.HTTPError, PublicDataError) as e:
-            last = e
-    raise PublicDataError(f"국민연금 API 실패({op}): {last}")
+            _check_header(header, head)
+        except PublicDataError as e:
+            if _auth_problem(str(e)):
+                auth = True
+            last = str(e)
+            continue
+        _nps_ok = i
+        return items
+    if auth:
+        raise PublicDataError(NPS_NOT_REGISTERED)
+    raise PublicDataError(mask_keys(f"국민연금 API 실패({_NPS_OPS[kind]}): {last}"))
 
 
 def pick_nps_workplace(items: list[dict], name: str, biz_reg_no: Optional[str]) -> Optional[dict]:
@@ -118,22 +168,22 @@ def pick_nps_workplace(items: list[dict], name: str, biz_reg_no: Optional[str]) 
 
 async def nps_snapshot(key: str, name: str, biz_reg_no: Optional[str]) -> dict:
     async with httpx.AsyncClient(timeout=15) as client:
-        params = {"wkpl_nm": re.sub(r"\(주\)|㈜|주식회사", "", name).strip()}
+        params = {"wkplNm": re.sub(r"\(주\)|㈜|주식회사", "", name).strip()}
         b6 = digits(biz_reg_no)[:6]
         if b6:
-            params["bzowr_rgst_no"] = b6
-        items = await _nps_get(client, key, "getBassInfoSearch", params)
+            params["bzowrRgstNo"] = b6
+        items = await _nps_get(client, key, "bass", params)
         if not items and b6:  # 사업자번호로 못 찾으면 이름만으로
-            items = await _nps_get(client, key, "getBassInfoSearch", {"wkpl_nm": params["wkpl_nm"]})
+            items = await _nps_get(client, key, "bass", {"wkplNm": params["wkplNm"]})
         wp = pick_nps_workplace(items, name, biz_reg_no)
         if not wp:
             return {"found": False, "candidates": len(items)}
         seq = wp.get("seq")
-        detail = (await _nps_get(client, key, "getDetailInfoSearch", {"seq": seq}) or [{}])[0]
+        detail = (await _nps_get(client, key, "detail", {"seq": seq}) or [{}])[0]
         period = {}
         try:
-            period = (await _nps_get(client, key, "getPdAcctoSttusInfoSearch",
-                                     {"seq": seq, "data_crt_ym": wp.get("dataCrtYm", "")}) or [{}])[0]
+            period = (await _nps_get(client, key, "period",
+                                     {"seq": seq, "dataCrtYm": wp.get("dataCrtYm", "")}) or [{}])[0]
         except PublicDataError as e:
             logger.info("국민연금 기간별 현황 실패: %s", e)
 
