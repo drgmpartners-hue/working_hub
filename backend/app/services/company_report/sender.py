@@ -22,8 +22,11 @@ from app.services.company_report.timeutil import now_kst, today_kst
 
 logger = logging.getLogger(__name__)
 
-LIMIT_OVERALL = 250
-LIMIT_COMPANIES = 400
+# 알림톡 본문은 변수를 채운 뒤 1,000자 이내여야 한다(고정 문구 약 210자 + 변수 상한 합계 ≈ 970자)
+LIMIT_OVERALL = 230
+LIMIT_COMPANIES = 330
+LIMIT_WEATHER = 60
+LIMIT_MARKETS = 130
 TOP_COMPANIES = 5
 
 
@@ -50,7 +53,7 @@ def market_lines(markets: list[dict]) -> str:
     return "\n".join(x for x in (f"미 {us}" if us else "", f"한 {kr}" if kr else "") if x)
 
 
-def template_b_variables(b: NewsBriefing) -> dict[str, str]:
+def template_b_variables(b: NewsBriefing, name: str = "") -> dict[str, str]:
     info = b.basic_info or {}
     w = info.get("weather") or {}
     overall = [x.get("text", "") for x in ((b.review_summary or {}).get("overall") or [])] or (b.overall_summary or "").split("\n")
@@ -65,10 +68,11 @@ def template_b_variables(b: NewsBriefing) -> dict[str, str]:
     comps_txt = _cut("\n".join(comp_lines) or "새 기사가 없습니다.", LIMIT_COMPANIES)
     d = b.briefing_date
     return {
+        "#{담당자명}": (name or "").strip() or "사내",
         "#{날짜}": f"{d.month}/{d.day}({info.get('weekday', '')})",
-        "#{날씨}": ((f"({w.get('region')}) " if w.get("region") and w.get("region") != "서울" else "") + (w.get("text") or ""))
-        if w.get("available") else "조회 실패",
-        "#{전일증시}": market_lines(info.get("markets") or []) or "조회 실패",
+        "#{날씨}": _cut(f"{w.get('region') or '서울'} {w.get('text') or ''}", LIMIT_WEATHER)
+        if w.get("available") else f"{w.get('region') or '서울'} 날씨 조회 실패",
+        "#{전일증시}": _cut(market_lines(info.get("markets") or []), LIMIT_MARKETS) or "조회 실패",
         "#{기업수}": str(info.get("company_with_news", 0)),
         "#{기사수}": str(b.article_count or 0),
         "#{주의수}": str(b.caution_count or 0),
@@ -82,12 +86,17 @@ def briefing_url(d: date) -> str:
     return f"{config.WEB_BASE}/content/company-report/briefing?date={d.isoformat()}"
 
 
-def render_text(b: NewsBriefing) -> str:
+INTRO = "본 메시지는 사내 업무 시스템(Working Hub)에 투자기업 브리핑 수신자로 등록된 임직원께 평일 오전 발송되는 업무 알림입니다."
+
+
+def render_text(b: NewsBriefing, name: str = "") -> str:
     """템플릿 B와 같은 내용의 LMS 본문(알림톡 실패·템플릿 심사 전)."""
-    v = template_b_variables(b)
+    v = template_b_variables(b, name)
     return (
-        "Dr.GM 투자기업 데일리 브리핑\n\n"
-        f"■ 기본정보\n{v['#{날짜}']} | 서울 {v['#{날씨}']}\n{v['#{전일증시}']}\n"
+        "[사내 업무용 메시지]\n"
+        f"{v['#{담당자명}']} 담당자님, 오늘의 투자기업 데일리 브리핑이 준비되었습니다.\n\n"
+        f"{INTRO}\n\n"
+        f"■ 기본정보\n{v['#{날짜}']} | {v['#{날씨}']}\n{v['#{전일증시}']}\n"
         f"대상 {v['#{기업수}']}개 기업 · 기사 {v['#{기사수}']}건 · 주의 {v['#{주의수}']}건\n\n"
         f"■ 종합브리핑\n{v['#{종합브리핑}']}\n\n"
         f"■ 기업별 브리핑\n{v['#{기업별요약}']}\n\n"
@@ -136,11 +145,10 @@ async def recipients(db: AsyncSession) -> list[Target]:
 
 async def _deliver(db: AsyncSession, b: NewsBriefing, targets: list, briefing_type: str) -> dict:
     template_id = await settings_store.get(db, config.TEMPLATE_DAILY)
-    text = render_text(b)
-    variables = template_b_variables(b)
+    # 수신자마다 #{담당자명}이 달라서 본문·변수를 한 명씩 만든다
     msgs = [{
-        "to": t.phone, "text": text, "subject": "투자기업 데일리 브리핑",
-        **({"template_id": template_id, "variables": variables} if template_id else {}),
+        "to": t.phone, "text": render_text(b, t.name), "subject": "[사내] 투자기업 데일리 브리핑",
+        **({"template_id": template_id, "variables": template_b_variables(b, t.name)} if template_id else {}),
     } for t in targets]
     res = await solapi_service.send_many_alimtalk(db, msgs)
     ok = bool(res.get("success"))

@@ -123,10 +123,13 @@ def test_template_b_variables_limits():
     )
     v = sender.template_b_variables(b)
     assert v["#{날짜}"] == "9/28(월)" and v["#{날짜코드}"] == "2026-09-28"
-    assert len(v["#{종합브리핑}"]) <= 250 and len(v["#{기업별요약}"]) <= 400
+    assert len(v["#{종합브리핑}"]) <= 230 and len(v["#{기업별요약}"]) <= 330
+    assert v["#{담당자명}"] == "사내" and v["#{날씨}"].startswith("서울 ")
     assert "S&P500 5,812.4(+0.4%)" in v["#{전일증시}"] and "코스피 조회실패" in v["#{전일증시}"]
     assert "[주의]" in v["#{기업별요약}"]
     assert "briefing?date=2026-09-28" in sender.render_text(b)
+    t = sender.render_text(b, "김민호")
+    assert t.startswith("[사내 업무용 메시지]\n김민호 담당자님,") and sender.template_b_variables(b, "김민호")["#{담당자명}"] == "김민호"
 
 
 # ---------------------------------------------------------------- 공공데이터
