@@ -23,7 +23,7 @@ from app.services.company_report.timeutil import now_kst, today_kst
 logger = logging.getLogger(__name__)
 
 LIMIT_WEATHER = 60
-LIMIT_MARKETS = 130
+LIMIT_MARKETS = 240
 
 
 def _cut(text: str, n: int) -> str:
@@ -36,17 +36,20 @@ def _fmt_num(v) -> str:
 
 
 def market_lines(markets: list[dict]) -> str:
-    """#{전일증시} 두 줄: 종가(등락률)만."""
+    """#{전일증시}: 한 줄에 하나씩 '이름 종가(등락률)'. 금은 $, 환율은 원을 붙인다."""
     def part(m: dict) -> str:
         if not m.get("available"):
-            return f"{m['name']} 조회실패"
+            return f"{m['name']} 조회 실패"
+        unit = m.get("unit") or ""
+        close = _fmt_num(m.get("close"))
+        val = f"${close}" if unit == "$" else f"{close}{unit}"
         pct = m.get("change_pct")
-        sign = "+" if (pct or 0) > 0 else ""
-        return f"{m['name']} {_fmt_num(m.get('close'))}({sign}{pct:.1f}%)" if pct is not None else f"{m['name']} {_fmt_num(m.get('close'))}"
+        if pct is None:
+            return f"{m['name']} {val}"
+        sign = "+" if pct > 0 else ""
+        return f"{m['name']} {val}({sign}{pct:.1f}%)"
 
-    us = " ".join(part(m) for m in markets if m.get("market") == "US")
-    kr = " ".join(part(m) for m in markets if m.get("market") == "KR")
-    return "\n".join(x for x in (f"미 {us}" if us else "", f"한 {kr}" if kr else "") if x)
+    return "\n".join(part(m) for m in markets if m.get("name"))
 
 
 # --------------------------------------------------------------------------- 데일리(승인된 템플릿 B v1)

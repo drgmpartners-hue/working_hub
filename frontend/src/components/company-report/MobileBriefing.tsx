@@ -16,7 +16,7 @@ interface DailyData {
   date: string;
   weekday?: string;
   weather?: string | null;
-  markets: { name: string; market: string; close?: number | null; change_pct?: number | null; available?: boolean }[];
+  markets: { name: string; market: string; close?: number | null; change_pct?: number | null; available?: boolean; unit?: string }[];
   company_count: number;
   article_count: number;
   caution_count: number;
@@ -186,8 +186,6 @@ function CompanyArticles({ c }: { c: DailyData['companies'][number] }) {
 export function DailyMobile({ d }: { d: DailyData }) {
   const map = useRefMap(d.refs);
   const dt = `${Number(d.date.slice(5, 7))}월 ${Number(d.date.slice(8, 10))}일(${d.weekday || ''})`;
-  const us = d.markets.filter((m) => m.market === 'US');
-  const kr = d.markets.filter((m) => m.market === 'KR');
   return (
     <>
       <Header
@@ -202,24 +200,26 @@ export function DailyMobile({ d }: { d: DailyData }) {
         }
       />
       {d.markets.length > 0 && (
-        <section style={{ ...card, padding: 12 }}>
-          {[us, kr].map((rows, i) =>
-            rows.length ? (
-              <div key={i} style={{ display: 'flex', flexWrap: 'wrap', gap: '4px 14px', fontSize: 13.5, padding: '2px 0' }}>
-                <span style={{ ...muted, fontSize: 12, width: 18 }}>{i === 0 ? '미' : '한'}</span>
-                {rows.map((m) => (
-                  <span key={m.name} style={{ whiteSpace: 'nowrap' }}>
-                    {m.name}{' '}
-                    {m.available === false ? (
-                      <span style={muted}>조회 실패</span>
-                    ) : (
-                      <b style={{ color: (m.change_pct || 0) > 0 ? '#F87171' : (m.change_pct || 0) < 0 ? '#60A5FA' : 'inherit' }}>{pct(m.change_pct)}</b>
-                    )}
+        <section style={{ ...card, padding: '10px 14px' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px 14px' }}>
+            {d.markets.map((m) => (
+              <div key={m.name} style={{ display: 'flex', justifyContent: 'space-between', gap: 6, fontSize: 13.5, whiteSpace: 'nowrap' }}>
+                <span style={{ color: 'var(--text-secondary, #C4CDDB)' }}>{m.name}</span>
+                {m.available === false ? (
+                  <span style={muted}>조회 실패</span>
+                ) : (
+                  <span>
+                    <span style={{ ...muted, fontSize: 12, marginRight: 4 }}>
+                      {m.unit === '$' ? '$' : ''}
+                      {m.close !== null && m.close !== undefined ? m.close.toLocaleString('ko-KR', { maximumFractionDigits: 1 }) : ''}
+                      {m.unit && m.unit !== '$' ? m.unit : ''}
+                    </span>
+                    <b style={{ color: (m.change_pct || 0) > 0 ? '#F87171' : (m.change_pct || 0) < 0 ? '#60A5FA' : 'inherit' }}>{pct(m.change_pct)}</b>
                   </span>
-                ))}
+                )}
               </div>
-            ) : null,
-          )}
+            ))}
+          </div>
         </section>
       )}
       <section style={card}>

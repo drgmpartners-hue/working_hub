@@ -40,7 +40,7 @@ function MarketTable({ rows }: { rows: MarketRow[] }) {
       <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 420 }}>
         <thead>
           <tr>
-            {['지수', '시가', '종가', '변동', '%'].map((h, i) => (
+            {['지표', '시가', '종가', '변동', '%'].map((h, i) => (
               <th key={h} style={{ ...cell, textAlign: i ? 'right' : 'left', color: 'var(--text-muted)', fontWeight: 600, fontSize: 12 }}>
                 {h}
               </th>
@@ -51,7 +51,7 @@ function MarketTable({ rows }: { rows: MarketRow[] }) {
           {rows.map((r) => (
             <tr key={r.key}>
               <td style={{ ...cell, textAlign: 'left', color: 'var(--text-primary)' }}>
-                <span style={{ ...mutedText, fontSize: 11, marginRight: 6 }}>{r.market === 'US' ? '미국' : '한국'}</span>
+                <span style={{ ...mutedText, fontSize: 11, marginRight: 6 }}>{({ US: '미국', KR: '한국', CMD: '원자재', FX: '환율' } as Record<string, string>)[r.market] || ''}</span>
                 {r.name}
                 {r.available && r.trade_date && <span style={{ ...mutedText, fontSize: 11, marginLeft: 6 }}>{r.trade_date.slice(5).replace('-', '/')}</span>}
               </td>

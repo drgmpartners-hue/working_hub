@@ -124,11 +124,24 @@ def test_template_b_variables_limits():
     v = sender.template_b_variables(b)
     assert v["#{날짜}"] == "9/28(월)" and v["#{날짜코드}"] == "2026-09-28"
     assert v["#{담당자명}"] == "사내" and v["#{날씨}"].startswith("서울 ")
-    assert "S&P500 5,812.4(+0.4%)" in v["#{전일증시}"] and "코스피 조회실패" in v["#{전일증시}"]
+    assert v["#{전일증시}"].split("\n") == ["S&P500 5,812.4(+0.4%)", "코스피 조회 실패"]  # 한 줄에 하나씩
     assert "[주의]" in v["#{기업별요약}"] and "외 " in v["#{기업별요약}"]
     t = sender.render_text(b, "김민호")
     assert t.startswith("[사내 업무용 메시지]\n김민호 담당자님,") and len(t) <= 1000
     assert t.endswith("아래 버튼에서 확인해 주세요.") and "#{" not in t  # 승인된 v1 문구 그대로
+
+
+def test_market_lines_gold_fx():
+    rows = [{"name": "S&P500", "market": "US", "available": True, "close": 5812.43, "change_pct": 0.41},
+            {"name": "코스닥", "market": "KR", "available": True, "close": 780.2, "change_pct": -0.3},
+            {"name": "금", "market": "CMD", "unit": "$", "available": True, "close": 2650.35, "change_pct": 0.52},
+            {"name": "원/달러", "market": "FX", "unit": "원", "available": True, "close": 1385.2, "change_pct": 0.0},
+            {"name": "다우존스", "market": "US", "available": True, "close": 42310.0, "change_pct": None}]
+    assert sender.market_lines(rows).split("\n") == [
+        "S&P500 5,812.4(+0.4%)", "코스닥 780.2(-0.3%)", "금 $2,650.3(+0.5%)", "원/달러 1,385.2원(0.0%)", "다우존스 42,310.0"]
+    from app.services.collectors.market_indices import INDICES
+
+    assert [i["key"] for i in INDICES][-2:] == ["gold", "usdkrw"]
 
 
 def test_mobile_link_token_and_lms():

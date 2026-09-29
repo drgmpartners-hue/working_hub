@@ -100,7 +100,8 @@ export const TAG_BADGE: Record<string, { label: string; cls: string }> = {
 export interface MarketRow {
   key: string;
   name: string;
-  market: 'US' | 'KR';
+  market: 'US' | 'KR' | 'CMD' | 'FX';
+  unit?: string;
   available: boolean;
   source?: string;
   trade_date?: string;

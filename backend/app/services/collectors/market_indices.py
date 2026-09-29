@@ -1,6 +1,7 @@
 """전일 증시 지수(데일리 브리핑 ① 기본 정보).
 
 미국: S&P500(^GSPC)·나스닥(^IXIC)·다우존스(^DJI) / 한국: 코스피(^KS11)·코스닥(^KQ11)
+금: 국제 금 선물(GC=F, 달러/온스) / 환율: 원/달러(KRW=X)
 각 지수의 '브리핑 날짜 이전 마지막 거래일' 시가·종가·전일 대비 변동·등락률.
 출처: yfinance(무료, 키 불필요). 실패한 지수는 available=False로 두고 브리핑은 계속한다.
 휴장일은 자연히 처리된다(해당 날짜 행이 없으면 그 전 거래일을 쓴다).
@@ -20,6 +21,8 @@ INDICES = [
     {"key": "dow", "name": "다우존스", "symbol": "^DJI", "market": "US"},
     {"key": "kospi", "name": "코스피", "symbol": "^KS11", "market": "KR", "kis": "0001"},
     {"key": "kosdaq", "name": "코스닥", "symbol": "^KQ11", "market": "KR", "kis": "1001"},
+    {"key": "gold", "name": "금", "symbol": "GC=F", "market": "CMD", "unit": "$"},        # 국제 금 선물(COMEX, 달러/온스)
+    {"key": "usdkrw", "name": "원/달러", "symbol": "KRW=X", "market": "FX", "unit": "원"},  # 원·달러 환율
 ]
 
 
@@ -72,11 +75,11 @@ async def _kis_rows(kis_creds: tuple[str, str], index_code: str) -> list[dict]:
 
 
 async def previous_day_indices(briefing_date: date, kis_creds: Optional[tuple[str, str]] = None) -> list[dict]:
-    """브리핑용 5개 지수. 반환: [{key,name,market,available,source,trade_date,open,close,change,change_pct}].
+    """브리핑용 지수 5개 + 금·원달러 환율. 반환: [{key,name,market,available,source,trade_date,open,close,change,change_pct}].
     한국 지수는 yfinance가 실패하면 KIS(키가 있을 때)로 다시 시도한다."""
 
     async def one(ix: dict) -> dict:
-        base = {"key": ix["key"], "name": ix["name"], "market": ix["market"], "available": False}
+        base = {"key": ix["key"], "name": ix["name"], "market": ix["market"], "available": False, "unit": ix.get("unit", "")}
         for attempt in range(2):
             try:
                 rows = await asyncio.wait_for(asyncio.to_thread(_history, ix["symbol"]), timeout=20)

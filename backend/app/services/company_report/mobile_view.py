@@ -65,7 +65,7 @@ def daily_view(b: NewsBriefing) -> dict[str, Any]:
     return {
         "kind": "daily", "date": b.briefing_date.isoformat(), "weekday": info.get("weekday"),
         "weather": (f"{w.get('region') or '서울'} {w.get('text') or ''}".strip() if w.get("available") else None),
-        "markets": [{k: m.get(k) for k in ("name", "market", "close", "change_pct", "available", "as_of")}
+        "markets": [{k: m.get(k) for k in ("name", "market", "close", "change_pct", "available", "unit", "trade_date")}
                     for m in info.get("markets") or []],
         "company_count": info.get("company_with_news", len(cards)), "article_count": b.article_count or 0,
         "caution_count": b.caution_count or 0, "is_fallback": bool(b.is_fallback),
