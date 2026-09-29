@@ -2,6 +2,8 @@
 
 /** 데일리 브리핑 본문 — ① 기본정보 ② 종합브리핑 ③ 기업별 브리핑 & 링크 (모바일 우선) */
 import Link from 'next/link';
+import { useState } from 'react';
+import { ArticleBody } from './ArticleList';
 import { Card } from '@/components/common/Card';
 import type { DailyBriefing, MarketRow } from './types';
 import { TAG_BADGE } from './types';
@@ -14,6 +16,21 @@ function tone(v: number | null | undefined) {
   if (!v) return 'var(--text-secondary)';
   // 한국 관례: 상승 빨강, 하락 파랑
   return v > 0 ? 'var(--danger)' : 'var(--blue-400)';
+}
+
+function ToggleTitle({ id, title, open, onToggle }: { id: string; title: string; open: boolean; onToggle: (id: string) => void }) {
+  return (
+    <button
+      type="button"
+      onClick={() => onToggle(id)}
+      aria-expanded={open}
+      title={open ? '본문 접기' : '본문 펼쳐 보기'}
+      style={{ background: 'none', border: 'none', padding: 0, textAlign: 'left', cursor: 'pointer', fontSize: 13, fontWeight: 600, color: 'var(--text-primary)', fontFamily: 'inherit' }}
+    >
+      <span style={{ display: 'inline-block', width: 12, color: 'var(--text-muted)', fontSize: 10 }}>{open ? '▾' : '▸'}</span>
+      {title}
+    </button>
+  );
 }
 
 function MarketTable({ rows }: { rows: MarketRow[] }) {
@@ -67,6 +84,14 @@ function MarketTable({ rows }: { rows: MarketRow[] }) {
 export function DailyBriefingView({ b }: { b: DailyBriefing }) {
   const info = b.basic_info || {};
   const w = info.weather;
+  const [openIds, setOpenIds] = useState<Set<string>>(new Set());
+  const toggle = (id: string) =>
+    setOpenIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
       <Card padding={16}>
@@ -125,14 +150,13 @@ export function DailyBriefingView({ b }: { b: DailyBriefing }) {
                       <li key={a.id} style={{ borderTop: '1px solid var(--border-soft)', paddingTop: 8 }}>
                         <div style={{ display: 'flex', gap: 6, alignItems: 'baseline' }}>
                           {t && <span className={`wh-badge ${t.cls}`}>{t.label}</span>}
-                          <a href={a.url} target="_blank" rel="noreferrer" style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-primary)' }}>
-                            {a.title}
-                          </a>
+                          <ToggleTitle id={a.id} title={a.title} open={openIds.has(a.id)} onToggle={toggle} />
                         </div>
                         {a.summary && <p style={{ margin: '4px 0 0', fontSize: 13, lineHeight: 1.55, color: 'var(--text-secondary)' }}>{a.summary}</p>}
                         <div style={{ ...mutedText, fontSize: 11, marginTop: 2 }}>
                           {a.source_type === 'dart' ? 'DART 공시' : a.press || ''} {a.published_at ? a.published_at.slice(5, 16).replace('T', ' ') : ''}
                         </div>
+                        {openIds.has(a.id) && <ArticleBody article={a} />}
                       </li>
                     );
                   })}

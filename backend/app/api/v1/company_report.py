@@ -316,6 +316,21 @@ async def patch_article(article_id: str, body: ArticlePatch, current_user=Depend
     return _article_out(a)
 
 
+@router.get("/articles/{article_id}/content")
+async def article_content(article_id: str, current_user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    """목록에서 제목을 누르면 펼쳐 보여줄 기사 본문(원문 사이트에서 본문만 추출)."""
+    from app.services.company_report import article_reader
+    from app.services.company_report.keys import release
+
+    a = await db.get(NewsArticle, article_id)
+    if not a:
+        raise HTTPException(404, "기사를 찾을 수 없습니다.")
+    url = a.url
+    await release(db)
+    r = await article_reader.read(url)
+    return {"article_id": article_id, "source_url": url, **r}
+
+
 def _job_out(j, full: bool = False) -> dict:
     cov = j.coverage or {}
     out = {

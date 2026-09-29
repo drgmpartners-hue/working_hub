@@ -169,3 +169,67 @@ def test_usage_accumulate_and_price():
     assert llm_client.drain_usage() == {}
     assert price_for("gemini-3.1-pro-preview", DEFAULT_PRICES) == (2.0, 12.0)
     assert price_for("claude-opus-5", DEFAULT_PRICES) == (5.0, 25.0)
+
+
+# ---------------------------------------------------------------- 국민연금 API 판(버전) 전환·키 가리기
+def test_nps_variant_fallback_and_masking():
+    import asyncio
+
+    import httpx
+
+    from app.services.collectors import public_data_clients as pdc
+
+    ok_xml = ("<response><header><resultCode>00</resultCode><resultMsg>NORMAL SERVICE.</resultMsg></header>"
+              "<body><items><item><seq>1</seq><wkplNm>에스에프에이</wkplNm><bzowrRgstNo>803810</bzowrRgstNo></item></items>"
+              "</body></response>")
+    seen = []
+
+    def handler(req: httpx.Request) -> httpx.Response:
+        seen.append(str(req.url))
+        if "V2" in req.url.path:
+            return httpx.Response(400, text="Bad Request")
+        assert "wkplNm" in req.url.params  # 두 번째 판: 예전 기능 이름 + camelCase
+        return httpx.Response(200, text=ok_xml, headers={"content-type": "application/xml"})
+
+    async def run(h):
+        async with httpx.AsyncClient(transport=httpx.MockTransport(h)) as c:
+            return await pdc._nps_get(c, "SECRETKEY123", "bass", {"wkplNm": "에스에프에이", "bzowrRgstNo": "803810"})
+
+    pdc._nps_ok = None
+    items = asyncio.run(run(handler))
+    assert items[0]["seq"] == "1" and pdc._nps_ok == 1 and len(seen) == 2
+
+    def denied(req):
+        return httpx.Response(200, text="<OpenAPI_ServiceResponse><cmmMsgHeader><returnAuthMsg>SERVICE_KEY_IS_NOT_REGISTERED_ERROR"
+                                        "</returnAuthMsg><returnReasonCode>30</returnReasonCode></cmmMsgHeader></OpenAPI_ServiceResponse>")
+    pdc._nps_ok = None
+    try:
+        asyncio.run(run(denied))
+        raise AssertionError("should fail")
+    except pdc.PublicDataError as e:
+        assert "활용신청" in str(e) and "SECRETKEY123" not in str(e)
+
+    def bad(req):
+        return httpx.Response(400, text="Bad Request")
+    try:
+        asyncio.run(run(bad))
+    except pdc.PublicDataError as e:
+        assert "SECRETKEY123" not in str(e)
+    assert pdc.mask_keys("x?serviceKey=abc&y=1 ServiceKey=zz") == "x?serviceKey=***&y=1 ServiceKey=***"
+    pdc._nps_ok = None
+
+
+# ---------------------------------------------------------------- 기사 본문 읽기
+def test_article_reader_extract_and_google():
+    from app.services.company_report import article_reader as ar
+
+    body = "".join(f"<p>SFA반도체는 {i}번째 문단에서 반도체 후공정 사업의 실적 개선 전망을 설명했다. 회사 관계자는 투자 계획도 밝혔다.</p>" for i in range(6))
+    html = (f"<html><head><title>SFA반도체 실적 - 이데일리</title></head><body><nav>메뉴 홈 경제 정치</nav>"
+            f"<article><h1>SFA반도체 실적</h1>{body}</article><footer>Copyright 무단전재 금지</footer></body></html>")
+    r = ar.extract(html.encode("utf-8"), "https://www.edaily.co.kr/news/1")
+    assert r["chars"] > ar.MIN_CHARS and any("3번째 문단" in p for p in r["paragraphs"])
+    assert not any("메뉴 홈" in p for p in r["paragraphs"])
+    assert ar.google_article_id("https://news.google.com/rss/articles/CBMiAbc123?oc=5") == "CBMiAbc123"
+    assert ar.google_article_id("https://www.edaily.co.kr/news/1") is None
+    raw = ')]}\'\n\n[["wrb.fr","Fbv4je","[\\"garturlres\\",\\"https://www.edaily.co.kr/news/1\\",1]",null,null,null,"generic"]]'
+    assert ar._parse_batchexecute(raw) == "https://www.edaily.co.kr/news/1"
