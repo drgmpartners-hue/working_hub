@@ -248,6 +248,14 @@ export default function SettingsPage() {
 
   /* Profile edit */
   const [nickname, setNickname] = useState(user?.nickname || '');
+  const [phone, setPhone] = useState(user?.phone || '');
+  // 새로고침 직후엔 user가 늦게 들어오므로, 들어오면 입력칸을 채운다
+  useEffect(() => {
+    if (user) {
+      setNickname((v) => v || user.nickname || '');
+      setPhone((v) => v || user.phone || '');
+    }
+  }, [user]);
   const [profileSaving, setProfileSaving] = useState(false);
   const [profileMsg, setProfileMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
@@ -279,7 +287,15 @@ export default function SettingsPage() {
     setProfileSaving(true);
     setProfileMsg(null);
     try {
-      await authService.updateProfile({ nickname: nickname.trim() });
+      const digits = phone.replace(/\D/g, '');
+      if (digits && !/^01\d{8,9}$/.test(digits)) {
+        setProfileMsg({ type: 'error', text: '휴대폰 번호를 확인해주세요(예: 010-1234-5678).' });
+        setProfileSaving(false);
+        return;
+      }
+      const formatted = digits ? digits.replace(/^(\d{3})(\d{3,4})(\d{4})$/, '$1-$2-$3') : null;
+      await authService.updateProfile({ nickname: nickname.trim(), phone: formatted });
+      if (formatted) setPhone(formatted);
       await fetchUser();
       setProfileMsg({ type: 'success', text: '프로필이 수정되었습니다.' });
     } catch (e) {
@@ -587,6 +603,21 @@ export default function SettingsPage() {
                   style={inputStyle}
                   placeholder="닉네임을 입력하세요"
                 />
+              </div>
+
+              <div>
+                <label style={labelStyle}>휴대폰 번호</label>
+                <input
+                  type="tel"
+                  inputMode="numeric"
+                  value={phone}
+                  onChange={(e) => setPhone(e.target.value)}
+                  style={inputStyle}
+                  placeholder="010-1234-5678"
+                />
+                <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: 4 }}>
+                  기업 리포트 브리핑의 [나에게 테스트 발송]이 이 번호로 갑니다.
+                </div>
               </div>
 
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>

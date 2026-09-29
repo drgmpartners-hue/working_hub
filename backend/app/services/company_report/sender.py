@@ -302,7 +302,7 @@ async def send_test(db: AsyncSession, briefing_id: str, user: User, recipient_id
         target = t
     else:
         if not user.phone:
-            return {"success": False, "error": "내 계정에 휴대폰 번호가 없습니다. 발송 설정의 수신자 옆 [테스트]로 보내 보세요."}
+            return {"success": False, "error": "내 계정에 휴대폰 번호가 없습니다. 오른쪽 위 설정(톱니바퀴) > 개인정보에서 휴대폰 번호를 저장해 주세요."}
         target = Target(None, user.nickname, user.phone, user_id=user.id)
     r = await _deliver(db, b, [target], "test")
     await db.commit()
@@ -449,7 +449,7 @@ async def send_monthly_test(db: AsyncSession, monthly_id: str, user: User, recip
         target = t
     else:
         if not user.phone:
-            return {"success": False, "error": "내 계정에 휴대폰 번호가 없습니다. 발송 설정의 수신자 옆 [테스트]로 보내 보세요."}
+            return {"success": False, "error": "내 계정에 휴대폰 번호가 없습니다. 오른쪽 위 설정(톱니바퀴) > 개인정보에서 휴대폰 번호를 저장해 주세요."}
         target = Target(None, user.nickname, user.phone, user_id=user.id)
     r = await _deliver_monthly(db, mb, [target], "test")
     await db.commit()

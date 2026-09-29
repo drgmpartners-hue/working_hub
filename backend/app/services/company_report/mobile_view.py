@@ -98,8 +98,9 @@ async def monthly_view(db: AsyncSession, mb) -> dict[str, Any]:
             "name": sec.get("name"), "article_count": sec.get("article_count", 0), "caution_count": sec.get("caution_count", 0),
             "summary": [s for s in (sent(x) for x in sec.get("summary") or []) if s],
             "facts": [{**s, "date": x.get("date", "")} for x in sec.get("facts") or [] if (s := sent(x))],
-            "meaning": sent(sec.get("meaning")), "client_explain": sent(sec.get("client_explain")),
+            "meaning": sent(sec.get("meaning")),
             "qa": [{"q": x.get("q"), "a": x.get("a"), "refs": refs.nums(x.get("source_ids") or [])} for x in sec.get("qa") or []],
+            "client_explain": sent(sec.get("client_explain")),  # 화면에서 카드 맨 아래 → 번호도 마지막
         })
     st = mb.stats or {}
     return {

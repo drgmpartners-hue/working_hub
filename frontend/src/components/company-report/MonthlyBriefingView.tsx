@@ -3,7 +3,16 @@
 /** 월간 브리핑 본문 — ① 이달의 요약 ② 포트폴리오 동향(차트) ③ 기업별 월간 정리 ④ 주의 기업 ⑤ 다음 달 체크포인트 */
 import Link from 'next/link';
 import { useMemo, useState } from 'react';
-import { Bar, BarChart, CartesianGrid, Legend, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
+import {
+  Bar,
+  BarChart,
+  CartesianGrid,
+  Legend,
+  ResponsiveContainer,
+  Tooltip,
+  XAxis,
+  YAxis,
+} from 'recharts';
 import { Card } from '@/components/common/Card';
 import type { MSentence, MSource, MStatRow, MonthlyBriefing } from './types';
 import { SectionTitle, mutedText } from './ui';
@@ -24,17 +33,25 @@ function numbering(mb: MonthlyBriefing): Numbering {
     sec.summary.forEach((s) => add(s.source_ids));
     sec.facts.forEach((s) => add(s.source_ids));
     add(sec.meaning?.source_ids);
-    add(sec.client_explain?.source_ids);
     sec.qa.forEach((s) => add(s.source_ids));
     add(sec.caution?.what.source_ids);
     add(sec.caution?.impact?.source_ids);
     add(sec.caution?.check?.source_ids);
     sec.checkpoints.forEach((s) => add(s.source_ids));
+    add(sec.client_explain?.source_ids); // 화면에서 카드 맨 아래
   }
   return m;
 }
 
-function Refs({ ids, nums, sources }: { ids?: string[]; nums: Numbering; sources: Record<string, MSource> }) {
+function Refs({
+  ids,
+  nums,
+  sources,
+}: {
+  ids?: string[];
+  nums: Numbering;
+  sources: Record<string, MSource>;
+}) {
   if (!ids?.length) return null;
   return (
     <>
@@ -43,13 +60,24 @@ function Refs({ ids, nums, sources }: { ids?: string[]; nums: Numbering; sources
         const n = nums.get(id);
         if (!s || !n) return null;
         const label = `${s.type === 'article' ? '' : '원장 · '}${s.title}${s.date ? ` (${s.date})` : ''}${s.press ? ` · ${s.press}` : ''}`;
-        const style = { fontSize: 11, color: 'var(--cyan-400)', marginLeft: 3, verticalAlign: 'super', textDecoration: 'none' } as const;
+        const style = {
+          fontSize: 11,
+          color: 'var(--cyan-400)',
+          marginLeft: 3,
+          verticalAlign: 'super',
+          textDecoration: 'none',
+        } as const;
         return s.type === 'article' && s.url ? (
           <a key={id} href={s.url} target="_blank" rel="noreferrer" title={label} style={style}>
             [{n}]
           </a>
         ) : (
-          <Link key={id} href={`/content/company-report/companies/${s.company_id}?tab=ledger`} title={label} style={style}>
+          <Link
+            key={id}
+            href={`/content/company-report/companies/${s.company_id}?tab=ledger`}
+            title={label}
+            style={style}
+          >
             [{n}]
           </Link>
         );
@@ -58,7 +86,45 @@ function Refs({ ids, nums, sources }: { ids?: string[]; nums: Numbering; sources
   );
 }
 
-function Line({ s, nums, sources, style }: { s: MSentence; nums: Numbering; sources: Record<string, MSource>; style?: React.CSSProperties }) {
+/** 카드에 인용한 자료(기사·공시·원장)의 날짜 범위: 'M/D~M/D' */
+export function sourceRange(ids: string[], sources: Record<string, MSource>): string {
+  const ds = ids
+    .map((id) => sources[id]?.date || '')
+    .filter((d) => /^\d{4}-\d{2}-\d{2}/.test(d))
+    .map((d) => d.slice(0, 10))
+    .sort();
+  if (!ds.length) return '';
+  const f = (d: string) => `${Number(d.slice(5, 7))}/${Number(d.slice(8, 10))}`;
+  return ds[0] === ds[ds.length - 1] ? f(ds[0]) : `${f(ds[0])}~${f(ds[ds.length - 1])}`;
+}
+
+function sectionIds(sec: NonNullable<MonthlyBriefing['content']['companies']>[number]): string[] {
+  return [
+    ...sec.summary.flatMap((x) => x.source_ids || []),
+    ...sec.facts.flatMap((x) => x.source_ids || []),
+    ...(sec.meaning?.source_ids || []),
+    ...sec.qa.flatMap((x) => x.source_ids || []),
+    ...(sec.client_explain?.source_ids || []),
+    ...(sec.caution
+      ? [sec.caution.what, sec.caution.impact, sec.caution.check].flatMap(
+          (x) => x?.source_ids || [],
+        )
+      : []),
+    ...sec.checkpoints.flatMap((x) => x.source_ids || []),
+  ];
+}
+
+function Line({
+  s,
+  nums,
+  sources,
+  style,
+}: {
+  s: MSentence;
+  nums: Numbering;
+  sources: Record<string, MSource>;
+  style?: React.CSSProperties;
+}) {
   return (
     <span style={style}>
       {s.text}
@@ -69,7 +135,10 @@ function Line({ s, nums, sources, style }: { s: MSentence; nums: Numbering; sour
 
 /** 그래프 축에는 '주식회사'·'(주)'를 뺀 짧은 이름(전체 이름은 툴팁에) */
 export function shortName(name: string): string {
-  const s = (name || '').replace(/주식회사|\(주\)|㈜|\(유\)|유한회사/g, '').replace(/\s+/g, ' ').trim();
+  const s = (name || '')
+    .replace(/주식회사|\(주\)|㈜|\(유\)|유한회사/g, '')
+    .replace(/\s+/g, ' ')
+    .trim();
   return s || name;
 }
 
@@ -83,26 +152,57 @@ function TrendChart({ rows }: { rows: MStatRow[] }) {
       const sn = shortName(r.name);
       return { ...r, short: sn.length > MAX_LABEL ? `${sn.slice(0, MAX_LABEL - 1)}…` : sn };
     });
-  if (!data.length) return <div style={{ ...mutedText, padding: '12px 0' }}>이번 달 기사가 없습니다.</div>;
+  if (!data.length)
+    return <div style={{ ...mutedText, padding: '12px 0' }}>이번 달 기사가 없습니다.</div>;
   const h = Math.max(160, data.length * 30 + 60);
   // 가장 긴 이름에 맞춘 축 너비(한글 12px ≈ 13px/자)
   const axisW = Math.min(170, Math.max(64, Math.max(...data.map((r) => r.short.length)) * 13 + 12));
   return (
-    <div style={{ width: '100%', height: h }} role="img" aria-label="기업별 기사 수(긍정·중립·주의)">
+    <div
+      style={{ width: '100%', height: h }}
+      role="img"
+      aria-label="기업별 기사 수(긍정·중립·주의)"
+    >
       <ResponsiveContainer>
-        <BarChart data={data} layout="vertical" margin={{ top: 4, right: 16, bottom: 4, left: 8 }} barCategoryGap={8}>
+        <BarChart
+          data={data}
+          layout="vertical"
+          margin={{ top: 4, right: 16, bottom: 4, left: 8 }}
+          barCategoryGap={8}
+        >
           <CartesianGrid horizontal={false} stroke="#243049" />
-          <XAxis type="number" allowDecimals={false} tickLine={false} axisLine={false} tick={{ fontSize: 11, fill: '#AAB6C8' }} />
-          <YAxis type="category" dataKey="short" width={axisW} interval={0} tickLine={false} axisLine={false} tick={{ fontSize: 12, fill: '#DCE3EE' }} />
+          <XAxis
+            type="number"
+            allowDecimals={false}
+            tickLine={false}
+            axisLine={false}
+            tick={{ fontSize: 11, fill: '#AAB6C8' }}
+          />
+          <YAxis
+            type="category"
+            dataKey="short"
+            width={axisW}
+            interval={0}
+            tickLine={false}
+            axisLine={false}
+            tick={{ fontSize: 12, fill: '#DCE3EE' }}
+          />
           <Tooltip
             cursor={{ fill: 'rgba(255,255,255,0.04)' }}
-            contentStyle={{ background: '#0F172A', border: '1px solid #243049', borderRadius: 8, fontSize: 12 }}
+            contentStyle={{
+              background: '#0F172A',
+              border: '1px solid #243049',
+              borderRadius: 8,
+              fontSize: 12,
+            }}
             labelStyle={{ color: '#F1F5F9', fontWeight: 700 }}
             itemStyle={{ color: '#DCE3EE' }}
             formatter={(v, n) => [`${v}건`, n]}
             labelFormatter={(label, payload) => {
               const r = payload?.[0]?.payload as MStatRow | undefined;
-              return r ? `${r.name} · 전월 ${r.prev_total}건 (${r.change >= 0 ? '+' : ''}${r.change})` : String(label);
+              return r
+                ? `${r.name} · 전월 ${r.prev_total}건 (${r.change >= 0 ? '+' : ''}${r.change})`
+                : String(label);
             }}
           />
           <Legend wrapperStyle={{ fontSize: 12, color: '#AAB6C8' }} itemSorter={null} />
@@ -126,7 +226,13 @@ function TrendChart({ rows }: { rows: MStatRow[] }) {
 }
 
 function TrendTable({ rows }: { rows: MStatRow[] }) {
-  const cell: React.CSSProperties = { padding: '6px 6px', fontSize: 12, textAlign: 'right', borderBottom: '1px solid var(--border-soft)', fontVariantNumeric: 'tabular-nums' };
+  const cell: React.CSSProperties = {
+    padding: '6px 6px',
+    fontSize: 12,
+    textAlign: 'right',
+    borderBottom: '1px solid var(--border-soft)',
+    fontVariantNumeric: 'tabular-nums',
+  };
   return (
     <div style={{ overflowX: 'auto' }}>
       <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 420 }}>
@@ -146,7 +252,9 @@ function TrendTable({ rows }: { rows: MStatRow[] }) {
               <td style={{ ...cell, textAlign: 'left', color: 'var(--text-primary)' }}>{r.name}</td>
               <td style={cell}>{r.total}</td>
               <td style={cell}>{r.positive}</td>
-              <td style={{ ...cell, color: r.caution ? 'var(--danger)' : undefined }}>{r.caution}</td>
+              <td style={{ ...cell, color: r.caution ? 'var(--danger)' : undefined }}>
+                {r.caution}
+              </td>
               <td style={cell}>{r.prev_total}</td>
               <td style={cell}>{r.change > 0 ? `+${r.change}` : r.change}</td>
             </tr>
@@ -165,20 +273,51 @@ export function MonthlyBriefingView({ mb }: { mb: MonthlyBriefing }) {
   const src = c.sources || {};
   const label = `${Number(mb.month.slice(5, 7))}월`;
   const diff = (st.article_count || 0) - (st.prev_article_count || 0);
-  const box: React.CSSProperties = { padding: '10px 12px', borderRadius: 8, background: 'var(--bg-card-2)', fontSize: 14, lineHeight: 1.7 };
+  const box: React.CSSProperties = {
+    padding: '10px 12px',
+    borderRadius: 8,
+    background: 'var(--bg-card-2)',
+    fontSize: 14,
+    lineHeight: 1.7,
+  };
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
       <Card padding={16}>
-        <SectionTitle right={<span style={mutedText}>{mb.month}</span>}>① {label} 요약</SectionTitle>
+        <SectionTitle
+          right={
+            <span style={mutedText} title="이 월간 브리핑이 다룬 기사·공시의 기간">
+              자료 기간 {mb.month}-01 ~ {mb.month}-
+              {String(
+                new Date(Number(mb.month.slice(0, 4)), Number(mb.month.slice(5, 7)), 0).getDate(),
+              ).padStart(2, '0')}
+            </span>
+          }
+        >
+          ① {label} 요약
+        </SectionTitle>
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 10 }}>
-          <span className="wh-badge info">기사 {st.article_count ?? 0}건 (전월 대비 {diff >= 0 ? '+' : ''}{diff})</span>
+          <span className="wh-badge info">
+            기사 {st.article_count ?? 0}건 (전월 대비 {diff >= 0 ? '+' : ''}
+            {diff})
+          </span>
           <span className="wh-badge pos">긍정 {st.positive_count ?? 0}</span>
           <span className="wh-badge neg">주의 {st.caution_count ?? 0}</span>
-          <span className="wh-badge info">기사 있는 기업 {st.company_with_news ?? 0}/{st.company_total ?? 0}</span>
+          <span className="wh-badge info">
+            기사 있는 기업 {st.company_with_news ?? 0}/{st.company_total ?? 0}
+          </span>
         </div>
         {(c.summary || []).length ? (
-          <ul style={{ margin: 0, paddingLeft: 18, listStyle: 'disc', display: 'flex', flexDirection: 'column', gap: 6 }}>
+          <ul
+            style={{
+              margin: 0,
+              paddingLeft: 18,
+              listStyle: 'disc',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: 6,
+            }}
+          >
             {(c.summary || []).map((s, i) => (
               <li key={i} style={{ fontSize: 14, lineHeight: 1.7, color: 'var(--text-primary)' }}>
                 <Line s={s} nums={nums} sources={src} />
@@ -190,10 +329,23 @@ export function MonthlyBriefingView({ mb }: { mb: MonthlyBriefing }) {
         )}
         {(c.highlights || []).length > 0 && (
           <div style={{ marginTop: 12 }}>
-            <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text-primary)', marginBottom: 6 }}>주목할 기업</div>
+            <div
+              style={{
+                fontSize: 13,
+                fontWeight: 700,
+                color: 'var(--text-primary)',
+                marginBottom: 6,
+              }}
+            >
+              주목할 기업
+            </div>
             {(c.highlights || []).map((h, i) => (
-              <div key={i} style={{ fontSize: 13, color: 'var(--text-secondary)', lineHeight: 1.7 }}>
-                <strong style={{ color: 'var(--text-primary)' }}>{h.name}</strong> · <Line s={h} nums={nums} sources={src} />
+              <div
+                key={i}
+                style={{ fontSize: 13, color: 'var(--text-secondary)', lineHeight: 1.7 }}
+              >
+                <strong style={{ color: 'var(--text-primary)' }}>{h.name}</strong> ·{' '}
+                <Line s={h} nums={nums} sources={src} />
               </div>
             ))}
           </div>
@@ -203,18 +355,31 @@ export function MonthlyBriefingView({ mb }: { mb: MonthlyBriefing }) {
       <Card padding={16}>
         <SectionTitle
           right={
-            <button type="button" className="wh-btn wh-btn-ghost wh-btn-sm" onClick={() => setShowTable((v) => !v)}>
+            <button
+              type="button"
+              className="wh-btn wh-btn-ghost wh-btn-sm"
+              onClick={() => setShowTable((v) => !v)}
+            >
               {showTable ? '차트로 보기' : '표로 보기'}
             </button>
           }
         >
           ② 포트폴리오 동향
         </SectionTitle>
-        {showTable ? <TrendTable rows={st.companies || []} /> : <TrendChart rows={st.companies || []} />}
+        {showTable ? (
+          <TrendTable rows={st.companies || []} />
+        ) : (
+          <TrendChart rows={st.companies || []} />
+        )}
         {(st.coverage_alerts || []).length > 0 && (
           <div style={{ marginTop: 10, fontSize: 12, color: 'var(--text-muted)', lineHeight: 1.6 }}>
-            <span className="wh-badge warn" style={{ marginRight: 6 }}>수집 점검</span>
-            {(st.coverage_alerts || []).map((a) => `${a.name}(이번 달 ${a.total}건, 직전 3개월 평균 ${a.avg3}건)`).join(', ')} — 기사가 크게 줄었습니다. 검색어·수집 상태를 확인하세요.
+            <span className="wh-badge warn" style={{ marginRight: 6 }}>
+              수집 점검
+            </span>
+            {(st.coverage_alerts || [])
+              .map((a) => `${a.name}(이번 달 ${a.total}건, 직전 3개월 평균 ${a.avg3}건)`)
+              .join(', ')}{' '}
+            — 기사가 크게 줄었습니다. 검색어·수집 상태를 확인하세요.
           </div>
         )}
       </Card>
@@ -228,38 +393,85 @@ export function MonthlyBriefingView({ mb }: { mb: MonthlyBriefing }) {
         )}
         {(c.companies || []).map((sec) => (
           <Card key={sec.company_id} padding={16}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+            <div
+              style={{
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                gap: 8,
+                marginBottom: 8,
+              }}
+            >
               <strong style={{ fontSize: 15, color: 'var(--text-primary)' }}>{sec.name}</strong>
-              <span style={{ display: 'flex', gap: 6 }}>
+              <span
+                style={{
+                  display: 'flex',
+                  gap: 6,
+                  alignItems: 'center',
+                  flexWrap: 'wrap',
+                  justifyContent: 'flex-end',
+                }}
+              >
+                {(() => {
+                  const r = sourceRange(sectionIds(sec), src);
+                  return r ? (
+                    <span
+                      style={{ ...mutedText, fontSize: 12 }}
+                      title="이 카드에 인용한 기사·공시의 날짜 범위"
+                    >
+                      참고 자료 {r}
+                    </span>
+                  ) : null;
+                })()}
                 {sec.caution && <span className="wh-badge neg">주의</span>}
-                <span className="wh-badge info">{sec.article_count}건</span>
+                <span className="wh-badge info" title={`${mb.month} 한 달 기사 수`}>
+                  {sec.article_count}건
+                </span>
               </span>
             </div>
             {sec.summary.map((s, i) => (
-              <p key={i} style={{ margin: '0 0 6px', fontSize: 14, lineHeight: 1.7, color: 'var(--text-primary)' }}>
+              <p
+                key={i}
+                style={{
+                  margin: '0 0 6px',
+                  fontSize: 14,
+                  lineHeight: 1.7,
+                  color: 'var(--text-primary)',
+                }}
+              >
                 <Line s={s} nums={nums} sources={src} />
               </p>
             ))}
             {sec.facts.length > 0 && (
               <ul style={{ margin: '6px 0', paddingLeft: 18, listStyle: 'disc' }}>
                 {sec.facts.map((f, i) => (
-                  <li key={i} style={{ fontSize: 13, lineHeight: 1.7, color: 'var(--text-secondary)' }}>
-                    {f.date && <span style={{ ...mutedText, fontSize: 12, marginRight: 6 }}>{f.date.slice(5).replace('-', '/')}</span>}
+                  <li
+                    key={i}
+                    style={{ fontSize: 13, lineHeight: 1.7, color: 'var(--text-secondary)' }}
+                  >
+                    {f.date && (
+                      <span style={{ ...mutedText, fontSize: 12, marginRight: 6 }}>
+                        {f.date.slice(5).replace('-', '/')}
+                      </span>
+                    )}
                     <Line s={f} nums={nums} sources={src} />
                   </li>
                 ))}
               </ul>
             )}
             {sec.meaning && (
-              <div style={{ fontSize: 13, lineHeight: 1.7, color: 'var(--text-secondary)', margin: '6px 0' }}>
-                <span className="wh-badge info" style={{ marginRight: 6 }}>분석</span>
+              <div
+                style={{
+                  fontSize: 13,
+                  lineHeight: 1.7,
+                  color: 'var(--text-secondary)',
+                  margin: '6px 0',
+                }}
+              >
+                <span className="wh-badge info" style={{ marginRight: 6 }}>
+                  분석
+                </span>
                 <Line s={sec.meaning} nums={nums} sources={src} />
-              </div>
-            )}
-            {sec.client_explain && (
-              <div style={{ ...box, borderLeft: '3px solid var(--cyan-400)', margin: '8px 0' }}>
-                <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--cyan-400)', marginBottom: 2 }}>고객에게 이렇게 설명하세요</div>
-                <Line s={sec.client_explain} nums={nums} sources={src} style={{ color: 'var(--text-primary)' }} />
               </div>
             )}
             {sec.qa.length > 0 && (
@@ -275,8 +487,32 @@ export function MonthlyBriefingView({ mb }: { mb: MonthlyBriefing }) {
                 ))}
               </div>
             )}
+            {/* 카드 맨 아래, 한 줄 띄워서 */}
+            {sec.client_explain && (
+              <div style={{ ...box, borderLeft: '3px solid var(--cyan-400)', margin: '20px 0 0' }}>
+                <div
+                  style={{
+                    fontSize: 12,
+                    fontWeight: 700,
+                    color: 'var(--cyan-400)',
+                    marginBottom: 2,
+                  }}
+                >
+                  고객에게 이렇게 설명하세요
+                </div>
+                <Line
+                  s={sec.client_explain}
+                  nums={nums}
+                  sources={src}
+                  style={{ color: 'var(--text-primary)' }}
+                />
+              </div>
+            )}
             <div style={{ marginTop: 10, textAlign: 'right' }}>
-              <Link href={`/content/company-report/companies/${sec.company_id}`} style={{ fontSize: 12, color: 'var(--cyan-400)' }}>
+              <Link
+                href={`/content/company-report/companies/${sec.company_id}`}
+                style={{ fontSize: 12, color: 'var(--cyan-400)' }}
+              >
                 기업 상세 보기 →
               </Link>
             </div>
@@ -320,8 +556,11 @@ export function MonthlyBriefingView({ mb }: { mb: MonthlyBriefing }) {
           <ul style={{ margin: 0, paddingLeft: 18, listStyle: 'disc' }}>
             {(c.checkpoints || []).map((p, i) => (
               <li key={i} style={{ fontSize: 13, lineHeight: 1.8, color: 'var(--text-secondary)' }}>
-                {p.when && <span style={{ ...mutedText, fontSize: 12, marginRight: 6 }}>{p.when}</span>}
-                <strong style={{ color: 'var(--text-primary)' }}>{p.name}</strong> · <Line s={p} nums={nums} sources={src} />
+                {p.when && (
+                  <span style={{ ...mutedText, fontSize: 12, marginRight: 6 }}>{p.when}</span>
+                )}
+                <strong style={{ color: 'var(--text-primary)' }}>{p.name}</strong> ·{' '}
+                <Line s={p} nums={nums} sources={src} />
               </li>
             ))}
           </ul>
@@ -337,9 +576,16 @@ export function MonthlyBriefingView({ mb }: { mb: MonthlyBriefing }) {
               if (!s) return null;
               return (
                 <li key={id} style={{ fontSize: 12, lineHeight: 1.7, color: 'var(--text-muted)' }}>
-                  <span style={{ display: 'inline-block', minWidth: 28, color: 'var(--cyan-400)' }}>[{n}]</span>
+                  <span style={{ display: 'inline-block', minWidth: 28, color: 'var(--cyan-400)' }}>
+                    [{n}]
+                  </span>
                   {s.type === 'article' && s.url ? (
-                    <a href={s.url} target="_blank" rel="noreferrer" style={{ color: 'var(--text-secondary)' }}>
+                    <a
+                      href={s.url}
+                      target="_blank"
+                      rel="noreferrer"
+                      style={{ color: 'var(--text-secondary)' }}
+                    >
                       {s.title}
                     </a>
                   ) : (
