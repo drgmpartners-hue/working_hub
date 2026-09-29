@@ -2,7 +2,7 @@
 
 요약된 대표 기사(주로 투자유치·실적·제품·수상·인사·제휴·규제·소송·공시)에서
 사실 후보(candidate)를 뽑아 company_facts에, 투자 라운드는 company_funding_rounds에 올린다.
-담당자가 [확정]/[제외]한다. 같은 사건이 여러 기사에 나오면 출처만 합친다.
+확정·제외는 fact_verify.py가 자동으로 판정한다(담당자는 되돌리기만). 같은 사건이 여러 기사에 나오면 출처만 합친다.
 """
 from __future__ import annotations
 
@@ -255,11 +255,15 @@ async def edit_fact(db: AsyncSession, fact: CompanyFact, changes: dict, user_id:
 
 def fact_timeline(facts: list[CompanyFact]) -> list[dict]:
     """유형별 타임라인용 정렬(최신 먼저)."""
+    from app.services.company_report.fact_verify import AUTO_USER, label_of
+
     return sorted(
         [{"id": f.id, "fact_type": f.fact_type, "type_label": FACT_TYPES.get(f.fact_type, f.fact_type),
           "fact_date": f.fact_date.isoformat() if f.fact_date else None, "title": f.title, "detail": f.detail or {},
           "source_refs": f.source_refs or [], "status": f.status, "origin": f.origin, "supersedes_id": f.supersedes_id,
-          "confirmed_at": f.confirmed_at.isoformat() if f.confirmed_at else None}
+          "confirmed_at": f.confirmed_at.isoformat() if f.confirmed_at else None,
+          "auto": f.confirmed_by == AUTO_USER or bool(f.verification and f.status == "rejected" and f.verification.get("status") == "rejected"),
+          "verification": f.verification, "verify_label": label_of(f.verification) if f.verification else ""}
          for f in facts],
         key=lambda x: (x["fact_date"] or "", x["title"]), reverse=True,
     )

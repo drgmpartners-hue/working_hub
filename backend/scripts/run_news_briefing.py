@@ -5,7 +5,8 @@
   send        [--date YYYY-MM-DD]                            평일 08:30 KST  (cron: 30 23 * * 0-4)
   collect                                                    수동 수집+요약
   summarize   [--limit N]                                    요약만
-  facts       [--limit N]                                    사실·투자유치 후보 추출
+  facts       [--limit N]                                    사실·투자유치 후보 추출 + 자동 검증
+  verify-facts [--limit N]                                   후보 사실 자동 검증만
   reindex-check                                              검색 색인 누락 점검(매일 04:00 KST, cron: 0 19 * * *)
   reindex                                                    검색 색인 전체 재구축
   public-data [--force]                                      공공데이터 스냅샷(국민연금·국세청·KIPRIS·KIS)
@@ -33,13 +34,22 @@ async def mark_files_dirty(db) -> None:
     await file_worker.mark_dirty(db)
 
 
+async def _verify(db, limit: int) -> None:
+    from app.services.company_report import fact_verify
+
+    try:
+        _print("verify-facts", await fact_verify.verify_pending(db, limit=limit))
+    except Exception as e:
+        print(f"[verify-facts] 실패: {e}", flush=True)
+
+
 def _print(title: str, obj) -> None:
     print(f"[{title}] {json.dumps(obj, ensure_ascii=False, default=str)}", flush=True)
 
 
 async def main() -> int:
     p = argparse.ArgumentParser()
-    p.add_argument("cmd", choices=["daily-build", "send", "collect", "summarize", "facts", "reindex-check", "reindex", "public-data", "monthly", "send-monthly"])
+    p.add_argument("cmd", choices=["daily-build", "send", "collect", "summarize", "facts", "reindex-check", "reindex", "public-data", "monthly", "send-monthly", "verify-facts"])
     p.add_argument("--date")
     p.add_argument("--no-collect", action="store_true")
     p.add_argument("--force", action="store_true")
@@ -57,6 +67,7 @@ async def main() -> int:
                 _print("public-data", await public_data.snapshot_due(db))
             except Exception as e:
                 print(f"[public-data] 실패: {e}", flush=True)
+            await _verify(db, 60)  # 브리핑을 만든 뒤 새 사실 후보 자동 검증
             await mark_files_dirty(db)
         elif a.cmd == "send":
             _print("send", await sender.send_daily(db, day))
@@ -75,10 +86,14 @@ async def main() -> int:
             _print("collect", await collector.collect_all(db, via="manual"))
             _print("summarize", await summarizer.summarize_pending(db, limit=a.limit))
             _print("facts", await facts.extract_pending(db, limit=a.limit))
+            await _verify(db, a.limit)
         elif a.cmd == "summarize":
             _print("summarize", await summarizer.summarize_pending(db, limit=a.limit))
         elif a.cmd == "facts":
             _print("facts", await facts.extract_pending(db, limit=a.limit))
+            await _verify(db, a.limit)
+        elif a.cmd == "verify-facts":
+            await _verify(db, a.limit)
         elif a.cmd == "reindex-check":
             _print("reindex-check", await search.check_missing(db))
         elif a.cmd == "public-data":

@@ -261,7 +261,7 @@ async def _run(monkeypatch):
             assert res["success"] and res["count"] == 2 and res["channel"] == "lms", res
             again = await sender.send_daily(db, tomorrow)
             assert again.get("skipped") == "이미 발송됨"
-        assert len(sent) == 2 and "브리핑 보기" in sent[0]["text"]
+        assert len(sent) == 2 and "■ 기사 원문 링크" in sent[0]["text"] and "/r/" in sent[0]["text"]
         r = await c.get("/settings", headers=H)
         assert r.json()["send_logs"][0]["status"] == "requested"
 

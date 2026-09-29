@@ -45,6 +45,9 @@ class CompanyFact(Base):
     confirmed_by: Mapped[Optional[str]] = mapped_column(String(36))
     confirmed_at: Mapped[Optional[datetime]] = mapped_column(DateTime)
     supersedes_id: Mapped[Optional[str]] = mapped_column(String(36))
+    # 자동 검증 결과(원문 인용·주체 확인·독립 출처 수·검색 교차 확인·판정 이유). fact_verify.py
+    verification: Mapped[Optional[dict]] = mapped_column(JSONB)
+    verified_at: Mapped[Optional[datetime]] = mapped_column(DateTime)
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now(), nullable=False)
     updated_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now(), onupdate=func.now(), nullable=False)
 
@@ -211,3 +214,16 @@ class MonthlyBriefing(Base):
     sent_at: Mapped[Optional[datetime]] = mapped_column(DateTime)
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now(), nullable=False)
     updated_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now(), onupdate=func.now(), nullable=False)
+
+
+class ShortLink(Base):
+    """카톡 브리핑 본문에 넣는 짧은 기사 링크(/r/코드 → 원문). 로그인 없이 열린다(원문 주소로 보내기만 함)."""
+
+    __tablename__ = "short_links"
+
+    code: Mapped[str] = mapped_column(String(12), primary_key=True)
+    url: Mapped[str] = mapped_column(Text, nullable=False)
+    url_hash: Mapped[str] = mapped_column(String(64), unique=True, nullable=False)
+    article_id: Mapped[Optional[str]] = mapped_column(String(36), index=True)
+    hits: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now(), nullable=False)

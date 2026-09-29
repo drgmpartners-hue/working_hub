@@ -1,12 +1,12 @@
 'use client';
 
-/** 기업 원장 탭 — 투자유치 표 · 사실 타임라인(후보 확정/제외/수정) (P2-3·4). 수집 현황·공공데이터는 상단 슬롯 */
+/** 기업 원장 탭 — 투자유치 표 · 사실 타임라인(자동 검증 결과·근거, 필요할 때만 확정/제외/수정). 수집 현황·공공데이터는 상단 슬롯 */
 import { ReactNode, useCallback, useEffect, useMemo, useState } from 'react';
 import { Card } from '@/components/common/Card';
 import { Modal } from '@/components/common/Modal';
 import { crGet, crPatch, crPost } from '@/lib/companyReportApi';
 import { MonthlyDigestsCard } from './MonthlyDigestsCard';
-import type { Fact, FundingRound, SourceRef } from './types';
+import type { Fact, FactVerification, FundingRound, SourceRef } from './types';
 import { FACT_STATUS, fmtEok } from './types';
 import { ErrorBox, Field, SectionTitle, Spinner, inputStyle, mutedText } from './ui';
 
@@ -24,6 +24,59 @@ function Sources({ refs }: { refs: SourceRef[] }) {
       ))}
       {refs.length > 4 && <span style={{ ...mutedText, fontSize: 12 }}>외 {refs.length - 4}</span>}
     </span>
+  );
+}
+
+const LEVEL_CLS: Record<string, string> = {
+  official: 'pos', multi: 'pos', single: 'warn', conflict: 'neg', not_company: 'neg', not_in_source: 'neg', speculative: 'neg', error: 'warn',
+};
+
+/** 자동 검증 근거: 원문 인용 문장 + 판정 이유, [근거 더 보기]로 검색 교차 확인·고친 내용 */
+function Evidence({ v }: { v: FactVerification }) {
+  const [open, setOpen] = useState(false);
+  const found = v.search?.sources || [];
+  return (
+    <div style={{ marginTop: 4, paddingLeft: 86, fontSize: 12, lineHeight: 1.6 }}>
+      {v.quote && (
+        <div style={{ color: 'var(--text-secondary)', borderLeft: '2px solid var(--border)', paddingLeft: 8, margin: '2px 0' }}>
+          “{v.quote}”
+        </div>
+      )}
+      <div style={{ color: 'var(--text-muted)' }}>
+        {v.reason}
+        {v.role ? ` · 회사 입장: ${v.role}` : ''}
+        {v.original?.title ? ` · 원문에 맞게 고침(처음: ${v.original.title})` : ''}{' '}
+        {(v.check_reason || found.length > 0 || (v.outlet_names || []).length > 0) && (
+          <button
+            type="button"
+            onClick={() => setOpen((o) => !o)}
+            style={{ background: 'none', border: 'none', padding: 0, color: 'var(--cyan-400)', cursor: 'pointer', fontSize: 12 }}
+          >
+            {open ? '접기' : '근거 더 보기'}
+          </button>
+        )}
+      </div>
+      {open && (
+        <div style={{ color: 'var(--text-muted)', marginTop: 2 }}>
+          {v.check_reason && <div>원문 대조: {v.check_reason}</div>}
+          {(v.outlet_names || []).length > 0 && <div>보도한 곳: {(v.outlet_names || []).join(', ')}</div>}
+          {v.search?.verdict && (
+            <div>
+              검색 교차 확인({v.search.verdict === 'corroborated' ? '다른 출처도 같은 내용' : v.search.verdict === 'contradicted' ? '다른 출처와 어긋남' : '다른 출처 못 찾음'})
+              {v.search.note ? `: ${v.search.note}` : ''}
+              {found.map((x, i) =>
+                x.url ? (
+                  <a key={i} href={x.url} target="_blank" rel="noreferrer" style={{ color: 'var(--cyan-400)', marginLeft: 6 }}>
+                    {x.press || x.title || '링크'}
+                  </a>
+                ) : null,
+              )}
+            </div>
+          )}
+          {v.checked_at && <div>검증 {v.checked_at.replace('T', ' ').slice(0, 16)}</div>}
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -141,6 +194,15 @@ export function LedgerTab({ companyId, top }: { companyId: string; top?: ReactNo
     }
   };
 
+  const verifyNow = async () => {
+    try {
+      await crPost(`/companies/${companyId}/verify-facts`);
+      setNotice('남은 후보를 자동 검증하는 중입니다(원문 대조·출처 확인). 몇 분 뒤 새로고침하세요.');
+    } catch (e) {
+      setError((e as Error).message);
+    }
+  };
+
   const reextract = async () => {
     try {
       await crPost(`/companies/${companyId}/extract-facts`);
@@ -249,6 +311,9 @@ export function LedgerTab({ companyId, top }: { companyId: string; top?: ReactNo
         <SectionTitle
           right={
             <span style={{ display: 'flex', gap: 6 }}>
+              <button type="button" className="wh-btn wh-btn-ghost wh-btn-sm" onClick={() => void verifyNow()}>
+                자동 검증
+              </button>
               <button type="button" className="wh-btn wh-btn-ghost wh-btn-sm" onClick={() => void reextract()}>
                 사실 다시 찾기
               </button>
@@ -268,7 +333,7 @@ export function LedgerTab({ companyId, top }: { companyId: string; top?: ReactNo
           {(
             [
               ['open', `후보·확정 (${(counts.candidate || 0) + (counts.confirmed || 0)})`],
-              ['candidate', `후보만 (${counts.candidate || 0})`],
+              ['candidate', `확인 필요 (${counts.candidate || 0})`],
               ['confirmed', `확정만 (${counts.confirmed || 0})`],
               ['rejected', `제외됨 (${counts.rejected || 0})`],
             ] as const
@@ -329,7 +394,10 @@ export function LedgerTab({ companyId, top }: { companyId: string; top?: ReactNo
                   <span style={{ ...mutedText, fontSize: 12, width: 78 }}>{f.fact_date || '날짜 미상'}</span>
                   <span className="wh-badge info">{f.type_label}</span>
                   <strong style={{ color: 'var(--text-primary)', fontSize: 14 }}>{f.title}</strong>
-                  <span className={`wh-badge ${FACT_STATUS[f.status]?.cls}`}>{FACT_STATUS[f.status]?.label}</span>
+                  <span className={`wh-badge ${FACT_STATUS[f.status]?.cls}`}>
+                    {f.auto && f.status !== 'candidate' ? `자동 ${FACT_STATUS[f.status]?.label}` : f.status === 'candidate' && f.verification ? '확인 필요' : FACT_STATUS[f.status]?.label}
+                  </span>
+                  {f.verify_label && <span className={`wh-badge ${LEVEL_CLS[f.verification?.level || ''] || 'info'}`}>{f.verify_label}</span>}
                   <Sources refs={f.source_refs} />
                   <span style={{ marginLeft: 'auto', display: 'flex', gap: 4 }}>
                     {f.status === 'candidate' && (
@@ -345,6 +413,11 @@ export function LedgerTab({ companyId, top }: { companyId: string; top?: ReactNo
                     {f.status === 'rejected' && (
                       <button type="button" className="wh-btn wh-btn-ghost wh-btn-sm" onClick={() => void setFactStatus(f, 'candidate')}>
                         되돌리기
+                      </button>
+                    )}
+                    {f.status === 'confirmed' && (
+                      <button type="button" className="wh-btn wh-btn-ghost wh-btn-sm" onClick={() => void setFactStatus(f, 'rejected')}>
+                        제외
                       </button>
                     )}
                     {f.status !== 'rejected' && (
@@ -366,6 +439,7 @@ export function LedgerTab({ companyId, top }: { companyId: string; top?: ReactNo
                       .join(' · ')}
                   </div>
                 )}
+                {f.verification && <Evidence v={f.verification} />}
               </li>
             ))}
           </ul>

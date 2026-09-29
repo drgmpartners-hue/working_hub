@@ -170,7 +170,7 @@ async def _ai_briefing(db: AsyncSession, day: date, briefing_id: str, cards: lis
         raise llm_client.LLMError("Claude 키가 없습니다")
     gemini = await get_service_key(db, "gemini")
     models = await config.get_models(db)
-    sources, _ = build_sources(cards)
+    sources, mapping = build_sources(cards)
     src_txt = "\n".join(f"[{s['id']}] (company_id={s['company_id']}) {s['text']}" for s in sources)
     prompt = DRAFT_PROMPT.format(day=f"{day.isoformat()}({'월화수목금토일'[day.weekday()]})", sources=src_txt)
     await release(db)
@@ -187,7 +187,8 @@ async def _ai_briefing(db: AsyncSession, day: date, briefing_id: str, cards: lis
     overall = apply_ai(cards, draft, outcome)
     if not overall:
         raise llm_client.LLMError("검토 후 남은 종합 문장이 없습니다")
-    return overall, {**outcome.summary, "removed": outcome.removed[:20], "missing": outcome.missing[:10]}
+    return overall, {**outcome.summary, "removed": outcome.removed[:20], "missing": outcome.missing[:10],
+                     "source_map": mapping}  # 카톡 본문의 [1][2] 기사 번호용
 
 
 def _seconds_until_deadline(now: datetime, day: date) -> float:

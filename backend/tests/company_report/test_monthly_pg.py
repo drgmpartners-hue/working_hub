@@ -184,9 +184,24 @@ async def _run(monkeypatch):
         assert "11월" in v["#{체크포인트}"]
         txt = sender.render_monthly_text(mb, "관리자")
         assert txt.startswith("[사내 업무용 메시지]\n관리자 담당자님, 8월") and len(txt) < 1000
+        links = await sender.monthly_links(db, mb)
+        await db.commit()
+        assert links and all(u.startswith("https://working-hub.vercel.app/r/") for u in links.values())
+        v2 = sender.template_c_variables(mb, "관리자", links)
+        assert "[1]" in v2["#{월간요약}"] + v2["#{주목기업}"] and v2["#{기사링크}"].startswith("[1] https://")
+        txt2 = sender.render_monthly_text(mb, "관리자", links)
+        assert len(txt2) <= 1000 and "#{" not in txt2
+        code = v2["#{기사링크}"].split("/r/")[1].split("\n")[0]
+        again = await sender.monthly_links(db, mb)
+        assert again == links  # 같은 기사는 같은 짧은 주소
 
     transport = httpx.ASGITransport(app=app)
     async with httpx.AsyncClient(transport=transport, base_url="http://t/api/v1/company-report") as cl:
+        # 짧은 링크: 로그인 없이 원문으로 이동, 없는 코드는 Working Hub로
+        r = await cl.get(f"/r/{code}")
+        assert r.status_code == 302 and r.headers["location"].startswith("http") and "/r/" not in r.headers["location"]
+        r = await cl.get("/r/NoSuch1")
+        assert r.status_code == 302 and r.headers["location"] == "https://working-hub.vercel.app"
         r = await cl.get("/briefings/monthly", params={"month": month}, headers=H)
         assert r.status_code == 200 and r.json()["status"] == "ready"
         assert (await cl.get("/briefings/monthly", params={"month": "2026-13"}, headers=H)).status_code == 422
@@ -208,7 +223,7 @@ async def _run(monkeypatch):
 
         sent.clear()
         r = await cl.post(f"/briefings/monthly/{mb_id}/test-send", headers=H)
-        assert r.status_code == 200 and sent[0]["to"] == "010-1111-2222" and "월간 브리핑 보기" in sent[0]["text"], r.text
+        assert r.status_code == 200 and sent[0]["to"] == "010-1111-2222" and "■ 기사 원문 링크" in sent[0]["text"], r.text
         async with AsyncSessionLocal() as db:
             mb = await db.get(MonthlyBriefing, mb_id)
             assert mb.status == "ready"  # 테스트 발송은 상태를 바꾸지 않음

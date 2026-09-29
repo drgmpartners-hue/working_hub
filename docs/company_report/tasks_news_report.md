@@ -118,6 +118,13 @@
 
 ---
 
+## P3+ — 운영 중 개선 (2026-09-29)
+
+- [x] 카톡 브리핑 v2: 본문에 [1][2] 번호 + 짧은 기사 링크(`/r/코드`, 로그인 없음), '브리핑 보기' 버튼 제거, 1,000자·2,000바이트 자동 맞춤 (`sender.py`, `shortlink.py`, 마이그레이션 s6h7o8r9t0l1)
+  - [ ] [수동] 템플릿 B·C v2 검수 신청(docs/company_report/alimtalk_templates.md). 승인 전에는 템플릿 ID를 비워 두면 같은 내용이 문자로 발송
+- [x] 사실 원장 자동 검증(`fact_verify.py`): 원문 대조(인용)·주체 확인·독립 출처 수·Gemini 검색 교차 확인·공시 → 자동 확정/제외. 단일 출처도 '단일 출처' 표시로 자동 확정(담당자 결정). 사람은 '출처 어긋남'만 확인
+- [x] 기사 제목을 누르면 원문 화면을 그 자리에(iframe, 사이트가 막으면 본문 글)
+
 ## P4 — 반기 기업 종합보고서 (출력용, 약 2.5주)
 
 - [ ] **P4-1** [DB] `company_documents`, `company_reports`(period_year·period_half·sales_note), `report_images`, `report_exports`

@@ -183,6 +183,25 @@ export interface Fact {
   status: 'candidate' | 'confirmed' | 'rejected' | 'superseded';
   origin: 'ai' | 'manual';
   supersedes_id: string | null;
+  auto?: boolean;
+  verify_label?: string;
+  verification?: FactVerification | null;
+}
+
+/** 사실 자동 검증 결과(원문 인용·주체·출처 수·검색 교차 확인) */
+export interface FactVerification {
+  status?: string;
+  level?: 'official' | 'multi' | 'single' | 'conflict' | 'not_company' | 'not_in_source' | 'speculative' | 'error';
+  reason?: string;
+  outlets?: number;
+  outlet_names?: string[];
+  quote?: string;
+  role?: string;
+  check_reason?: string;
+  original?: { title?: string; fact_date?: string | null } | null;
+  search?: { verdict?: string; note?: string; sources?: { press?: string; title?: string; url?: string }[] } | null;
+  checked_at?: string;
+  attempts?: number;
 }
 
 export interface FundingRound {

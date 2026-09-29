@@ -123,13 +123,57 @@ def test_template_b_variables_limits():
     )
     v = sender.template_b_variables(b)
     assert v["#{날짜}"] == "9/28(월)" and v["#{날짜코드}"] == "2026-09-28"
-    assert len(v["#{종합브리핑}"]) <= 230 and len(v["#{기업별요약}"]) <= 330
     assert v["#{담당자명}"] == "사내" and v["#{날씨}"].startswith("서울 ")
     assert "S&P500 5,812.4(+0.4%)" in v["#{전일증시}"] and "코스피 조회실패" in v["#{전일증시}"]
     assert "[주의]" in v["#{기업별요약}"]
-    assert "briefing?date=2026-09-28" in sender.render_text(b)
     t = sender.render_text(b, "김민호")
-    assert t.startswith("[사내 업무용 메시지]\n김민호 담당자님,") and sender.template_b_variables(b, "김민호")["#{담당자명}"] == "김민호"
+    assert t.startswith("[사내 업무용 메시지]\n김민호 담당자님,") and len(t) <= 1000
+    assert "■ 기사 원문 링크" in t and "#{" not in t
+
+
+def test_daily_kakao_links_numbering_and_budget():
+    """종합 문장 [번호] → 기사 원문 링크 목록. 기업이 많아도 1,000자·2,000바이트 안."""
+    cards = []
+    for i in range(9):
+        arts = [{"id": f"a{i}_{j}", "url": f"https://news.example.com/{i}/{j}", "title": "t", "summary": "s",
+                 "tag": "caution" if (i == 0 and j == 0) else "neutral", "issue_type": "제품", "published_at": "2026-09-28T08:00:00"}
+                for j in range(4)]
+        arts = arts[:3] + [{**a, "more": True} for a in arts[3:]]
+        cards.append({"company_id": f"c{i}", "name": f"기업{i}", "caution_count": int(i == 0), "article_count": 4,
+                      "one_liner": f"기업{i}가 새 제품을 출시하고 대형 고객사와 공급 계약을 맺었다는 보도가 이어졌다", "articles": arts})
+    from app.services.company_report.daily import build_sources
+
+    _, mapping = build_sources(cards)
+    rev = {v: k for k, v in mapping.items()}
+    b = SimpleNamespace(
+        briefing_date=date(2026, 9, 29), article_count=36, caution_count=1, overall_summary="",
+        basic_info={"weekday": "화", "company_with_news": 9, "weather": {"available": True, "text": "맑음, 14~25℃, 강수확률 10%"},
+                    "markets": [{"name": n, "market": mk, "available": True, "close": 5812.4, "change_pct": 0.4}
+                                for n, mk in [("S&P500", "US"), ("나스닥", "US"), ("다우존스", "US"), ("코스피", "KR"), ("코스닥", "KR")]]},
+        review_summary={"overall": [
+            {"text": "기업0에서 대표 교체 관련 주의 기사가 나왔고 회사 측 확인이 필요하다.", "source_ids": [rev["a0_0"]]},
+            {"text": "기업1과 기업2는 신제품 출시 소식이 이어졌다.", "source_ids": [rev["a1_0"], rev["a2_1"], rev["a2_0"]]},
+            {"text": "기업3은 해외 공급 계약을 맺었다.", "source_ids": [rev["a3_0"]]},
+        ]},
+        company_summaries=cards,
+    )
+    cands = sender.daily_link_candidates(b)
+    links = {aid: f"https://working-hub.vercel.app/r/X{n:05d}" for n, (_, aid) in enumerate(cands)}
+    txt = sender.render_text(b, "김민호", links)
+    assert len(txt) <= 1000 and len(txt.encode("euc-kr", errors="replace")) <= 2000, (len(txt), txt)
+    v = sender.template_b_variables(b, "김민호", links)
+    over = v["#{종합브리핑}"].split("\n")
+    assert over[0].endswith("[1]") and over[1].endswith("[2][3]")  # 문장당 번호 최대 2개
+    comp = v["#{기업별요약}"].split("\n")
+    assert comp[0].startswith("· 기업0 [주의]:") and comp[0].endswith("[1]")  # 이미 나온 기사는 같은 번호
+    assert comp[-1].startswith("외 ")
+    lines = v["#{기사링크}"].split("\n")
+    assert lines[0] == f"[1] {links['a0_0']}" and lines[1] == f"[2] {links['a1_0']}"
+    n_max = max(int(x) for x in __import__("re").findall(r"\[(\d+)\]", v["#{종합브리핑}"] + v["#{기업별요약}"]))
+    assert n_max == len(lines)  # 본문에 나온 번호 = 링크 수
+    # 링크가 없으면 번호도 없다
+    v0 = sender.template_b_variables(b, "", {})
+    assert "[1]" not in v0["#{종합브리핑}"] and v0["#{기사링크}"] == "(링크 없음)"
 
 
 # ---------------------------------------------------------------- 공공데이터

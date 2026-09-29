@@ -316,6 +316,17 @@ async def patch_article(article_id: str, body: ArticlePatch, current_user=Depend
     return _article_out(a)
 
 
+@router.get("/r/{code}", include_in_schema=False)
+async def short_link_redirect(code: str, db: AsyncSession = Depends(get_db)):
+    """카톡 브리핑의 짧은 기사 링크(로그인 불필요) → 원문 기사로 이동."""
+    from fastapi.responses import RedirectResponse
+
+    from app.services.company_report import config as crcfg_web, shortlink
+
+    url = await shortlink.resolve(db, code[:12]) if code.isalnum() else None
+    return RedirectResponse(url or crcfg_web.WEB_BASE, status_code=302)
+
+
 @router.get("/articles/{article_id}/content")
 async def article_content(article_id: str, current_user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
     """목록에서 제목을 누르면 펼쳐 보여줄 기사 본문(원문 사이트에서 본문만 추출)."""
@@ -1183,10 +1194,29 @@ async def extract_facts_now(company_id: str, background: BackgroundTasks, curren
 
 
 async def _run_extract(company_id: str) -> None:
+    from app.services.company_report import fact_verify
     from app.services.company_report import facts as facts_svc
 
     async with AsyncSessionLocal() as db:
         await facts_svc.extract_pending(db, company_id=company_id, limit=400)
+        await fact_verify.verify_pending(db, company_id=company_id, limit=200)
+
+
+@router.post("/companies/{company_id}/verify-facts")
+async def verify_facts_now(company_id: str, background: BackgroundTasks, current_user=Depends(get_current_user)):
+    """후보로 남은 사실을 자동 검증(원문 대조·주체 확인·출처 수·검색 교차 확인)한다(백그라운드)."""
+    background.add_task(_run_verify, company_id)
+    return {"queued": True}
+
+
+async def _run_verify(company_id: str) -> None:
+    from app.services.company_report import fact_verify
+
+    async with AsyncSessionLocal() as db:
+        try:
+            await fact_verify.verify_pending(db, company_id=company_id, limit=200)
+        except Exception:
+            logger.exception("사실 자동 검증 실패")
 
 
 # --------------------------------------------------------------------------- P2: 통합 검색

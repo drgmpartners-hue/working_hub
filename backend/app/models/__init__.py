@@ -93,7 +93,7 @@ from app.models.news_briefing import (
 )
 from app.models.company_report import (
     CompanyFact, CompanyFundingRound, CompanyPeriodSummary, CompanyFile, CompanyFileDownload,
-    CompanyPublicData, SearchIndex, CompanyMonthlyDigest, MonthlyBriefing,
+    CompanyPublicData, SearchIndex, CompanyMonthlyDigest, MonthlyBriefing, ShortLink,
 )
 
 __all__ = [
@@ -153,4 +153,5 @@ __all__ = [
     "SearchIndex",
     "CompanyMonthlyDigest",
     "MonthlyBriefing",
+    "ShortLink",
 ]

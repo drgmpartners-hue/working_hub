@@ -230,10 +230,10 @@ export default function SettingsPage() {
               ))}
             </select>
           </Field>
-          <Field label="데일리 템플릿 B ID (비우면 LMS로 발송)">
+          <Field label="데일리 템플릿 ID (v2·링크형, 비우면 같은 내용을 문자로)">
             <input style={inputStyle} disabled={!admin} value={tpl.daily} onChange={(e) => setTpl({ ...tpl, daily: e.target.value })} placeholder="KA01TP…" />
           </Field>
-          <Field label="월간 템플릿 C ID">
+          <Field label="월간 템플릿 ID (v2·링크형, 비우면 문자로)">
             <input style={inputStyle} disabled={!admin} value={tpl.monthly} onChange={(e) => setTpl({ ...tpl, monthly: e.target.value })} placeholder="KA01TP…" />
           </Field>
           <Field label="작성·2차 검토 모델">
