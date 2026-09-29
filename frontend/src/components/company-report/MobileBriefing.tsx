@@ -127,17 +127,17 @@ function RefLinks({ refs, map }: { refs: Refs; map: Map<number, RefItem> }) {
             title={r.title}
             style={{
               display: 'inline-block',
-              minWidth: 26,
-              padding: '1px 7px',
+              minWidth: 22,
+              padding: '0 6px',
               margin: '0 0 0 4px',
               borderRadius: 999,
               background: 'rgba(56,189,248,.15)',
               color: 'var(--cyan-400, #38BDF8)',
-              fontSize: 13,
+              fontSize: 12,
               fontWeight: 700,
               textAlign: 'center',
               textDecoration: 'none',
-              lineHeight: '22px',
+              lineHeight: '20px',
               verticalAlign: 'baseline',
             }}
           >
@@ -420,7 +420,7 @@ export function DailyMobile({ d }: { d: DailyData }) {
               justifyContent: 'space-between',
             }}
           >
-            <h2 style={{ ...h2, margin: 0 }}>{c.name}</h2>
+            <h2 style={{ ...h2, margin: 0, fontSize: 18, borderLeft: `4px solid ${c.caution_count > 0 ? '#F87171' : '#38BDF8'}`, paddingLeft: 10 }}>{shortCo(c.name)}</h2>
             <span style={{ display: 'flex', gap: 6 }}>
               {c.caution_count > 0 && <Badge tone="neg">주의 {c.caution_count}</Badge>}
               <Badge tone="info">{c.article_count}건</Badge>
@@ -437,6 +437,91 @@ export function DailyMobile({ d }: { d: DailyData }) {
       <SourceList refs={d.refs} />
       <Footer />
     </>
+  );
+}
+
+/** '주식회사'·'(주)'를 뺀 짧은 회사명(폰 화면 제목용) */
+function shortCo(name?: string | null): string {
+  const s = (name || '')
+    .replace(/주식회사|\(주\)|㈜|\(유\)|유한회사/g, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+  return s || name || '';
+}
+
+const ACCENT = { cyan: '#38BDF8', red: '#F87171', amber: '#FBBF24', green: '#34D399' };
+
+/** 회사 하나 = 한 덩어리: 왼쪽 색 막대 + 회사명(제목 줄) + 내용(아래 줄) */
+function CoBlock({
+  name,
+  accent,
+  tag,
+  children,
+}: {
+  name: string;
+  accent: string;
+  tag?: ReactNode;
+  children: ReactNode;
+}) {
+  return (
+    <div
+      style={{
+        background: 'rgba(255,255,255,.035)',
+        border: '1px solid var(--border-soft, #1C2740)',
+        borderLeft: `4px solid ${accent}`,
+        borderRadius: 10,
+        padding: '12px 12px 12px 14px',
+      }}
+    >
+      <div
+        style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6, flexWrap: 'wrap' }}
+      >
+        <span
+          style={{
+            fontSize: 16,
+            fontWeight: 800,
+            color: 'var(--text-primary, #F1F5F9)',
+            letterSpacing: -0.2,
+          }}
+        >
+          {name}
+        </span>
+        {tag}
+      </div>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>{children}</div>
+    </div>
+  );
+}
+
+/** 내용 한 덩어리: 작은 라벨(윗줄) + 문장(아랫줄) */
+function Labeled({
+  label,
+  color,
+  s,
+  map,
+}: {
+  label: string;
+  color: string;
+  s: Sent;
+  map: Map<number, RefItem>;
+}) {
+  return (
+    <div>
+      <div style={{ fontSize: 12, fontWeight: 800, color, marginBottom: 2 }}>{label}</div>
+      <p style={{ ...para, fontSize: 15, color: 'var(--text-secondary, #C4CDDB)' }}>
+        {s.text}
+        <RefLinks refs={s.refs} map={map} />
+      </p>
+    </div>
+  );
+}
+
+function Body({ s, map }: { s: Sent; map: Map<number, RefItem> }) {
+  return (
+    <p style={{ ...para, fontSize: 15, color: 'var(--text-secondary, #C4CDDB)' }}>
+      {s.text}
+      <RefLinks refs={s.refs} map={map} />
+    </p>
   );
 }
 
@@ -470,9 +555,11 @@ export function MonthlyMobile({ d }: { d: MonthlyData }) {
       {d.highlights.length > 0 && (
         <section style={card}>
           <h2 style={h2}>주목할 기업</h2>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
             {d.highlights.map((s, i) => (
-              <Line key={i} s={s} map={map} prefix={<b>{s.name}: </b>} />
+              <CoBlock key={i} name={shortCo(s.name)} accent={ACCENT.cyan}>
+                <Body s={s} map={map} />
+              </CoBlock>
             ))}
           </div>
         </section>
@@ -480,41 +567,34 @@ export function MonthlyMobile({ d }: { d: MonthlyData }) {
       {d.cautions.length > 0 && (
         <section style={{ ...card, borderColor: 'rgba(239,68,68,.45)' }}>
           <h2 style={h2}>주의가 필요한 기업</h2>
-          {d.cautions.map((c, i) => (
-            <div
-              key={i}
-              style={{ display: 'flex', flexDirection: 'column', gap: 6, paddingTop: i ? 10 : 0 }}
-            >
-              <b>{c.name}</b>
-              {c.what && (
-                <Line s={c.what} map={map} prefix={<span style={muted}>무슨 일 · </span>} />
-              )}
-              {c.impact && (
-                <Line s={c.impact} map={map} prefix={<span style={muted}>영향 · </span>} />
-              )}
-              {c.check && (
-                <Line s={c.check} map={map} prefix={<span style={muted}>확인할 것 · </span>} />
-              )}
-            </div>
-          ))}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+            {d.cautions.map((c, i) => (
+              <CoBlock key={i} name={shortCo(c.name)} accent={ACCENT.red}>
+                {c.what && <Labeled label="무슨 일" color={ACCENT.red} s={c.what} map={map} />}
+                {c.impact && <Labeled label="영향" color={ACCENT.amber} s={c.impact} map={map} />}
+                {c.check && <Labeled label="확인할 것" color={ACCENT.cyan} s={c.check} map={map} />}
+              </CoBlock>
+            ))}
+          </div>
         </section>
       )}
       {d.checkpoints.length > 0 && (
         <section style={card}>
           <h2 style={h2}>다음 달 체크포인트</h2>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
             {d.checkpoints.map((s, i) => (
-              <Line
+              <CoBlock
                 key={i}
-                s={s}
-                map={map}
-                prefix={
-                  <b>
-                    {s.when && s.when.length === 7 ? `${Number(s.when.slice(5))}월 ` : ''}
-                    {s.name}:{' '}
-                  </b>
+                name={shortCo(s.name)}
+                accent={ACCENT.amber}
+                tag={
+                  s.when && s.when.length === 7 ? (
+                    <Badge tone="info">{Number(s.when.slice(5))}월</Badge>
+                  ) : undefined
                 }
-              />
+              >
+                <Body s={s} map={map} />
+              </CoBlock>
             ))}
           </div>
         </section>
@@ -540,7 +620,17 @@ export function MonthlyMobile({ d }: { d: MonthlyData }) {
                 justifyContent: 'space-between',
               }}
             >
-              <h2 style={{ ...h2, margin: 0 }}>{c.name}</h2>
+              <h2
+                style={{
+                  ...h2,
+                  margin: 0,
+                  fontSize: 18,
+                  borderLeft: `4px solid ${c.caution_count > 0 ? ACCENT.red : ACCENT.cyan}`,
+                  paddingLeft: 10,
+                }}
+              >
+                {shortCo(c.name)}
+              </h2>
               <span style={{ display: 'flex', gap: 6 }}>
                 {c.caution_count > 0 && <Badge tone="neg">주의 {c.caution_count}</Badge>}
                 <Badge tone="info">{c.article_count}건</Badge>
