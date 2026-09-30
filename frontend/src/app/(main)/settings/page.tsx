@@ -259,13 +259,6 @@ export default function SettingsPage() {
   const [profileSaving, setProfileSaving] = useState(false);
   const [profileMsg, setProfileMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
-  /* Password change */
-  const [currentPassword, setCurrentPassword] = useState('');
-  const [newPassword, setNewPassword] = useState('');
-  const [confirmPassword, setConfirmPassword] = useState('');
-  const [pwSaving, setPwSaving] = useState(false);
-  const [pwMsg, setPwMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
-
   /* API keys */
   const [apiKeys, setApiKeys] = useState<ApiKeyData[]>([]);
   const [apiLoading, setApiLoading] = useState(false);
@@ -302,37 +295,6 @@ export default function SettingsPage() {
       setProfileMsg({ type: 'error', text: e instanceof Error ? e.message : '수정에 실패했습니다.' });
     } finally {
       setProfileSaving(false);
-    }
-  }
-
-  async function handlePasswordChange() {
-    setPwMsg(null);
-    if (!currentPassword || !newPassword) {
-      setPwMsg({ type: 'error', text: '현재 비밀번호와 새 비밀번호를 입력해주세요.' });
-      return;
-    }
-    if (newPassword.length < 6) {
-      setPwMsg({ type: 'error', text: '새 비밀번호는 6자 이상이어야 합니다.' });
-      return;
-    }
-    if (newPassword !== confirmPassword) {
-      setPwMsg({ type: 'error', text: '새 비밀번호가 일치하지 않습니다.' });
-      return;
-    }
-    setPwSaving(true);
-    try {
-      await authService.changePassword({
-        current_password: currentPassword,
-        new_password: newPassword,
-      });
-      setPwMsg({ type: 'success', text: '비밀번호가 변경되었습니다.' });
-      setCurrentPassword('');
-      setNewPassword('');
-      setConfirmPassword('');
-    } catch (e) {
-      setPwMsg({ type: 'error', text: e instanceof Error ? e.message : '비밀번호 변경에 실패했습니다.' });
-    } finally {
-      setPwSaving(false);
     }
   }
 
@@ -654,68 +616,6 @@ export default function SettingsPage() {
             </div>
           </Card>
 
-          {/* Section 2: Password */}
-          <Card>
-            <h2 style={{ margin: '0 0 16px', fontSize: '1rem', fontWeight: 700, color: 'var(--text-primary)' }}>
-              비밀번호 변경
-            </h2>
-
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-              <div>
-                <label style={labelStyle}>현재 비밀번호</label>
-                <input
-                  type="password"
-                  value={currentPassword}
-                  onChange={(e) => setCurrentPassword(e.target.value)}
-                  style={inputStyle}
-                  placeholder="현재 비밀번호 입력"
-                />
-              </div>
-
-              <div>
-                <label style={labelStyle}>새 비밀번호</label>
-                <input
-                  type="password"
-                  value={newPassword}
-                  onChange={(e) => setNewPassword(e.target.value)}
-                  style={inputStyle}
-                  placeholder="새 비밀번호 (6자 이상)"
-                />
-              </div>
-
-              <div>
-                <label style={labelStyle}>새 비밀번호 확인</label>
-                <input
-                  type="password"
-                  value={confirmPassword}
-                  onChange={(e) => setConfirmPassword(e.target.value)}
-                  style={inputStyle}
-                  placeholder="새 비밀번호 다시 입력"
-                />
-              </div>
-
-              {pwMsg && (
-                <div
-                  style={{
-                    padding: '10px 14px',
-                    borderRadius: 8,
-                    fontSize: '0.8125rem',
-                    backgroundColor: pwMsg.type === 'success' ? '#F0FDF4' : '#FEF2F2',
-                    border: `1px solid ${pwMsg.type === 'success' ? '#BBF7D0' : '#FECACA'}`,
-                    color: pwMsg.type === 'success' ? '#15803D' : '#DC2626',
-                  }}
-                >
-                  {pwMsg.text}
-                </div>
-              )}
-
-              <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
-                <Button variant="primary" size="md" loading={pwSaving} onClick={handlePasswordChange}>
-                  비밀번호 변경
-                </Button>
-              </div>
-            </div>
-          </Card>
         </>
       )}
 
