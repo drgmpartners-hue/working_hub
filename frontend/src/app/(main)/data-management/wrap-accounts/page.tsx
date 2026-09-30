@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useLayoutEffect, useCallback, useRef, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { Modal } from '@/components/common/Modal';
@@ -622,9 +622,8 @@ export default function WrapAccountsPage() {
 
   /* ---- Filtered ---- */
   // 원본 인덱스 매핑 (No 유지용)
-  const productsWithNo = products.map((p, i) => ({ ...p, _origNo: i + 1 }));
-
-  const filtered = productsWithNo.filter(p => {
+  // 스크롤할 때마다 다시 정렬하지 않도록 필터·정렬 결과를 기억(보이는 행만 그리기와 함께 사용)
+  const filtered = useMemo(() => products.map((p, i) => ({ ...p, _origNo: i + 1 })).filter(p => {
     if (filterStatus === 'active' && !p.is_active) return false;
     if (filterStatus === 'inactive' && p.is_active) return false;
     if (filterCategory && p.category !== filterCategory) return false;
@@ -648,7 +647,73 @@ export default function WrapAccountsPage() {
       if (cmp !== 0) return dir === 'asc' ? cmp : -cmp;
     }
     return 0;
+  }), [products, filterStatus, filterCategory, filterAsset1, filterAsset2, sortKeys]);
+
+  /* ---- 보이는 행만 그리기(가상 스크롤) ----
+   * 행이 많으면 화면에 보이는 행 + 위아래 여유분만 실제로 그리고, 나머지는 빈 여백 행으로 높이만 채운다.
+   * 행 높이는 상품명 줄바꿈 때문에 제각각이라, 그려진 행의 실제 높이를 재서 기억해 둔다. */
+  const VIRTUAL_MIN = 60; // 이보다 적으면 전부 그림
+  const EST_ROW_H = 42;
+  const OVERSCAN = 12;
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const tbodyRef = useRef<HTMLTableSectionElement>(null);
+  const rowHeights = useRef<Map<string, number>>(new Map());
+  const [range, setRange] = useState<{ start: number; end: number }>({ start: 0, end: 40 });
+  const [measureTick, setMeasureTick] = useState(0);
+  const virtualOn = filtered.length > VIRTUAL_MIN;
+
+  // 행 i의 위쪽 끝 위치(누적 높이)
+  const offsets = useMemo(() => {
+    const o = new Array<number>(filtered.length + 1);
+    o[0] = 0;
+    for (let i = 0; i < filtered.length; i++) o[i + 1] = o[i] + (rowHeights.current.get(String(filtered[i].id)) ?? EST_ROW_H);
+    return o;
+    // measureTick: 새로 잰 높이 반영
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [filtered, measureTick]);
+
+  const computeRange = useCallback(() => {
+    const el = scrollRef.current;
+    if (!el || !virtualOn) return;
+    const headH = (el.querySelector('thead') as HTMLElement | null)?.offsetHeight ?? 0;
+    const top = Math.max(0, el.scrollTop - headH);
+    const bottom = top + el.clientHeight;
+    // 이진 탐색: top이 들어가는 행
+    let lo = 0, hi = filtered.length - 1;
+    while (lo < hi) { const mid = (lo + hi + 1) >> 1; if (offsets[mid] <= top) lo = mid; else hi = mid - 1; }
+    let end = lo;
+    while (end < filtered.length && offsets[end] < bottom) end++;
+    const start = Math.max(0, lo - OVERSCAN);
+    end = Math.min(filtered.length, end + OVERSCAN);
+    setRange(prev => (prev.start === start && prev.end === end ? prev : { start, end }));
+  }, [filtered.length, offsets, virtualOn]);
+
+  useEffect(() => { computeRange(); }, [computeRange]);
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    let raf = 0;
+    const onScroll = () => { if (!raf) raf = requestAnimationFrame(() => { raf = 0; computeRange(); }); };
+    el.addEventListener('scroll', onScroll, { passive: true });
+    window.addEventListener('resize', onScroll);
+    return () => { el.removeEventListener('scroll', onScroll); window.removeEventListener('resize', onScroll); if (raf) cancelAnimationFrame(raf); };
+  }, [computeRange]);
+  // 그려진 행의 실제 높이 측정 → 달라진 게 있으면 누적 높이 다시 계산(매 렌더 후 실행, 값이 바뀔 때만 갱신하므로 반복되지 않음)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useLayoutEffect(() => {
+    if (!virtualOn || !tbodyRef.current) return;
+    let changed = false;
+    tbodyRef.current.querySelectorAll<HTMLTableRowElement>('tr[data-rid]').forEach(tr => {
+      const id = tr.dataset.rid!;
+      const h = tr.offsetHeight;
+      if (h && rowHeights.current.get(id) !== h) { rowHeights.current.set(id, h); changed = true; }
+    });
+    if (changed) setMeasureTick(t => t + 1);
   });
+  const vStart = virtualOn ? Math.min(range.start, filtered.length) : 0;
+  const vEnd = virtualOn ? Math.min(range.end, filtered.length) : filtered.length;
+  const padTop = virtualOn ? offsets[vStart] : 0;
+  const padBottom = virtualOn ? offsets[filtered.length] - offsets[vEnd] : 0;
 
   // 필터 드롭다운용 유니크값
   const uniqueCategories = [...new Set(products.map(p => p.category).filter(Boolean))].sort((a, b) => (a as string).localeCompare(b as string, 'ko'));
@@ -1507,7 +1572,7 @@ export default function WrapAccountsPage() {
         overflow: 'hidden',
         boxShadow: '0 1px 4px rgba(0,0,0,0.06)',
       }}>
-        <div style={{ overflowX: 'auto', overflowY: 'auto', maxHeight: 'calc(100vh - 280px)', WebkitOverflowScrolling: 'touch' }}>
+        <div ref={scrollRef} style={{ overflowX: 'auto', overflowY: 'auto', maxHeight: 'calc(100vh - 280px)', WebkitOverflowScrolling: 'touch', overflowAnchor: 'none', colorScheme: 'dark' }}>
           <table style={{ width: 'max-content', minWidth: '100%', borderCollapse: 'separate', borderSpacing: 0 }}>
             <thead style={{ position: 'sticky', top: 0, zIndex: 10 }}>
               <tr>
@@ -1553,7 +1618,8 @@ export default function WrapAccountsPage() {
                 })}
               </tr>
             </thead>
-            <tbody>
+            <tbody ref={tbodyRef}>
+              {padTop > 0 && <tr aria-hidden style={{ height: padTop }}><td colSpan={columns.length} style={{ padding: 0, border: 'none' }} /></tr>}
               {loading ? (
                 <tr>
                   <td colSpan={columns.length} style={{ ...cellStyle, textAlign: 'center', padding: 40, color: 'var(--text-muted)' }}>
@@ -1567,14 +1633,14 @@ export default function WrapAccountsPage() {
                   </td>
                 </tr>
               ) : (
-                filtered.map((p) => {
+                filtered.slice(vStart, vEnd).map((p) => {
                   const isEditing = editingId === p.id;
                   const isSelected = selectedIds.has(p.id);
                   const rowBg = isEditing ? ROW_BG.editing : isSelected ? ROW_BG.selected : ROW_BG.base;
                   // 선택·편집 중인 행은 모든 칸에 색을 입힘(행 배경은 전역 CSS가 투명으로 덮어씀)
                   const tintStyle: React.CSSProperties = isEditing || isSelected ? { backgroundColor: rowBg } : {};
                   return (
-                    <tr key={p.id}>
+                    <tr key={p.id} data-rid={String(p.id)}>
                       {columns.map(col => {
                         const align = col.align ?? 'left';
                         const isFrozen = freezeCols && FREEZE_KEYS.includes(col.key);
@@ -1635,6 +1701,7 @@ export default function WrapAccountsPage() {
                   );
                 })
               )}
+              {padBottom > 0 && <tr aria-hidden style={{ height: padBottom }}><td colSpan={columns.length} style={{ padding: 0, border: 'none' }} /></tr>}
             </tbody>
           </table>
         </div>
