@@ -1657,13 +1657,13 @@ export default function WrapAccountsPage() {
 
           {nStep === 'selectDb' && (
             <div style={{ border: '1px solid var(--border)', borderRadius: 8, overflow: 'hidden' }}>
-              <div style={{ padding: '7px 10px', background: '#F0F4FA', fontSize: 12, fontWeight: 600, color: 'var(--blue-400)', display: 'flex', justifyContent: 'space-between' }}>
+              <div style={{ padding: '7px 10px', background: 'var(--bg-card-2)', fontSize: 12, fontWeight: 600, color: 'var(--blue-400)', display: 'flex', justifyContent: 'space-between' }}>
                 <span>데이터베이스 선택</span>
                 <button onClick={nReset} style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', fontSize: 12 }}>취소</button>
               </div>
               <div style={{ padding: '6px 8px', borderBottom: '1px solid var(--border)' }}>
                 <input type="text" placeholder="검색..." value={nDbSearch} onChange={e => setNDbSearch(e.target.value)}
-                  style={{ width: '100%', padding: '5px 8px', borderRadius: 6, border: '1px solid var(--border-strong)', fontSize: 12, outline: 'none', boxSizing: 'border-box' }} />
+                  style={{ width: '100%', padding: '5px 8px', borderRadius: 6, border: '1px solid var(--border-strong)', fontSize: 12, outline: 'none', boxSizing: 'border-box', background: 'var(--bg-card)', color: 'var(--text-primary)' }} />
               </div>
               {nLoading ? (
                 <div style={{ padding: 20, textAlign: 'center', color: 'var(--text-muted)', fontSize: 13 }}>불러오는 중...</div>
@@ -1672,9 +1672,9 @@ export default function WrapAccountsPage() {
                   {nDbs.filter(d => !nDbSearch || d.title.toLowerCase().includes(nDbSearch.toLowerCase())).map(d => (
                     <button key={d.id}
                       onClick={() => { setNDbSearch(''); setNSelectedDbTitle(d.title); nLoadRows(d.id); }}
-                      style={{ width: '100%', padding: '9px 10px', border: 'none', borderBottom: '1px solid var(--border)', background: 'var(--bg-card)', textAlign: 'left', cursor: 'pointer', fontSize: 13, display: 'flex', alignItems: 'center', gap: 8 }}
-                      onMouseOver={e => (e.currentTarget.style.background = '#F9FAFB')}
-                      onMouseOut={e => (e.currentTarget.style.background = '#fff')}
+                      style={{ width: '100%', padding: '9px 10px', border: 'none', borderBottom: '1px solid var(--border)', background: 'var(--bg-card)', color: 'var(--text-primary)', textAlign: 'left', cursor: 'pointer', fontSize: 13, display: 'flex', alignItems: 'center', gap: 8 }}
+                      onMouseOver={e => (e.currentTarget.style.background = 'var(--bg-card-2)')}
+                      onMouseOut={e => (e.currentTarget.style.background = 'var(--bg-card)')}
                     >
                       <span>{d.icon ?? '📄'}</span>
                       <span style={{ fontWeight: 500 }}>{d.title}</span>
@@ -1687,7 +1687,7 @@ export default function WrapAccountsPage() {
 
           {nStep === 'mapping' && (
             <div style={{ border: '1px solid var(--border)', borderRadius: 8, overflow: 'hidden' }}>
-              <div style={{ padding: '7px 10px', background: '#F0F4FA', fontSize: 12, fontWeight: 600, color: 'var(--blue-400)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <div style={{ padding: '7px 10px', background: 'var(--bg-card-2)', fontSize: 12, fontWeight: 600, color: 'var(--blue-400)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <span>필드 매핑 + 상품 선택 {nSelectedDbTitle ? `(${nSelectedDbTitle})` : ''}</span>
                 <div style={{ display: 'flex', gap: 8 }}>
                   <button onClick={() => { clearNotionConfig(); setNRows([]); setNCols([]); nFetchDbList(); }}
@@ -1712,7 +1712,7 @@ export default function WrapAccountsPage() {
                               setNMap(updated);
                               if (nSelectedDbId) saveNotionConfig(nSelectedDbId, nSelectedDbTitle, updated);
                             }}
-                            style={{ flex: 1, padding: '2px 4px', borderRadius: 4, border: '1px solid var(--border-strong)', fontSize: 11, background: nMap[f.k] ? '#ECFDF5' : '#fff' }}
+                            style={{ flex: 1, padding: '2px 4px', borderRadius: 4, border: `1px solid ${nMap[f.k] ? 'rgba(16,185,129,.45)' : 'var(--border-strong)'}`, fontSize: 11, color: 'var(--text-primary)', background: nMap[f.k] ? 'rgba(16,185,129,.12)' : 'var(--bg-card)' }}
                           >
                             <option value="">--</option>
                             {nCols.map(c => <option key={c} value={c}>{c}</option>)}
@@ -1723,7 +1723,7 @@ export default function WrapAccountsPage() {
                   </div>
                   <div style={{ padding: '6px 8px', borderBottom: '1px solid var(--border)' }}>
                     <input type="text" placeholder="상품 검색..." value={nRowSearch} onChange={e => setNRowSearch(e.target.value)}
-                      style={{ width: '100%', padding: '5px 8px', borderRadius: 6, border: '1px solid var(--border-strong)', fontSize: 12, outline: 'none', boxSizing: 'border-box' }} />
+                      style={{ width: '100%', padding: '5px 8px', borderRadius: 6, border: '1px solid var(--border-strong)', fontSize: 12, outline: 'none', boxSizing: 'border-box', background: 'var(--bg-card)', color: 'var(--text-primary)' }} />
                   </div>
                   <div style={{ maxHeight: '240px', overflowY: 'scroll', border: '1px solid var(--border)', borderRadius: '0 0 4px 4px' }}>
                     {(() => {
@@ -1735,7 +1735,7 @@ export default function WrapAccountsPage() {
                         {/* 전체선택 헤더 */}
                         <div style={{ padding: '6px 10px', borderBottom: '1px solid var(--border)', background: 'var(--bg-surface)', display: 'flex', alignItems: 'center', gap: 8, position: 'sticky', top: 0, zIndex: 1 }}>
                           <input type="checkbox" checked={allChecked} onChange={() => nToggleAll(fil)}
-                            style={{ width: 15, height: 15, cursor: 'pointer', accentColor: '#1E3A5F' }} />
+                            style={{ width: 15, height: 15, cursor: 'pointer', accentColor: 'var(--blue-400)' }} />
                           <span style={{ fontSize: 11, color: 'var(--text-muted)', fontWeight: 600 }}>전체 선택 ({nSelectedRows.size}/{fil.length})</span>
                         </div>
                         {fil.map(r => {
@@ -1746,14 +1746,14 @@ export default function WrapAccountsPage() {
                           const checked = nSelectedRows.has(r.id);
                           return (
                             <div key={r.id}
-                              style={{ width: '100%', padding: '7px 10px', borderBottom: '1px solid var(--border)', background: checked ? '#F0FDF4' : '#fff', display: 'flex', gap: 8, alignItems: 'center', fontSize: 12, cursor: 'pointer' }}
+                              style={{ width: '100%', padding: '7px 10px', borderBottom: '1px solid var(--border)', background: checked ? 'rgba(16,185,129,.12)' : 'var(--bg-card)', display: 'flex', gap: 8, alignItems: 'center', fontSize: 12, cursor: 'pointer' }}
                               onClick={() => nToggleRow(r.id)}
-                              onMouseOver={e => { if (!checked) e.currentTarget.style.background = '#FAFBFC'; }}
-                              onMouseOut={e => { e.currentTarget.style.background = checked ? '#F0FDF4' : '#fff'; }}
+                              onMouseOver={e => { if (!checked) e.currentTarget.style.background = 'var(--bg-card-2)'; }}
+                              onMouseOut={e => { e.currentTarget.style.background = checked ? 'rgba(16,185,129,.12)' : 'var(--bg-card)'; }}
                             >
                               <input type="checkbox" checked={checked} onChange={() => nToggleRow(r.id)}
                                 onClick={e => e.stopPropagation()}
-                                style={{ width: 14, height: 14, cursor: 'pointer', accentColor: '#1E3A5F', flexShrink: 0 }} />
+                                style={{ width: 14, height: 14, cursor: 'pointer', accentColor: 'var(--blue-400)', flexShrink: 0 }} />
                               <span style={{ fontWeight: 600, color: 'var(--text-primary)' }}>{dn}</span>
                               {di && <span style={{ color: 'var(--text-muted)', fontSize: 11 }}>{di}</span>}
                               <button onClick={(e) => { e.stopPropagation(); nApply(r); }}
@@ -1765,7 +1765,7 @@ export default function WrapAccountsPage() {
                       </>);
                     })()}
                   </div>
-                  <div style={{ padding: '6px 10px', background: '#F0F4FA', borderTop: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                  <div style={{ padding: '6px 10px', background: 'var(--bg-card-2)', borderTop: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                     <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>총 {nRows.length}건{nSelectedRows.size > 0 && ` · ${nSelectedRows.size}건 선택`}</span>
                     {nSelectedRows.size > 0 && (
                       <button onClick={nBulkImport} disabled={nBulkLoading}
