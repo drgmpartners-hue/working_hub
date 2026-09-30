@@ -1350,6 +1350,12 @@ export default function WrapAccountsPage() {
     align?: 'left' | 'center' | 'right';
   };
 
+  // 열 고정: 체크박스·No·In/Out·상품명
+  const FREEZE_KEYS = ['checkbox', 'no', 'in_out', 'product_name'];
+  const FREEZE_LEFTS = [0, 30, 70, 125];
+  // 고정 열은 뒤로 스크롤되는 내용을 가려야 하므로 불투명한 다크 색(카드색에 틴트를 섞은 값)
+  const ROW_BG = { base: 'var(--bg-card)', selected: '#153242', editing: '#182A55' };
+
   const columns: ColDef[] = [
     { key: 'checkbox', header: '', width: 30, align: 'center' },
     { key: 'no', header: 'No', width: 40, align: 'center' },
@@ -1472,7 +1478,7 @@ export default function WrapAccountsPage() {
           <option value="">전체</option>{uniqueAsset2.map(c => <option key={c} value={c!}>{c}</option>)}
         </select>
         <button onClick={() => setFreezeCols(f => !f)}
-          style={{ padding: '4px 10px', borderRadius: 5, border: '1px solid var(--border-strong)', background: freezeCols ? '#EFF6FF' : '#fff', color: freezeCols ? '#1D4ED8' : '#6B7280', fontSize: 11, fontWeight: 500, cursor: 'pointer' }}>
+          style={{ padding: '4px 10px', borderRadius: 5, border: '1px solid var(--border-strong)', background: freezeCols ? 'rgba(59,130,246,.15)' : 'var(--bg-card)', color: freezeCols ? 'var(--cyan-400)' : 'var(--text-muted)', fontSize: 11, fontWeight: 500, cursor: 'pointer' }}>
           {freezeCols ? '🔒 열 고정' : '🔓 고정 해제'}
         </button>
         {selectedIds.size > 0 && (
@@ -1502,12 +1508,10 @@ export default function WrapAccountsPage() {
         boxShadow: '0 1px 4px rgba(0,0,0,0.06)',
       }}>
         <div style={{ overflowX: 'auto', overflowY: 'auto', maxHeight: 'calc(100vh - 280px)', WebkitOverflowScrolling: 'touch' }}>
-          <table style={{ width: 'max-content', minWidth: '100%', borderCollapse: 'collapse' }}>
+          <table style={{ width: 'max-content', minWidth: '100%', borderCollapse: 'separate', borderSpacing: 0 }}>
             <thead style={{ position: 'sticky', top: 0, zIndex: 10 }}>
               <tr>
                 {columns.map((col, ci) => {
-                  const FREEZE_KEYS = ['checkbox', 'no', 'in_out', 'product_name'];
-                  const FREEZE_LEFTS = [0, 30, 70, 125];
                   const isFrozen = freezeCols && FREEZE_KEYS.includes(col.key);
                   const frozenIdx = FREEZE_KEYS.indexOf(col.key);
                   return (
@@ -1523,7 +1527,7 @@ export default function WrapAccountsPage() {
                           position: 'sticky',
                           left: FREEZE_LEFTS[frozenIdx],
                           zIndex: 12,
-                          borderRight: frozenIdx === FREEZE_KEYS.length - 1 ? '2px solid #D1D5DB' : undefined,
+                          borderRight: frozenIdx === FREEZE_KEYS.length - 1 ? '2px solid var(--border-strong)' : undefined,
                         } : {}),
                       }}
                     >
@@ -1563,25 +1567,25 @@ export default function WrapAccountsPage() {
                   </td>
                 </tr>
               ) : (
-                filtered.map((p, idx) => {
+                filtered.map((p) => {
                   const isEditing = editingId === p.id;
-                  const rowBg = isEditing ? '#EFF6FF' : selectedIds.has(p.id) ? '#F0FDF4' : idx % 2 === 0 ? '#FFFFFF' : '#F9FAFB';
+                  const isSelected = selectedIds.has(p.id);
+                  const rowBg = isEditing ? ROW_BG.editing : isSelected ? ROW_BG.selected : ROW_BG.base;
+                  // 선택·편집 중인 행은 모든 칸에 색을 입힘(행 배경은 전역 CSS가 투명으로 덮어씀)
+                  const tintStyle: React.CSSProperties = isEditing || isSelected ? { backgroundColor: rowBg } : {};
                   return (
-                    <tr key={p.id} style={{ backgroundColor: rowBg }}>
+                    <tr key={p.id}>
                       {columns.map(col => {
                         const align = col.align ?? 'left';
-                        const FREEZE_KEYS = ['checkbox', 'no', 'in_out', 'product_name'];
-                        const FREEZE_LEFTS = [0, 30, 70, 125];
                         const isFrozen = freezeCols && FREEZE_KEYS.includes(col.key);
                         const frozenIdx = FREEZE_KEYS.indexOf(col.key);
-                        const rowBg = idx % 2 === 0 ? '#FFFFFF' : '#F9FAFB';
                         const stickyStyle: React.CSSProperties = isFrozen ? {
                           position: 'sticky',
                           left: FREEZE_LEFTS[frozenIdx],
                           zIndex: 3,
                           backgroundColor: rowBg,
-                          borderRight: frozenIdx === FREEZE_KEYS.length - 1 ? '2px solid #D1D5DB' : undefined,
-                        } : {};
+                          borderRight: frozenIdx === FREEZE_KEYS.length - 1 ? '2px solid var(--border-strong)' : undefined,
+                        } : tintStyle;
 
                         if (col.key === 'no') {
                           return (
@@ -1592,7 +1596,7 @@ export default function WrapAccountsPage() {
                         }
                         if (col.key === 'actions') {
                           return (
-                            <td key="actions" style={{ ...cellStyle, textAlign: 'center', width: col.width }}>
+                            <td key="actions" style={{ ...cellStyle, textAlign: 'center', width: col.width, ...tintStyle }}>
                               {isEditing ? (
                                 <div style={{ display: 'flex', gap: 4, justifyContent: 'center' }}>
                                   <Btn variant="primary" size="sm" onClick={saveEdit} loading={editSaving}>저장</Btn>
