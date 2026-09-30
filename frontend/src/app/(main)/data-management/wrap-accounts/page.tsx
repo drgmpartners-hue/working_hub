@@ -788,16 +788,24 @@ export default function WrapAccountsPage() {
         fetch(`${API_URL}/api/v1/notion/databases/${dbId}/rows`, { headers: { Authorization: `Bearer ${t}` } }),
       ]);
       if (!pR.ok || !rR.ok) throw new Error('데이터 조회 실패');
-      const props: { name: string }[] = await pR.json();
+      const props: { name: string; type?: string }[] = await pR.json();
       const rows: { id: string; properties: Record<string, string> }[] = await rR.json();
-      const cols = props.map(p => p.name);
+      // 관계형(relation) 컬럼은 다른 DB 페이지 ID만 담겨 있어 매핑 대상에서 제외, 목록은 가나다순(숫자는 크기순)
+      const cols = props
+        .filter(p => p.type !== 'relation')
+        .map(p => p.name)
+        .sort((a, b) => a.replace(/^[^0-9A-Za-z가-힣(]+/, '').localeCompare(b.replace(/^[^0-9A-Za-z가-힣(]+/, ''), 'ko', { numeric: true }));
       setNCols(cols);
       setNRows(rows);
-      if (savedMapping) {
-        setNMap(savedMapping);
-      } else {
+      {
         const m: Record<string, string> = {};
         for (const f of NOTION_MAP_FIELDS) {
+          // 저장된 매핑이 아직 유효하면 그대로, 없어진 컬럼(예: 제외된 관계형)이면 다시 자동 매칭
+          if (savedMapping && savedMapping[f.k] && cols.includes(savedMapping[f.k])) { m[f.k] = savedMapping[f.k]; continue; }
+          if (savedMapping && savedMapping[f.k] === '') { m[f.k] = ''; continue; }
+          const exact: Record<string, string[]> = { product_name: ['상품명', 'product name', 'name'] };
+          const ex = cols.find(c => (exact[f.k] || []).includes(c.toLowerCase().trim()));
+          if (ex) { m[f.k] = ex; continue; }
           const matching = cols.find(c => {
             const cl = c.toLowerCase();
             if (f.k === 'product_name') return cl.includes('상품') || cl.includes('product') || cl.includes('name');
@@ -813,13 +821,15 @@ export default function WrapAccountsPage() {
             if (f.k === 'annual_expected_return') return cl.includes('연기대') || cl.includes('annual');
             if (f.k.startsWith('port_')) {
               const num = f.k.replace('port_', '');
-              return cl.includes(`포트${num}`) || cl.includes(`port${num}`) || cl === `포트 ${num}`;
+              const n = cl.replace(/\s/g, '');
+              return n === `포트${num}` || n === `포트(${num})` || n === `port${num}` || n === `port(${num})`;
             }
             return false;
           });
           m[f.k] = matching ?? '';
         }
         setNMap(m);
+        if (savedMapping && JSON.stringify(m) !== JSON.stringify(savedMapping)) saveNotionConfig(dbId, loadNotionConfig()?.dbTitle ?? nSelectedDbTitle, m);
       }
       setNStep('mapping');
     } catch (e: unknown) { setNError(e instanceof Error ? e.message : '오류'); }
