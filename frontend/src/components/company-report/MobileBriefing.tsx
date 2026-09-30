@@ -182,49 +182,6 @@ function Badge({ children, tone }: { children: ReactNode; tone: 'neg' | 'pos' | 
   );
 }
 
-function SourceList({ refs }: { refs: RefItem[] }) {
-  if (!refs.length) return null;
-  return (
-    <section style={card}>
-      <h2 style={h2}>원문 기사</h2>
-      <ol
-        style={{
-          listStyle: 'none',
-          margin: 0,
-          padding: 0,
-          display: 'flex',
-          flexDirection: 'column',
-          gap: 10,
-        }}
-      >
-        {refs.map((r) => (
-          <li key={r.n} style={{ display: 'flex', gap: 8 }}>
-            <span style={{ color: 'var(--cyan-400, #38BDF8)', fontWeight: 700, minWidth: 22 }}>
-              {r.n}
-            </span>
-            <a
-              href={r.url}
-              target="_blank"
-              rel="noreferrer"
-              style={{
-                color: 'var(--text-primary, #F1F5F9)',
-                fontSize: 14.5,
-                lineHeight: 1.5,
-                textDecoration: 'none',
-              }}
-            >
-              {r.title || r.url}
-              <span style={{ ...muted, display: 'block', fontSize: 12 }}>
-                {[r.press, r.date].filter(Boolean).join(' · ')}
-              </span>
-            </a>
-          </li>
-        ))}
-      </ol>
-    </section>
-  );
-}
-
 function Footer() {
   return (
     <div style={{ ...muted, fontSize: 12, textAlign: 'center', lineHeight: 1.7, marginTop: 6 }}>
@@ -420,7 +377,17 @@ export function DailyMobile({ d }: { d: DailyData }) {
               justifyContent: 'space-between',
             }}
           >
-            <h2 style={{ ...h2, margin: 0, fontSize: 18, borderLeft: `4px solid ${c.caution_count > 0 ? '#F87171' : '#38BDF8'}`, paddingLeft: 10 }}>{shortCo(c.name)}</h2>
+            <h2
+              style={{
+                ...h2,
+                margin: 0,
+                fontSize: 18,
+                borderLeft: `4px solid ${c.caution_count > 0 ? '#F87171' : '#38BDF8'}`,
+                paddingLeft: 10,
+              }}
+            >
+              {shortCo(c.name)}
+            </h2>
             <span style={{ display: 'flex', gap: 6 }}>
               {c.caution_count > 0 && <Badge tone="neg">주의 {c.caution_count}</Badge>}
               <Badge tone="info">{c.article_count}건</Badge>
@@ -434,7 +401,6 @@ export function DailyMobile({ d }: { d: DailyData }) {
           <CompanyArticles c={c} />
         </section>
       ))}
-      <SourceList refs={d.refs} />
       <Footer />
     </>
   );
@@ -525,6 +491,132 @@ function Body({ s, map }: { s: Sent; map: Map<number, RefItem> }) {
   );
 }
 
+/** 월간 기업별 정리 카드 — 접힌 상태가 기본, 제목을 누르면 펼침 */
+function MonthlyCompanyCard({
+  c,
+  map,
+}: {
+  c: MonthlyData['companies'][number];
+  map: Map<number, RefItem>;
+}) {
+  const [open, setOpen] = useState(false);
+  const range = refRange(
+    [
+      ...c.summary,
+      ...c.facts,
+      ...(c.meaning ? [c.meaning] : []),
+      ...c.qa,
+      ...(c.client_explain ? [c.client_explain] : []),
+    ].flatMap((x) => x.refs || []),
+    map,
+  );
+  return (
+    <section style={card}>
+      <div
+        role="button"
+        tabIndex={0}
+        aria-expanded={open}
+        onClick={() => setOpen((o) => !o)}
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: 8,
+          justifyContent: 'space-between',
+          cursor: 'pointer',
+        }}
+      >
+        <h2
+          style={{
+            ...h2,
+            margin: 0,
+            fontSize: 18,
+            borderLeft: `4px solid ${c.caution_count > 0 ? ACCENT.red : ACCENT.cyan}`,
+            paddingLeft: 10,
+          }}
+        >
+          {shortCo(c.name)}
+          <span style={{ color: 'var(--text-muted, #AAB6C8)', fontSize: 13, marginLeft: 6 }}>
+            {open ? '▾' : '▸'}
+          </span>
+        </h2>
+        <span style={{ display: 'flex', gap: 6 }}>
+          {c.caution_count > 0 && <Badge tone="neg">주의 {c.caution_count}</Badge>}
+          <Badge tone="info">{c.article_count}건</Badge>
+        </span>
+      </div>
+      {!open && c.summary[0] && (
+        <div
+          onClick={() => setOpen(true)}
+          style={{
+            ...muted,
+            fontSize: 13.5,
+            marginTop: 8,
+            lineHeight: 1.6,
+            display: '-webkit-box',
+            WebkitLineClamp: 2,
+            WebkitBoxOrient: 'vertical',
+            overflow: 'hidden',
+          }}
+        >
+          {c.summary[0].text}
+        </div>
+      )}
+      {open && (
+        <>
+          {range && (
+            <div style={{ ...muted, fontSize: 12, marginTop: 4, textAlign: 'right' }}>
+              참고 자료 {range}
+            </div>
+          )}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 10 }}>
+            {c.summary.map((s, j) => (
+              <Line key={j} s={s} map={map} />
+            ))}
+            {c.facts.map((s, j) => (
+              <Line
+                key={`f${j}`}
+                s={s}
+                map={map}
+                prefix={
+                  <span style={muted}>
+                    {s.date ? `${s.date.slice(5).replace('-', '/')} · ` : '· '}
+                  </span>
+                }
+              />
+            ))}
+            {c.meaning && <Line s={c.meaning} map={map} prefix={<Badge tone="info">분석</Badge>} />}
+            {c.qa.map((q, j) => (
+              <div key={`q${j}`} style={{ fontSize: 14.5, lineHeight: 1.7 }}>
+                <div style={{ fontWeight: 700 }}>Q. {q.q}</div>
+                <div>
+                  A. {q.a}
+                  <RefLinks refs={q.refs} map={map} />
+                </div>
+              </div>
+            ))}
+            {c.client_explain && (
+              <div
+                style={{
+                  marginTop: 16,
+                  background: 'rgba(16,185,129,.08)',
+                  border: '1px solid rgba(16,185,129,.35)',
+                  borderRadius: 10,
+                  padding: 12,
+                }}
+              >
+                <div style={{ fontSize: 12, fontWeight: 800, color: '#34D399', marginBottom: 4 }}>
+                  고객에게 이렇게 설명하세요
+                </div>
+                <Line s={c.client_explain} map={map} />
+              </div>
+            )}
+          </div>
+        </>
+      )}
+    </section>
+  );
+}
+
 export function MonthlyMobile({ d }: { d: MonthlyData }) {
   const map = useRefMap(d.refs);
   const [y, m] = d.month.split('-');
@@ -599,97 +691,17 @@ export function MonthlyMobile({ d }: { d: MonthlyData }) {
           </div>
         </section>
       )}
-      {d.companies.map((c, i) => {
-        const range = refRange(
-          [
-            ...c.summary,
-            ...c.facts,
-            ...(c.meaning ? [c.meaning] : []),
-            ...c.qa,
-            ...(c.client_explain ? [c.client_explain] : []),
-          ].flatMap((x) => x.refs || []),
-          map,
-        );
-        return (
-          <section key={i} style={card}>
-            <div
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: 8,
-                justifyContent: 'space-between',
-              }}
-            >
-              <h2
-                style={{
-                  ...h2,
-                  margin: 0,
-                  fontSize: 18,
-                  borderLeft: `4px solid ${c.caution_count > 0 ? ACCENT.red : ACCENT.cyan}`,
-                  paddingLeft: 10,
-                }}
-              >
-                {shortCo(c.name)}
-              </h2>
-              <span style={{ display: 'flex', gap: 6 }}>
-                {c.caution_count > 0 && <Badge tone="neg">주의 {c.caution_count}</Badge>}
-                <Badge tone="info">{c.article_count}건</Badge>
-              </span>
-            </div>
-            {range && (
-              <div style={{ ...muted, fontSize: 12, marginTop: 4, textAlign: 'right' }}>
-                참고 자료 {range}
-              </div>
-            )}
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 10 }}>
-              {c.summary.map((s, j) => (
-                <Line key={j} s={s} map={map} />
-              ))}
-              {c.facts.map((s, j) => (
-                <Line
-                  key={`f${j}`}
-                  s={s}
-                  map={map}
-                  prefix={
-                    <span style={muted}>
-                      {s.date ? `${s.date.slice(5).replace('-', '/')} · ` : '· '}
-                    </span>
-                  }
-                />
-              ))}
-              {c.meaning && (
-                <Line s={c.meaning} map={map} prefix={<Badge tone="info">분석</Badge>} />
-              )}
-              {c.qa.map((q, j) => (
-                <div key={`q${j}`} style={{ fontSize: 14.5, lineHeight: 1.7 }}>
-                  <div style={{ fontWeight: 700 }}>Q. {q.q}</div>
-                  <div>
-                    A. {q.a}
-                    <RefLinks refs={q.refs} map={map} />
-                  </div>
-                </div>
-              ))}
-              {c.client_explain && (
-                <div
-                  style={{
-                    marginTop: 16,
-                    background: 'rgba(16,185,129,.08)',
-                    border: '1px solid rgba(16,185,129,.35)',
-                    borderRadius: 10,
-                    padding: 12,
-                  }}
-                >
-                  <div style={{ fontSize: 12, fontWeight: 800, color: '#34D399', marginBottom: 4 }}>
-                    고객에게 이렇게 설명하세요
-                  </div>
-                  <Line s={c.client_explain} map={map} />
-                </div>
-              )}
-            </div>
-          </section>
-        );
-      })}
-      <SourceList refs={d.refs} />
+      {d.companies.length > 0 && (
+        <h2 style={{ ...h2, margin: '6px 2px 0' }}>
+          기업별 월간 정리{' '}
+          <span style={{ ...muted, fontSize: 12, fontWeight: 400 }}>
+            회사명을 누르면 펼쳐집니다
+          </span>
+        </h2>
+      )}
+      {d.companies.map((c, i) => (
+        <MonthlyCompanyCard key={i} c={c} map={map} />
+      ))}
       <Footer />
     </>
   );

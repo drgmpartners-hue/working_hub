@@ -102,7 +102,7 @@ async def period_summary(db: AsyncSession, company_id: str, date_from: date, dat
                     for i, a in enumerate(use, 1))
     await release(db)
     r = await llm_client.claude_json(key[0], PERIOD_PROMPT.format(name=company.name, date_from=date_from, date_to=date_to, articles=txt),
-                                     model=models["summary"], max_tokens=2500)
+                                     model=models["summary"], max_tokens=2500, stage="period")
     content = r.data if isinstance(r.data, dict) else {}
     valid = {s["id"] for s in sources}
     for k in ("key_events", "cautions"):  # 근거 없는 항목 제거

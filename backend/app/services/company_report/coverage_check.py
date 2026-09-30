@@ -150,7 +150,7 @@ async def key_events(db: AsyncSession, company: PortfolioCompany, start: date, e
     if claude:
         try:
             await release(db)
-            r = await llm_client.claude_json(claude[0], prompt, model=models["writer"], web_search=True, max_tokens=3000)
+            r = await llm_client.claude_json(claude[0], prompt, model=models["writer"], web_search=True, max_tokens=3000, stage="backfill")
             res["claude"] = [e for e in ((r.data or {}).get("events") or []) if isinstance(e, dict) and e.get("title")]
         except llm_client.LLMError as e:
             errors["claude"] = str(e)
@@ -158,7 +158,7 @@ async def key_events(db: AsyncSession, company: PortfolioCompany, start: date, e
     if gemini:
         try:
             await release(db)
-            r = await llm_client.gemini_json(gemini[0], prompt, model=models["review"], grounding=True)
+            r = await llm_client.gemini_json(gemini[0], prompt, model=models["review"], grounding=True, stage="backfill")
             res["gemini"] = [e for e in ((r.data or {}).get("events") or []) if isinstance(e, dict) and e.get("title")]
         except llm_client.LLMError as e:
             errors["gemini"] = str(e)

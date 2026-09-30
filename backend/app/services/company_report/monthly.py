@@ -6,7 +6,7 @@
 3. 월간 종합(Claude): 이달의 요약 3~5문장 + 주목할 기업
 4. 교차 검토(Gemini 1차 → Claude 2차): 기업 묶음별로 나눠 검토, 합의 안 된 문장은 삭제
 5. 저장: company_monthly_digests(기업별) + monthly_briefings(ready)
-   검토 실패 또는 삭제 문장 30% 초과 → held(보류), 관리자가 확인 후 [발송 허용]
+   검토 문제(2차 미완료·삭제 30% 초과 등)는 '참고'로만 남기고 자동 발송(ready). 보낼 내용이 없을 때만 held
 발송은 sender.send_monthly: 1일 이후 첫 영업일의 08:30 배치(데일리와 같은 시각)에 보낸다.
 """
 from __future__ import annotations
@@ -346,7 +346,7 @@ async def _digest_ai(claude_key: str, model: str, company: PortfolioCompany, mon
         sources="\n".join(f"[{s['id']}] {s['text']}" for s in sources), prev=prev_summary or "(없음)",
     )
     try:
-        return await llm_client.claude_json(claude_key, prompt, model=model, max_tokens=3000), prompt, None
+        return await llm_client.claude_json(claude_key, prompt, model=model, max_tokens=3000, stage="monthly"), prompt, None
     except llm_client.LLMError as e:
         return None, prompt, str(e)
 
@@ -470,7 +470,7 @@ async def _build(db: AsyncSession, mb: MonthlyBriefing) -> dict:
         p = OVERALL_PROMPT.format(label=month_label(month), month=month, stats=stat_txt, digests="\n\n".join(dig_txt))
         await release(db)
         try:
-            r = await llm_client.claude_json(claude[0], p, model=models["writer"], max_tokens=3000)
+            r = await llm_client.claude_json(claude[0], p, model=models["writer"], max_tokens=3000, stage="monthly")
             await cross_review.log_draft(db, "monthly", mb.id, r, models["writer"], p)
             overall_draft = r.data if isinstance(r.data, dict) else {}
         except llm_client.LLMError as e:
@@ -554,8 +554,12 @@ async def _build(db: AsyncSession, mb: MonthlyBriefing) -> dict:
     mb.review_summary = {"total": total_n, "removed": removed_n, "disputed": disputed_n, "removed_ratio": ratio,
                          "review_ok": not review_fail, "ai_errors": ai_errors[:20],
                          "removed_samples": [{"text": r.get("text"), "reason": r.get("reason")} for r in removed_all[:15]]}
-    mb.status = "held" if reasons else "ready"
-    mb.hold_reason = " / ".join(reasons) or None
+    # 2026-09-30 결정: 내용 검토 없이 자동 발송. 검토 문제는 '참고'로만 남기고(ready),
+    # 보낼 내용 자체가 남지 않았을 때만 보류한다.
+    empty = not summary and not company_sections and stats["article_count"] > 0
+    mb.review_summary["warnings"] = reasons
+    mb.status = "held" if empty else "ready"
+    mb.hold_reason = ("보낼 내용이 남지 않았습니다(작성·검토 실패). " + " / ".join(reasons)).strip() if empty else None
     mb.approved_by = mb.approved_at = None
     await index_monthly(db, mb)
     await db.commit()

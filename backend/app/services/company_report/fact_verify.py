@@ -179,7 +179,7 @@ async def verify_fact(db: AsyncSession, fact: CompanyFact, company: PortfolioCom
     prompt = CHECK_PROMPT.format(name=company.name, aliases=f" (다른 이름: {', '.join(aliases)})" if aliases else "",
                                  fact_type=fact.fact_type, fact_date=fdate, title=fact.title, detail=detail,
                                  articles=articles_txt)
-    r = await llm_client.claude_json(claude_key, prompt, model=models["writer"], max_tokens=1200)
+    r = await llm_client.claude_json(claude_key, prompt, model=models["writer"], max_tokens=1200, stage="verify")
     check = r.data if isinstance(r.data, dict) else {}
 
     search_res: Optional[dict] = None
@@ -188,7 +188,7 @@ async def verify_fact(db: AsyncSession, fact: CompanyFact, company: PortfolioCom
         try:
             g = await llm_client.gemini_json(gemini_key, SEARCH_PROMPT.format(
                 known=known, name=company.name, fact_date=fdate, title=fact.title, detail=detail),
-                model=models["review"], grounding=True)
+                model=models["review"], grounding=True, stage="verify")
             search_res = g.data if isinstance(g.data, dict) else None
         except llm_client.LLMError as e:
             logger.info("사실 검색 교차 확인 실패(%s): %s", fact.title, e)

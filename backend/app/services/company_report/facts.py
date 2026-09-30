@@ -212,7 +212,7 @@ async def extract_pending(db: AsyncSession, company_id: Optional[str] = None, li
             try:
                 await release(db)
                 r = await llm_client.claude_json(key[0], EXTRACT_PROMPT.format(name=company.name, articles=txt),
-                                                 model=models["summary"], max_tokens=3000)
+                                                 model=models["summary"], max_tokens=3000, stage="facts")
                 data = r.data if isinstance(r.data, dict) else {"facts": r.data}
                 s = await _apply(db, cid, data.get("facts") or [], {a.id: a for a in chunk}, existing)
                 for k in ("added", "merged", "rounds"):

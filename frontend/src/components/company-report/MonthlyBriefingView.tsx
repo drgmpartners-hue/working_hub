@@ -268,6 +268,15 @@ function TrendTable({ rows }: { rows: MStatRow[] }) {
 export function MonthlyBriefingView({ mb }: { mb: MonthlyBriefing }) {
   const nums = useMemo(() => numbering(mb), [mb]);
   const [showTable, setShowTable] = useState(false);
+  // 기업별 월간 정리는 접힌 상태가 기본(보고 싶은 기업만 펼침)
+  const [openCos, setOpenCos] = useState<Set<string>>(new Set());
+  const toggleCo = (id: string) =>
+    setOpenCos((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
   const c = mb.content || {};
   const st = mb.stats || {};
   const src = c.sources || {};
@@ -385,139 +394,212 @@ export function MonthlyBriefingView({ mb }: { mb: MonthlyBriefing }) {
       </Card>
 
       <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-        <SectionTitle>③ 기업별 월간 정리</SectionTitle>
+        <SectionTitle
+          right={
+            (c.companies || []).length > 0 ? (
+              <button
+                type="button"
+                className="wh-btn wh-btn-ghost wh-btn-sm"
+                onClick={() =>
+                  setOpenCos(
+                    openCos.size === (c.companies || []).length
+                      ? new Set()
+                      : new Set((c.companies || []).map((x) => x.company_id)),
+                  )
+                }
+              >
+                {openCos.size === (c.companies || []).length ? '모두 접기' : '모두 펼치기'}
+              </button>
+            ) : undefined
+          }
+        >
+          ③ 기업별 월간 정리
+        </SectionTitle>
         {(c.companies || []).length === 0 && (
           <Card padding={16}>
             <div style={mutedText}>정리할 기업이 없습니다.</div>
           </Card>
         )}
-        {(c.companies || []).map((sec) => (
-          <Card key={sec.company_id} padding={16}>
-            <div
-              style={{
-                display: 'flex',
-                justifyContent: 'space-between',
-                alignItems: 'center',
-                gap: 8,
-                marginBottom: 8,
-              }}
-            >
-              <strong style={{ fontSize: 15, color: 'var(--text-primary)' }}>{sec.name}</strong>
-              <span
+        {(c.companies || []).map((sec) => {
+          const isOpen = openCos.has(sec.company_id);
+          return (
+            <Card key={sec.company_id} padding={16}>
+              <div
+                role="button"
+                tabIndex={0}
+                aria-expanded={isOpen}
+                onClick={() => toggleCo(sec.company_id)}
+                onKeyDown={(e) =>
+                  (e.key === 'Enter' || e.key === ' ') &&
+                  (e.preventDefault(), toggleCo(sec.company_id))
+                }
                 style={{
                   display: 'flex',
-                  gap: 6,
+                  justifyContent: 'space-between',
                   alignItems: 'center',
-                  flexWrap: 'wrap',
-                  justifyContent: 'flex-end',
+                  gap: 8,
+                  marginBottom: isOpen ? 8 : 0,
+                  cursor: 'pointer',
                 }}
               >
-                {(() => {
-                  const r = sourceRange(sectionIds(sec), src);
-                  return r ? (
-                    <span
-                      style={{ ...mutedText, fontSize: 12 }}
-                      title="이 카드에 인용한 기사·공시의 날짜 범위"
-                    >
-                      참고 자료 {r}
-                    </span>
-                  ) : null;
-                })()}
-                {sec.caution && <span className="wh-badge neg">주의</span>}
-                <span className="wh-badge info" title={`${mb.month} 한 달 기사 수`}>
-                  {sec.article_count}건
-                </span>
-              </span>
-            </div>
-            {sec.summary.map((s, i) => (
-              <p
-                key={i}
-                style={{
-                  margin: '0 0 6px',
-                  fontSize: 14,
-                  lineHeight: 1.7,
-                  color: 'var(--text-primary)',
-                }}
-              >
-                <Line s={s} nums={nums} sources={src} />
-              </p>
-            ))}
-            {sec.facts.length > 0 && (
-              <ul style={{ margin: '6px 0', paddingLeft: 18, listStyle: 'disc' }}>
-                {sec.facts.map((f, i) => (
-                  <li
-                    key={i}
-                    style={{ fontSize: 13, lineHeight: 1.7, color: 'var(--text-secondary)' }}
+                <strong style={{ fontSize: 15, color: 'var(--text-primary)' }}>
+                  <span
+                    style={{
+                      display: 'inline-block',
+                      width: 16,
+                      color: 'var(--text-muted)',
+                      fontSize: 12,
+                    }}
                   >
-                    {f.date && (
-                      <span style={{ ...mutedText, fontSize: 12, marginRight: 6 }}>
-                        {f.date.slice(5).replace('-', '/')}
-                      </span>
-                    )}
-                    <Line s={f} nums={nums} sources={src} />
-                  </li>
-                ))}
-              </ul>
-            )}
-            {sec.meaning && (
-              <div
-                style={{
-                  fontSize: 13,
-                  lineHeight: 1.7,
-                  color: 'var(--text-secondary)',
-                  margin: '6px 0',
-                }}
-              >
-                <span className="wh-badge info" style={{ marginRight: 6 }}>
-                  분석
-                </span>
-                <Line s={sec.meaning} nums={nums} sources={src} />
-              </div>
-            )}
-            {sec.qa.length > 0 && (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginTop: 6 }}>
-                {sec.qa.map((q, i) => (
-                  <div key={i} style={{ fontSize: 13, lineHeight: 1.6 }}>
-                    <div style={{ color: 'var(--text-primary)', fontWeight: 600 }}>Q. {q.q}</div>
-                    <div style={{ color: 'var(--text-secondary)' }}>
-                      A. {q.a}
-                      <Refs ids={q.source_ids} nums={nums} sources={src} />
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-            {/* 카드 맨 아래, 한 줄 띄워서 */}
-            {sec.client_explain && (
-              <div style={{ ...box, borderLeft: '3px solid var(--cyan-400)', margin: '20px 0 0' }}>
-                <div
+                    {isOpen ? '▾' : '▸'}
+                  </span>
+                  {sec.name}
+                </strong>
+                <span
                   style={{
-                    fontSize: 12,
-                    fontWeight: 700,
-                    color: 'var(--cyan-400)',
-                    marginBottom: 2,
+                    display: 'flex',
+                    gap: 6,
+                    alignItems: 'center',
+                    flexWrap: 'wrap',
+                    justifyContent: 'flex-end',
                   }}
                 >
-                  고객에게 이렇게 설명하세요
-                </div>
-                <Line
-                  s={sec.client_explain}
-                  nums={nums}
-                  sources={src}
-                  style={{ color: 'var(--text-primary)' }}
-                />
+                  {(() => {
+                    const r = sourceRange(sectionIds(sec), src);
+                    return r ? (
+                      <span
+                        style={{ ...mutedText, fontSize: 12 }}
+                        title="이 카드에 인용한 기사·공시의 날짜 범위"
+                      >
+                        참고 자료 {r}
+                      </span>
+                    ) : null;
+                  })()}
+                  {sec.caution && <span className="wh-badge neg">주의</span>}
+                  <span className="wh-badge info" title={`${mb.month} 한 달 기사 수`}>
+                    {sec.article_count}건
+                  </span>
+                </span>
               </div>
-            )}
-            <div style={{ marginTop: 10, textAlign: 'right' }}>
-              <Link
-                href={`/content/company-report/companies/${sec.company_id}`}
-                style={{ fontSize: 12, color: 'var(--cyan-400)' }}
-              >
-                기업 상세 보기 →
-              </Link>
-            </div>
-          </Card>
-        ))}
+              {!isOpen && sec.summary[0] && (
+                <div
+                  onClick={() => toggleCo(sec.company_id)}
+                  style={{
+                    ...mutedText,
+                    fontSize: 13,
+                    marginTop: 6,
+                    paddingLeft: 16,
+                    whiteSpace: 'nowrap',
+                    overflow: 'hidden',
+                    textOverflow: 'ellipsis',
+                    cursor: 'pointer',
+                  }}
+                >
+                  {sec.summary[0].text}
+                </div>
+              )}
+              {isOpen && (
+                <>
+                  {sec.summary.map((s, i) => (
+                    <p
+                      key={i}
+                      style={{
+                        margin: '0 0 6px',
+                        fontSize: 14,
+                        lineHeight: 1.7,
+                        color: 'var(--text-primary)',
+                      }}
+                    >
+                      <Line s={s} nums={nums} sources={src} />
+                    </p>
+                  ))}
+                  {sec.facts.length > 0 && (
+                    <ul style={{ margin: '6px 0', paddingLeft: 18, listStyle: 'disc' }}>
+                      {sec.facts.map((f, i) => (
+                        <li
+                          key={i}
+                          style={{ fontSize: 13, lineHeight: 1.7, color: 'var(--text-secondary)' }}
+                        >
+                          {f.date && (
+                            <span style={{ ...mutedText, fontSize: 12, marginRight: 6 }}>
+                              {f.date.slice(5).replace('-', '/')}
+                            </span>
+                          )}
+                          <Line s={f} nums={nums} sources={src} />
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                  {sec.meaning && (
+                    <div
+                      style={{
+                        fontSize: 13,
+                        lineHeight: 1.7,
+                        color: 'var(--text-secondary)',
+                        margin: '6px 0',
+                      }}
+                    >
+                      <span className="wh-badge info" style={{ marginRight: 6 }}>
+                        분석
+                      </span>
+                      <Line s={sec.meaning} nums={nums} sources={src} />
+                    </div>
+                  )}
+                  {sec.qa.length > 0 && (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginTop: 6 }}>
+                      {sec.qa.map((q, i) => (
+                        <div key={i} style={{ fontSize: 13, lineHeight: 1.6 }}>
+                          <div style={{ color: 'var(--text-primary)', fontWeight: 600 }}>
+                            Q. {q.q}
+                          </div>
+                          <div style={{ color: 'var(--text-secondary)' }}>
+                            A. {q.a}
+                            <Refs ids={q.source_ids} nums={nums} sources={src} />
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  {/* 카드 맨 아래, 한 줄 띄워서 */}
+                  {sec.client_explain && (
+                    <div
+                      style={{
+                        ...box,
+                        borderLeft: '3px solid var(--cyan-400)',
+                        margin: '20px 0 0',
+                      }}
+                    >
+                      <div
+                        style={{
+                          fontSize: 12,
+                          fontWeight: 700,
+                          color: 'var(--cyan-400)',
+                          marginBottom: 2,
+                        }}
+                      >
+                        고객에게 이렇게 설명하세요
+                      </div>
+                      <Line
+                        s={sec.client_explain}
+                        nums={nums}
+                        sources={src}
+                        style={{ color: 'var(--text-primary)' }}
+                      />
+                    </div>
+                  )}
+                  <div style={{ marginTop: 10, textAlign: 'right' }}>
+                    <Link
+                      href={`/content/company-report/companies/${sec.company_id}`}
+                      style={{ fontSize: 12, color: 'var(--cyan-400)' }}
+                    >
+                      기업 상세 보기 →
+                    </Link>
+                  </div>
+                </>
+              )}
+            </Card>
+          );
+        })}
       </div>
 
       <Card padding={16}>
@@ -566,39 +648,6 @@ export function MonthlyBriefingView({ mb }: { mb: MonthlyBriefing }) {
           </ul>
         )}
       </Card>
-
-      {nums.size > 0 && (
-        <Card padding={16}>
-          <SectionTitle>출처</SectionTitle>
-          <ol style={{ margin: 0, padding: 0, listStyle: 'none' }}>
-            {Array.from(nums.entries()).map(([id, n]) => {
-              const s = src[id];
-              if (!s) return null;
-              return (
-                <li key={id} style={{ fontSize: 12, lineHeight: 1.7, color: 'var(--text-muted)' }}>
-                  <span style={{ display: 'inline-block', minWidth: 28, color: 'var(--cyan-400)' }}>
-                    [{n}]
-                  </span>
-                  {s.type === 'article' && s.url ? (
-                    <a
-                      href={s.url}
-                      target="_blank"
-                      rel="noreferrer"
-                      style={{ color: 'var(--text-secondary)' }}
-                    >
-                      {s.title}
-                    </a>
-                  ) : (
-                    <span style={{ color: 'var(--text-secondary)' }}>원장 · {s.title}</span>
-                  )}
-                  {s.date ? ` · ${s.date}` : ''}
-                  {s.press ? ` · ${s.press}` : ''}
-                </li>
-              );
-            })}
-          </ol>
-        </Card>
-      )}
     </div>
   );
 }

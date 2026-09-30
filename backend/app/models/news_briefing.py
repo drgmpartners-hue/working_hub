@@ -169,6 +169,7 @@ class BriefingSendLog(Base):
     briefing_id: Mapped[Optional[str]] = mapped_column(String(36), index=True)
     user_id: Mapped[Optional[str]] = mapped_column(String(36))
     phone: Mapped[str] = mapped_column(String(20), nullable=False)
+    recipient_name: Mapped[Optional[str]] = mapped_column(String(100))  # 받은 사람 이름(발송 당시)
     channel: Mapped[str] = mapped_column(String(10), default="alimtalk", nullable=False)  # alimtalk/lms
     status: Mapped[str] = mapped_column(String(12), nullable=False)  # requested/failed
     solapi_group_id: Mapped[Optional[str]] = mapped_column(String(100))

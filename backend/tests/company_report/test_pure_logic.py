@@ -339,3 +339,69 @@ def test_article_frame_allowed():
     assert not frame_allowed({"Content-Security-Policy": "default-src 'self'; frame-ancestors 'self'"}, "https://a.com/1")
     assert frame_allowed({"Content-Security-Policy": "frame-ancestors *"}, "https://a.com/1")
     assert frame_allowed({"Content-Security-Policy": "script-src 'self'"}, "https://a.com/1")
+
+
+def test_stage_cost_report():
+    """단계별 AI 비용: 토큰 단가 + 검색 건당 요금(Gemini는 월 5,000회 무료), 일평균·예상 월 비용."""
+    from app.services import llm_client
+    from app.services.company_report.usage import DEFAULT_PRICES, build_stage_report
+
+    e = {
+        "2026-09-21|summary|claude-haiku-4-5": {"calls": 100, "input": 1_000_000, "output": 200_000, "searches": 0},   # 1+1 = $2
+        "2026-09-30|summary|claude-haiku-4-5": {"calls": 100, "input": 1_000_000, "output": 200_000, "searches": 0},   # $2
+        "2026-09-30|review2|claude-opus-5-5": {"calls": 2, "input": 100_000, "output": 50_000, "searches": 0},         # 0.4+1 = $1.4
+        "2026-09-25|backfill|claude-sonnet-5-5": {"calls": 10, "input": 0, "output": 0, "searches": 100},             # 100 × $0.01 = $1
+        "2026-09-25|verify|gemini-3.1-pro-preview": {"calls": 6000, "input": 0, "output": 0, "searches": 6000},      # 1,000건 유료 × $0.014 = $14
+        "2026-09-01|monthly|claude-sonnet-5-5": {"calls": 25, "input": 500_000, "output": 100_000, "searches": 0},    # 1+1 = $2
+    }
+    r = build_stage_report(e, DEFAULT_PRICES, date(2026, 9, 30), old_token_usd=10.0, krw=1385.0)
+    st = {x["key"]: x for x in r["stages"]}
+    assert r["since"] == "2026-09-01" and r["days"] == 30 and r["krw_rate"] == 1385.0
+    assert st["summary"]["usd"] == 4.0 and st["summary"]["calls"] == 200 and st["summary"]["avg_calls"] == round(200 / 30, 1)
+    assert st["summary"]["est_month_usd"] == 4.0  # 일평균 × 30
+    assert st["review2"]["usd"] == 1.4 and st["review2"]["models"] == ["claude-opus-5-5"]
+    assert st["backfill"]["usd"] == 1.0 and st["backfill"]["kind"] == "irregular" and st["backfill"]["est_month_usd"] == 1.0
+    assert abs(st["verify"]["usd"] - 14.0) < 1e-6 and st["verify"]["searches"] == 6000
+    assert st["monthly"]["kind"] == "monthly" and st["monthly"]["est_month_usd"] == 2.0
+    assert st["daily"]["calls"] == 0 and "other" not in st  # 기록 없는 단계도 줄은 보이고, '기타'는 있을 때만
+    assert r["total"]["usd"] == round(4 + 1.4 + 1 + 14 + 2, 4)
+    assert r["before_usd"] == round(10.0 - (4 + 1.4 + 2), 2)  # 단계 구분 전 사용분(토큰 기준)
+
+    # 호출 기록: 단계 이름이 키에 들어간다
+    llm_client.drain_stage_usage()
+    llm_client._record("claude-haiku-4-5", {"input_tokens": 10, "output_tokens": 2}, 0, "summary")
+    with llm_client.stage("daily"):
+        llm_client._record("claude-sonnet-5-5", {"input_tokens": 5, "output_tokens": 1}, 3)
+    got = llm_client.drain_stage_usage()
+    keys = sorted(k.split("|", 1)[1] for k in got)
+    assert keys == ["daily|claude-sonnet-5-5", "summary|claude-haiku-4-5"]
+    assert next(v for k, v in got.items() if "daily" in k)["searches"] == 3
+    llm_client.drain_usage()
+
+
+def test_cost_history_units():
+    """비용 종합: AI(USD→원) + SOLAPI(건당 단가), 발송 횟수, 1회당 평균 — 일/월/분기/연."""
+    from app.services.company_report.usage import SOLAPI_PRICES, build_cost_history
+
+    ai = {"2026-09-30": 1.0, "2026-10-01": 2.0, "2027-01-05": 0.5}
+    legacy = {"2026-09": 3.0}
+    sends = [
+        {"day": "2026-09-30", "briefing_type": "daily", "channel": "alimtalk", "messages": 3, "briefings": 1},
+        {"day": "2026-09-30", "briefing_type": "test", "channel": "lms", "messages": 1, "briefings": 1},
+        {"day": "2026-10-01", "briefing_type": "daily", "channel": "alimtalk", "messages": 3, "briefings": 1},
+        {"day": "2026-10-01", "briefing_type": "monthly", "channel": "alimtalk", "messages": 3, "briefings": 1},
+    ]
+    d = build_cost_history(ai, legacy, sends, "day", 1400.0, SOLAPI_PRICES)
+    assert [x["period"] for x in d] == ["2027-01-05", "2026-10-01", "2026-09-30", "2026-09 (일별 기록 전)"]
+    oct1 = d[1]
+    assert oct1["ai_krw"] == 2800 and oct1["solapi_krw"] == 78 and oct1["sends"] == 2 and oct1["messages"] == 6
+    assert oct1["total_krw"] == 2878 and oct1["per_send_krw"] == 1439
+    sep30 = d[2]
+    assert sep30["sends"] == 1 and sep30["test_messages"] == 1 and sep30["solapi_krw"] == 39 + 45  # 테스트도 비용에는 포함
+    m = build_cost_history(ai, legacy, sends, "month", 1400.0, SOLAPI_PRICES)
+    sep = next(x for x in m if x["period"] == "2026-09")
+    assert sep["ai_krw"] == round((1.0 + 3.0) * 1400)  # 날짜별 기록 전 사용분은 월 단위부터 합친다
+    q = build_cost_history(ai, legacy, sends, "quarter", 1400.0, SOLAPI_PRICES)
+    assert [x["period"] for x in q] == ["2027-Q1", "2026-Q4", "2026-Q3"]
+    y = build_cost_history(ai, legacy, sends, "year", 1400.0, SOLAPI_PRICES)
+    assert [x["period"] for x in y] == ["2027", "2026"] and y[1]["sends"] == 3

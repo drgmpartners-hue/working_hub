@@ -8,11 +8,14 @@
 from __future__ import annotations
 
 import asyncio
+import contextvars
 import json
 import logging
 import re
+from contextlib import contextmanager
 from dataclasses import dataclass, field
-from typing import Any, Optional
+from datetime import datetime, timedelta, timezone
+from typing import Any, Iterator, Optional
 
 import httpx
 
@@ -34,21 +37,50 @@ class LLMError(RuntimeError):
     pass
 
 
-# 프로세스 안 사용량 누적(모델별 호출·토큰). company_report.usage.flush가 DB(app_settings)에 옮긴다.
+# 프로세스 안 사용량 누적. company_report.usage.flush가 DB(app_settings)에 옮긴다.
+# - _USAGE: 모델별 합계(예전 방식, 월별)
+# - _STAGE_USAGE: (날짜, 단계, 모델)별 호출·토큰·검색 횟수 — 발송 설정의 'AI 비용' 카드
 _USAGE: dict[str, dict[str, int]] = {}
+_STAGE_USAGE: dict[str, dict[str, int]] = {}
+_STAGE: contextvars.ContextVar[str] = contextvars.ContextVar("llm_stage", default="other")
+_KST = timezone(timedelta(hours=9))
 
 
-def _record(model: str, usage: dict) -> None:
+@contextmanager
+def stage(name: str) -> Iterator[None]:
+    """이 블록 안의 AI 호출을 name 단계로 기록한다(비동기 작업에도 이어짐)."""
+    token = _STAGE.set(name)
+    try:
+        yield
+    finally:
+        _STAGE.reset(token)
+
+
+def _record(model: str, usage: dict, searches: int = 0, stage_name: Optional[str] = None) -> None:
     u = _USAGE.setdefault(model or "unknown", {"calls": 0, "input": 0, "output": 0})
     u["calls"] += 1
     u["input"] += int(usage.get("input_tokens") or 0)
     u["output"] += int(usage.get("output_tokens") or 0)
+    day = datetime.now(_KST).date().isoformat()
+    k = f"{day}|{stage_name or _STAGE.get()}|{model or 'unknown'}"
+    v = _STAGE_USAGE.setdefault(k, {"calls": 0, "input": 0, "output": 0, "searches": 0})
+    v["calls"] += 1
+    v["input"] += int(usage.get("input_tokens") or 0)
+    v["output"] += int(usage.get("output_tokens") or 0)
+    v["searches"] += int(searches or 0)
 
 
 def drain_usage() -> dict[str, dict[str, int]]:
-    """누적 사용량을 꺼내고 비운다."""
+    """누적 사용량(모델별)을 꺼내고 비운다."""
     global _USAGE
     out, _USAGE = _USAGE, {}
+    return out
+
+
+def drain_stage_usage() -> dict[str, dict[str, int]]:
+    """누적 사용량('날짜|단계|모델')을 꺼내고 비운다."""
+    global _STAGE_USAGE
+    out, _STAGE_USAGE = _STAGE_USAGE, {}
     return out
 
 
@@ -94,6 +126,7 @@ async def claude_text(
     web_search: bool = False,
     timeout: float = 120,
     retries: int = 2,
+    stage: Optional[str] = None,
 ) -> LLMResult:
     body: dict[str, Any] = {
         "model": model,
@@ -123,7 +156,8 @@ async def claude_text(
                 raise LLMError("Claude가 요청을 거절했습니다")
             text = "".join(b.get("text", "") for b in data.get("content", []) if b.get("type") == "text")
             usage = data.get("usage", {}) or {}
-            _record(data.get("model", model), usage)
+            searches = int(((usage.get("server_tool_use") or {}).get("web_search_requests")) or 0)
+            _record(data.get("model", model), usage, searches, stage)
             return LLMResult(text=text, model=data.get("model", model), usage=usage)
         except (LLMError, httpx.HTTPError) as e:
             last_err = e
@@ -172,6 +206,12 @@ def _gemini_call(api_key: str, model: str, prompt: str, grounding: bool, want_js
             "input_tokens": getattr(um, "prompt_token_count", None),
             "output_tokens": getattr(um, "candidates_token_count", None),
         }
+    if grounding:  # 구글 검색 횟수(요금이 검색 건당 붙음)
+        n = 0
+        for c in getattr(resp, "candidates", None) or []:
+            gm = getattr(c, "grounding_metadata", None)
+            n += len(getattr(gm, "web_search_queries", None) or []) if gm else 0
+        usage["searches"] = n or 1
     return LLMResult(text=resp.text or "", model=model, usage=usage)
 
 
@@ -182,13 +222,14 @@ async def gemini_json(
     model: str = DEFAULT_REVIEW_MODEL,
     grounding: bool = False,
     retries: int = 1,
+    stage: Optional[str] = None,
 ) -> LLMResult:
     prompt = prompt + "\n\n반드시 유효한 JSON만 출력하라."
     last: Exception | None = None
     for attempt in range(retries + 1):
         try:
             r = await asyncio.to_thread(_gemini_call, api_key, model, prompt, grounding, True)
-            _record(model, r.usage or {})
+            _record(model, r.usage or {}, int((r.usage or {}).get("searches") or 0), stage)
             r.data = parse_json(r.text)
             return r
         except Exception as e:  # SDK 예외 종류가 다양함

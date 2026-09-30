@@ -125,7 +125,7 @@ async def summarize_pending(db: AsyncSession, company_id: Optional[str] = None, 
                         name=company.name, industry=company.industry or "-", ceo=company.ceo_name or "-",
                         issue_types=", ".join(ISSUE_TYPES), articles=_fmt(chunk),
                     ),
-                    model=models["summary"], max_tokens=4000,
+                    model=models["summary"], max_tokens=4000, stage="summary",
                 )
                 data = r.data if isinstance(r.data, dict) else {"items": r.data}
                 total += apply_result(chunk, data.get("items") or [])

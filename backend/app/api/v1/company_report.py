@@ -955,6 +955,25 @@ async def _settings_out(db: AsyncSession) -> dict:
     keys["solapi"] = bool(app_settings.SOLAPI_API_KEY and app_settings.SOLAPI_API_SECRET and app_settings.SOLAPI_SENDER)
     keys["kakao_channel"] = bool(app_settings.SOLAPI_PF_ID)
     logs = (await db.execute(select(BriefingSendLog).order_by(BriefingSendLog.sent_at.desc()).limit(20))).scalars().all()
+    # 예전 기록(이름 칸 이전)은 계정 id·휴대폰 번호로 이름을 찾는다
+    from app.models.client import Client
+    from app.models.user import User
+
+    names: dict[str, str] = {}
+    uids = {l.user_id for l in logs if l.user_id and not l.recipient_name}
+    if uids:
+        for uid, nick in (await db.execute(select(User.id, User.nickname).where(User.id.in_(uids)))).all():
+            names[uid] = nick
+    phones = {"".join(ch for ch in l.phone if ch.isdigit()) for l in logs if not l.recipient_name}
+    if phones:
+        for nm, ph in (await db.execute(select(Client.name, Client.phone).where(Client.phone.is_not(None)))).all():
+            d = "".join(ch for ch in (ph or "") if ch.isdigit())
+            if d in phones:
+                names.setdefault(d, nm)
+        for nm, ph in (await db.execute(select(User.nickname, User.phone).where(User.phone.is_not(None)))).all():
+            d = "".join(ch for ch in (ph or "") if ch.isdigit())
+            if d in phones:
+                names.setdefault(d, nm)
     from app.services import solapi_service
     from app.services.collectors.data_go_kr import REGIONS
     from app.services.company_report import storage, usage
@@ -965,6 +984,7 @@ async def _settings_out(db: AsyncSession) -> dict:
         balance = {"error": str(e)[:100]}
     return {
         "ai_usage": await usage.month_usage(db),
+        "ai_stages": await usage.stage_report(db),
         "solapi_balance": balance,
         "regions": list(REGIONS),
         "storage": storage.usage(),
@@ -982,10 +1002,20 @@ async def _settings_out(db: AsyncSession) -> dict:
         "keys": keys,
         "send_logs": [{
             "briefing_type": l.briefing_type, "briefing_id": l.briefing_id, "phone": l.phone[:3] + "****" + l.phone[-4:],
+            "name": l.recipient_name or names.get(l.user_id or "") or names.get("".join(ch for ch in l.phone if ch.isdigit())) or None,
             "channel": l.channel, "status": l.status, "error": l.error,
             "sent_at": l.sent_at.isoformat() if l.sent_at else None,
         } for l in logs],
     }
+
+
+@router.get("/costs")
+async def get_costs(unit: str = Query("month", pattern="^(day|month|quarter|year)$"), current_user=Depends(get_current_user),
+                    db: AsyncSession = Depends(get_db)):
+    """비용 종합: 기간(일/월/분기/연)별 AI 사용액 + SOLAPI 발송비, 발송 횟수, 1회당 평균."""
+    from app.services.company_report import usage
+
+    return await usage.cost_history(db, unit)
 
 
 @router.get("/settings")

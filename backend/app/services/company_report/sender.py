@@ -248,7 +248,7 @@ async def _deliver_generic(db: AsyncSession, briefing_id: str, targets: list, br
     for t in targets:
         db.add(BriefingSendLog(
             briefing_type=briefing_type, briefing_id=briefing_id, user_id=getattr(t, "user_id", None) or getattr(t, "id", None),
-            phone=t.phone, channel=channel,
+            phone=t.phone, recipient_name=(getattr(t, "name", None) or None), channel=channel,
             status="requested" if ok else "failed", solapi_group_id=res.get("groupId") or (res.get("groupInfo") or {}).get("groupId"),
             error=None if ok else str(res.get("error") or res.get("errorMessage") or res)[:1000],
         ))

@@ -119,7 +119,7 @@ async def search_candidates(db: AsyncSession, query: str, user_id: Optional[str]
                 # 웹 검색은 오래 걸릴 수 있어 60초에서 끊는다(화면이 응답 없이 끊기지 않게)
                 r = await asyncio.wait_for(llm_client.claude_json(
                     claude[0], WEB_CANDIDATE_PROMPT.format(query=query),
-                    model=models["summary"], web_search=True, max_tokens=2000, timeout=55, retries=0,
+                    model=models["summary"], web_search=True, max_tokens=2000, timeout=55, retries=0, stage="register",
                 ), timeout=60)
                 for c in (r.data or {}).get("candidates", [])[:3]:
                     c.update({"source": "web", "corp_code": None, "stock_code": None, "is_listed": False})
@@ -168,7 +168,7 @@ async def suggest_keywords(db: AsyncSession, company: dict, user_id: Optional[st
                 name=name, name_en=company.get("name_en") or "-", ceo=company.get("ceo_name") or "-",
                 industry=company.get("industry") or "-", titles=titles,
             ),
-            model=models["summary"], max_tokens=800,
+            model=models["summary"], max_tokens=800, stage="register",
         )
         d = r.data or {}
         out = {k: [str(x).strip() for x in (d.get(k) or []) if str(x).strip()] for k in ("required", "boost", "exclude")}

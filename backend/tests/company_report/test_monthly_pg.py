@@ -50,7 +50,8 @@ def _fake_llm(state):
                     "highlights": [{"company_id": cids[0], "text": "시리즈B 유치", "source_ids": [srcs[0]]}]}
         elif "최종 검토자" in prompt:
             sids = re.findall(r"^\[([a-z0-9_]+)\] \(", prompt, re.M)
-            data = {"final": [{"id": s, "decision": "remove" if state.get("remove_all") else "keep", "reason": "t"} for s in sids]}
+            data = {"final": [{"id": s, "decision": "remove" if state.get("remove_all") or (state.get("remove_half") and i % 2 and not s.startswith("o"))
+                               else "keep", "reason": "t"} for i, s in enumerate(sids)]}
         else:
             data = {}
         state.setdefault("calls", []).append(prompt[:30])
@@ -256,7 +257,15 @@ async def _run(monkeypatch):
             assert (await sender.send_monthly(db, date(2026, 9, 2)))["skipped"] == "이미 발송됨"
         assert (await cl.post("/briefings/monthly/build", headers=H, json={"month": month})).status_code == 409  # 발송 후 재작성 불가
 
-    # ---- 검토에서 대부분 삭제되면 보류(held)
+    # ---- 검토에서 30% 넘게 지워져도 내용이 남아 있으면 자동 발송(ready), 경고만 남김
+    state["remove_half"] = True
+    async with AsyncSessionLocal() as db:
+        r = await monthly.build_monthly(db, "2026-07", force=True)
+        mb7 = await db.get(MonthlyBriefing, r["id"])
+        assert r["status"] == "ready" and r["removed_ratio"] > 0.3 and any("30%" in w for w in mb7.review_summary["warnings"]), r
+    state["remove_half"] = False
+
+    # ---- 검토에서 전부 지워져 보낼 내용이 없으면 보류(held)
     state["remove_all"] = True
     async with AsyncSessionLocal() as db:
         r = await monthly.build_monthly(db, "2026-07", force=True)

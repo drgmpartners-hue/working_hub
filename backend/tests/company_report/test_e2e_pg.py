@@ -266,7 +266,14 @@ async def _run(monkeypatch):
         r = await c.get("/m/daily", params={"t": tok})  # 로그인 없이 폰 화면
         assert r.status_code == 200 and r.json()["companies"] and r.json()["refs"], r.text
         r = await c.get("/settings", headers=H)
-        assert r.json()["send_logs"][0]["status"] == "requested"
+        assert r.json()["send_logs"][0]["status"] == "requested" and r.json()["send_logs"][0]["name"], r.json()["send_logs"][0]
+        assert "stages" in r.json()["ai_stages"] and r.json()["ai_stages"]["stages"][0]["key"] == "summary"
+        for unit in ("day", "month", "quarter", "year"):
+            r = await c.get("/costs", params={"unit": unit}, headers=H)
+            assert r.status_code == 200 and r.json()["unit"] == unit, r.text
+        cj = r.json()
+        assert cj["total"]["sends"] >= 1 and cj["total"]["solapi_krw"] > 0 and cj["items"][0]["per_send_krw"]
+        assert (await c.get("/costs", params={"unit": "week"}, headers=H)).status_code == 422
 
         # ---- 기업DB: 업로드(이름 규칙)·본문 검색·자동 파일·브리핑 PDF·zip
         import io, zipfile

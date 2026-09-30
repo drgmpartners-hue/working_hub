@@ -4,14 +4,32 @@
 import Link from 'next/link';
 import { useCallback, useEffect, useState } from 'react';
 import { Card } from '@/components/common/Card';
-import { ErrorBox, Field, SectionTitle, Spinner, fmtDate, inputStyle, mutedText } from '@/components/company-report/ui';
+import {
+  ErrorBox,
+  Field,
+  SectionTitle,
+  Spinner,
+  fmtDate,
+  inputStyle,
+  mutedText,
+} from '@/components/company-report/ui';
 import { crGet, crPost, crPut } from '@/lib/companyReportApi';
 import { useCrMe } from '@/lib/useCrMe';
 import { AdminCard } from '@/components/company-report/AdminCard';
 import { RecipientsCard } from '@/components/company-report/RecipientsCard';
+import {
+  CostHistoryCard,
+  StageCostCard,
+  type StageReport,
+} from '@/components/company-report/CostCards';
 
 interface Settings {
-  ai_usage: { month: string; usd: number; rows: { model: string; calls: number; input: number; output: number; usd: number }[] };
+  ai_stages?: StageReport | null;
+  ai_usage: {
+    month: string;
+    usd: number;
+    rows: { model: string; calls: number; input: number; output: number; usd: number }[];
+  };
   solapi_balance: { balance?: number; point?: number; error?: string } & Record<string, unknown>;
   regions: string[];
   storage: { bytes: number; files: number; persistent: boolean };
@@ -27,9 +45,16 @@ interface Settings {
   last_run_at: string | null;
   last_send_at: string | null;
   keys: Record<string, boolean>;
-  send_logs: { briefing_type: string; phone: string; channel: string; status: string; error: string | null; sent_at: string | null }[];
+  send_logs: {
+    briefing_type: string;
+    phone: string;
+    name?: string | null;
+    channel: string;
+    status: string;
+    error: string | null;
+    sent_at: string | null;
+  }[];
 }
-
 
 /** 서버가 이전 버전이거나 일부 값이 빠져도 화면이 깨지지 않게 기본값을 채운다. */
 function normalize(raw: Partial<Settings> | null | undefined): Settings {
@@ -39,8 +64,18 @@ function normalize(raw: Partial<Settings> | null | undefined): Settings {
   return {
     ...(r as Settings),
     regions: Array.isArray(r.regions) && r.regions.length ? r.regions : ['서울'],
-    ai_usage: { ...(au as Settings['ai_usage']), month: au.month || '', rows: Array.isArray(au.rows) ? au.rows : [], usd: Number(au.usd || 0) },
-    storage: { ...(st as Settings['storage']), files: Number(st.files || 0), bytes: Number(st.bytes || 0), persistent: !!st.persistent },
+    ai_usage: {
+      ...(au as Settings['ai_usage']),
+      month: au.month || '',
+      rows: Array.isArray(au.rows) ? au.rows : [],
+      usd: Number(au.usd || 0),
+    },
+    storage: {
+      ...(st as Settings['storage']),
+      files: Number(st.files || 0),
+      bytes: Number(st.bytes || 0),
+      persistent: !!st.persistent,
+    },
     solapi_balance: r.solapi_balance || {},
     keys: r.keys || {},
     send_logs: Array.isArray(r.send_logs) ? r.send_logs : [],
@@ -102,7 +137,8 @@ export default function SettingsPage() {
   };
 
   const sendNow = async () => {
-    if (!window.confirm('오늘 브리핑을 지금 수신자에게 보낼까요? (승인된 브리핑만, 하루 한 번)')) return;
+    if (!window.confirm('오늘 브리핑을 지금 수신자에게 보낼까요? (승인된 브리핑만, 하루 한 번)'))
+      return;
     setBusy(true);
     try {
       const r = await crPost<Record<string, unknown>>('/briefings/daily/send-now');
@@ -121,7 +157,13 @@ export default function SettingsPage() {
     <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
       <ErrorBox message={error} />
       {notice && <div style={{ ...mutedText, color: 'var(--success)' }}>{notice}</div>}
-      <AdminCard me={me} onChanged={() => { reloadMe(); void load(); }} />
+      <AdminCard
+        me={me}
+        onChanged={() => {
+          reloadMe();
+          void load();
+        }}
+      />
 
       <Card padding={16}>
         <SectionTitle
@@ -131,7 +173,12 @@ export default function SettingsPage() {
                 type="button"
                 className={`wh-btn wh-btn-sm ${s.enabled ? 'wh-btn-ghost' : 'wh-btn-primary'}`}
                 disabled={busy}
-                onClick={() => void save({ enabled: !s.enabled }, s.enabled ? '자동 발송을 껐습니다.' : '자동 발송을 켰습니다.')}
+                onClick={() =>
+                  void save(
+                    { enabled: !s.enabled },
+                    s.enabled ? '자동 발송을 껐습니다.' : '자동 발송을 켰습니다.',
+                  )
+                }
               >
                 {s.enabled ? '발송 끄기' : '발송 켜기'}
               </button>
@@ -140,15 +187,31 @@ export default function SettingsPage() {
         >
           데일리 발송
         </SectionTitle>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 12, fontSize: 14, color: 'var(--text-secondary)' }}>
+        <div
+          style={{
+            display: 'grid',
+            gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
+            gap: 12,
+            fontSize: 14,
+            color: 'var(--text-secondary)',
+          }}
+        >
           <div>
             <div style={mutedText}>상태</div>
-            <span className={`wh-badge ${s.enabled ? 'pos' : 'neg'}`}>{s.enabled ? '켜짐 · 평일 08:30' : '꺼짐'}</span>
+            <span className={`wh-badge ${s.enabled ? 'pos' : 'neg'}`}>
+              {s.enabled ? '켜짐 · 평일 08:30' : '꺼짐'}
+            </span>
           </div>
           <div>
             <div style={mutedText}>월간 브리핑</div>
-            <span className={`wh-badge ${s.enabled && s.monthly_enabled !== false ? 'pos' : 'neg'}`}>
-              {s.monthly_enabled === false ? '꺼짐' : s.enabled ? '켜짐 · 매월 1일(휴일이면 다음 영업일)' : '데일리 발송이 꺼져 있어 보내지 않음'}
+            <span
+              className={`wh-badge ${s.enabled && s.monthly_enabled !== false ? 'pos' : 'neg'}`}
+            >
+              {s.monthly_enabled === false
+                ? '꺼짐'
+                : s.enabled
+                  ? '켜짐 · 매월 1일(휴일이면 다음 영업일)'
+                  : '데일리 발송이 꺼져 있어 보내지 않음'}
             </span>
             {admin && (
               <div style={{ marginTop: 6 }}>
@@ -156,7 +219,14 @@ export default function SettingsPage() {
                   type="button"
                   className="wh-btn wh-btn-ghost wh-btn-sm"
                   disabled={busy}
-                  onClick={() => void save({ monthly_enabled: s.monthly_enabled === false }, s.monthly_enabled === false ? '월간 발송을 켰습니다.' : '월간 발송을 껐습니다.')}
+                  onClick={() =>
+                    void save(
+                      { monthly_enabled: s.monthly_enabled === false },
+                      s.monthly_enabled === false
+                        ? '월간 발송을 켰습니다.'
+                        : '월간 발송을 껐습니다.',
+                    )
+                  }
                 >
                   {s.monthly_enabled === false ? '월간 켜기' : '월간 끄기'}
                 </button>
@@ -168,7 +238,10 @@ export default function SettingsPage() {
             {s.approval_required_today ? (
               <>
                 <span>
-                  {s.review_until}까지 승인 후 발송 <strong style={{ color: 'var(--warning)' }}>(남은 {s.approval_days_left}일)</strong>
+                  {s.review_until}까지 승인 후 발송{' '}
+                  <strong style={{ color: 'var(--warning)' }}>
+                    (남은 {s.approval_days_left}일)
+                  </strong>
                 </span>
                 {admin && (
                   <div style={{ marginTop: 6 }}>
@@ -176,7 +249,16 @@ export default function SettingsPage() {
                       type="button"
                       className="wh-btn wh-btn-ghost wh-btn-sm"
                       disabled={busy}
-                      onClick={() => void save({ review_until: new Date(Date.now() - 86400000).toISOString().slice(0, 10) }, '승인 없이 자동 발송으로 바꿨습니다.')}
+                      onClick={() =>
+                        void save(
+                          {
+                            review_until: new Date(Date.now() - 86400000)
+                              .toISOString()
+                              .slice(0, 10),
+                          },
+                          '승인 없이 자동 발송으로 바꿨습니다.',
+                        )
+                      }
                     >
                       승인 없이 자동 발송으로
                     </button>
@@ -191,11 +273,19 @@ export default function SettingsPage() {
             <div style={mutedText}>최근 작성 / 발송</div>
             {fmtDate(s.last_run_at, true)} / {fmtDate(s.last_send_at, true)}
             <div style={{ marginTop: 6, display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-              <Link href="/content/company-report/briefing" className="wh-btn wh-btn-ghost wh-btn-sm">
+              <Link
+                href="/content/company-report/briefing"
+                className="wh-btn wh-btn-ghost wh-btn-sm"
+              >
                 브리핑 보기
               </Link>
               {admin && (
-                <button type="button" className="wh-btn wh-btn-ghost wh-btn-sm" disabled={busy} onClick={() => void sendNow()}>
+                <button
+                  type="button"
+                  className="wh-btn wh-btn-ghost wh-btn-sm"
+                  disabled={busy}
+                  onClick={() => void sendNow()}
+                >
                   지금 발송
                 </button>
               )}
@@ -214,7 +304,20 @@ export default function SettingsPage() {
                 type="button"
                 className="wh-btn wh-btn-ghost wh-btn-sm"
                 disabled={busy}
-                onClick={() => void save({ template_daily: tpl.daily, template_monthly: tpl.monthly, main_model: models.main, writer_model: models.writer, review_model: models.review, summary_model: models.summary, weather_region: region }, '저장했습니다.')}
+                onClick={() =>
+                  void save(
+                    {
+                      template_daily: tpl.daily,
+                      template_monthly: tpl.monthly,
+                      main_model: models.main,
+                      writer_model: models.writer,
+                      review_model: models.review,
+                      summary_model: models.summary,
+                      weather_region: region,
+                    },
+                    '저장했습니다.',
+                  )
+                }
               >
                 저장
               </button>
@@ -223,9 +326,20 @@ export default function SettingsPage() {
         >
           알림톡 템플릿 · AI 모델 · 날씨 지역
         </SectionTitle>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: 10 }}>
+        <div
+          style={{
+            display: 'grid',
+            gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))',
+            gap: 10,
+          }}
+        >
           <Field label="날씨 지역(데일리 기본정보)">
-            <select style={inputStyle} disabled={!admin} value={region} onChange={(e) => setRegion(e.target.value)}>
+            <select
+              style={inputStyle}
+              disabled={!admin}
+              value={region}
+              onChange={(e) => setRegion(e.target.value)}
+            >
               {s.regions.map((r) => (
                 <option key={r} value={r}>
                   {r}
@@ -234,72 +348,108 @@ export default function SettingsPage() {
             </select>
           </Field>
           <Field label="데일리 템플릿 ID (승인된 v1, 비우면 같은 내용을 문자로)">
-            <input style={inputStyle} disabled={!admin} value={tpl.daily} onChange={(e) => setTpl({ ...tpl, daily: e.target.value })} placeholder="KA01TP…" />
+            <input
+              style={inputStyle}
+              disabled={!admin}
+              value={tpl.daily}
+              onChange={(e) => setTpl({ ...tpl, daily: e.target.value })}
+              placeholder="KA01TP…"
+            />
           </Field>
           <Field label="월간 템플릿 ID (승인된 v1, 비우면 문자로)">
-            <input style={inputStyle} disabled={!admin} value={tpl.monthly} onChange={(e) => setTpl({ ...tpl, monthly: e.target.value })} placeholder="KA01TP…" />
+            <input
+              style={inputStyle}
+              disabled={!admin}
+              value={tpl.monthly}
+              onChange={(e) => setTpl({ ...tpl, monthly: e.target.value })}
+              placeholder="KA01TP…"
+            />
           </Field>
           <Field label="작성 모델 (초안·기업별 요약·사실 확인)">
-            <input style={inputStyle} disabled={!admin} value={models.writer || ''} onChange={(e) => setModels({ ...models, writer: e.target.value })} placeholder="claude-sonnet-5-5" />
+            <input
+              style={inputStyle}
+              disabled={!admin}
+              value={models.writer || ''}
+              onChange={(e) => setModels({ ...models, writer: e.target.value })}
+              placeholder="claude-sonnet-5-5"
+            />
           </Field>
           <Field label="2차 검토 모델 (최종 판정)">
-            <input style={inputStyle} disabled={!admin} value={models.main} onChange={(e) => setModels({ ...models, main: e.target.value })} placeholder="claude-opus-5-5" />
+            <input
+              style={inputStyle}
+              disabled={!admin}
+              value={models.main}
+              onChange={(e) => setModels({ ...models, main: e.target.value })}
+              placeholder="claude-opus-5-5"
+            />
           </Field>
           <Field label="1차 검토 모델">
-            <input style={inputStyle} disabled={!admin} value={models.review} onChange={(e) => setModels({ ...models, review: e.target.value })} />
+            <input
+              style={inputStyle}
+              disabled={!admin}
+              value={models.review}
+              onChange={(e) => setModels({ ...models, review: e.target.value })}
+            />
           </Field>
           <Field label="기사 요약 모델">
-            <input style={inputStyle} disabled={!admin} value={models.summary} onChange={(e) => setModels({ ...models, summary: e.target.value })} />
+            <input
+              style={inputStyle}
+              disabled={!admin}
+              value={models.summary}
+              onChange={(e) => setModels({ ...models, summary: e.target.value })}
+            />
           </Field>
         </div>
       </Card>
 
       <Card padding={16}>
-        <SectionTitle right={<Link href="/settings" style={{ fontSize: 12, color: 'var(--cyan-400)' }}>API 키 설정 →</Link>}>연결 상태</SectionTitle>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))', gap: 8 }}>
+        <SectionTitle
+          right={
+            <Link href="/settings" style={{ fontSize: 12, color: 'var(--cyan-400)' }}>
+              API 키 설정 →
+            </Link>
+          }
+        >
+          연결 상태
+        </SectionTitle>
+        <div
+          style={{
+            display: 'grid',
+            gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))',
+            gap: 8,
+          }}
+        >
           {Object.entries(KEY_LABEL).map(([k, label]) => (
-            <div key={k} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: 13, color: 'var(--text-secondary)', padding: '6px 0' }}>
+            <div
+              key={k}
+              style={{
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                fontSize: 13,
+                color: 'var(--text-secondary)',
+                padding: '6px 0',
+              }}
+            >
               {label}
-              <span className={`wh-badge ${s.keys[k] ? 'pos' : 'neg'}`}>{s.keys[k] ? '연결됨' : '없음'}</span>
+              <span className={`wh-badge ${s.keys[k] ? 'pos' : 'neg'}`}>
+                {s.keys[k] ? '연결됨' : '없음'}
+              </span>
             </div>
           ))}
         </div>
       </Card>
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: 16 }}>
-        <Card padding={16}>
-          <SectionTitle right={<span style={mutedText}>{s.ai_usage.month}</span>}>AI 사용량(추정)</SectionTitle>
-          {s.ai_usage.rows.length === 0 ? (
-            <div style={mutedText}>이번 달 기록이 없습니다.</div>
-          ) : (
-            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
-              <thead>
-                <tr>
-                  {['모델', '호출', '입력 토큰', '출력 토큰', '추정 금액'].map((h, i) => (
-                    <th key={h} style={{ textAlign: i ? 'right' : 'left', padding: '6px 4px', color: 'var(--text-muted)', fontWeight: 600, fontSize: 12, borderBottom: '1px solid var(--border)' }}>
-                      {h}
-                    </th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {s.ai_usage.rows.map((r) => (
-                  <tr key={r.model}>
-                    <td style={{ padding: '6px 4px', color: 'var(--text-secondary)' }}>{r.model}</td>
-                    <td style={{ padding: '6px 4px', textAlign: 'right', color: 'var(--text-secondary)' }}>{r.calls.toLocaleString('ko-KR')}</td>
-                    <td style={{ padding: '6px 4px', textAlign: 'right', color: 'var(--text-secondary)' }}>{r.input.toLocaleString('ko-KR')}</td>
-                    <td style={{ padding: '6px 4px', textAlign: 'right', color: 'var(--text-secondary)' }}>{r.output.toLocaleString('ko-KR')}</td>
-                    <td style={{ padding: '6px 4px', textAlign: 'right', color: 'var(--text-primary)' }}>${r.usd.toFixed(2)}</td>
-                  </tr>
-                ))}
-                <tr>
-                  <td colSpan={4} style={{ padding: '6px 4px', color: 'var(--text-muted)' }}>합계(공개 단가 기준 추정)</td>
-                  <td style={{ padding: '6px 4px', textAlign: 'right', color: 'var(--text-primary)', fontWeight: 700 }}>${s.ai_usage.usd.toFixed(2)}</td>
-                </tr>
-              </tbody>
-            </table>
-          )}
-        </Card>
+      <StageCostCard r={s.ai_stages} />
+      <CostHistoryCard />
+
+      <div
+        style={{
+          display: 'grid',
+          gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))',
+          gap: 16,
+        }}
+      >
         <Card padding={16}>
           <SectionTitle>SOLAPI 잔액 · 파일 저장소</SectionTitle>
           <div style={{ fontSize: 13, color: 'var(--text-secondary)', lineHeight: 1.9 }}>
@@ -310,13 +460,20 @@ export default function SettingsPage() {
               ) : (
                 <strong style={{ color: 'var(--text-primary)' }}>
                   {Number(s.solapi_balance?.balance ?? 0).toLocaleString('ko-KR')}원
-                  {s.solapi_balance?.point ? ` · 포인트 ${Number(s.solapi_balance.point).toLocaleString('ko-KR')}` : ''}
+                  {s.solapi_balance?.point
+                    ? ` · 포인트 ${Number(s.solapi_balance.point).toLocaleString('ko-KR')}`
+                    : ''}
                 </strong>
               )}
             </div>
             <div>
-              기업DB 파일 {s.storage.files.toLocaleString('ko-KR')}개 · {(s.storage.bytes / 1048576).toFixed(1)}MB{' '}
-              {s.storage.persistent ? <span className="wh-badge pos">영구 저장소</span> : <span className="wh-badge warn">Volume 미연결</span>}
+              기업DB 파일 {s.storage.files.toLocaleString('ko-KR')}개 ·{' '}
+              {(s.storage.bytes / 1048576).toFixed(1)}MB{' '}
+              {s.storage.persistent ? (
+                <span className="wh-badge pos">영구 저장소</span>
+              ) : (
+                <span className="wh-badge warn">Volume 미연결</span>
+              )}
             </div>
           </div>
         </Card>
@@ -329,12 +486,34 @@ export default function SettingsPage() {
         ) : (
           <ul style={{ listStyle: 'none', margin: 0, padding: 0 }}>
             {s.send_logs.map((l, i) => (
-              <li key={i} style={{ display: 'flex', gap: 10, flexWrap: 'wrap', fontSize: 13, padding: '6px 0', borderBottom: '1px solid var(--border-soft)', color: 'var(--text-secondary)' }}>
+              <li
+                key={i}
+                style={{
+                  display: 'flex',
+                  gap: 10,
+                  flexWrap: 'wrap',
+                  fontSize: 13,
+                  padding: '6px 0',
+                  borderBottom: '1px solid var(--border-soft)',
+                  color: 'var(--text-secondary)',
+                }}
+              >
                 <span style={{ width: 130 }}>{fmtDate(l.sent_at, true)}</span>
-                <span>{l.briefing_type === 'test' ? '테스트' : l.briefing_type === 'monthly' ? '월간' : '데일리'}</span>
+                <span>
+                  {l.briefing_type === 'test'
+                    ? '테스트'
+                    : l.briefing_type === 'monthly'
+                      ? '월간'
+                      : '데일리'}
+                </span>
+                <span style={{ color: 'var(--text-primary)', fontWeight: 600, minWidth: 60 }}>
+                  {l.name || '(이름 없음)'}
+                </span>
                 <span>{l.phone}</span>
                 <span>{l.channel === 'alimtalk' ? '알림톡' : 'LMS'}</span>
-                <span className={`wh-badge ${l.status === 'failed' ? 'neg' : 'pos'}`}>{l.status === 'failed' ? '실패' : '요청됨'}</span>
+                <span className={`wh-badge ${l.status === 'failed' ? 'neg' : 'pos'}`}>
+                  {l.status === 'failed' ? '실패' : '요청됨'}
+                </span>
                 {l.error && <span style={{ color: 'var(--danger)' }}>{l.error}</span>}
               </li>
             ))}
