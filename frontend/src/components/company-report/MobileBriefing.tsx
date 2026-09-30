@@ -66,12 +66,14 @@ interface MonthlyData {
   company_with_news: number;
   summary: Sent[];
   highlights: (Sent & { name: string })[];
-  cautions: { name: string; what: Sent | null; impact: Sent | null; check: Sent | null }[];
+  cautions: { id?: string; name: string; what: Sent | null }[];
   checkpoints: (Sent & { name: string; when?: string })[];
   companies: {
+    id?: string;
     name: string;
     article_count: number;
     caution_count: number;
+    caution?: { what: Sent | null; impact: Sent | null; check: Sent | null } | null;
     summary: Sent[];
     facts: (Sent & { date?: string })[];
     meaning: Sent | null;
@@ -495,13 +497,20 @@ function Body({ s, map }: { s: Sent; map: Map<number, RefItem> }) {
 function MonthlyCompanyCard({
   c,
   map,
+  domId,
+  open,
+  setOpen,
 }: {
   c: MonthlyData['companies'][number];
   map: Map<number, RefItem>;
+  domId: string;
+  open: boolean;
+  setOpen: (v: boolean) => void;
 }) {
-  const [open, setOpen] = useState(false);
+  const cau = c.caution;
   const range = refRange(
     [
+      ...(cau ? [cau.what, cau.impact, cau.check].filter((x): x is Sent => !!x) : []),
       ...c.summary,
       ...c.facts,
       ...(c.meaning ? [c.meaning] : []),
@@ -511,12 +520,19 @@ function MonthlyCompanyCard({
     map,
   );
   return (
-    <section style={card}>
+    <section
+      id={domId}
+      style={{
+        ...card,
+        scrollMarginTop: 12,
+        ...(cau ? { borderColor: 'rgba(239,68,68,.45)' } : {}),
+      }}
+    >
       <div
         role="button"
         tabIndex={0}
         aria-expanded={open}
-        onClick={() => setOpen((o) => !o)}
+        onClick={() => setOpen(!open)}
         style={{
           display: 'flex',
           alignItems: 'center',
@@ -530,7 +546,7 @@ function MonthlyCompanyCard({
             ...h2,
             margin: 0,
             fontSize: 18,
-            borderLeft: `4px solid ${c.caution_count > 0 ? ACCENT.red : ACCENT.cyan}`,
+            borderLeft: `4px solid ${cau || c.caution_count > 0 ? ACCENT.red : ACCENT.cyan}`,
             paddingLeft: 10,
           }}
         >
@@ -544,7 +560,7 @@ function MonthlyCompanyCard({
           <Badge tone="info">{c.article_count}건</Badge>
         </span>
       </div>
-      {!open && c.summary[0] && (
+      {!open && (cau?.what || c.summary[0]) && (
         <div
           onClick={() => setOpen(true)}
           style={{
@@ -558,7 +574,11 @@ function MonthlyCompanyCard({
             overflow: 'hidden',
           }}
         >
-          {c.summary[0].text}
+          {cau?.what ? (
+            <span style={{ color: ACCENT.red }}>주의 · {cau.what.text}</span>
+          ) : (
+            c.summary[0]?.text
+          )}
         </div>
       )}
       {open && (
@@ -569,6 +589,30 @@ function MonthlyCompanyCard({
             </div>
           )}
           <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 10 }}>
+            {cau && (
+              <div
+                style={{
+                  background: 'rgba(239,68,68,.08)',
+                  border: '1px solid rgba(239,68,68,.35)',
+                  borderRadius: 10,
+                  padding: 12,
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: 8,
+                  marginBottom: 4,
+                }}
+              >
+                {cau.what && (
+                  <Labeled label="주의 · 무슨 일" color={ACCENT.red} s={cau.what} map={map} />
+                )}
+                {cau.impact && (
+                  <Labeled label="영향" color={ACCENT.amber} s={cau.impact} map={map} />
+                )}
+                {cau.check && (
+                  <Labeled label="확인할 것" color={ACCENT.cyan} s={cau.check} map={map} />
+                )}
+              </div>
+            )}
             {c.summary.map((s, j) => (
               <Line key={j} s={s} map={map} />
             ))}
@@ -621,6 +665,23 @@ export function MonthlyMobile({ d }: { d: MonthlyData }) {
   const map = useRefMap(d.refs);
   const [y, m] = d.month.split('-');
   const diff = d.article_count - d.prev_article_count;
+  // 기업 카드는 접힌 상태가 기본. 위쪽 주의 목록을 누르면 해당 카드를 펼치고 이동
+  const [openIdx, setOpenIdx] = useState<Set<number>>(new Set());
+  const setOpenAt = (i: number, v: boolean) =>
+    setOpenIdx((prev) => {
+      const next = new Set(prev);
+      if (v) next.add(i);
+      else next.delete(i);
+      return next;
+    });
+  const jump = (id?: string, name?: string) => {
+    const i = d.companies.findIndex((c) => (id && c.id === id) || c.name === name);
+    if (i < 0) return;
+    setOpenAt(i, true);
+    requestAnimationFrame(() =>
+      document.getElementById(`mco-${i}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' }),
+    );
+  };
   return (
     <>
       <Header
@@ -644,6 +705,58 @@ export function MonthlyMobile({ d }: { d: MonthlyData }) {
           ))}
         </div>
       </section>
+      {d.cautions.length > 0 && (
+        <section style={{ ...card, borderColor: 'rgba(239,68,68,.45)' }}>
+          <h2 style={h2}>
+            주의가 필요한 기업{' '}
+            <span style={{ ...muted, fontSize: 12, fontWeight: 400 }}>
+              누르면 상세 내용으로 이동
+            </span>
+          </h2>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+            {d.cautions.map((c, i) => (
+              <button
+                key={i}
+                type="button"
+                onClick={() => jump(c.id, c.name)}
+                style={{
+                  textAlign: 'left',
+                  background: 'rgba(255,255,255,.035)',
+                  border: '1px solid var(--border-soft, #1C2740)',
+                  borderLeft: `4px solid ${ACCENT.red}`,
+                  borderRadius: 10,
+                  padding: '10px 12px',
+                  color: 'var(--text-secondary, #C4CDDB)',
+                  cursor: 'pointer',
+                  font: 'inherit',
+                }}
+              >
+                <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8 }}>
+                  <span
+                    style={{
+                      fontSize: 15.5,
+                      fontWeight: 800,
+                      color: 'var(--text-primary, #F1F5F9)',
+                    }}
+                  >
+                    {shortCo(c.name)}
+                  </span>
+                  <span style={{ fontSize: 12, color: ACCENT.cyan, whiteSpace: 'nowrap' }}>
+                    상세 ↓
+                  </span>
+                </div>
+                {c.what && (
+                  <div
+                    style={{ fontSize: 14, lineHeight: 1.6, marginTop: 2, wordBreak: 'keep-all' }}
+                  >
+                    {c.what.text}
+                  </div>
+                )}
+              </button>
+            ))}
+          </div>
+        </section>
+      )}
       {d.highlights.length > 0 && (
         <section style={card}>
           <h2 style={h2}>주목할 기업</h2>
@@ -651,20 +764,6 @@ export function MonthlyMobile({ d }: { d: MonthlyData }) {
             {d.highlights.map((s, i) => (
               <CoBlock key={i} name={shortCo(s.name)} accent={ACCENT.cyan}>
                 <Body s={s} map={map} />
-              </CoBlock>
-            ))}
-          </div>
-        </section>
-      )}
-      {d.cautions.length > 0 && (
-        <section style={{ ...card, borderColor: 'rgba(239,68,68,.45)' }}>
-          <h2 style={h2}>주의가 필요한 기업</h2>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-            {d.cautions.map((c, i) => (
-              <CoBlock key={i} name={shortCo(c.name)} accent={ACCENT.red}>
-                {c.what && <Labeled label="무슨 일" color={ACCENT.red} s={c.what} map={map} />}
-                {c.impact && <Labeled label="영향" color={ACCENT.amber} s={c.impact} map={map} />}
-                {c.check && <Labeled label="확인할 것" color={ACCENT.cyan} s={c.check} map={map} />}
               </CoBlock>
             ))}
           </div>
@@ -700,7 +799,14 @@ export function MonthlyMobile({ d }: { d: MonthlyData }) {
         </h2>
       )}
       {d.companies.map((c, i) => (
-        <MonthlyCompanyCard key={i} c={c} map={map} />
+        <MonthlyCompanyCard
+          key={i}
+          c={c}
+          map={map}
+          domId={`mco-${i}`}
+          open={openIdx.has(i)}
+          setOpen={(v) => setOpenAt(i, v)}
+        />
       ))}
       <Footer />
     </>

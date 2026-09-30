@@ -1,6 +1,6 @@
 'use client';
 
-/** 월간 브리핑 본문 — ① 이달의 요약 ② 포트폴리오 동향(차트) ③ 기업별 월간 정리 ④ 주의 기업 ⑤ 다음 달 체크포인트 */
+/** 월간 브리핑 본문 — ① 이달의 요약 ② 주의가 필요한 기업(한 줄 목록) ③ 포트폴리오 동향(차트) ④ 기업별 월간 정리(주의 상세 포함) ⑤ 다음 달 체크포인트 */
 import Link from 'next/link';
 import { useMemo, useState } from 'react';
 import {
@@ -30,13 +30,14 @@ function numbering(mb: MonthlyBriefing): Numbering {
   (c.summary || []).forEach((s) => add(s.source_ids));
   (c.highlights || []).forEach((s) => add(s.source_ids));
   for (const sec of c.companies || []) {
+    // 주의 내용은 카드 맨 위에 나오므로 번호도 먼저
+    add(sec.caution?.what.source_ids);
+    add(sec.caution?.impact?.source_ids);
+    add(sec.caution?.check?.source_ids);
     sec.summary.forEach((s) => add(s.source_ids));
     sec.facts.forEach((s) => add(s.source_ids));
     add(sec.meaning?.source_ids);
     sec.qa.forEach((s) => add(s.source_ids));
-    add(sec.caution?.what.source_ids);
-    add(sec.caution?.impact?.source_ids);
-    add(sec.caution?.check?.source_ids);
     sec.checkpoints.forEach((s) => add(s.source_ids));
     add(sec.client_explain?.source_ids); // 화면에서 카드 맨 아래
   }
@@ -277,6 +278,13 @@ export function MonthlyBriefingView({ mb }: { mb: MonthlyBriefing }) {
       else next.add(id);
       return next;
     });
+  // 위쪽 주의 목록에서 누르면 해당 기업 카드를 펼치고 그 위치로 이동
+  const jumpToCo = (id: string) => {
+    setOpenCos((prev) => new Set(prev).add(id));
+    requestAnimationFrame(() =>
+      document.getElementById(`mco-${id}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' }),
+    );
+  };
   const c = mb.content || {};
   const st = mb.stats || {};
   const src = c.sources || {};
@@ -362,6 +370,47 @@ export function MonthlyBriefingView({ mb }: { mb: MonthlyBriefing }) {
       </Card>
 
       <Card padding={16}>
+        <SectionTitle>② 주의가 필요한 기업</SectionTitle>
+        {(c.cautions || []).length === 0 ? (
+          <div style={mutedText}>이번 달 주의가 필요한 기업이 없습니다.</div>
+        ) : (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+            {(c.cautions || []).map((x) => (
+              <button
+                key={x.company_id}
+                type="button"
+                onClick={() => jumpToCo(x.company_id)}
+                title="눌러서 기업 카드의 상세 내용 보기"
+                style={{
+                  ...box,
+                  display: 'flex',
+                  gap: 8,
+                  alignItems: 'baseline',
+                  width: '100%',
+                  textAlign: 'left',
+                  border: 'none',
+                  borderLeft: '3px solid var(--danger)',
+                  cursor: 'pointer',
+                  color: 'var(--text-secondary)',
+                  fontSize: 13,
+                }}
+              >
+                <strong
+                  style={{ color: 'var(--text-primary)', whiteSpace: 'nowrap', fontSize: 14 }}
+                >
+                  {x.name}
+                </strong>
+                <span style={{ flex: 1, minWidth: 0 }}>{x.what?.text}</span>
+                <span style={{ color: 'var(--cyan-400)', fontSize: 12, whiteSpace: 'nowrap' }}>
+                  상세 ↓
+                </span>
+              </button>
+            ))}
+          </div>
+        )}
+      </Card>
+
+      <Card padding={16}>
         <SectionTitle
           right={
             <button
@@ -373,7 +422,7 @@ export function MonthlyBriefingView({ mb }: { mb: MonthlyBriefing }) {
             </button>
           }
         >
-          ② 포트폴리오 동향
+          ③ 포트폴리오 동향
         </SectionTitle>
         {showTable ? (
           <TrendTable rows={st.companies || []} />
@@ -413,7 +462,7 @@ export function MonthlyBriefingView({ mb }: { mb: MonthlyBriefing }) {
             ) : undefined
           }
         >
-          ③ 기업별 월간 정리
+          ④ 기업별 월간 정리
         </SectionTitle>
         {(c.companies || []).length === 0 && (
           <Card padding={16}>
@@ -423,7 +472,15 @@ export function MonthlyBriefingView({ mb }: { mb: MonthlyBriefing }) {
         {(c.companies || []).map((sec) => {
           const isOpen = openCos.has(sec.company_id);
           return (
-            <Card key={sec.company_id} padding={16}>
+            <Card
+              key={sec.company_id}
+              id={`mco-${sec.company_id}`}
+              padding={16}
+              style={{
+                scrollMarginTop: 72,
+                ...(sec.caution ? { borderLeft: '3px solid var(--danger)' } : {}),
+              }}
+            >
               <div
                 role="button"
                 tabIndex={0}
@@ -481,7 +538,7 @@ export function MonthlyBriefingView({ mb }: { mb: MonthlyBriefing }) {
                   </span>
                 </span>
               </div>
-              {!isOpen && sec.summary[0] && (
+              {!isOpen && (sec.caution?.what.text || sec.summary[0]) && (
                 <div
                   onClick={() => toggleCo(sec.company_id)}
                   style={{
@@ -495,11 +552,44 @@ export function MonthlyBriefingView({ mb }: { mb: MonthlyBriefing }) {
                     cursor: 'pointer',
                   }}
                 >
-                  {sec.summary[0].text}
+                  {sec.caution?.what.text ? (
+                    <span style={{ color: 'var(--danger)' }}>주의 · {sec.caution.what.text}</span>
+                  ) : (
+                    sec.summary[0]?.text
+                  )}
                 </div>
               )}
               {isOpen && (
                 <>
+                  {sec.caution && (
+                    <div
+                      style={{
+                        ...box,
+                        borderLeft: '3px solid var(--danger)',
+                        margin: '0 0 12px',
+                        fontSize: 13,
+                        color: 'var(--text-secondary)',
+                      }}
+                    >
+                      <div style={{ marginBottom: 4 }}>
+                        <span className="wh-badge neg">주의</span>
+                      </div>
+                      <div>
+                        <b>무슨 일</b> · <Line s={sec.caution.what} nums={nums} sources={src} />
+                      </div>
+                      {sec.caution.impact && (
+                        <div>
+                          <b>영향</b> · <Line s={sec.caution.impact} nums={nums} sources={src} />
+                        </div>
+                      )}
+                      {sec.caution.check && (
+                        <div>
+                          <b>회사에 확인할 것</b> ·{' '}
+                          <Line s={sec.caution.check} nums={nums} sources={src} />
+                        </div>
+                      )}
+                    </div>
+                  )}
                   {sec.summary.map((s, i) => (
                     <p
                       key={i}
@@ -601,34 +691,6 @@ export function MonthlyBriefingView({ mb }: { mb: MonthlyBriefing }) {
           );
         })}
       </div>
-
-      <Card padding={16}>
-        <SectionTitle>④ 주의가 필요한 기업</SectionTitle>
-        {(c.cautions || []).length === 0 ? (
-          <div style={mutedText}>이번 달 주의가 필요한 기업이 없습니다.</div>
-        ) : (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-            {(c.cautions || []).map((x) => (
-              <div key={x.company_id} style={{ ...box, borderLeft: '3px solid var(--danger)' }}>
-                <strong style={{ color: 'var(--text-primary)' }}>{x.name}</strong>
-                <div style={{ fontSize: 13, color: 'var(--text-secondary)' }}>
-                  <b>무슨 일</b> · <Line s={x.what} nums={nums} sources={src} />
-                </div>
-                {x.impact && (
-                  <div style={{ fontSize: 13, color: 'var(--text-secondary)' }}>
-                    <b>영향</b> · <Line s={x.impact} nums={nums} sources={src} />
-                  </div>
-                )}
-                {x.check && (
-                  <div style={{ fontSize: 13, color: 'var(--text-secondary)' }}>
-                    <b>회사에 확인할 것</b> · <Line s={x.check} nums={nums} sources={src} />
-                  </div>
-                )}
-              </div>
-            ))}
-          </div>
-        )}
-      </Card>
 
       <Card padding={16}>
         <SectionTitle>⑤ 다음 달 체크포인트</SectionTitle>

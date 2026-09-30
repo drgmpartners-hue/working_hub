@@ -214,6 +214,10 @@ async def _run(monkeypatch):
         mv = r.json()
         assert mv["month"] == month and mv["summary"][0]["refs"] and mv["refs"][0]["url"].startswith("https://")
         assert mv["companies"] and mv["companies"][0]["client_explain"]["text"] and "review_summary" not in mv
+        # 주의 기업: 위쪽은 한 줄(무슨 일)만, 상세는 해당 기업 카드 안에
+        cau_co = next(x for x in mv["companies"] if x["name"] == "베타로보틱스")
+        assert cau_co["caution"]["what"]["text"] and cau_co["caution"]["check"]["text"]
+        assert mv["cautions"][0]["id"] == cau_co["id"] and set(mv["cautions"][0]) == {"id", "name", "what"}
         assert (await cl.get("/m/monthly", params={"t": mtok[:-2] + "zz"})).status_code == 403
         assert (await cl.get("/m/daily", params={"t": mtok})).status_code == 403  # 월간 열쇠로 데일리 불가
         r = await cl.get("/briefings/monthly", params={"month": month}, headers=H)

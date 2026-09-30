@@ -92,10 +92,17 @@ async def monthly_view(db: AsyncSession, mb) -> dict[str, Any]:
             return None
         return {"text": x["text"], "refs": refs.nums(x.get("source_ids") or [])}
 
+    def caution(x: Optional[dict]) -> Optional[dict]:
+        if not isinstance(x, dict) or not sent(x.get("what")):
+            return None
+        return {"what": sent(x.get("what")), "impact": sent(x.get("impact")), "check": sent(x.get("check"))}
+
     out_companies = []
     for sec in c.get("companies") or []:
+        cau = caution(sec.get("caution"))  # 카드 맨 위에 나오므로 번호도 먼저
         out_companies.append({
-            "name": sec.get("name"), "article_count": sec.get("article_count", 0), "caution_count": sec.get("caution_count", 0),
+            "id": sec.get("company_id"), "name": sec.get("name"), "article_count": sec.get("article_count", 0),
+            "caution_count": sec.get("caution_count", 0), "caution": cau,
             "summary": [s for s in (sent(x) for x in sec.get("summary") or []) if s],
             "facts": [{**s, "date": x.get("date", "")} for x in sec.get("facts") or [] if (s := sent(x))],
             "meaning": sent(sec.get("meaning")),
@@ -109,8 +116,9 @@ async def monthly_view(db: AsyncSession, mb) -> dict[str, Any]:
         "prev_article_count": st.get("prev_article_count", 0), "company_with_news": st.get("company_with_news", 0),
         "summary": [s for s in (sent(x) for x in c.get("summary") or []) if s],
         "highlights": [{"name": x.get("name"), **s} for x in c.get("highlights") or [] if (s := sent(x))],
-        "cautions": [{"name": x.get("name"), "what": sent(x.get("what")), "impact": sent(x.get("impact")), "check": sent(x.get("check"))}
-                     for x in c.get("cautions") or []],
+        # 위쪽엔 회사명+한 줄만(상세는 기업 카드 안에)
+        "cautions": [{"id": x.get("company_id"), "name": x.get("name"), "what": sent(x.get("what"))}
+                     for x in c.get("cautions") or [] if sent(x.get("what"))],
         "checkpoints": [{"name": x.get("name"), "when": x.get("when"), **s} for x in c.get("checkpoints") or [] if (s := sent(x))],
         "companies": out_companies, "refs": refs.listing(),
     }
