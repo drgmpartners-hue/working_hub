@@ -6,7 +6,7 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
-import { ACTION_LABEL, RESOURCE_LABEL, adminApi, cell, fmtDateTime, headCell, type Overview } from './_lib/api';
+import { adminApi, cell, fmtDateTime, headCell, type Overview } from './_lib/api';
 import { SwitchButton } from './_lib/SwitchButton';
 
 const KPIS: { key: keyof Overview['totals']; label: string }[] = [
@@ -141,33 +141,6 @@ export default function AdminOverviewPage() {
                 </tbody>
               </table>
             </div>
-          </div>
-
-          <div className="dcard">
-            <div className="dcard-head">
-              <h4>최근 활동</h4>
-              <Link className="link" href="/admin/audit-logs">감사 로그 전체 보기 →</Link>
-            </div>
-            {data.recent_activity.length === 0 ? (
-              <div style={{ padding: 24, color: 'var(--text-muted)', fontSize: 14 }}>
-                아직 기록된 활동이 없습니다. 등록·수정·삭제와 대행 기록이 여기에 쌓입니다.
-              </div>
-            ) : (
-              <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-                <tbody>
-                  {data.recent_activity.map((a, i) => (
-                    <tr key={i}>
-                      <td style={{ ...cell, whiteSpace: 'nowrap', color: 'var(--text-muted)' }}>{fmtDateTime(a.created_at)}</td>
-                      <td style={cell}>
-                        {a.is_impersonated ? `${a.actor ?? '-'} (대행: ${a.effective ?? '-'})` : a.actor ?? '-'}
-                      </td>
-                      <td style={cell}>{ACTION_LABEL[a.action] ?? a.action}</td>
-                      <td style={{ ...cell, color: 'var(--text-secondary)' }}>{RESOURCE_LABEL[a.resource_type ?? ''] ?? a.resource_type ?? ''}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            )}
           </div>
         </>
       )}
