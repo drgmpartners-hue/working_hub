@@ -9,6 +9,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.deps import CurrentUser
+from app.core.permissions import find_profile_by_customer
 from app.db.session import get_db
 from app.models.customer_retirement_profile import CustomerRetirementProfile
 from app.models.desired_plan import DesiredPlan
@@ -27,28 +28,19 @@ router = APIRouter(prefix="/retirement/desired-plans", tags=["retirement"])
 async def _get_profile_or_404(
     customer_id: str,
     db: AsyncSession,
+    actor,
 ) -> CustomerRetirementProfile:
-    """customer_id로 은퇴 설계 프로필을 조회하거나 404 반환."""
-    result = await db.execute(
-        select(CustomerRetirementProfile).where(
-            CustomerRetirementProfile.customer_id == customer_id
-        )
-    )
-    profile = result.scalar_one_or_none()
+    """customer_id(clients.id)로 은퇴 설계 프로필을 소유 조건을 건 채로 조회.
+
+    존재하지 않거나 권한이 없으면 동일하게 404 (지시서 6.3).
+    """
+    profile = await find_profile_by_customer(db, actor, customer_id)
     if not profile:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="은퇴 설계 프로필을 찾을 수 없습니다. 먼저 프로필을 생성하세요.",
         )
     return profile
-
-
-def _check_access(
-    current_user: CurrentUser,
-    profile: CustomerRetirementProfile,
-) -> None:
-    """로그인한 사용자는 모든 고객 프로필 접근 가능 (설계사가 고객 관리)."""
-    pass
 
 
 def _enrich_response(plan: DesiredPlan) -> DesiredPlanResponse:
@@ -159,8 +151,7 @@ async def get_desired_plan(
     - 해당 고객의 은퇴 설계 프로필(customer_retirement_profiles)이 존재해야 합니다.
     - 플랜이 없으면 404를 반환합니다.
     """
-    profile = await _get_profile_or_404(customer_id, db)
-    _check_access(current_user, profile)
+    profile = await _get_profile_or_404(customer_id, db, current_user)
 
     result = await db.execute(
         select(DesiredPlan)
@@ -192,8 +183,7 @@ async def upsert_desired_plan(
     - 엑셀 PV/FV 기반 계산이 자동 수행됩니다.
     - 신규 필드(시뮬레이션 편집값, 토글 상태 등) 모두 저장됩니다.
     """
-    profile = await _get_profile_or_404(customer_id, db)
-    _check_access(current_user, profile)
+    profile = await _get_profile_or_404(customer_id, db, current_user)
 
     # annual_rate → expected_return_rate 하위 호환 처리
     expected_return_rate = data.expected_return_rate or 0.07
@@ -327,13 +317,8 @@ async def update_calculation_params(
     db: AsyncSession = Depends(get_db),
 ):
     """calculation_params 부분 업데이트 (applied_years 등 자동 저장용)."""
-    # 프로필 조회
-    profile_result = await db.execute(
-        select(CustomerRetirementProfile).where(
-            CustomerRetirementProfile.customer_id == customer_id
-        )
-    )
-    profile = profile_result.scalar_one_or_none()
+    # 프로필 조회 (소유 조건 포함)
+    profile = await find_profile_by_customer(db, current_user, customer_id)
     if not profile:
         raise HTTPException(status_code=404, detail="프로필을 찾을 수 없습니다.")
 

@@ -4,6 +4,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.permissions import require_master_write
 from app.db.session import get_db
 from app.core.deps import CurrentUser
 from app.core.security import encrypt_api_key, decrypt_api_key, mask_api_key
@@ -53,6 +54,7 @@ async def upsert_ai_setting(
     If a record with the same provider already exists it is updated;
     otherwise a new record is created.
     """
+    require_master_write(current_user)  # 전사 공용 마스터 쓰기는 대표만 (지시서 4.2 계층 C)
     result = await db.execute(
         select(AIAPISetting).where(AIAPISetting.provider == payload.provider)
     )

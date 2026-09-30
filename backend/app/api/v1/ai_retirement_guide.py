@@ -55,6 +55,12 @@ class AIRetirementGuideResponse(BaseModel):
 # ---------------------------------------------------------------------------
 
 
+async def _verify_customer(db: AsyncSession, actor, customer_id: str) -> None:
+    from app.core.permissions import assert_client  # noqa: PLC0415
+
+    await assert_client(db, actor, customer_id)
+
+
 @router.post("/ai-guide", response_model=AIRetirementGuideResponse)
 async def get_ai_retirement_guide(
     payload: AIRetirementGuideRequest,
@@ -72,6 +78,9 @@ async def get_ai_retirement_guide(
 
     AI 호출 실패 시 계산 기반 수치만 반환합니다 (graceful degradation).
     """
+    # 입력된 customer_id(clients.id)가 접근 가능한 고객인지 확인 (권한 없으면 404)
+    await _verify_customer(db, current_user, payload.customer_id)
+
     svc = AIRetirementGuideService()
     result = await svc.run(
         current_evaluation=payload.current_evaluation,

@@ -8,7 +8,7 @@ from __future__ import annotations
 import logging
 from typing import Any, Dict
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -22,18 +22,15 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/reports", tags=["reports"])
 
 
-async def _verify_client_owner(db: AsyncSession, client_id: str, user_id: str) -> None:
-    """client가 담당자(user) 소유인지 검증 (IDOR 방지). 아니면 404."""
-    from sqlalchemy import select
-    from app.models.client import Client
+async def _verify_client_owner(db: AsyncSession, client_id: str, actor, account_ids=None) -> None:
+    """고객(및 요청한 계좌들)이 접근 가능한지 검증 (판정은 app/core/permissions.py). 아니면 404."""
+    from app.core.permissions import assert_account, assert_client, not_found
 
-    owner_res = await db.execute(
-        select(Client.id).where(
-            Client.id == client_id, Client.user_id == user_id
-        ).limit(1)
-    )
-    if not owner_res.scalars().first():
-        raise HTTPException(status_code=404, detail="Client not found")
+    await assert_client(db, actor, client_id)
+    for account_id in account_ids or []:
+        account = await assert_account(db, actor, account_id)
+        if account.client_id != client_id:
+            raise not_found()
 
 
 async def _get_claude_key(db: AsyncSession, user_id: str) -> str | None:
@@ -62,7 +59,7 @@ async def generate_portfolio_report(
     PDF generation is delegated to the frontend.
     """
     # 소유권 검증: 요청한 client가 현재 담당자의 고객인지 확인 (IDOR 방지)
-    await _verify_client_owner(db, body.client_id, current_user.id)
+    await _verify_client_owner(db, body.client_id, current_user, body.account_ids)
 
     # LLM 라우팅: 보고서 AI 코멘트는 Claude Haiku 4.5 사용 (키 미등록 시 Gemini 폴백)
     claude_api_key = await _get_claude_key(db, current_user.id)

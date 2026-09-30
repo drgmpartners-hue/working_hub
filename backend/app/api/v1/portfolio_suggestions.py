@@ -5,6 +5,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.db.session import get_db
 from app.core.config import settings
 from app.core.deps import CurrentUser, get_current_user
+from app.core.permissions import assert_account, assert_snapshot, assert_suggestion, scope_clients
 from app.schemas.portfolio_suggestion import (
     SuggestionCreate,
     SuggestionCreateResponse,
@@ -14,7 +15,7 @@ from app.services import client_portal_service
 from app.services.email_service import send_suggestion_email
 from app.models.client import ClientAccount, Client
 from app.models.portfolio_suggestion import PortfolioSuggestion
-from sqlalchemy import select, and_, func
+from sqlalchemy import select, func
 
 router = APIRouter(prefix="/portfolios", tags=["portfolio-suggestions"])
 
@@ -26,20 +27,8 @@ async def create_suggestion(
     db: AsyncSession = Depends(get_db),
 ):
     """Create a portfolio rebalancing suggestion (expires in 7 days)."""
-    # Verify the account belongs to a client of this user
-    account_result = await db.execute(
-        select(ClientAccount)
-        .join(Client, ClientAccount.client_id == Client.id)
-        .where(
-            and_(
-                ClientAccount.id == body.account_id,
-                Client.user_id == current_user.id,
-            )
-        )
-    )
-    account = account_result.scalar_one_or_none()
-    if not account:
-        raise HTTPException(status_code=404, detail="Account not found")
+    # 계좌가 접근 가능한 고객의 것인지 확인 (권한 없으면 404)
+    account = await assert_account(db, current_user, body.account_id)
 
     # Fetch client for portal_token (to build portal link)
     client_result = await db.execute(
@@ -74,6 +63,7 @@ async def get_suggestion(
     db: AsyncSession = Depends(get_db),
 ):
     """Get a suggestion by ID."""
+    await assert_suggestion(db, current_user, suggestion_id)
     suggestion = await client_portal_service.get_suggestion(db, suggestion_id)
     if not suggestion:
         raise HTTPException(status_code=404, detail="Suggestion not found")
@@ -88,12 +78,7 @@ async def update_suggestion(
     db: AsyncSession = Depends(get_db),
 ):
     """Update an existing suggestion (weights, AI comment, manager note)."""
-    result = await db.execute(
-        select(PortfolioSuggestion).where(PortfolioSuggestion.id == suggestion_id)
-    )
-    suggestion = result.scalar_one_or_none()
-    if not suggestion:
-        raise HTTPException(status_code=404, detail="Suggestion not found")
+    suggestion = await assert_suggestion(db, current_user, suggestion_id)
 
     from datetime import datetime, timedelta
     suggestion.suggested_weights = body.suggested_weights
@@ -116,6 +101,7 @@ async def get_suggestion_by_snapshot(
     db: AsyncSession = Depends(get_db),
 ):
     """Get the most recent suggestion for a given snapshot."""
+    await assert_snapshot(db, current_user, snapshot_id)
     suggestion = await client_portal_service.get_latest_suggestion_by_snapshot(db, snapshot_id)
     if not suggestion:
         raise HTTPException(status_code=404, detail="No suggestion found for this snapshot")
@@ -135,6 +121,7 @@ async def send_suggestion_link(
     - email_sent: True if email was actually dispatched
     - expires_at: ISO8601 expiry datetime
     """
+    await assert_suggestion(db, current_user, suggestion_id)
     suggestion = await client_portal_service.get_suggestion(db, suggestion_id)
     if not suggestion:
         raise HTTPException(status_code=404, detail="Suggestion not found")
@@ -189,15 +176,15 @@ async def get_suggestion_latest_dates(
         .group_by(PortfolioSuggestion.account_id)
         .subquery()
     )
-    rows = await db.execute(
+    stmt = (
         select(
             Client.id.label("client_id"),
             sub.c.latest_date,
         )
         .join(ClientAccount, ClientAccount.client_id == Client.id)
         .join(sub, sub.c.account_id == ClientAccount.id)
-        .where(Client.user_id == current_user.id)
     )
+    rows = await db.execute(scope_clients(stmt, current_user))
     result: dict[str, str] = {}
     for row in rows.all():
         cid = row.client_id

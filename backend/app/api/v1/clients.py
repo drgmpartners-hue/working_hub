@@ -16,6 +16,7 @@ from app.db.session import get_db
 from app.core.deps import CurrentUser, get_current_user
 from app.core.config import settings
 from app.models.client import Client, ClientAccount
+from app.core.permissions import assert_client, scope_clients, scope_by_client_column
 from app.schemas.client import (
     ClientCreate,
     ClientUpdate,
@@ -192,10 +193,12 @@ async def download_excel(
     except JWTError:
         raise HTTPException(status_code=401, detail="Invalid token")
 
+    user = (await db.execute(select(User).where(User.id == user_id))).scalar_one_or_none()
+    if user is None or not user.is_active:
+        raise HTTPException(status_code=401, detail="Invalid token")
+
     result = await db.execute(
-        select(Client)
-        .where(Client.user_id == user_id)
-        .order_by(Client.created_at)
+        scope_clients(select(Client).order_by(Client.created_at), user)
     )
     clients = result.scalars().all()
 
@@ -242,10 +245,11 @@ async def download_excel(
 
 @router.get("", response_model=list[ClientResponse])
 async def list_clients(
+    manager_id: Optional[str] = Query(None, description="대표 전용 담당자 필터(매니저가 보내면 무시)"),
     current_user = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    return await client_service.list_clients(db, current_user.id)
+    return await client_service.list_clients(db, current_user, manager_id)
 
 
 @router.post("", response_model=ClientResponse, status_code=201)
@@ -268,7 +272,7 @@ async def get_client(
     current_user = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    client = await client_service.get_client(db, current_user.id, client_id)
+    client = await client_service.get_client(db, current_user, client_id)
     if not client:
         raise HTTPException(status_code=404, detail="Client not found")
     return client
@@ -282,7 +286,7 @@ async def update_client(
     db: AsyncSession = Depends(get_db),
 ):
     client = await client_service.update_client(
-        db, current_user.id, client_id, body.name, body.memo, body.ssn
+        db, current_user, client_id, body.name, body.memo, body.ssn
     )
     if not client:
         raise HTTPException(status_code=404, detail="Client not found")
@@ -295,7 +299,7 @@ async def delete_client(
     current_user = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    ok = await client_service.delete_client(db, current_user.id, client_id)
+    ok = await client_service.delete_client(db, current_user, client_id)
     if not ok:
         raise HTTPException(status_code=404, detail="Client not found")
 
@@ -306,7 +310,7 @@ async def list_accounts(
     current_user = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    client = await client_service.get_client(db, current_user.id, client_id)
+    client = await client_service.get_client(db, current_user, client_id)
     if not client:
         raise HTTPException(status_code=404, detail="Client not found")
     return await client_service.list_accounts(db, client_id)
@@ -319,7 +323,7 @@ async def create_account(
     current_user = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    client = await client_service.get_client(db, current_user.id, client_id)
+    client = await client_service.get_client(db, current_user, client_id)
     if not client:
         raise HTTPException(status_code=404, detail="Client not found")
     return await client_service.create_account(
@@ -341,6 +345,7 @@ async def update_account(
     current_user = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
+    await assert_client(db, current_user, client_id)
     account = await client_service.update_account(
         db, account_id, client_id, body.model_dump(exclude_unset=True)
     )
@@ -356,6 +361,7 @@ async def delete_account(
     current_user = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
+    await assert_client(db, current_user, client_id)
     ok = await client_service.delete_account(db, account_id, client_id)
     if not ok:
         raise HTTPException(status_code=404, detail="Account not found")
@@ -374,7 +380,7 @@ async def send_portal_link(
     - email_sent: True if email was actually dispatched
     - message: human-readable status
     """
-    client = await client_service.get_client(db, current_user.id, client_id)
+    client = await client_service.get_client(db, current_user, client_id)
     if not client:
         raise HTTPException(status_code=404, detail="Client not found")
 
@@ -409,10 +415,11 @@ async def patch_client_portal_info(
     db: AsyncSession = Depends(get_db),
 ):
     """Update portal-related fields: birth_date, phone, email, ssn."""
+    owned = await assert_client(db, current_user, client_id)
     client = await client_portal_service.update_client_portal_info(
         db,
         client_id=client_id,
-        user_id=current_user.id,
+        user_id=owned.user_id,  # 담당자 기준 조회 (대표는 타 담당 고객도 수정 가능)
         birth_date=body.birth_date,
         phone=body.phone,
         email=body.email,
@@ -443,14 +450,65 @@ async def migrate_account_types(
     mapping = {"pension1": "pension", "pension2": "pension", "pension_saving": "pension"}
     total = 0
     for old_val, new_val in mapping.items():
-        result = await db.execute(
+        stmt = (
             sa_update(ClientAccount)
-            .where(ClientAccount.client_id.in_(
-                select(Client.id).where(Client.user_id == current_user.id)
-            ))
             .where(ClientAccount.account_type == old_val)
             .values(account_type=new_val)
         )
+        # 접근 가능한 고객의 계좌만 (대표는 전체)
+        stmt = scope_by_client_column(stmt, ClientAccount.client_id, current_user)
+        result = await db.execute(stmt)
         total += result.rowcount
     await db.commit()
     return {"migrated": total}
+
+
+# ---------------------------------------------------------------------------
+# 담당자 이관 — 대표 전용, 대행 중 금지 (docs/login_logic P5, 지시서 9장)
+# ---------------------------------------------------------------------------
+
+from fastapi import Request  # noqa: E402
+from pydantic import BaseModel, Field  # noqa: E402
+
+from app.core.deps import Auth  # noqa: E402
+from app.core.permissions import forbid_while_impersonating, require_owner  # noqa: E402
+from app.services import transfer_service  # noqa: E402
+
+
+class TransferRequest(BaseModel):
+    to_user_id: str
+    reason: Optional[str] = Field(None, max_length=300)
+
+
+@router.post("/{client_id}/transfer")
+async def transfer_client(
+    client_id: str,
+    body: TransferRequest,
+    ctx: Auth,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+):
+    """고객 한 명의 담당자를 바꾼다. 하위 데이터(계좌·스냅샷·은퇴플랜·예수금·문자 이력 조회권)가 함께 이동."""
+    require_owner(ctx.effective)
+    forbid_while_impersonating(ctx)
+    client = await assert_client(db, ctx.effective, client_id)
+    target = await transfer_service.validate_target(db, body.to_user_id)
+    from_user_id = client.user_id
+    row = await transfer_service.transfer_client(db, client, target, ctx.actor.id, body.reason)
+    # 감사 로그(미들웨어)에 '이관'으로 남기기
+    request.state.audit = {
+        "action": "transfer",
+        "client_id": client_id,
+        "resource_type": "clients",
+        "resource_id": client_id,
+        "summary": {"from": from_user_id, "to": target.id, "reason": body.reason},
+    }
+    return {"id": row.id, "client_id": client_id, "from_user_id": from_user_id, "to_user_id": target.id}
+
+
+@router.get("/{client_id}/transfers")
+async def list_client_transfers(client_id: str, ctx: Auth, db: AsyncSession = Depends(get_db)):
+    """고객의 담당자 이관 이력 (대표 전용)."""
+    require_owner(ctx.effective)
+    await assert_client(db, ctx.effective, client_id)
+    return await transfer_service.history(db, client_id)

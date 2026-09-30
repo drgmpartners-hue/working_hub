@@ -4,7 +4,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.db.session import get_db
 from app.schemas.user import UserResponse, UserUpdate
-from app.core.deps import CurrentUser
+from app.core.deps import CurrentUser, NotImpersonating
 
 router = APIRouter(prefix="/users", tags=["users"])
 
@@ -15,7 +15,7 @@ async def get_current_user_profile(current_user: CurrentUser):
     return current_user
 
 
-@router.patch("/me", response_model=UserResponse)
+@router.patch("/me", response_model=UserResponse, dependencies=[NotImpersonating])
 async def update_current_user_profile(
     user_update: UserUpdate,
     current_user: CurrentUser,
@@ -32,7 +32,7 @@ async def update_current_user_profile(
     return current_user
 
 
-@router.delete("/me", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete("/me", status_code=status.HTTP_204_NO_CONTENT, dependencies=[NotImpersonating])
 async def delete_current_user(
     current_user: CurrentUser,
     db: Annotated[AsyncSession, Depends(get_db)],

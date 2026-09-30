@@ -24,6 +24,7 @@ class UserResponse(UserBase):
     id: str
     phone: Optional[str] = None
     is_active: bool
+    role: str = "manager"  # "owner" | "manager" (is_superuser 는 계속 비노출)
     created_at: datetime
     updated_at: datetime
 

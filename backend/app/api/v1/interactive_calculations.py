@@ -29,23 +29,15 @@ router = APIRouter(prefix="/retirement", tags=["retirement-interactive"])
 async def _get_profile_by_customer_or_404(
     customer_id: str,
     db: AsyncSession,
-    user_id: str | None = None,
+    actor,
 ) -> CustomerRetirementProfile:
-    """고객 ID로 은퇴 설계 프로필 조회 헬퍼.
+    """고객 ID(clients.id)로 은퇴 설계 프로필 조회 — 판정은 app/core/permissions.py.
 
-    user_id가 주어지면 해당 담당자의 고객인지 소유권을 검증한다(IDOR 방지).
+    존재하지 않거나 권한이 없으면 동일하게 404.
     """
-    from app.models.client import Client  # noqa: PLC0415
+    from app.core.permissions import find_profile_by_customer  # noqa: PLC0415
 
-    query = select(CustomerRetirementProfile).where(
-        CustomerRetirementProfile.customer_id == customer_id
-    )
-    if user_id is not None:
-        query = query.join(
-            Client, Client.id == CustomerRetirementProfile.customer_id
-        ).where(Client.user_id == user_id)
-    result = await db.execute(query.limit(1))
-    profile = result.scalars().first()
+    profile = await find_profile_by_customer(db, actor, customer_id)
     if not profile:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -77,7 +69,7 @@ async def run_interactive_calculation(
     """
     # 1. 고객 프로필 조회 (담당자 소유권 검증 포함)
     profile = await _get_profile_by_customer_or_404(
-        payload.customer_id, db, user_id=current_user.id
+        payload.customer_id, db, current_user
     )
 
     # 2. retirement_plan 조회 (가장 최근 플랜 사용)
@@ -176,7 +168,7 @@ async def list_interactive_calculations(
 ):
     """고객의 저장된 인터랙티브 계산 결과를 모두 조회합니다."""
     profile = await _get_profile_by_customer_or_404(
-        customer_id, db, user_id=current_user.id
+        customer_id, db, current_user
     )
 
     result = await db.execute(

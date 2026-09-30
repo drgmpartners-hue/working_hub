@@ -24,6 +24,8 @@ def _bypass_ownership_checks(monkeypatch):
         ("app.api.v1.snapshots", ["_verify_account_owner", "_verify_snapshot_owner"]),
         ("app.api.v1.reports", ["_verify_client_owner"]),
         ("app.api.v1.client_portal", ["_verify_suggestion_owner"]),
+        # 권한체계(docs/login_logic) — 고객 소유권 검증 (실DB 검증은 tests/test_permissions.py)
+        ("app.api.v1.ai_retirement_guide", ["_verify_customer"]),
     ]
     for module_path, names in targets:
         module = __import__(module_path, fromlist=names)

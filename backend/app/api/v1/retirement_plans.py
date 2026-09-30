@@ -9,11 +9,12 @@ POST /retirement/simulation/calculate    - Run simulation (no DB write)
 """
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.deps import get_current_user
+from app.core.permissions import assert_profile, not_found, scope_by_profile_column
 from app.db.session import get_db
 from app.models.retirement_plan import RetirementPlan
 from app.models.user import User
@@ -44,7 +45,9 @@ async def list_retirement_plans(
     current_user: User = Depends(get_current_user),
 ):
     """Return all retirement plans for the given customer_retirement_profile id."""
+    # 경로의 customer_id 는 customer_retirement_profiles.id 다 (이름만 customer_id).
     stmt = select(RetirementPlan).where(RetirementPlan.profile_id == customer_id)
+    stmt = scope_by_profile_column(stmt, RetirementPlan.profile_id, current_user)
     result = await db.execute(stmt)
     plans = result.scalars().all()
     return plans
@@ -66,6 +69,7 @@ async def create_retirement_plan(
     current_user: User = Depends(get_current_user),
 ):
     """Create a new retirement plan and optionally run initial simulation."""
+    await assert_profile(db, current_user, payload.profile_id)
     plan = RetirementPlan(**payload.model_dump())
 
     # Auto-calculate yearly_projections if enough data is present
@@ -101,12 +105,14 @@ async def update_retirement_plan(
     current_user: User = Depends(get_current_user),
 ):
     """Update fields of an existing retirement plan."""
-    plan: RetirementPlan | None = await db.get(RetirementPlan, plan_id)
+    stmt = scope_by_profile_column(
+        select(RetirementPlan).where(RetirementPlan.id == plan_id),
+        RetirementPlan.profile_id,
+        current_user,
+    )
+    plan: RetirementPlan | None = (await db.execute(stmt)).scalar_one_or_none()
     if plan is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"RetirementPlan {plan_id} not found",
-        )
+        raise not_found()
 
     update_data = payload.model_dump(exclude_unset=True)
     for field, value in update_data.items():

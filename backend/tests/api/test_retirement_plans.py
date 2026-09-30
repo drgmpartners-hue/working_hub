@@ -212,7 +212,10 @@ class TestUpdateRetirementPlan:
         mock_plan = make_mock_plan(id=1)
 
         mock_db = AsyncMock(spec=AsyncSession)
-        mock_db.get = AsyncMock(return_value=mock_plan)
+        # 권한체계: 소유 조건을 건 select 로 조회 (db.get → db.execute)
+        _res = MagicMock()
+        _res.scalar_one_or_none.return_value = mock_plan
+        mock_db.execute = AsyncMock(return_value=_res)
         mock_db.commit = AsyncMock()
         mock_db.refresh = AsyncMock()
 
@@ -231,7 +234,9 @@ class TestUpdateRetirementPlan:
     def test_update_returns_404_when_not_found(self):
         """Should return 404 when plan does not exist."""
         mock_db = AsyncMock(spec=AsyncSession)
-        mock_db.get = AsyncMock(return_value=None)
+        _res = MagicMock()
+        _res.scalar_one_or_none.return_value = None
+        mock_db.execute = AsyncMock(return_value=_res)
 
         mock_user = make_mock_user()
         app = make_test_app(mock_db, mock_user)

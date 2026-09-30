@@ -4,6 +4,7 @@ from sqlalchemy import select
 from app.models.user import User
 from app.schemas.auth import RegisterRequest
 from app.core.security import get_password_hash, verify_password
+from app.core.permissions import MANAGER
 
 
 async def get_user_by_email(db: AsyncSession, email: str) -> User | None:
@@ -28,6 +29,7 @@ async def create_user(db: AsyncSession, user_in: RegisterRequest) -> User:
         email=user_in.email,
         hashed_password=get_password_hash(user_in.password),
         nickname=user_in.nickname,
+        role=MANAGER,  # 공개 가입 경로로는 절대 대표가 만들어지지 않는다 (지시서 8.1)
     )
     db.add(user)
     await db.commit()

@@ -101,12 +101,29 @@ TEST_PASSWORD = "Secure1234!"
 TEST_NICKNAME = "uploader"
 
 
+async def _ensure_test_user() -> None:
+    from sqlalchemy import select
+    from app.core.security import get_password_hash
+    from app.db.session import get_db
+    from app.main import app
+    from app.models.user import User
+
+    agen = app.dependency_overrides[get_db]()
+    db = await agen.__anext__()
+    try:
+        exists = (await db.execute(select(User).where(User.email == TEST_EMAIL))).scalar_one_or_none()
+        if exists is None:
+            db.add(User(email=TEST_EMAIL, hashed_password=get_password_hash(TEST_PASSWORD),
+                        nickname=TEST_NICKNAME, is_active=True, role="manager"))
+            await db.commit()
+    finally:
+        await agen.aclose()
+
+
 async def _register_and_login(client: AsyncClient) -> str:
     """Register a fresh user (idempotent) and return a valid Bearer token."""
-    await client.post(
-        "/api/v1/auth/register",
-        json={"email": TEST_EMAIL, "password": TEST_PASSWORD, "nickname": TEST_NICKNAME},
-    )
+    # 공개 가입이 닫혀 있으므로(docs/login_logic D-1) 테스트 계정은 DB에 직접 만든다
+    await _ensure_test_user()
     resp = await client.post(
         "/api/v1/auth/login/json",
         json={"email": TEST_EMAIL, "password": TEST_PASSWORD},

@@ -36,6 +36,8 @@ from app.api.v1.deposit_accounts import router as deposit_accounts_router
 from app.api.v1.deposit_accounts import transactions_router as deposit_transactions_router
 from app.api.v1 import notion as notion_router
 from app.api.v1 import company_report as company_report_router
+from app.api.v1 import managers as managers_router
+from app.api.v1 import admin as admin_router
 
 app = FastAPI(title="API", version="0.1.0")
 
@@ -106,6 +108,23 @@ app.include_router(deposit_transactions_router, prefix="/api/v1")
 app.include_router(notion_router.router, prefix="/api/v1")
 app.include_router(market_router.router, prefix="/api/v1")
 app.include_router(company_report_router.router, prefix="/api/v1")
+app.include_router(managers_router.router, prefix="/api/v1")
+app.include_router(admin_router.router, prefix="/api/v1")
+
+
+@app.middleware("http")
+async def audit_middleware(request: Request, call_next):
+    """감사 로그 1층: 로그인한 사용자의 쓰기 요청(POST·PUT·PATCH·DELETE)을 성공·실패 모두 기록.
+
+    actor(실제 행위자)와 effective(권한 계정)를 함께 남겨 대행 작업을 구분한다 (docs/login_logic P6-2).
+    기록 실패는 본 요청에 영향을 주지 않는다.
+    """
+    response = await call_next(request)
+    if request.method in ("POST", "PUT", "PATCH", "DELETE"):
+        from app.services.audit_service import log_write_request
+
+        await log_write_request(request, response.status_code)
+    return response
 
 
 @app.exception_handler(Exception)

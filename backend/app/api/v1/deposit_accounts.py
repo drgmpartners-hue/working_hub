@@ -14,11 +14,19 @@ DELETE /retirement/deposit-transactions/{id}                  - 거래내역 삭
 """
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from typing import Optional
+
+from fastapi import APIRouter, Depends, Query, status
 from sqlalchemy import case, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.deps import get_current_user
+from app.core.permissions import (
+    assert_client,
+    assert_deposit_account,
+    not_found,
+    scope_by_client_column,
+)
 from app.db.session import get_db
 from app.models.deposit_account import DepositAccount
 from app.models.deposit_transaction import DepositTransaction
@@ -128,6 +136,8 @@ async def recalculate_account(
     """투자기록 기반으로 자동생성된 거래를 일괄 재동기화하고 잔액을 재계산합니다."""
     from app.models.investment_record import InvestmentRecord
 
+    await assert_deposit_account(db, current_user, account_id)
+
     # 1. 해당 계좌에 연결된 투자기록 조회
     rec_result = await db.execute(
         select(InvestmentRecord).where(InvestmentRecord.deposit_account_id == account_id)
@@ -197,13 +207,15 @@ async def recalculate_account(
     summary="고객별 예수금 계좌 목록",
 )
 async def list_deposit_accounts(
-    customer_id: str = Query(..., description="고객 ID"),
+    customer_id: Optional[str] = Query(None, description="고객 ID (없으면 접근 가능한 전체)"),
     include_hidden: bool = Query(False, description="숨긴 계좌 포함 여부"),
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
     """customer_id에 해당하는 예수금 계좌 목록 반환 (current_balance 포함)."""
-    stmt = select(DepositAccount).where(DepositAccount.customer_id == customer_id)
+    stmt = scope_by_client_column(select(DepositAccount), DepositAccount.customer_id, current_user)
+    if customer_id:
+        stmt = stmt.where(DepositAccount.customer_id == customer_id)
     if not include_hidden:
         stmt = stmt.where(DepositAccount.is_active == True)
     stmt = stmt.order_by(DepositAccount.created_at)
@@ -245,6 +257,7 @@ async def create_deposit_account(
     current_user: User = Depends(get_current_user),
 ):
     """새 예수금 계좌를 생성합니다."""
+    await assert_client(db, current_user, payload.customer_id)
     account = DepositAccount(
         profile_id=payload.profile_id or "",
         customer_id=payload.customer_id,
@@ -275,12 +288,7 @@ async def update_deposit_account(
     current_user: User = Depends(get_current_user),
 ):
     """예수금 계좌 정보를 부분 수정합니다."""
-    account: DepositAccount | None = await db.get(DepositAccount, account_id)
-    if account is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"DepositAccount {account_id} not found",
-        )
+    account: DepositAccount = await assert_deposit_account(db, current_user, account_id)
 
     update_data = payload.model_dump(exclude_unset=True)
     for field, value in update_data.items():
@@ -307,12 +315,7 @@ async def deactivate_deposit_account(
     current_user: User = Depends(get_current_user),
 ):
     """예수금 계좌를 비활성화합니다 (소프트 삭제)."""
-    account: DepositAccount | None = await db.get(DepositAccount, account_id)
-    if account is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"DepositAccount {account_id} not found",
-        )
+    account: DepositAccount = await assert_deposit_account(db, current_user, account_id)
 
     account.is_active = False
     await db.commit()
@@ -335,12 +338,7 @@ async def list_transactions(
 ):
     """계좌별 거래내역을 날짜순으로 반환합니다."""
     # 계좌 존재 확인
-    account: DepositAccount | None = await db.get(DepositAccount, account_id)
-    if account is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"DepositAccount {account_id} not found",
-        )
+    await assert_deposit_account(db, current_user, account_id)
 
     stmt = (
         select(DepositTransaction)
@@ -373,12 +371,7 @@ async def create_transaction(
 ):
     """거래내역을 추가하고 해당 계좌의 모든 잔액을 재계산합니다."""
     # 계좌 존재 확인
-    account: DepositAccount | None = await db.get(DepositAccount, account_id)
-    if account is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"DepositAccount {account_id} not found",
-        )
+    await assert_deposit_account(db, current_user, account_id)
 
     txn = DepositTransaction(
         deposit_account_id=account_id,
@@ -413,6 +406,20 @@ transactions_router = APIRouter(
 )
 
 
+async def _get_transaction_or_404(db: AsyncSession, actor, transaction_id: int) -> DepositTransaction:
+    """거래내역 → 예수금 계좌 → 고객 소유권 확인. 없거나 권한 없으면 404."""
+    stmt = (
+        select(DepositTransaction)
+        .join(DepositAccount, DepositAccount.id == DepositTransaction.deposit_account_id)
+        .where(DepositTransaction.id == transaction_id)
+    )
+    stmt = scope_by_client_column(stmt, DepositAccount.customer_id, actor)
+    txn = (await db.execute(stmt)).scalar_one_or_none()
+    if txn is None:
+        raise not_found()
+    return txn
+
+
 @transactions_router.put(
     "/{transaction_id}",
     response_model=DepositTransactionResponse,
@@ -425,12 +432,7 @@ async def update_transaction(
     current_user: User = Depends(get_current_user),
 ):
     """거래내역을 수정하고 해당 계좌의 모든 잔액을 재계산합니다."""
-    txn: DepositTransaction | None = await db.get(DepositTransaction, transaction_id)
-    if txn is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"DepositTransaction {transaction_id} not found",
-        )
+    txn: DepositTransaction = await _get_transaction_or_404(db, current_user, transaction_id)
 
     update_data = payload.model_dump(exclude_unset=True)
     for field, value in update_data.items():
@@ -455,12 +457,7 @@ async def delete_transaction(
     current_user: User = Depends(get_current_user),
 ):
     """거래내역을 삭제하고 해당 계좌의 모든 잔액을 재계산합니다."""
-    txn: DepositTransaction | None = await db.get(DepositTransaction, transaction_id)
-    if txn is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"DepositTransaction {transaction_id} not found",
-        )
+    txn: DepositTransaction = await _get_transaction_or_404(db, current_user, transaction_id)
 
     account_id = txn.deposit_account_id
     await db.delete(txn)

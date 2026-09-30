@@ -49,6 +49,12 @@ class ClientUpdate(BaseModel):
     ssn: Optional[str] = None  # 평문 주민번호 (저장 시 암호화, 응답에는 포함 안 됨)
 
 
+class ClientManager(BaseModel):
+    """담당 매니저 (대표 화면의 담당자 컬럼용)."""
+    id: str
+    nickname: str
+
+
 class ClientResponse(ClientBase):
     id: str
     user_id: str
@@ -60,4 +66,5 @@ class ClientResponse(ClientBase):
     portal_token: Optional[str] = None
     unique_code: Optional[str] = None
     ssn_masked: Optional[str] = None  # 마스킹된 주민번호 (복호화 후 마스킹)
+    manager: Optional[ClientManager] = None  # 담당 매니저 (docs/login_logic P4-2)
     model_config = ConfigDict(from_attributes=True)

@@ -53,6 +53,19 @@ def _ensure_upload_dir(sub: str = "") -> str:
 
 # --- Endpoints ---
 
+def _log_scope(actor) -> list:
+    """문자 이력 권한은 발송자(user_id)가 아니라 고객(client_id) 기준 (지시서 9.3).
+
+    담당자가 바뀌어도 새 담당자가 과거 이력을 볼 수 있어야 하므로 message_logs.user_id 는
+    '발송 당시 실제 발송자' 기록으로만 남기고 권한 판정에는 쓰지 않는다.
+    """
+    from sqlalchemy import true  # noqa: PLC0415
+    from app.core.permissions import client_ids_subquery  # noqa: PLC0415
+
+    sub = client_ids_subquery(actor)
+    return [true()] if sub is None else [MessageLog.client_id.in_(sub)]
+
+
 @router.get("", response_model=MessageLogListResponse)
 async def list_message_logs(
     client_id: Optional[str] = None,
@@ -66,7 +79,7 @@ async def list_message_logs(
     db: AsyncSession = Depends(get_db),
 ):
     """List message logs with optional filters."""
-    conditions = [MessageLog.user_id == current_user.id]
+    conditions = _log_scope(current_user)
 
     if client_id:
         conditions.append(MessageLog.client_id == client_id)
@@ -157,8 +170,10 @@ async def create_message_log(
         client_account_id = None
 
     # Validate client belongs to user
+    from app.core.permissions import scope_clients  # noqa: PLC0415
+
     client_res = await db.execute(
-        select(Client).where(Client.id == client_id, Client.user_id == current_user.id)
+        scope_clients(select(Client).where(Client.id == client_id), current_user)
     )
     client = client_res.scalar_one_or_none()
     if not client:
@@ -250,7 +265,7 @@ async def update_message_log(
     result = await db.execute(
         select(MessageLog).where(
             MessageLog.id == log_id,
-            MessageLog.user_id == current_user.id,
+            *_log_scope(current_user),
         )
     )
     log = result.scalar_one_or_none()
@@ -312,7 +327,7 @@ async def get_message_log_image(
     result = await db.execute(
         select(MessageLog).where(
             MessageLog.id == log_id,
-            MessageLog.user_id == current_user.id,
+            *_log_scope(current_user),
         )
     )
     log = result.scalar_one_or_none()
@@ -338,7 +353,7 @@ async def delete_message_log(
     result = await db.execute(
         select(MessageLog).where(
             MessageLog.id == log_id,
-            MessageLog.user_id == current_user.id,
+            *_log_scope(current_user),
         )
     )
     log = result.scalar_one_or_none()
@@ -366,7 +381,7 @@ async def cleanup_old_images(
     result = await db.execute(
         select(MessageLog).where(
             and_(
-                MessageLog.user_id == current_user.id,
+                *_log_scope(current_user),
                 MessageLog.image_path.isnot(None),
                 MessageLog.sent_at < one_year_ago,
             )

@@ -1,11 +1,12 @@
 """Call reservations API — employee-facing endpoints."""
 from typing import Optional, Annotated
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.deps import CurrentUser, get_current_user
+from app.core.permissions import not_found, scope_by_suggestion_column
 from app.db.session import get_db
 from app.models.call_reservation import CallReservation
 from app.schemas.call_reservation import (
@@ -29,6 +30,8 @@ async def list_call_reservations(
     status query param accepts: pending | confirmed | completed
     """
     query = select(CallReservation).order_by(CallReservation.created_at.desc())
+    # 제안(suggestion) → 계좌 → 고객 경유로 담당 고객 것만 (대표는 전체)
+    query = scope_by_suggestion_column(query, CallReservation.suggestion_id, current_user)
     if status:
         query = query.where(CallReservation.status == status)
 
@@ -47,12 +50,14 @@ async def update_call_reservation(
     db: AsyncSession = Depends(get_db),
 ):
     """Update the status of a call reservation (confirmed / completed)."""
-    result = await db.execute(
-        select(CallReservation).where(CallReservation.id == reservation_id)
+    stmt = scope_by_suggestion_column(
+        select(CallReservation).where(CallReservation.id == reservation_id),
+        CallReservation.suggestion_id,
+        current_user,
     )
-    reservation = result.scalar_one_or_none()
+    reservation = (await db.execute(stmt)).scalar_one_or_none()
     if not reservation:
-        raise HTTPException(status_code=404, detail="Reservation not found")
+        raise not_found()
 
     reservation.status = body.status
     await db.commit()

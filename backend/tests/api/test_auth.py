@@ -45,6 +45,7 @@ def _make_user(email: str = _EMAIL, nickname: str = _NICKNAME, is_active: bool =
     user.hashed_password = _HASHED_PW
     user.profile_image = None
     user.phone = None  # UserResponse에 phone 필드 추가됨 (MagicMock 자식 방지)
+    user.role = "owner"  # UserResponse에 role 필드 추가됨 (docs/login_logic)
     user.is_active = is_active
     user.created_at = datetime(2024, 1, 1, 0, 0, 0)
     user.updated_at = datetime(2024, 1, 1, 0, 0, 0)
@@ -78,31 +79,13 @@ async def client():
 class TestRegister:
     """POST /api/v1/auth/register"""
 
-    async def test_register_new_user_returns_201(self, client: AsyncClient):
-        mock_user = _make_user()
-        with (
-            patch("app.api.v1.auth.get_user_by_email", new=AsyncMock(return_value=None)),
-            patch("app.api.v1.auth.create_user", new=AsyncMock(return_value=mock_user)),
-        ):
-            resp = await client.post(
-                "/api/v1/auth/register",
-                json={"email": _EMAIL, "password": "Password1!", "nickname": _NICKNAME},
-            )
-        assert resp.status_code == 201
-        body = resp.json()
-        assert body["email"] == _EMAIL
-        assert body["nickname"] == _NICKNAME
-        assert "hashed_password" not in body
-
-    async def test_register_duplicate_email_returns_400(self, client: AsyncClient):
-        existing = _make_user()
-        with patch("app.api.v1.auth.get_user_by_email", new=AsyncMock(return_value=existing)):
-            resp = await client.post(
-                "/api/v1/auth/register",
-                json={"email": _EMAIL, "password": "Password1!", "nickname": _NICKNAME},
-            )
-        assert resp.status_code == 400
-        assert "already registered" in resp.json()["detail"].lower()
+    async def test_register_is_closed_returns_403(self, client: AsyncClient):
+        """공개 가입은 닫혀 있다 — 계정은 대표가 매니저로 추가 (docs/login_logic D-1)."""
+        resp = await client.post(
+            "/api/v1/auth/register",
+            json={"email": _EMAIL, "password": "Password1!", "nickname": _NICKNAME},
+        )
+        assert resp.status_code == 403
 
     async def test_register_missing_nickname_returns_422(self, client: AsyncClient):
         resp = await client.post(

@@ -4,6 +4,8 @@ import { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { API_URL } from '@/lib/api-url';
 import { authLib } from '@/lib/auth';
+import { useAuthStore } from '@/stores/auth';
+import { OwnerClientActions } from '@/components/customer/OwnerClientActions';
 
 /* ------------------------------------------------------------------ */
 /*  Types                                                               */
@@ -17,6 +19,8 @@ interface Customer {
   ssn_masked: string | null;
   phone: string | null;
   email: string | null;
+  /** 담당 매니저 — 대표 화면에서만 표시 (docs/login_logic P7-3) */
+  manager?: { id: string; nickname: string } | null;
 }
 
 interface FormData {
@@ -42,6 +46,13 @@ export default function CustomerManagementPage() {
 
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [loading, setLoading] = useState(true);
+  /* 대표 전용: 담당자 필터 (?manager_id= 로 관리 화면에서 넘어올 수 있음) */
+  const isOwner = useAuthStore((st) => st.user?.role === 'owner');
+  const [managerFilter, setManagerFilter] = useState<string>(() => {
+    if (typeof window === 'undefined') return '';
+    return new URLSearchParams(window.location.search).get('manager_id') || '';
+  });
+  const [managers, setManagers] = useState<{ id: string; nickname: string; is_active: boolean }[]>([]);
   const [error, setError] = useState<string | null>(null);
 
   /* search */
@@ -90,7 +101,8 @@ export default function CustomerManagementPage() {
     setError(null);
     try {
       const token = authLib.getToken();
-      const res = await fetch(`${API_URL}/api/v1/clients`, {
+      const qs = managerFilter ? `?manager_id=${encodeURIComponent(managerFilter)}` : '';
+      const res = await fetch(`${API_URL}/api/v1/clients${qs}`, {
         headers: { Authorization: `Bearer ${token}` },
       });
       if (!res.ok) throw new Error('고객 목록을 불러오지 못했습니다.');
@@ -101,11 +113,20 @@ export default function CustomerManagementPage() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [managerFilter]);
 
   useEffect(() => {
     fetchCustomers();
   }, [fetchCustomers]);
+
+  // 대표만: 담당자 드롭다운용 계정 목록
+  useEffect(() => {
+    if (!isOwner) return;
+    fetch(`${API_URL}/api/v1/managers`, { headers: authLib.getAuthHeader() })
+      .then((r) => (r.ok ? r.json() : []))
+      .then((rows) => setManagers(Array.isArray(rows) ? rows : []))
+      .catch(() => setManagers([]));
+  }, [isOwner]);
 
   /* ---------------------------------------------------------------- */
   /*  Filtered list                                                    */
@@ -523,6 +544,27 @@ export default function CustomerManagementPage() {
           />
         </div>
 
+        {/* 대표 전용: 담당자 필터 */}
+        {isOwner && (
+          <select
+            value={managerFilter}
+            onChange={(e) => setManagerFilter(e.target.value)}
+            title="담당자별로 보기 (대표 전용)"
+            style={{
+              height: 38, padding: '0 12px', borderRadius: '8px',
+              border: '1px solid var(--border-strong)', background: 'var(--bg-card)',
+              color: 'var(--text-primary)', fontSize: '0.875rem',
+            }}
+          >
+            <option value="">담당자 전체</option>
+            {managers.map((m) => (
+              <option key={m.id} value={m.id}>
+                {m.nickname}{m.is_active ? '' : ' (비활성)'}
+              </option>
+            ))}
+          </select>
+        )}
+
         <button
           onClick={openAddModal}
           style={{
@@ -658,7 +700,7 @@ export default function CustomerManagementPage() {
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.875rem' }}>
               <thead>
                 <tr style={{ background: 'var(--bg-surface)', borderBottom: '1px solid var(--border)' }}>
-                  {['No.', '고객명', '고유번호', '생년월일', '전화번호', '이메일', '관리'].map((h) => {
+                  {['No.', '고객명', ...(isOwner ? ['담당자'] : []), '고유번호', '생년월일', '전화번호', '이메일', '관리'].map((h) => {
                     const sortable = h === '고객명';
                     return (
                     <th
@@ -686,7 +728,7 @@ export default function CustomerManagementPage() {
                 {filtered.length === 0 ? (
                   <tr>
                     <td
-                      colSpan={8}
+                      colSpan={isOwner ? 9 : 8}
                       style={{
                         padding: '48px 20px',
                         textAlign: 'center',
@@ -714,6 +756,11 @@ export default function CustomerManagementPage() {
                       <td style={{ padding: '12px 14px', fontWeight: 600, color: 'var(--text-primary)' }}>
                         {c.name}
                       </td>
+                      {isOwner && (
+                        <td style={{ padding: '12px 14px', color: 'var(--text-secondary)', whiteSpace: 'nowrap' }}>
+                          {c.manager?.nickname ?? <span style={{ color: '#D1D5DB' }}>-</span>}
+                        </td>
+                      )}
                       <td style={{ padding: '12px 14px', color: 'var(--text-secondary)', fontFamily: 'monospace', fontSize: '0.875rem' }}>
                         {c.unique_code}
                       </td>
@@ -728,6 +775,7 @@ export default function CustomerManagementPage() {
                       </td>
                       <td style={{ padding: '12px 14px', textAlign: 'center' }}>
                         <div style={{ display: 'flex', gap: '6px', justifyContent: 'center' }}>
+                          {isOwner && <OwnerClientActions client={c} managers={managers} onChanged={fetchCustomers} />}
                           <button
                             onClick={() => openEditModal(c)}
                             style={{

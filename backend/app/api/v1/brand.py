@@ -4,6 +4,7 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
+from app.core.permissions import require_master_write
 from app.db.session import get_db
 from app.models.brand import BrandSetting
 from app.schemas.brand import BrandSettingResponse, BrandSettingUpdate
@@ -41,6 +42,7 @@ async def update_brand_settings(
     db: Annotated[AsyncSession, Depends(get_db)],
 ):
     """Update brand settings. Creates a default record first if none exists."""
+    require_master_write(current_user)  # 전사 공용 마스터 쓰기는 대표만 (지시서 4.2 계층 C)
     result = await db.execute(select(BrandSetting).limit(1))
     brand = result.scalar_one_or_none()
 

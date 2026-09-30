@@ -7,6 +7,8 @@ from sqlalchemy import select
 from sqlalchemy.orm import selectinload
 from app.models.client import Client, ClientAccount
 from app.core.encryption import encrypt_ssn, decrypt_ssn, mask_ssn
+from app.core.permissions import scope_clients
+from app.models.user import User
 
 
 async def _generate_unique_code(db: AsyncSession) -> str:
@@ -33,26 +35,32 @@ def _build_client_response(client: Client) -> dict:
             client.ssn_masked = None
     else:
         client.ssn_masked = None
+    # 담당 매니저 — 관계가 이미 로드된 경우에만 (비동기 세션에서 지연 로드 방지)
+    owner = client.__dict__.get("user")
+    client.manager = {"id": owner.id, "nickname": owner.nickname} if owner is not None else None
     return client
 
 
-async def list_clients(db: AsyncSession, user_id: str) -> list[Client]:
-    result = await db.execute(
+async def list_clients(db: AsyncSession, actor: User, manager_id: Optional[str] = None) -> list[Client]:
+    """접근 가능한 고객 목록. 대표는 전체(또는 manager_id 필터), 매니저는 담당 고객만."""
+    stmt = (
         select(Client)
-        .where(Client.user_id == user_id)
-        .options(selectinload(Client.accounts))
+        .options(selectinload(Client.accounts), selectinload(Client.user))
         .order_by(Client.created_at)
     )
+    result = await db.execute(scope_clients(stmt, actor, manager_id))
     clients = result.scalars().all()
     return [_build_client_response(c) for c in clients]
 
 
-async def get_client(db: AsyncSession, user_id: str, client_id: str) -> Optional[Client]:
-    result = await db.execute(
+async def get_client(db: AsyncSession, actor: User, client_id: str) -> Optional[Client]:
+    """소유 조건을 건 채로 조회. 권한 없으면 None(→ 라우터에서 404)."""
+    stmt = (
         select(Client)
-        .where(Client.id == client_id, Client.user_id == user_id)
-        .options(selectinload(Client.accounts))
+        .where(Client.id == client_id)
+        .options(selectinload(Client.accounts), selectinload(Client.user))
     )
+    result = await db.execute(scope_clients(stmt, actor))
     client = result.scalar_one_or_none()
     if client:
         _build_client_response(client)
@@ -104,7 +112,7 @@ async def create_client(
     result = await db.execute(
         select(Client)
         .where(Client.id == client_id)
-        .options(selectinload(Client.accounts))
+        .options(selectinload(Client.accounts), selectinload(Client.user))
     )
     client = result.scalar_one()
     return _build_client_response(client)
@@ -112,13 +120,13 @@ async def create_client(
 
 async def update_client(
     db: AsyncSession,
-    user_id: str,
+    actor: User,
     client_id: str,
     name: Optional[str],
     memo: Optional[str],
     ssn: Optional[str] = None,
 ) -> Optional[Client]:
-    client = await get_client(db, user_id, client_id)
+    client = await get_client(db, actor, client_id)
     if not client:
         return None
     if name is not None:
@@ -132,14 +140,14 @@ async def update_client(
     result = await db.execute(
         select(Client)
         .where(Client.id == client_id)
-        .options(selectinload(Client.accounts))
+        .options(selectinload(Client.accounts), selectinload(Client.user))
     )
     client = result.scalar_one()
     return _build_client_response(client)
 
 
-async def delete_client(db: AsyncSession, user_id: str, client_id: str) -> bool:
-    client = await get_client(db, user_id, client_id)
+async def delete_client(db: AsyncSession, actor: User, client_id: str) -> bool:
+    client = await get_client(db, actor, client_id)
     if not client:
         return False
     await db.delete(client)

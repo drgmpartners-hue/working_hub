@@ -2,6 +2,7 @@
 from typing import Annotated, Optional
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
+from app.core.permissions import require_master_write
 from app.core.deps import CurrentUser
 from app.db.session import get_db
 from app.schemas.stock import (
@@ -324,6 +325,7 @@ async def update_report_settings(
     current_user: CurrentUser,
     db: Annotated[AsyncSession, Depends(get_db)],
 ) -> ReportSettingsResponse:
+    require_master_write(current_user)  # 전사 공용 마스터 쓰기는 대표만 (지시서 4.2 계층 C)
     await settings_store.set_value(db, settings_store.REPORT_EMAIL_ENABLED, "1" if body.email_enabled else "0")
     if body.recipient is not None:
         await settings_store.set_value(db, settings_store.REPORT_EMAIL_RECIPIENT, body.recipient)
@@ -345,6 +347,7 @@ async def send_report_now(
     current_user: CurrentUser,
     db: Annotated[AsyncSession, Depends(get_db)],
 ) -> ReportSettingsResponse:
+    require_master_write(current_user)  # 전사 공용 마스터 쓰기는 대표만 (지시서 4.2 계층 C)
     recipient = await settings_store.get(db, settings_store.REPORT_EMAIL_RECIPIENT) or app_config.STAFF_EMAIL
     data = await stock_report.build_report_data(db)
     html = stock_report.render_html(data)

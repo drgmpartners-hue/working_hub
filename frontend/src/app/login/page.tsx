@@ -5,7 +5,6 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useAuthStore } from '@/stores/auth';
 
@@ -327,18 +326,9 @@ export default function LoginPage() {
             </button>
           </form>
 
-          {/* Register link */}
+          {/* 공개 가입 없음 — 계정은 대표가 관리 화면에서 매니저로 추가한다 (docs/login_logic D-1) */}
           <p className="mt-6 text-center text-sm" style={{ color: '#6B7280' }}>
-            계정이 없으신가요?{' '}
-            <Link
-              href="/register"
-              className="font-semibold transition-colors"
-              style={{ color: '#2E8B8B' }}
-              onMouseEnter={(e) => (e.currentTarget.style.color = '#1E3A5F')}
-              onMouseLeave={(e) => (e.currentTarget.style.color = '#2E8B8B')}
-            >
-              회원가입
-            </Link>
+            계정이 필요하면 대표에게 매니저 계정 발급을 요청하세요.
           </p>
         </div>
 

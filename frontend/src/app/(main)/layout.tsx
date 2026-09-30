@@ -11,6 +11,7 @@ import { usePathname } from 'next/navigation';
 import { ProtectedRoute } from '@/components/ProtectedRoute';
 import { AuthFetchGuard } from '@/components/AuthFetchGuard';
 import { TopNav } from '@/components/common/TopNav';
+import { ImpersonationBanner } from '@/components/common/ImpersonationBanner';
 
 interface MainLayoutProps {
   children: React.ReactNode;
@@ -24,8 +25,11 @@ export default function MainLayout({ children }: MainLayoutProps) {
     <ProtectedRoute>
       <AuthFetchGuard />
       <div style={{ minHeight: '100vh', backgroundColor: '#0B1220' }}>
-        {/* Sticky top nav */}
-        <TopNav />
+        {/* Sticky top: 대행 배너(대행 중일 때만) + 상단 네비 — 스크롤해도 사라지지 않음 */}
+        <div style={{ position: 'sticky', top: 0, zIndex: 45 }}>
+          <ImpersonationBanner />
+          <TopNav />
+        </div>
 
         {/* Page content — 전 페이지 다크(.wh), 전 메뉴 동일 1600px 컨테이너 */}
         {isHome ? (

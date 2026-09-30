@@ -8,11 +8,12 @@ PUT  /retirement/pension/{pension_plan_id} - 연금 계획 수정
 """
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.deps import get_current_user
+from app.core.permissions import assert_profile, not_found, scope_by_profile_column
 from app.db.session import get_db
 from app.models.customer_retirement_profile import CustomerRetirementProfile
 from app.models.pension_plan import PensionPlan
@@ -53,14 +54,8 @@ async def calculate_and_save_pension(
     retirement_age는 CustomerRetirementProfile.desired_retirement_age 사용.
     """
     # 1. 프로필 조회
-    profile: CustomerRetirementProfile | None = await db.get(
-        CustomerRetirementProfile, payload.customer_id
-    )
-    if profile is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"CustomerRetirementProfile '{payload.customer_id}' not found",
-        )
+    # payload.customer_id 는 customer_retirement_profiles.id. 권한 없으면 404.
+    profile: CustomerRetirementProfile = await assert_profile(db, current_user, payload.customer_id)
 
     # 2. 최신 retirement_plan 조회 (yearly_projections 활용)
     stmt = (
@@ -169,6 +164,7 @@ async def get_pension_plans(
 ):
     """customer_id(profile_id)에 해당하는 모든 연금 계획 반환."""
     stmt = select(PensionPlan).where(PensionPlan.profile_id == customer_id)
+    stmt = scope_by_profile_column(stmt, PensionPlan.profile_id, current_user)
     result = await db.execute(stmt)
     plans = result.scalars().all()
     return plans
@@ -191,12 +187,14 @@ async def update_pension_plan(
     current_user: User = Depends(get_current_user),
 ):
     """연금 계획 필드 부분 수정."""
-    plan: PensionPlan | None = await db.get(PensionPlan, pension_plan_id)
+    stmt = scope_by_profile_column(
+        select(PensionPlan).where(PensionPlan.id == pension_plan_id),
+        PensionPlan.profile_id,
+        current_user,
+    )
+    plan: PensionPlan | None = (await db.execute(stmt)).scalar_one_or_none()
     if plan is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"PensionPlan {pension_plan_id} not found",
-        )
+        raise not_found()
 
     update_data = payload.model_dump(exclude_unset=True)
     for field, value in update_data.items():

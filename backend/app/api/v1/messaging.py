@@ -6,6 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 
 from app.db.session import get_db
+from app.core.permissions import scope_clients
 from app.core.deps import get_current_user
 from app.models.client import Client
 from app.services import solapi_service
@@ -45,7 +46,7 @@ async def send_sms(
     db: AsyncSession = Depends(get_db),
 ):
     """고객에게 SMS 발송."""
-    client = await _get_client(db, current_user.id, body.client_id)
+    client = await _get_client(db, current_user, body.client_id)
     if not client.phone:
         raise HTTPException(400, f"'{client.name}' 고객의 전화번호가 없습니다.")
 
@@ -66,7 +67,7 @@ async def send_portal_link(
     """고객에게 포털 링크를 SMS로 발송."""
     from app.core.config import settings
 
-    client = await _get_client(db, current_user.id, body.client_id)
+    client = await _get_client(db, current_user, body.client_id)
     if not client.phone:
         raise HTTPException(400, f"'{client.name}' 고객의 전화번호가 없습니다.")
     if not client.portal_token:
@@ -103,10 +104,7 @@ async def send_bulk_sms(
 ):
     """여러 고객에게 SMS 발송."""
     result = await db.execute(
-        select(Client).where(
-            Client.id.in_(body.client_ids),
-            Client.user_id == current_user.id,
-        )
+        scope_clients(select(Client).where(Client.id.in_(body.client_ids)), current_user)
     )
     clients = result.scalars().all()
     if not clients:
@@ -164,7 +162,7 @@ async def send_alimtalk(
     db: AsyncSession = Depends(get_db),
 ):
     """고객에게 카카오 알림톡 발송."""
-    client = await _get_client(db, current_user.id, body.client_id)
+    client = await _get_client(db, current_user, body.client_id)
     if not client.phone:
         raise HTTPException(400, f"'{client.name}' 고객의 전화번호가 없습니다.")
 
@@ -192,9 +190,9 @@ async def check_balance(
     return result
 
 
-async def _get_client(db: AsyncSession, user_id: str, client_id: str) -> Client:
+async def _get_client(db: AsyncSession, actor, client_id: str) -> Client:
     result = await db.execute(
-        select(Client).where(Client.id == client_id, Client.user_id == user_id)
+        scope_clients(select(Client).where(Client.id == client_id), actor)
     )
     client = result.scalar_one_or_none()
     if not client:

@@ -6,6 +6,8 @@ import Link from 'next/link';
 import { Modal } from '@/components/common/Modal';
 import { authLib } from '@/lib/auth';
 import { API_URL } from '@/lib/api-url';
+import { useAuthStore } from '@/stores/auth';
+import { ReadOnlyNotice } from '@/components/common/ReadOnlyNotice';
 // xlsx는 동적 import로 로딩 (번들 사이즈 최적화 + Vercel 호환)
 async function loadXLSX() {
   const mod = await import('xlsx');
@@ -408,6 +410,8 @@ function InlineSelect({
 /* ------------------------------------------------------------------ */
 
 export default function WrapAccountsPage() {
+  // 공용 마스터 — 매니저는 읽기 전용 (docs/login_logic P7-4). 서버도 쓰기는 대표만 허용.
+  const readOnly = useAuthStore((st) => st.user?.role !== 'owner');
   const router = useRouter();
 
   /* Products */
@@ -1489,6 +1493,7 @@ export default function WrapAccountsPage() {
             <Btn variant="ghost" onClick={downloadExcelCurrent} style={{ fontSize: 11 }}>
               📤 엑셀 내보내기
             </Btn>
+            {!readOnly && (<>
             <Btn variant="ghost" onClick={() => excelFileRef.current?.click()} disabled={excelUploading} style={{ fontSize: 11 }}>
               {excelUploading ? '업로드 중...' : '📄 엑셀 업로드'}
             </Btn>
@@ -1503,9 +1508,12 @@ export default function WrapAccountsPage() {
             <Btn variant="primary" onClick={openAdd}>
               + 상품 등록
             </Btn>
+            </>)}
           </div>
         </div>
       </div>
+
+      {readOnly && <ReadOnlyNotice what="투자상품 목록" />}
 
       {/* Sync Result */}
       {syncResult && (
@@ -1546,7 +1554,7 @@ export default function WrapAccountsPage() {
           style={{ padding: '4px 10px', borderRadius: 5, border: '1px solid var(--border-strong)', background: freezeCols ? 'rgba(59,130,246,.15)' : 'var(--bg-card)', color: freezeCols ? 'var(--cyan-400)' : 'var(--text-muted)', fontSize: 11, fontWeight: 500, cursor: 'pointer' }}>
           {freezeCols ? '🔒 열 고정' : '🔓 고정 해제'}
         </button>
-        {selectedIds.size > 0 && (
+        {!readOnly && selectedIds.size > 0 && (
           <button onClick={bulkDelete} disabled={bulkDeleting}
             style={{ marginLeft: 8, padding: '5px 14px', borderRadius: 6, border: 'none', background: 'var(--danger)', color: '#fff', fontSize: 12, fontWeight: 600, cursor: bulkDeleting ? 'wait' : 'pointer', opacity: bulkDeleting ? 0.6 : 1 }}>
             {bulkDeleting ? '삭제 중...' : `선택 ${selectedIds.size}건 삭제`}
@@ -1668,6 +1676,8 @@ export default function WrapAccountsPage() {
                                   <Btn variant="primary" size="sm" onClick={saveEdit} loading={editSaving}>저장</Btn>
                                   <Btn variant="ghost" size="sm" onClick={cancelEdit} disabled={editSaving}>취소</Btn>
                                 </div>
+                              ) : readOnly ? (
+                                <span style={{ color: 'var(--text-muted)' }}>-</span>
                               ) : (
                                 <div style={{ display: 'flex', gap: 4, justifyContent: 'center' }}>
                                   <Btn variant="secondary" size="sm" onClick={() => startEdit(p)}>수정</Btn>

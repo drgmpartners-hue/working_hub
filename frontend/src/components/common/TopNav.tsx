@@ -19,6 +19,8 @@ interface NavGroup {
   href?: string; // 단일 링크일 때
   match: string[]; // active 판정용 경로 prefix
   items?: SubItem[];
+  /** 대표(owner)에게만 보이는 메뉴. 화면 숨김은 편의일 뿐, 실제 차단은 서버가 한다 (docs/login_logic P7-2) */
+  ownerOnly?: boolean;
 }
 
 const ic = {
@@ -87,6 +89,16 @@ const NAV: NavGroup[] = [
       { title: '기업 리포트', desc: '투자기업 브리핑·반기 보고서', href: '/content/company-report', icon: ic.doc },
     ],
   },
+  {
+    label: '관리자',
+    match: ['/admin'],
+    ownerOnly: true,
+    items: [
+      { title: '통합 현황', desc: '매니저별 고객·업무 한눈에', href: '/admin', icon: ic.chart },
+      { title: '매니저 관리', desc: '계정 추가·비활성·비밀번호', href: '/admin/managers', icon: ic.users },
+      { title: '감사 로그', desc: '등록·수정·삭제·대행 기록', href: '/admin/audit-logs', icon: ic.shield },
+    ],
+  },
 ];
 
 export function TopNav() {
@@ -100,6 +112,8 @@ export function TopNav() {
   };
 
   const isActive = (g: NavGroup) => g.match.some((m) => pathname === m || pathname.startsWith(m + '/'));
+  const isOwner = user?.role === 'owner';
+  const navGroups = NAV.filter((g) => !g.ownerOnly || isOwner);
 
   const displayName = user?.nickname || user?.email || 'User';
   const initials = displayName.slice(0, 2).toUpperCase();
@@ -115,7 +129,7 @@ export function TopNav() {
 
         {/* Main nav */}
         <nav className="wh-mainnav">
-          {NAV.map((g) =>
+          {navGroups.map((g) =>
             g.items ? (
               <div key={g.label} className="wh-nav-item">
                 <a className={isActive(g) ? 'active' : ''}>

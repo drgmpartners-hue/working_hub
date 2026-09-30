@@ -6,6 +6,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.session import get_db
 from app.core.deps import CurrentUser
+from app.core.permissions import (
+    assert_client,
+    assert_deposit_account,
+    find_profile_by_customer,
+    scope_by_profile_column,
+)
 from app.models.investment_record import InvestmentRecord
 from app.models.customer_retirement_profile import CustomerRetirementProfile
 from app.schemas.investment_record import (
@@ -20,25 +26,23 @@ router = APIRouter(prefix="/retirement/investment-records", tags=["retirement"])
 
 
 async def _get_profile_or_404(
-    profile_id: str,
+    customer_id: str,
     db: AsyncSession,
+    actor,
 ) -> CustomerRetirementProfile:
-    """프로필 존재 여부 확인 헬퍼. profile.id 또는 customer_id로 조회."""
-    # 먼저 id로 조회
-    result = await db.execute(
-        select(CustomerRetirementProfile).where(
-            CustomerRetirementProfile.id == profile_id
+    """고객 id(clients.id) → 은퇴 프로필. 소유 조건을 건 채로 조회, 없거나 권한 없으면 404.
+
+    지시서 문제 B: 이 API 의 customer_id / profile_id 입력은 clients.id 하나로 통일한다.
+    (하위 호환) 예전 화면이 profile.id 를 보내는 경우만 한 번 더 시도한다 — 역시 소유 조건 포함.
+    """
+    profile = await find_profile_by_customer(db, actor, customer_id)
+    if profile is None:
+        stmt = scope_by_profile_column(
+            select(CustomerRetirementProfile).where(CustomerRetirementProfile.id == customer_id),
+            CustomerRetirementProfile.id,
+            actor,
         )
-    )
-    profile = result.scalar_one_or_none()
-    if not profile:
-        # customer_id로 재시도
-        result2 = await db.execute(
-            select(CustomerRetirementProfile).where(
-                CustomerRetirementProfile.customer_id == profile_id
-            )
-        )
-        profile = result2.scalar_one_or_none()
+        profile = (await db.execute(stmt)).scalar_one_or_none()
     if not profile:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -50,12 +54,15 @@ async def _get_profile_or_404(
 async def _get_record_or_404(
     record_id: int,
     db: AsyncSession,
+    actor,
 ) -> InvestmentRecord:
-    """투자기록 존재 여부 확인 헬퍼."""
-    result = await db.execute(
-        select(InvestmentRecord).where(InvestmentRecord.id == record_id)
+    """투자기록 조회 (소유 조건 포함). 없거나 권한 없으면 404."""
+    stmt = scope_by_profile_column(
+        select(InvestmentRecord).where(InvestmentRecord.id == record_id),
+        InvestmentRecord.profile_id,
+        actor,
     )
-    record = result.scalar_one_or_none()
+    record = (await db.execute(stmt)).scalar_one_or_none()
     if not record:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -87,33 +94,21 @@ async def get_annual_flow(
     from app.models.user import User
     from sqlalchemy import extract
 
-    # 고객의 은퇴 프로필 조회
-    profile_result = await db.execute(
-        select(CustomerRetirementProfile).where(
-            CustomerRetirementProfile.customer_id == customer_id
-        )
-    )
-    profile = profile_result.scalar_one_or_none()
+    # 고객(clients.id) 소유권 확인 → 은퇴 프로필 조회. 권한 없으면 404.
+    client = await assert_client(db, current_user, customer_id)
+    profile = await find_profile_by_customer(db, current_user, customer_id)
     if not profile:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="은퇴 설계 프로필을 찾을 수 없습니다.",
         )
+    # 특정 예수금 계좌 필터는 이 고객의 계좌여야 한다
+    if deposit_account_id:
+        await assert_deposit_account(db, current_user, deposit_account_id, customer_id=customer_id)
 
-    # 고객 생년월일 조회 (나이 계산용)
+    # 고객 생년월일 (나이 계산용)
     birth_year = None
     try:
-        from app.models.client import Client
-        from sqlalchemy import or_
-        client_result = await db.execute(
-            select(Client).where(
-                or_(
-                    Client.id == customer_id,
-                    Client.unique_code == customer_id,
-                )
-            )
-        )
-        client = client_result.scalar_one_or_none()
         if client and client.birth_date:
             birth_year = client.birth_date.year if hasattr(client.birth_date, 'year') else int(str(client.birth_date)[:4])
     except Exception:
@@ -295,35 +290,20 @@ async def get_annual_flow(
     summary="투자기록 목록 조회",
 )
 async def list_investment_records(
-    customer_id: Optional[str] = Query(None, description="고객 user ID"),
+    customer_id: Optional[str] = Query(None, description="고객 ID (clients.id)"),
     year: Optional[int] = Query(None, description="조회 연도 (start_date 기준)"),
     status_filter: Optional[str] = Query(None, alias="status", description="상태 필터: ing/exit/deposit"),
     current_user: CurrentUser = None,
     db: AsyncSession = Depends(get_db),
 ):
-    """투자기록 목록 조회. customer_id, year, status 필터 지원."""
-    query = select(InvestmentRecord)
+    """투자기록 목록 조회. customer_id(clients.id), year, status 필터 지원.
+
+    customer_id 없이 부르면 접근 가능한 전체(대표=전체, 매니저=담당 고객) 기록.
+    """
+    query = scope_by_profile_column(select(InvestmentRecord), InvestmentRecord.profile_id, current_user)
 
     if customer_id:
-        # customer_id -> profile_id 변환
-        profile_result = await db.execute(
-            select(CustomerRetirementProfile).where(
-                CustomerRetirementProfile.customer_id == customer_id
-            )
-        )
-        profile = profile_result.scalar_one_or_none()
-        if not profile:
-            return []
-
-        query = query.where(InvestmentRecord.profile_id == profile.id)
-    elif not current_user.is_superuser:
-        # customer_id 없이 조회하는 경우 본인 기록만
-        profile_result = await db.execute(
-            select(CustomerRetirementProfile).where(
-                CustomerRetirementProfile.customer_id == current_user.id
-            )
-        )
-        profile = profile_result.scalar_one_or_none()
+        profile = await find_profile_by_customer(db, current_user, customer_id)
         if not profile:
             return []
         query = query.where(InvestmentRecord.profile_id == profile.id)
@@ -360,8 +340,10 @@ async def create_investment_record(
 
     exit 상태인 경우 수익률을 자동 계산합니다.
     """
-    # 프로필 확인 (customer_id → profile.id 변환)
-    profile = await _get_profile_or_404(data.profile_id, db)
+    # 프로필 확인 (profile_id 필드에는 clients.id 가 온다 → profile.id 로 변환)
+    profile = await _get_profile_or_404(data.profile_id, db, current_user)
+    if data.deposit_account_id:
+        await assert_deposit_account(db, current_user, data.deposit_account_id, customer_id=profile.customer_id)
 
     # 수익률 자동 계산
     return_rate = None
@@ -451,9 +433,15 @@ async def update_investment_record(
 
     exit 상태로 변경되거나 evaluation_amount가 수정되면 수익률을 재계산합니다.
     """
-    record = await _get_record_or_404(record_id, db)
+    record = await _get_record_or_404(record_id, db, current_user)
 
     update_fields = data.model_dump(exclude_unset=True)
+    if update_fields.get("deposit_account_id"):
+        owner_profile = await db.get(CustomerRetirementProfile, record.profile_id)
+        await assert_deposit_account(
+            db, current_user, update_fields["deposit_account_id"],
+            customer_id=owner_profile.customer_id if owner_profile else None,
+        )
     for field, value in update_fields.items():
         setattr(record, field, value)
 
@@ -574,7 +562,7 @@ async def delete_investment_record(
     db: AsyncSession = Depends(get_db),
 ):
     """투자기록 삭제. 연결된 예수금 거래내역도 함께 삭제."""
-    record = await _get_record_or_404(record_id, db)
+    record = await _get_record_or_404(record_id, db, current_user)
 
     # 예수금 거래내역 삭제
     from app.models.deposit_transaction import DepositTransaction

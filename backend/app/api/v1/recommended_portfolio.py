@@ -11,6 +11,7 @@ from pydantic import BaseModel
 from sqlalchemy import select, delete, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.permissions import require_master_write
 from app.db.session import get_db
 from app.core.deps import get_current_user
 from app.models.recommended_portfolio import (
@@ -177,6 +178,7 @@ async def create_portfolio(
     db: AsyncSession = Depends(get_db),
 ):
     """탭 추가 (최대 MAX_PORTFOLIOS개)."""
+    require_master_write(current_user)  # 전사 공용 마스터 쓰기는 대표만 (지시서 4.2 계층 C)
     count = await db.scalar(select(func.count()).select_from(RecommendedPortfolio))
     if (count or 0) >= MAX_PORTFOLIOS:
         raise HTTPException(
@@ -205,6 +207,7 @@ async def update_portfolio(
     db: AsyncSession = Depends(get_db),
 ):
     """탭 이름·화면 설정 변경."""
+    require_master_write(current_user)  # 전사 공용 마스터 쓰기는 대표만 (지시서 4.2 계층 C)
     portfolio = await _get_portfolio_or_404(portfolio_id, db)
     if body.name is not None:
         name = body.name.strip()
@@ -229,6 +232,7 @@ async def delete_portfolio(
     db: AsyncSession = Depends(get_db),
 ):
     """탭 삭제 (담긴 상품도 함께 삭제). 마지막 한 개는 지울 수 없다."""
+    require_master_write(current_user)  # 전사 공용 마스터 쓰기는 대표만 (지시서 4.2 계층 C)
     await _get_portfolio_or_404(portfolio_id, db)
     count = await db.scalar(select(func.count()).select_from(RecommendedPortfolio))
     if (count or 0) <= 1:
@@ -271,6 +275,7 @@ async def save_recommended_portfolio(
     db: AsyncSession = Depends(get_db),
 ):
     """특정 탭의 상품 목록 저장 (해당 탭 데이터만 삭제 후 새로 삽입)."""
+    require_master_write(current_user)  # 전사 공용 마스터 쓰기는 대표만 (지시서 4.2 계층 C)
     pid = await _resolve_portfolio_id(portfolio_id, db)
 
     # 해당 탭 데이터만 삭제 — 다른 탭을 건드리지 않는다
@@ -320,6 +325,7 @@ async def refresh_prices(
 
     product_type이 '펀드'인 항목은 스킵합니다.
     """
+    require_master_write(current_user)  # 전사 공용 마스터 쓰기는 대표만 (지시서 4.2 계층 C)
     pid = await _resolve_portfolio_id(portfolio_id, db)
     items = await _items_of(pid, db)
 

@@ -159,9 +159,9 @@ async def _run(monkeypatch):
         await db.execute(text("DELETE FROM clients WHERE name = '김민호'"))
         await db.execute(delete(User).where(User.email.like("e2e-%")))
         admin = User(email=f"e2e-{uuid.uuid4().hex[:6]}@x.com", hashed_password=get_password_hash("pw"), nickname="관리자",
-                     phone="010-1111-2222", is_active=True, is_superuser=True)
+                     phone="010-1111-2222", is_active=True, is_superuser=True, role="owner")
         staff = User(email=f"e2e-{uuid.uuid4().hex[:6]}@x.com", hashed_password=get_password_hash("pw"), nickname="직원",
-                     phone="010-3333-4444", is_active=True, is_superuser=False)
+                     phone="010-3333-4444", is_active=True, is_superuser=False, role="manager")
         db.add_all([admin, staff])
         await db.commit()
         admin_id, staff_id = admin.id, staff.id
@@ -452,7 +452,11 @@ async def _run(monkeypatch):
             db.add_all([cl, cl2])
             await db.commit()
             cl_id, cl2_id = cl.id, cl2.id
+        # 권한체계(docs/login_logic): 매니저(직원)는 담당 고객만 검색된다 → 대표 고객은 안 보임
         r = await c.get("/recipients/search", params={"q": "민호"}, headers=HS)
+        found = [x for x in r.json() if x["kind"] == "client"]
+        assert not ({x["ref_id"] for x in found} & {cl_id, cl2_id})
+        r = await c.get("/recipients/search", params={"q": "민호"}, headers=H)
         found = [x for x in r.json() if x["kind"] == "client"]
         assert {x["ref_id"] for x in found} >= {cl_id, cl2_id} and any(x["phone_masked"] == "010-****-6666" for x in found)
         assert (await c.post("/recipients", headers=HS, json={"kind": "client", "ref_id": cl_id})).status_code == 403  # 관리자만

@@ -3,6 +3,7 @@ from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, delete
+from app.core.permissions import require_master_write
 from app.core.deps import get_current_user
 from app.db.session import get_db
 from app.models.wrap_account import WrapAccount, ProductSelectOption
@@ -41,6 +42,7 @@ async def create_wrap_account(
     current_user=Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
+    require_master_write(current_user)  # 전사 공용 마스터 쓰기는 대표만 (지시서 4.2 계층 C)
     data = body.model_dump(exclude_unset=True)
     account = WrapAccount(**data)
     db.add(account)
@@ -56,6 +58,7 @@ async def update_wrap_account(
     current_user=Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
+    require_master_write(current_user)  # 전사 공용 마스터 쓰기는 대표만 (지시서 4.2 계층 C)
     account = await db.get(WrapAccount, account_id)
     if not account:
         raise HTTPException(status_code=404, detail="Product not found")
@@ -72,6 +75,7 @@ async def delete_wrap_account(
     current_user=Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
+    require_master_write(current_user)  # 전사 공용 마스터 쓰기는 대표만 (지시서 4.2 계층 C)
     account = await db.get(WrapAccount, account_id)
     if not account:
         raise HTTPException(status_code=404, detail="Product not found")
@@ -100,6 +104,7 @@ async def create_option(
     current_user=Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
+    require_master_write(current_user)  # 전사 공용 마스터 쓰기는 대표만 (지시서 4.2 계층 C)
     opt = ProductSelectOption(field_name=body.field_name, option_value=body.option_value, sort_order=body.sort_order)
     db.add(opt)
     await db.commit()
@@ -114,6 +119,7 @@ async def update_option(
     current_user=Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
+    require_master_write(current_user)  # 전사 공용 마스터 쓰기는 대표만 (지시서 4.2 계층 C)
     opt = await db.get(ProductSelectOption, option_id)
     if not opt:
         raise HTTPException(status_code=404, detail="Option not found")
@@ -140,6 +146,7 @@ async def delete_option(
     current_user=Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
+    require_master_write(current_user)  # 전사 공용 마스터 쓰기는 대표만 (지시서 4.2 계층 C)
     opt = await db.get(ProductSelectOption, option_id)
     if not opt:
         raise HTTPException(status_code=404, detail="Option not found")

@@ -22,6 +22,8 @@ interface ProductMasterTableProps {
   items: ProductMaster[];
   onUpdate: (id: string, data: Partial<ProductMaster>) => Promise<void>;
   onDelete: (id: string) => Promise<void>;
+  /** 매니저용 읽기 전용 — 수정·삭제 칸을 숨긴다 (서버도 대표만 허용, docs/login_logic P7-4) */
+  readOnly?: boolean;
 }
 
 /* ------------------------------------------------------------------ */
@@ -128,7 +130,7 @@ const SORT_ORDERS: Record<SortKey, string[]> = {
   product_type: ['ETF', '펀드', '연금저축펀드', 'IRP펀드', 'MMF', '주식', '해외주식', '랩어카운트'],
 };
 
-export function ProductMasterTable({ items, onUpdate, onDelete }: ProductMasterTableProps) {
+export function ProductMasterTable({ items, onUpdate, onDelete, readOnly = false }: ProductMasterTableProps) {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editState, setEditState] = useState<EditState>({ product_name: '', risk_level: '', region: '', product_type: '', product_code: '' });
   const [savingId, setSavingId] = useState<string | null>(null);
@@ -224,7 +226,9 @@ export function ProductMasterTable({ items, onUpdate, onDelete }: ProductMasterT
           <line x1="9" y1="21" x2="9" y2="9" />
         </svg>
         <p style={{ margin: 0, fontWeight: 500 }}>등록된 상품이 없습니다</p>
-        <p style={{ margin: '4px 0 0', fontSize: '0.8125rem' }}>우측 상단 "신규 등록" 버튼을 눌러 추가하세요.</p>
+        {!readOnly && (
+          <p style={{ margin: '4px 0 0', fontSize: '0.8125rem' }}>우측 상단 &quot;신규 등록&quot; 버튼을 눌러 추가하세요.</p>
+        )}
       </div>
     );
   }
@@ -240,7 +244,7 @@ export function ProductMasterTable({ items, onUpdate, onDelete }: ProductMasterT
             <th style={{ ...thStyle, width: 110, cursor: 'pointer', userSelect: 'none' }} onClick={() => handleSort('region')}>지역{sortArrow('region')}</th>
             <th style={{ ...thStyle, width: 140, cursor: 'pointer', userSelect: 'none' }} onClick={() => handleSort('product_type')}>상품유형{sortArrow('product_type')}</th>
             <th style={{ ...thStyle, width: 80 }}>종목코드</th>
-            <th style={{ ...thStyle, width: 130, textAlign: 'center' }}>작업</th>
+            {!readOnly && <th style={{ ...thStyle, width: 130, textAlign: 'center' }}>작업</th>}
           </tr>
         </thead>
         <tbody>
@@ -368,6 +372,7 @@ export function ProductMasterTable({ items, onUpdate, onDelete }: ProductMasterT
                 </td>
 
                 {/* 작업 */}
+                {!readOnly && (
                 <td style={{ ...tdStyle, textAlign: 'center' }}>
                   {isEditing ? (
                     <div style={{ display: 'flex', gap: 6, justifyContent: 'center' }}>
@@ -429,6 +434,7 @@ export function ProductMasterTable({ items, onUpdate, onDelete }: ProductMasterT
                     </div>
                   )}
                 </td>
+                )}
               </tr>
             );
           })}

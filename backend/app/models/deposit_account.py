@@ -2,7 +2,7 @@
 from datetime import datetime
 from typing import Optional, List, TYPE_CHECKING
 
-from sqlalchemy import Boolean, DateTime, Integer, String
+from sqlalchemy import Boolean, DateTime, Integer, String, ForeignKey
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.sql import func
 
@@ -22,8 +22,10 @@ class DepositAccount(Base):
     # 프로필 ID (customer_retirement_profiles.id, FK 없이 유연하게)
     profile_id: Mapped[str] = mapped_column(String(36), nullable=False, index=True)
 
-    # 고객 ID (빠른 조회용)
-    customer_id: Mapped[str] = mapped_column(String(36), nullable=False, index=True)
+    # 고객 ID (clients.id) — 권한 판정 기준. FK 는 y4d5e6p7f8k9 마이그레이션에서 추가.
+    customer_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("clients.id", ondelete="CASCADE"), nullable=False, index=True
+    )
 
     # 증권사명
     securities_company: Mapped[str] = mapped_column(String(100), nullable=False)

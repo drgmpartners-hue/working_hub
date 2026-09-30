@@ -8,6 +8,8 @@ import { Modal } from '@/components/common/Modal';
 import { ProductMasterTable, type ProductMaster, RISK_LEVELS, REGIONS, PRODUCT_TYPES } from '@/components/portfolio/ProductMasterTable';
 import { authLib } from '@/lib/auth';
 import { API_URL } from '@/lib/api-url';
+import { useAuthStore } from '@/stores/auth';
+import { ReadOnlyNotice } from '@/components/common/ReadOnlyNotice';
 
 /* ------------------------------------------------------------------ */
 /*  Styles                                                              */
@@ -60,6 +62,8 @@ const EMPTY_FORM: AddFormState = {
 /* ------------------------------------------------------------------ */
 
 export default function ProductMasterPage() {
+  // 공용 마스터 — 매니저는 읽기 전용 (docs/login_logic P7-4). 서버도 쓰기는 대표만 허용.
+  const readOnly = useAuthStore((st) => st.user?.role !== 'owner');
   const router = useRouter();
   const [items, setItems] = useState<ProductMaster[]>([]);
   const [loading, setLoading] = useState(true);
@@ -430,6 +434,7 @@ export default function ProductMasterPage() {
         )}
 
         {/* 신규 등록 (오른쪽 끝) */}
+{!readOnly && (
         <Button variant="primary" size="sm" onClick={openModal} style={{ marginLeft: 'auto' }}>
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
             <line x1="12" y1="5" x2="12" y2="19" />
@@ -437,9 +442,11 @@ export default function ProductMasterPage() {
           </svg>
           신규 등록
         </Button>
+        )}
       </div>
 
       {/* Table Card */}
+      {readOnly && <ReadOnlyNotice what="증권사 상품 목록" />}
       <Card padding={0}>
         {loading ? (
           <div
@@ -487,6 +494,7 @@ export default function ProductMasterPage() {
             items={filteredItems}
             onUpdate={handleUpdate}
             onDelete={handleDelete}
+            readOnly={readOnly}
           />
         )}
       </Card>

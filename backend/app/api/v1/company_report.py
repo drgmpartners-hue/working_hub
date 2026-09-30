@@ -816,9 +816,12 @@ async def search_recipients(q: str = Query(..., min_length=1, max_length=50), cu
     chosen = set((await db.execute(select(BriefingRecipient.client_id).where(BriefingRecipient.client_id.is_not(None)))).scalars().all())
     chosen_u = set((await db.execute(select(BriefingRecipient.user_id).where(BriefingRecipient.user_id.is_not(None)))).scalars().all())
     owners = aliased(User)
-    rows = (await db.execute(
+    from app.core.permissions import scope_clients
+
+    # 고객 검색은 담당 고객만 (대표는 전체) — docs/login_logic
+    rows = (await db.execute(scope_clients(
         select(Client, owners.nickname).outerjoin(owners, owners.id == Client.user_id)
-        .where(Client.name.ilike(like)).order_by(Client.name).limit(30)
+        .where(Client.name.ilike(like)).order_by(Client.name).limit(30), current_user)
     )).all()
     out = [{"kind": "client", "ref_id": c.id, "name": c.name,
             "detail": " · ".join(x for x in ["고객 정보 관리", f"고유번호 {c.unique_code}" if c.unique_code else "",

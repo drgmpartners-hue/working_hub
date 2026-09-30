@@ -96,6 +96,10 @@ from app.models.company_report import (
     CompanyPublicData, SearchIndex, CompanyMonthlyDigest, MonthlyBriefing, ShortLink,
 )
 
+# 권한 체계 (매니저 계정·대행·이관, docs/login_logic)
+from app.models.audit_log import AuditLog
+from app.models.client_transfer import ClientTransfer
+
 __all__ = [
     "BrandSetting",
     "AIAPISetting",
@@ -154,4 +158,6 @@ __all__ = [
     "CompanyMonthlyDigest",
     "MonthlyBriefing",
     "ShortLink",
+    "AuditLog",
+    "ClientTransfer",
 ]

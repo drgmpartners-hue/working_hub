@@ -25,37 +25,18 @@ router = APIRouter(prefix="/snapshots", tags=["snapshots"])
 # ---------------------------------------------------------------------------
 
 
-async def _verify_account_owner(db: AsyncSession, account_id: str, user_id: str) -> None:
-    from sqlalchemy import select
-    from app.models.client import Client, ClientAccount
+async def _verify_account_owner(db: AsyncSession, account_id: str, actor) -> None:
+    """계좌가 접근 가능한 고객 소유인지 확인 (판정은 app/core/permissions.py)."""
+    from app.core.permissions import assert_account
 
-    res = await db.execute(
-        select(ClientAccount.id)
-        .join(Client, Client.id == ClientAccount.client_id)
-        .where(ClientAccount.id == account_id, Client.user_id == user_id)
-        .limit(1)
-    )
-    if not res.scalars().first():
-        raise HTTPException(status_code=404, detail="Account not found")
+    await assert_account(db, actor, account_id)
 
 
-async def _verify_snapshot_owner(db: AsyncSession, snapshot_id: str, user_id: str):
-    """스냅샷→계좌→고객→담당자 체인 검증. 통과 시 스냅샷 반환, 아니면 404."""
-    from sqlalchemy import select
-    from app.models.client import Client, ClientAccount
-    from app.models.snapshot import PortfolioSnapshot
+async def _verify_snapshot_owner(db: AsyncSession, snapshot_id: str, actor):
+    """스냅샷→계좌→고객 체인 검증. 통과 시 스냅샷 반환, 아니면 404."""
+    from app.core.permissions import assert_snapshot
 
-    res = await db.execute(
-        select(PortfolioSnapshot)
-        .join(ClientAccount, ClientAccount.id == PortfolioSnapshot.client_account_id)
-        .join(Client, Client.id == ClientAccount.client_id)
-        .where(PortfolioSnapshot.id == snapshot_id, Client.user_id == user_id)
-        .limit(1)
-    )
-    snap = res.scalars().first()
-    if not snap:
-        raise HTTPException(status_code=404, detail="Snapshot not found")
-    return snap
+    return await assert_snapshot(db, actor, snapshot_id)
 
 
 @router.post("", response_model=SnapshotResponse, status_code=201)
@@ -67,7 +48,7 @@ async def create_snapshot(
     db: AsyncSession = Depends(get_db),
 ):
     """Upload image, extract with Gemini Vision, save snapshot."""
-    await _verify_account_owner(db, client_account_id, current_user.id)
+    await _verify_account_owner(db, client_account_id, current_user)
     image_bytes = await image.read()
     mime_type = image.content_type or "image/png"
     snapshot = await snapshot_service.create_snapshot(
@@ -87,7 +68,7 @@ async def list_snapshots(
 ):
     from sqlalchemy import select
     from app.models.portfolio_suggestion import PortfolioSuggestion
-    await _verify_account_owner(db, account_id, current_user.id)
+    await _verify_account_owner(db, account_id, current_user)
     snapshots = await snapshot_service.list_snapshots(db, account_id, date_from, date_to)
     snap_ids = [s.id for s in snapshots]
     sug_snap_ids: set[str] = set()
@@ -140,7 +121,7 @@ async def get_snapshot_history(
             status_code=422,
             detail="period must be one of: 3m, 6m, 1y, max",
         )
-    await _verify_account_owner(db, account_id, current_user.id)
+    await _verify_account_owner(db, account_id, current_user)
     raw_items = await snapshot_service.get_history_with_weights(db, account_id, period)
     items = [SnapshotHistoryItem(**item) for item in raw_items]
     return SnapshotHistoryResponse(account_id=account_id, period=period, items=items)
@@ -153,7 +134,7 @@ async def get_report_data(
     current_user = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    await _verify_account_owner(db, account_id, current_user.id)
+    await _verify_account_owner(db, account_id, current_user)
     data = await snapshot_service.get_report_data(db, account_id, target_date)
     if not data:
         raise HTTPException(status_code=404, detail="No snapshot found")
@@ -179,7 +160,9 @@ async def get_latest_dates(
         .group_by(PortfolioSnapshot.client_account_id)
         .subquery()
     )
-    rows = await db.execute(
+    from app.core.permissions import scope_clients
+
+    stmt = (
         select(
             Client.id.label("client_id"),
             Client.name,
@@ -187,8 +170,8 @@ async def get_latest_dates(
         )
         .join(ClientAccount, ClientAccount.client_id == Client.id)
         .join(sub, sub.c.client_account_id == ClientAccount.id)
-        .where(Client.user_id == current_user.id)
     )
+    rows = await db.execute(scope_clients(stmt, current_user))
     # Group by client: take the most recent date across all accounts
     result: dict[str, str] = {}
     for row in rows.all():
@@ -205,7 +188,7 @@ async def get_snapshot(
     current_user = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    await _verify_snapshot_owner(db, snapshot_id, current_user.id)
+    await _verify_snapshot_owner(db, snapshot_id, current_user)
     snapshot = await snapshot_service.get_snapshot_with_holdings(db, snapshot_id)
     if not snapshot:
         raise HTTPException(status_code=404, detail="Snapshot not found")
@@ -225,7 +208,7 @@ async def update_holding(
 ):
     """Manually update mutable fields (risk_level, region, amounts, etc.)
     on a single holding that belongs to the given snapshot."""
-    await _verify_snapshot_owner(db, snapshot_id, current_user.id)
+    await _verify_snapshot_owner(db, snapshot_id, current_user)
     holding = await snapshot_service.update_holding(db, snapshot_id, holding_id, body)
     if holding is None:
         raise HTTPException(
@@ -250,7 +233,7 @@ async def create_holding(
     from app.models.snapshot import PortfolioHolding
     import uuid
 
-    await _verify_snapshot_owner(db, snapshot_id, current_user.id)
+    await _verify_snapshot_owner(db, snapshot_id, current_user)
 
     holding = PortfolioHolding(
         id=str(uuid.uuid4()),
@@ -289,7 +272,7 @@ async def apply_master(
     """Apply risk_level and region from the product_master table to every
     holding in the given snapshot, matching by product_name."""
     # Verify snapshot exists + 소유권 검증
-    await _verify_snapshot_owner(db, snapshot_id, current_user.id)
+    await _verify_snapshot_owner(db, snapshot_id, current_user)
 
     try:
         result = await snapshot_service.apply_master_to_snapshot(db, snapshot_id)
@@ -310,7 +293,7 @@ async def patch_snapshot(
     db: AsyncSession = Depends(get_db),
 ):
     """Update snapshot metadata (e.g. snapshot_date)."""
-    snapshot = await _verify_snapshot_owner(db, snapshot_id, current_user.id)
+    snapshot = await _verify_snapshot_owner(db, snapshot_id, current_user)
     if "snapshot_date" in body:
         from datetime import date as date_type, datetime
         val = body["snapshot_date"]
@@ -340,7 +323,7 @@ async def delete_snapshot(
     db: AsyncSession = Depends(get_db),
 ):
     """Delete a snapshot and all its holdings."""
-    await _verify_snapshot_owner(db, snapshot_id, current_user.id)
+    await _verify_snapshot_owner(db, snapshot_id, current_user)
     deleted = await snapshot_service.delete_snapshot(db, snapshot_id)
     if not deleted:
         raise HTTPException(status_code=404, detail="Snapshot not found")

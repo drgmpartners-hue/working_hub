@@ -2,6 +2,7 @@
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 from typing import Optional, Annotated
+from app.core.permissions import require_master_write
 from app.db.session import get_db
 from app.core.deps import CurrentUser, get_current_user
 from app.schemas.product_master import (
@@ -45,6 +46,7 @@ async def create_product(
     db: AsyncSession = Depends(get_db),
 ):
     """신규 상품 등록."""
+    require_master_write(current_user)  # 전사 공용 마스터 쓰기는 대표만 (지시서 4.2 계층 C)
     existing = await product_master_service.get_by_name(db, data.product_name)
     if existing:
         raise HTTPException(
@@ -62,6 +64,7 @@ async def update_product(
     db: AsyncSession = Depends(get_db),
 ):
     """상품 위험도/지역 등 수정."""
+    require_master_write(current_user)  # 전사 공용 마스터 쓰기는 대표만 (지시서 4.2 계층 C)
     product = await product_master_service.get_by_id(db, product_id)
     if not product:
         raise HTTPException(status_code=404, detail="Product not found")
@@ -75,6 +78,7 @@ async def delete_product(
     db: AsyncSession = Depends(get_db),
 ):
     """상품 삭제."""
+    require_master_write(current_user)  # 전사 공용 마스터 쓰기는 대표만 (지시서 4.2 계층 C)
     product = await product_master_service.get_by_id(db, product_id)
     if not product:
         raise HTTPException(status_code=404, detail="Product not found")

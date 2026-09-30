@@ -12,7 +12,7 @@ import httpx
 
 from app.db.session import get_db
 from app.core.config import settings
-from app.core.deps import get_current_user
+from app.core.deps import NotImpersonating, get_current_user
 from app.models.user_api_key import UserApiKey
 
 router = APIRouter(prefix="/user-api-keys", tags=["user-api-keys"])
@@ -105,7 +105,7 @@ async def list_api_keys(
     ]
 
 
-@router.post("", response_model=ApiKeyResponse, status_code=201)
+@router.post("", response_model=ApiKeyResponse, status_code=201, dependencies=[NotImpersonating])
 async def create_api_key(
     body: ApiKeyCreate,
     current_user=Depends(get_current_user),
@@ -251,7 +251,7 @@ async def test_saved_api_key(
         return TestResult(success=False, message=f"테스트 중 오류: {str(e)}")
 
 
-@router.put("/{provider}", response_model=ApiKeyResponse)
+@router.put("/{provider}", response_model=ApiKeyResponse, dependencies=[NotImpersonating])
 async def update_api_key(
     provider: str,
     body: ApiKeyUpdate,
@@ -293,7 +293,7 @@ async def update_api_key(
     )
 
 
-@router.delete("/{provider}", status_code=204)
+@router.delete("/{provider}", status_code=204, dependencies=[NotImpersonating])
 async def delete_api_key(
     provider: str,
     current_user=Depends(get_current_user),

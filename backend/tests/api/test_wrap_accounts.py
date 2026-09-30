@@ -44,6 +44,7 @@ def make_test_app(mock_db: AsyncSession, mock_user) -> FastAPI:
 def make_mock_user():
     user = MagicMock()
     user.id = "user-uuid-001"
+    user.role = "owner"  # 공용 마스터 쓰기는 대표만 (docs/login_logic)
     user.is_active = True
     return user
 

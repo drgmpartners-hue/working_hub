@@ -5,6 +5,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from pydantic import BaseModel
 from typing import Optional
+from app.core.permissions import require_master_write
 from app.db.session import get_db
 from app.core.deps import get_current_user
 from app.models.product_name_change import ProductNameChange
@@ -51,6 +52,7 @@ async def create_change(
     db: AsyncSession = Depends(get_db),
 ):
     # 빈 old_keyword가 저장되면 replace("")가 모든 상품명을 파괴하므로 반드시 차단
+    require_master_write(current_user)  # 전사 공용 마스터 쓰기는 대표만 (지시서 4.2 계층 C)
     if not body.old_keyword.strip():
         raise HTTPException(400, "변경 전 키워드(old_keyword)는 비워둘 수 없습니다.")
     rec = ProductNameChange(
@@ -72,6 +74,7 @@ async def update_change(
     current_user=Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
+    require_master_write(current_user)  # 전사 공용 마스터 쓰기는 대표만 (지시서 4.2 계층 C)
     rec = await db.get(ProductNameChange, change_id)
     if not rec:
         raise HTTPException(404, "Not found")
@@ -94,6 +97,7 @@ async def delete_change(
     current_user=Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
+    require_master_write(current_user)  # 전사 공용 마스터 쓰기는 대표만 (지시서 4.2 계층 C)
     rec = await db.get(ProductNameChange, change_id)
     if not rec:
         raise HTTPException(404, "Not found")

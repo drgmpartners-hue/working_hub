@@ -128,6 +128,12 @@
 
 ## P4 — 반기 기업 종합보고서 (출력용, 약 2.5주)
 
+> **권한 결정 (2026-09-30, 대표님 확정 — `docs/login_logic` D-2)**
+> - 반기 기업 종합보고서는 **매니저도 만든다.** 매니저가 자기 고객의 가입 상품(투자 기업)에 맞춰 고객별로 뽑아야 하므로 관리자 전용 기능이 아니다.
+> - 고객 기준으로 뽑을 때는 권한 규칙을 따른다: 매니저는 담당 고객만, 대표는 전체 (`app/core/permissions.py`의 `assert_client`·`scope_clients` 사용).
+> - 브리핑 발송·수신자·발송 설정 같은 회사 차원 설정은 기존 기업 리포트 관리자 체계 유지. 대표(owner)는 항상 관리자로 인정됨.
+> - 설계 시 P4-10 '관리자 승인' 단계가 매니저 생성 흐름을 막지 않도록 할 것(승인 필요 여부는 착수 시 대표님 확인).
+
 - [ ] **P4-1** [DB] `company_documents`, `company_reports`(period_year·period_half·sales_note), `report_images`, `report_exports`
 - [ ] **P4-2** [BE] 자료함 파서 7종(pdf·docx·md·pptx·hwpx·hwp·ppt) 텍스트·이미지 추출 + AI 문서 메모, 투자사 보고서 포함 (고객 개인 투자 금액·지분은 제외)
 - [ ] **P4-3** [OPS] LibreOffice 설치 여부 결정(Dockerfile 또는 별도 변환 워커)

@@ -28,6 +28,11 @@ export function AuthFetchGuard() {
           const isAuthEndpoint = url.includes('/api/v1/auth/');
           // 토큰이 있는데 401 = 만료/무효. (토큰 정리 후 도착하는 뒤따른 401들은 중복 처리 안 함)
           if (isApi && !isAuthEndpoint && authLib.getToken()) {
+            // 대행 토큰 만료 → 로그아웃 대신 대표 본인 계정으로 복귀 (docs/login_logic P3)
+            if (authLib.restoreImpersonator()) {
+              window.location.href = '/admin?impersonation=expired';
+              return res;
+            }
             authLib.clearAllAuth();
             alert('세션이 만료되었습니다. 다시 로그인해주세요.');
             window.location.href = '/login';
