@@ -407,19 +407,11 @@ export function ClientManagementModal({ isOpen, onClose, onClientAdded }: Client
       if (!res.ok) return;
       const data: Client[] = await res.json();
 
-      const withAccounts = await Promise.all(
-        data.map(async (c) => {
-          try {
-            const ar = await fetch(`${API_URL}/api/v1/clients/${c.id}/accounts`, {
-              headers: { ...authLib.getAuthHeader() },
-            });
-            const accounts: ClientAccount[] = ar.ok ? await ar.json() : [];
-            return { ...c, accounts };
-          } catch {
-            return { ...c, accounts: [] };
-          }
-        })
-      );
+      const withAccounts = (data as Client[]).map((c) => ({
+        ...c,
+        // /clients 응답에 계좌가 이미 들어 있다 — 고객마다 따로 부르지 않는다(대표는 전체 고객이라 수백 건이 됨)
+        accounts: Array.isArray(c.accounts) ? c.accounts : [],
+      }));
       setClients(withAccounts);
     } catch {
       // silent
