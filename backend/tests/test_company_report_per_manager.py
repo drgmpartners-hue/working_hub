@@ -209,6 +209,8 @@ async def test_manager_self_send_and_company_list(env, monkeypatch):  # noqa: F8
              {"company_id": own_o["id"], "name": "대표카드", "article_count": 1, "caution_count": 0, "one_liner": "대표 한줄",
               "articles": [{"id": "x2"}]}]
     async with env["Session"]() as db:
+        await db.execute(NewsBriefing.__table__.delete().where(NewsBriefing.briefing_date == day))  # 이전 실행 잔여
+        await db.commit()
         b = NewsBriefing(briefing_date=day, status="approved", company_summaries=cards, article_count=2, caution_count=0,
                          basic_info={"company_with_news": 2},
                          review_summary={"overall": [{"text": "대표 기업 문장", "source_ids": ["S2"]}], "source_map": {"S2": "x2"}})
@@ -248,3 +250,51 @@ async def test_offboarding_moves_company_list(env):  # noqa: F811
     assert {own_a["id"], shared["id"]} <= set(b_ids)
     o = await _ids(c, ho)
     assert [x["name"] for x in o[shared["id"]]["added_by"]] == ["매니저B"]   # 중복 없이 하나
+
+
+async def test_three_managers_remove_one_by_one(env):  # noqa: F811
+    """대표님 예시(2026-10-01): A·B·C 모두 추가 → 대표 화면에 셋 다. A 가 빼면 B·C 만.
+    B·C 까지 모두 빼야 목록에서 빠지고(폴더는 그대로), 폴더 완전 삭제는 대표가 따로."""
+    from app.core.security import create_access_token, get_password_hash
+    from app.models.user import User
+
+    c, d, hdr = env["c"], env["d"], env["hdr"]
+    ho, ha, hb = hdr(d["owner"]), hdr(d["A"]), hdr(d["B"])
+    async with env["Session"]() as db:
+        mc = User(email=f"perm-{uuid.uuid4().hex[:8]}@x.com", hashed_password=get_password_hash("pw"),
+                  nickname="매니저C", is_active=True, role="manager")
+        db.add(mc)
+        await db.commit()
+        cid_user = mc.id
+    hc = {"Authorization": f"Bearer {create_access_token(cid_user)}"}
+    name = _name("셋")
+    first = (await _create(c, ha, name)).json()
+    assert (await _create(c, hb, name)).json()["id"] == first["id"]
+    assert (await _create(c, hc, name)).json()["id"] == first["id"]
+
+    async def adders():
+        return [x["name"] for x in (await _ids(c, ho))[first["id"]]["added_by"]]
+
+    assert await adders() == ["매니저A", "매니저B", "매니저C"]
+    # A 가 뺀다 → B·C 만 남는다
+    assert (await c.post(f"{CR}/companies/{first['id']}/trash", headers=ha)).json()["removed_from_list"] is True
+    assert await adders() == ["매니저B", "매니저C"]
+    assert first["id"] not in await _ids(c, ha) and first["id"] in await _ids(c, hb)
+    # B 가 뺀다 → C 만, 아직 목록에 있다
+    await c.post(f"{CR}/companies/{first['id']}/trash", headers=hb)
+    assert await adders() == ["매니저C"]
+    assert first["id"] not in await _ids(c, ho, deleted="true")
+    # C 까지 빼면 목록에서 빠지고 [삭제된 기업]으로 — 이유·마지막 사람 표시, 폴더 삭제 전
+    await c.post(f"{CR}/companies/{first['id']}/trash", headers=hc)
+    assert first["id"] not in await _ids(c, ho)
+    gone = (await _ids(c, ho, deleted="true"))[first["id"]]
+    assert gone["deleted_reason"] == "all_removed" and gone["deleted_by_name"] == "매니저C"
+    s = (await c.get(f"{CR}/companies/{first['id']}/purge-summary", headers=ho)).json()
+    assert s["trashed"] is True                      # 1단계(목록에서 빠짐)만, 폴더 완전 삭제는 대표가 [폴더까지 완전 삭제]로
+    # 매니저는 완전 삭제 불가
+    assert (await c.post(f"{CR}/companies/{first['id']}/purge", headers=hc, json={"confirm_name": name})).status_code in (403, 404)
+    # 대표가 직접 삭제하면 이유가 다르게 남는다
+    other = (await _create(c, ho, _name("대표삭제"))).json()
+    assert (await c.post(f"{CR}/companies/{other['id']}/trash", headers=ho)).status_code == 200
+    g2 = (await _ids(c, ho, deleted="true"))[other["id"]]
+    assert g2["deleted_reason"] == "admin" and g2["deleted_by_name"] == "대표"

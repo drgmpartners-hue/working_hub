@@ -38,7 +38,7 @@ export function TrashModal({ target, onClose, onDone }: { target: Target | null;
     <Modal open onClose={onClose} title={`${target.name} 삭제 — 1단계`} maxWidth={520}>
       <ErrorBox message={error} />
       <p style={{ margin: '0 0 10px', fontSize: 14, color: 'var(--text-primary)', lineHeight: 1.7 }}>
-        <strong>화면에서 삭제</strong>합니다. 투자기업 목록·통합 검색·기업DB 목록·데일리 브리핑에서 빠지고, 뉴스 수집이 멈춥니다.
+        <strong>화면에서 삭제</strong>합니다. 이 기업을 추가한 <strong>모든 담당자</strong>의 목록·통합 검색·기업DB 목록·브리핑에서 빠지고, 뉴스 수집이 멈춥니다. 폴더는 남습니다(폴더 삭제는 [삭제된 기업]에서 따로).
       </p>
       <ul style={{ margin: '0 0 12px', paddingLeft: 18, fontSize: 13, color: 'var(--text-secondary)', lineHeight: 1.8 }}>
         <li>모은 기사·기업 원장·투자유치 기록·기업 폴더 파일은 <strong>그대로 남습니다</strong>.</li>

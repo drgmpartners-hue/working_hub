@@ -150,12 +150,21 @@ async def list_companies(active: Optional[bool] = None, q: Optional[str] = None,
             getattr(ks, r.kind).append(r.keyword)
     members = await vis.member_names(db, [c.id for c in companies])
     mine_uid = view.member_id
-    return [_out(c, kws.get(c.id, KeywordSet()), stats.get(c.id, {"today": 0, "week": 0, "caution_week": 0, "total": 0}),
-                 added_by=members.get(c.id, []) if manage_all else [],
-                 is_mine=any(m["id"] == mine_uid for m in members.get(c.id, [])),
-                 can_edit=manage_all or any(m["id"] == current_user.id for m in members.get(c.id, [])),
-                 can_manage=manage_all)
-            for c in companies]
+    out = [_out(c, kws.get(c.id, KeywordSet()), stats.get(c.id, {"today": 0, "week": 0, "caution_week": 0, "total": 0}),
+                added_by=members.get(c.id, []) if manage_all else [],
+                is_mine=any(m["id"] == mine_uid for m in members.get(c.id, [])),
+                can_edit=manage_all or any(m["id"] == current_user.id for m in members.get(c.id, [])),
+                can_manage=manage_all)
+           for c in companies]
+    if deleted:  # 삭제된 기업: 누가·왜 목록에서 뺐는지(폴더 완전 삭제 판단용)
+        from app.models.user import User
+
+        ids = {c.deleted_by for c in companies if c.deleted_by}
+        names = dict((await db.execute(select(User.id, User.nickname).where(User.id.in_(ids or {""})))).all())
+        for o, c in zip(out, companies):
+            o.deleted_reason = c.deleted_reason
+            o.deleted_by_name = names.get(c.deleted_by or "")
+    return out
 
 
 @router.post("/companies", response_model=CompanyOut, status_code=201)
@@ -1646,9 +1655,9 @@ async def trash_company(company_id: str, current_user=Depends(get_current_user),
     c = await assert_company(db, current_user, company_id)
     if not await vis.can_manage_all(db, current_user):
         left = await vis.remove_member(db, c.id, current_user.id)
-        if left == 0:
+        if left == 0:  # 추가했던 사람이 모두 뺐을 때만 목록에서 빠진다(폴더는 그대로 — 완전 삭제는 대표가 따로)
             try:
-                await company_delete.trash(db, c, current_user.id)
+                await company_delete.trash(db, c, current_user.id, reason="all_removed")
             except company_delete.DeleteError:
                 pass  # 구축 중이면 목록에서만 빠진다(수집은 다음 정리 때)
         await db.commit()

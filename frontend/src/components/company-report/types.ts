@@ -43,6 +43,9 @@ export interface Company {
   is_mine?: boolean;
   /** 비활성·삭제·복구(대표·관리자) */
   can_manage?: boolean;
+  /** 목록에서 빠진 이유: all_removed(담당자 모두 뺌) / admin(대표 삭제) */
+  deleted_reason?: string | null;
+  deleted_by_name?: string | null;
   /** 정보·키워드·수집을 고칠 수 있는지(추가한 사람 또는 대표·관리자) */
   can_edit?: boolean;
 }

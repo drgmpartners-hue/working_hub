@@ -238,13 +238,15 @@ export default function CompaniesPage() {
           ) : (
             <div style={{ overflow: 'auto', maxHeight: 'max(360px, calc(100vh - 380px))' }}>
               <div style={{ ...mutedText, fontSize: 12, padding: '0 16px 8px' }}>
-                화면에서만 지운 기업입니다. 기사·원장·폴더 파일은 남아 있어 [복구]할 수 있습니다. [폴더까지 완전 삭제]는 관리자만, 되돌릴 수 없습니다.
+                목록에서만 빠진 기업입니다. 기사·원장·폴더 파일은 그대로 남아 있어 [복구]할 수 있습니다. 추가했던 담당자가 모두 빼면 여기로 옵니다.
+                폴더 삭제는 별도 단계입니다 — [폴더까지 완전 삭제]는 대표만, 되돌릴 수 없습니다.
               </div>
-              <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 640 }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 760 }}>
                 <thead>
                   <tr>
                     <th style={th}>기업</th>
-                    <th style={th}>삭제한 날</th>
+                    <th style={th}>빠진 이유</th>
+                    <th style={th}>빠진 날</th>
                     <th style={{ ...th, textAlign: 'right' }}>누적 기사</th>
                     <th style={{ ...th, textAlign: 'right' }}>작업</th>
                   </tr>
@@ -256,6 +258,13 @@ export default function CompaniesPage() {
                         <Link href={`/content/company-report/companies/${c.id}`} style={{ color: 'var(--text-secondary)', fontWeight: 600 }}>
                           {c.name}
                         </Link>
+                      </td>
+                      <td style={{ ...td, fontSize: 13 }}>
+                        {c.deleted_reason === 'all_removed'
+                          ? `담당자 모두 뺌${c.deleted_by_name ? ` (마지막 ${c.deleted_by_name})` : ''}`
+                          : c.deleted_reason === 'admin'
+                            ? `대표 삭제${c.deleted_by_name ? ` (${c.deleted_by_name})` : ''}`
+                            : '-'}
                       </td>
                       <td style={{ ...td, fontSize: 13 }}>{fmtDate(c.deleted_at, true)}</td>
                       <td style={num}>{c.stats.total}</td>

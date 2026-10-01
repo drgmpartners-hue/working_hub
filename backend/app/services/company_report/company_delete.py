@@ -28,7 +28,8 @@ class DeleteError(ValueError):
     pass
 
 
-async def trash(db: AsyncSession, company: PortfolioCompany, user_id: str) -> None:
+async def trash(db: AsyncSession, company: PortfolioCompany, user_id: str, reason: str = "admin") -> None:
+    """1단계 · 화면에서 삭제. reason: admin(대표·관리자 [삭제]) / all_removed(추가했던 담당자가 모두 뺌)."""
     if company.deleted_at:
         return
     running = (await db.execute(select(BackfillJob.id).where(
@@ -36,6 +37,7 @@ async def trash(db: AsyncSession, company: PortfolioCompany, user_id: str) -> No
     if running:
         raise DeleteError("과거 데이터 구축이 진행 중입니다. 끝난 뒤에 삭제해 주세요.")
     company.deleted_at, company.deleted_by = now_kst(), user_id
+    company.deleted_reason = reason
     company.is_active = False  # 수집·브리핑·공공데이터 대상에서 제외
     await db.execute(delete(SearchIndex).where(SearchIndex.company_id == company.id))
 
@@ -43,6 +45,7 @@ async def trash(db: AsyncSession, company: PortfolioCompany, user_id: str) -> No
 async def restore(db: AsyncSession, company: PortfolioCompany) -> dict:
     """복구: 활성으로 되돌리고 검색 색인을 다시 만든다."""
     company.deleted_at, company.deleted_by, company.is_active = None, None, True
+    company.deleted_reason = None
     await search.index_company(db, company)
     n = 0
     for a in (await db.execute(select(NewsArticle).where(NewsArticle.company_id == company.id, NewsArticle.is_hidden == False,  # noqa: E712

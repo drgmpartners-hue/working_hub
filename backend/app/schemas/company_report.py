@@ -92,6 +92,8 @@ class CompanyOut(CompanyBase):
     is_mine: bool = False                  # 요청한 사람(또는 보고 있는 매니저)의 목록에 있는지
     can_edit: bool = False                 # 정보·키워드·수집을 고칠 수 있는지
     can_manage: bool = False               # 비활성·삭제·복구(대표·관리자)
+    deleted_reason: Optional[str] = None   # all_removed(담당자 모두 뺌) / admin(대표·관리자 삭제)
+    deleted_by_name: Optional[str] = None  # 마지막으로 뺀 사람 또는 삭제한 사람
     # (예전 필드 — 화면 호환용)
     scope: str = "manager"
     manager_user_id: Optional[str] = None
