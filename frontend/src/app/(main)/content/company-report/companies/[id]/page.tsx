@@ -10,9 +10,9 @@ import { useParams, usePathname, useRouter, useSearchParams } from 'next/navigat
 import { Card } from '@/components/common/Card';
 import { Tab } from '@/components/common/Tab';
 import { ArchiveTab } from '@/components/company-report/ArchiveTab';
-import { ComingSoon } from '@/components/company-report/ComingSoon';
 import { CoveragePanel } from '@/components/company-report/CoveragePanel';
 import { DocumentsPanel } from '@/components/company-report/DocumentsPanel';
+import { ReportPanel } from '@/components/company-report/ReportPanel';
 import { FolderTab } from '@/components/company-report/FolderTab';
 import { LedgerTab } from '@/components/company-report/LedgerTab';
 import { PublicDataPanel } from '@/components/company-report/PublicDataPanel';
@@ -233,7 +233,7 @@ function DetailInner() {
       {tab === 'report' && (
         <>
           <DocumentsPanel companyId={id} />
-          <ComingSoon title="반기 보고서" phase="P4" desc="자료함과 누적 기사·원장으로 반기별 보고서 본문·이미지, 문장별 출처·검토 결과, 버전 관리가 여기에 표시됩니다." />
+          <ReportPanel companyId={id} />
         </>
       )}
     </div>

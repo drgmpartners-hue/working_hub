@@ -19,7 +19,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.company_report import CompanyDocument, CompanyFile
 from app.services.company_report import doc_parser, storage
-from app.services.company_report.timeutil import now_kst
 
 logger = logging.getLogger(__name__)
 
@@ -221,7 +220,9 @@ async def sync_company(db: AsyncSession, company_id: str) -> list[str]:
 
 async def process_pending(db: AsyncSession, limit: int = 20) -> int:
     """file_worker 용: 5분 넘게 'pending' 인 자료(재시작 등으로 놓친 것)를 처리한다."""
-    cutoff = now_kst() - timedelta(minutes=5)
+    from sqlalchemy import func
+
+    cutoff = func.now() - timedelta(minutes=5)  # updated_at 은 DB 시계(server_default/onupdate)
     ids = (await db.execute(select(CompanyDocument.id).where(
         CompanyDocument.extract_status == "pending", CompanyDocument.updated_at < cutoff).limit(limit))).scalars().all()
     for i in ids:

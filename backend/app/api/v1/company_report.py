@@ -1815,3 +1815,122 @@ async def purge_company(company_id: str, body: PurgeBody, current_user=Depends(g
         return await company_delete.purge(db, c, body.confirm_name, current_user.id)
     except company_delete.DeleteError as e:
         raise HTTPException(409, str(e))
+
+
+# --------------------------------------------------------------------------- 반기 보고서 (P4-5)
+
+class ReportCreate(BaseModel):
+    year: Optional[int] = Field(None, ge=2000, le=2100)
+    half: Optional[int] = Field(None, ge=1, le=2)
+
+
+def _report_brief(r, names: dict) -> dict:
+    from app.services.company_report.half_year import half_label
+
+    return {"id": r.id, "company_id": r.company_id, "period_year": r.period_year, "period_half": r.period_half,
+            "period_label": half_label(r.period_year, r.period_half), "version": r.version, "status": r.status,
+            "progress": r.progress, "progress_step": r.progress_step, "owner_user_id": r.owner_user_id,
+            "owner_name": names.get(r.owner_user_id or ""), "base_report_id": r.base_report_id, "error": r.error,
+            "as_of_date": r.as_of_date.isoformat() if r.as_of_date else None,
+            "created_at": r.created_at.isoformat() if r.created_at else None,
+            "updated_at": r.updated_at.isoformat() if r.updated_at else None,
+            "review_summary": (r.review or {}).get("summary")}
+
+
+async def _user_names(db: AsyncSession, ids) -> dict[str, str]:
+    from app.models.user import User
+
+    ids = [i for i in set(ids) if i]
+    if not ids:
+        return {}
+    return dict((await db.execute(select(User.id, User.nickname).where(User.id.in_(ids)))).all())
+
+
+async def _report_for(db: AsyncSession, user, report_id: str):
+    """보고서 읽기 권한: 그 기업을 볼 수 있어야 하고, 남이 고친 개인 버전은 본인·대표만."""
+    from app.core.permissions import is_owner
+    from app.models.company_report import CompanyReport
+
+    r = await db.get(CompanyReport, report_id)
+    if not r:
+        raise HTTPException(404, "보고서를 찾을 수 없습니다.")
+    await assert_company(db, user, r.company_id)
+    if r.owner_user_id and r.owner_user_id != user.id and not is_owner(user):
+        raise HTTPException(404, "보고서를 찾을 수 없습니다.")
+    return r
+
+
+@router.post("/companies/{company_id}/reports", status_code=202)
+async def create_half_year_report(company_id: str, body: ReportCreate, background: BackgroundTasks,
+                                  current_user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    """반기 보고서 자동 생성본을 새로 만든다(백그라운드 수 분). 반기를 안 주면 가장 최근에 끝난 반기.
+    그 기업을 목록에 둔 사람(매니저)과 대표가 만들 수 있다 — 승인 없이 매니저가 독립적으로 쓴다."""
+    from app.models.company_report import CompanyReport
+    from app.services.company_report import half_year
+
+    await assert_company(db, current_user, company_id)
+    if (body.year is None) != (body.half is None):
+        raise HTTPException(422, "연도와 반기를 함께 고르세요.")
+    year, half = (body.year, body.half) if body.year else half_year.latest_closed_half()
+    start, _ = half_year.half_range(year, half)
+    if start > today_kst():
+        raise HTTPException(422, "아직 시작하지 않은 반기입니다.")
+    running = (await db.execute(select(CompanyReport.id).where(
+        CompanyReport.company_id == company_id, CompanyReport.period_year == year, CompanyReport.period_half == half,
+        CompanyReport.owner_user_id.is_(None), CompanyReport.status == "generating",
+        CompanyReport.created_at > func.now() - timedelta(hours=2)))).first()  # created_at 은 DB 시계(server_default)
+    if running:
+        raise HTTPException(409, "이 반기 보고서를 이미 만들고 있습니다. 끝날 때까지 기다려 주세요.")
+    r = await half_year.create_report(db, company_id, year, half, current_user.id)
+    background.add_task(half_year.run_in_background, r.id)
+    return _report_brief(r, {})
+
+
+@router.get("/companies/{company_id}/reports")
+async def list_half_year_reports(company_id: str, current_user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    """이 기업의 보고서 버전 목록(최신 반기·최신 버전 먼저). 남이 고친 개인 버전은 본인·대표만 본다."""
+    from app.core.permissions import is_owner
+    from app.models.company_report import CompanyReport
+
+    await assert_company(db, current_user, company_id)
+    stmt = select(CompanyReport).where(CompanyReport.company_id == company_id)
+    if not is_owner(current_user):
+        stmt = stmt.where((CompanyReport.owner_user_id.is_(None)) | (CompanyReport.owner_user_id == current_user.id))
+    rows = (await db.execute(stmt.order_by(CompanyReport.period_year.desc(), CompanyReport.period_half.desc(),
+                                           CompanyReport.created_at.desc()))).scalars().all()
+    names = await _user_names(db, [r.owner_user_id for r in rows])
+    return [_report_brief(r, names) for r in rows]
+
+
+@router.get("/reports/{report_id}")
+async def get_half_year_report(report_id: str, current_user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    """보고서 본문·출처·검토 결과·이미지·영업 노트."""
+    from app.models.company_report import ReportImage
+
+    r = await _report_for(db, current_user, report_id)
+    imgs = (await db.execute(select(ReportImage).where(ReportImage.report_id == r.id).order_by(ReportImage.sort_order))).scalars().all()
+    names = await _user_names(db, [r.owner_user_id])
+    return {**_report_brief(r, names), "content": r.content, "sources": r.sources, "review": r.review,
+            "sales_note": r.sales_note, "token_usage": r.token_usage, "main_model": r.main_model, "review_model": r.review_model,
+            "images": [{"id": i.id, "section_no": i.section_no, "kind": i.kind, "caption": i.caption,
+                        "source_label": i.source_label, "rights_note": i.rights_note, "width": i.width, "height": i.height,
+                        "sort_order": i.sort_order, "selected": i.selected} for i in imgs]}
+
+
+@router.get("/report-images/{image_id}/file")
+async def report_image_file(image_id: str, current_user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    from fastapi.responses import Response
+
+    from app.models.company_report import ReportImage
+    from app.services.company_report import company_db, storage
+
+    im = await db.get(ReportImage, image_id)
+    if not im:
+        raise HTTPException(404, "그림을 찾을 수 없습니다.")
+    await _report_for(db, current_user, im.report_id)
+    try:
+        data = storage.read_bytes(im.storage_key)
+    except Exception:
+        raise HTTPException(404, "그림 파일이 없습니다.")
+    ext = im.storage_key.rsplit(".", 1)[-1].lower()
+    return Response(content=data, media_type=company_db.MIME.get(ext, "image/png"), headers={"Cache-Control": "private, max-age=3600"})
