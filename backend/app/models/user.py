@@ -2,6 +2,7 @@
 from datetime import datetime
 from typing import Optional, TYPE_CHECKING
 from sqlalchemy import String, Boolean, DateTime, ForeignKey
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.sql import func
 from app.db.base import Base
@@ -35,6 +36,8 @@ class User(Base):
     )
     # is_active=False 전환 시각 (퇴사 처리 이력)
     deactivated_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    # 사용 프로그램 (docs/login_logic P11): NULL = 전부, 목록 = 대표가 열어 준 프로그램만. 키는 app/core/programs.py
+    allowed_programs: Mapped[Optional[list]] = mapped_column(JSONB, nullable=True)
     last_login: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime, server_default=func.now(), nullable=False
@@ -60,3 +63,10 @@ class User(Base):
         "Client", back_populates="user", lazy="select"
     )
     # 은퇴 프로필은 이제 Client(고객)에 귀속 → Client.retirement_profile 참조
+
+    @property
+    def programs(self) -> list[str]:
+        """화면에 내려 줄 사용 가능 프로그램(대표·전부 허용이면 전체)."""
+        from app.core.programs import effective_list
+
+        return effective_list(self)

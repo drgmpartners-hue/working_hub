@@ -80,6 +80,10 @@ async def get_auth_context(
             raise _credentials_exception()
 
     ctx = AuthContext(actor=actor_user, effective=effective_user, token_exp=payload.get("exp"))
+    # 매니저별 사용 프로그램 (docs/login_logic P11): 열지 않은 프로그램 전용 API 는 403. 대행 중이면 대상 매니저 기준
+    from app.core.programs import check_path
+
+    check_path(effective_user, getattr(getattr(request, "url", None), "path", "") or "")
     # 감사 로그 미들웨어가 읽을 수 있도록 요청 상태에 남긴다.
     try:
         request.state.auth_ctx = ctx

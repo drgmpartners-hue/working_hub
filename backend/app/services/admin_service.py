@@ -47,6 +47,8 @@ def user_brief(u: User) -> dict[str, Any]:
         "last_login": u.last_login,
         "created_at": u.created_at,
         "deactivated_at": u.deactivated_at,
+        "allowed_programs": u.allowed_programs,  # None = 전부 (docs/login_logic P11)
+        "programs": u.programs,
     }
 
 

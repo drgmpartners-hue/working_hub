@@ -8,6 +8,8 @@
 import { useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
 import { adminApi, cell, fmtDateTime, headCell, type ManagerRow } from '../_lib/api';
+import { ProgramChecklist, programSummary } from '../_lib/ProgramChecklist';
+import { PROGRAM_KEYS } from '@/lib/programs';
 
 interface Issued {
   email: string;
@@ -27,6 +29,9 @@ export default function AdminManagersPage() {
   const [notice, setNotice] = useState<string | null>(null);
   const [issued, setIssued] = useState<Issued | null>(null);
   const [form, setForm] = useState({ email: '', nickname: '', phone: '' });
+  // 사용 프로그램 (docs/login_logic P11): 새 매니저는 대표가 열어 준 것만
+  const [newPrograms, setNewPrograms] = useState<string[]>([]);
+  const [progEdit, setProgEdit] = useState<{ m: ManagerRow; value: string[] } | null>(null);
   const [saving, setSaving] = useState(false);
   const [editing, setEditing] = useState<{ id: string; nickname: string; phone: string } | null>(null);
   // 퇴사 처리: 고객 일괄 이관 (지시서 9.4 — 이관 → 담당 고객 0명 확인 → 비활성화)
@@ -55,6 +60,16 @@ export default function AdminManagersPage() {
     }
   };
 
+  const savePrograms = async () => {
+    if (!progEdit) return;
+    const { m, value } = progEdit;
+    await run(async () => {
+      await adminApi(`/managers/${m.id}`, { method: 'PATCH', body: JSON.stringify({ allowed_programs: value }) });
+      setNotice(`${m.nickname}님의 사용 프로그램을 저장했습니다. 서버 권한은 바로 적용되고, 메뉴는 그 매니저가 새로고침하면 바뀝니다.`);
+      setProgEdit(null);
+    });
+  };
+
   const create = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!form.email.trim() || !form.nickname.trim()) {
@@ -65,10 +80,14 @@ export default function AdminManagersPage() {
     await run(async () => {
       const res = await adminApi<{ email: string; nickname: string; temp_password: string }>('/managers', {
         method: 'POST',
-        body: JSON.stringify({ email: form.email.trim(), nickname: form.nickname.trim(), phone: form.phone.trim() || null }),
+        body: JSON.stringify({
+          email: form.email.trim(), nickname: form.nickname.trim(), phone: form.phone.trim() || null,
+          allowed_programs: newPrograms,
+        }),
       });
       setIssued({ ...res, reason: 'created' });
       setForm({ email: '', nickname: '', phone: '' });
+      setNewPrograms([]);
     });
     setSaving(false);
   };
@@ -184,7 +203,28 @@ export default function AdminManagersPage() {
           <input style={input} placeholder="휴대폰 (선택)" value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} />
           <button className="wh-btn wh-btn-primary wh-btn-sm" type="submit" disabled={saving}>{saving ? '만드는 중...' : '계정 만들기'}</button>
         </div>
+        <div style={{ padding: '0 24px 18px' }}>
+          <ProgramChecklist value={newPrograms} onChange={setNewPrograms} />
+          <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 8 }}>
+            체크한 프로그램만 메뉴에 보이고 쓸 수 있습니다. 메인·대시보드·내 정보는 누구나 씁니다. 나중에 목록의 [프로그램]에서 바꿀 수 있습니다.
+          </div>
+        </div>
       </form>
+
+      {progEdit && (
+        <div className="dcard">
+          <div className="dcard-head">
+            <h4>사용 프로그램 · {progEdit.m.nickname}</h4>
+            <div style={{ display: 'flex', gap: 6 }}>
+              <button className="wh-btn wh-btn-primary wh-btn-sm" onClick={savePrograms}>저장</button>
+              <button className="wh-btn wh-btn-ghost wh-btn-sm" onClick={() => setProgEdit(null)}>닫기</button>
+            </div>
+          </div>
+          <div style={{ padding: '16px 24px' }}>
+            <ProgramChecklist value={progEdit.value} onChange={(v) => setProgEdit({ ...progEdit, value: v })} />
+          </div>
+        </div>
+      )}
 
       <div className="dcard">
         <div className="dcard-head"><h4>계정 목록</h4></div>
@@ -192,20 +232,20 @@ export default function AdminManagersPage() {
           <table style={{ width: '100%', borderCollapse: 'collapse' }}>
             <thead>
               <tr>
-                {['이름', '이메일', '휴대폰', '역할', '상태', '담당 고객', '최근 로그인', '만든 날', ''].map((h) => (
+                {['이름', '이메일', '휴대폰', '역할', '상태', '사용 프로그램', '담당 고객', '최근 로그인', '만든 날', ''].map((h) => (
                   <th key={h} style={headCell}>{h}</th>
                 ))}
               </tr>
             </thead>
             <tbody>
               {!rows ? (
-                <tr><td colSpan={9} style={{ ...cell, textAlign: 'center', color: 'var(--text-muted)', padding: 40 }}>불러오는 중...</td></tr>
+                <tr><td colSpan={10} style={{ ...cell, textAlign: 'center', color: 'var(--text-muted)', padding: 40 }}>불러오는 중...</td></tr>
               ) : rows.map((m) => {
                 const isEditing = editing?.id === m.id;
                 const isOwnerRow = m.role === 'owner';
                 return (
                   <tr key={m.id} style={{ opacity: m.is_active ? 1 : 0.6 }}>
-                    <td style={{ ...cell, fontWeight: 600 }}>
+                    <td style={{ ...cell, fontWeight: 600, whiteSpace: 'nowrap' }}>
                       {isEditing ? (
                         <input style={{ ...input, width: 140 }} value={editing.nickname} onChange={(e) => setEditing({ ...editing, nickname: e.target.value })} />
                       ) : (
@@ -221,6 +261,19 @@ export default function AdminManagersPage() {
                     <td style={cell}><span className={`wh-badge ${isOwnerRow ? 'info' : ''}`}>{isOwnerRow ? '대표' : '매니저'}</span></td>
                     <td style={cell}>
                       <span className={`wh-badge ${m.is_active ? 'pos' : 'neg'}`}>{m.is_active ? '활성' : '비활성'}</span>
+                    </td>
+                    <td style={{ ...cell, whiteSpace: 'nowrap' }}>
+                      {isOwnerRow ? (
+                        <span style={{ color: 'var(--text-muted)' }}>전체</span>
+                      ) : (
+                        <button
+                          className="wh-btn wh-btn-ghost wh-btn-sm"
+                          title="이 매니저가 쓸 수 있는 프로그램 고르기"
+                          onClick={() => setProgEdit({ m, value: m.allowed_programs ?? [...PROGRAM_KEYS] })}
+                        >
+                          {programSummary(m.allowed_programs, false)} ▾
+                        </button>
+                      )}
                     </td>
                     <td style={cell}>{m.stats.clients}</td>
                     <td style={{ ...cell, whiteSpace: 'nowrap', color: 'var(--text-secondary)' }}>{fmtDateTime(m.last_login)}</td>

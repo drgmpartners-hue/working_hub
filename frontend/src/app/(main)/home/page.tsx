@@ -8,6 +8,7 @@
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useAuthStore } from '@/stores/auth';
+import { canOpen } from '@/lib/programs';
 
 /* ---------- icons ---------- */
 const I = {
@@ -65,6 +66,7 @@ const STATS = [
 export default function HomePage() {
   const router = useRouter();
   const { user } = useAuthStore();
+  const myPrograms = PROGRAMS.filter((p) => canOpen(user, p.href)); // 대표가 열어 준 프로그램만 (P11)
   const name = user?.nickname || user?.email?.split('@')[0] || '';
 
   return (
@@ -147,10 +149,10 @@ export default function HomePage() {
         <div className="block-head">
           <span className="section-tag">Programs</span>
           <h2>업무 프로그램</h2>
-          <p>9개의 업무 프로그램이 하나의 워크스페이스로 연결됩니다. 카드를 선택해 바로 진입하세요.</p>
+          <p>{myPrograms.length}개의 업무 프로그램이 하나의 워크스페이스로 연결됩니다. 카드를 선택해 바로 진입하세요.</p>
         </div>
         <div className="lp-grid c3">
-          {PROGRAMS.map((p) => (
+          {myPrograms.map((p) => (
             <Link className="lp-prog" key={p.t} href={p.href}>
               <span className="pic">{p.ic}</span>
               <span><b>{p.t}</b><small>{p.d}</small></span>

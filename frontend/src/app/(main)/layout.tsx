@@ -12,6 +12,7 @@ import { ProtectedRoute } from '@/components/ProtectedRoute';
 import { AuthFetchGuard } from '@/components/AuthFetchGuard';
 import { TopNav } from '@/components/common/TopNav';
 import { ImpersonationBanner } from '@/components/common/ImpersonationBanner';
+import { ProgramGuard } from '@/components/common/ProgramGuard';
 
 interface MainLayoutProps {
   children: React.ReactNode;
@@ -33,10 +34,10 @@ export default function MainLayout({ children }: MainLayoutProps) {
 
         {/* Page content — 전 페이지 다크(.wh), 전 메뉴 동일 1600px 컨테이너 */}
         {isHome ? (
-          <main className="wh">{children}</main>
+          <main className="wh"><ProgramGuard>{children}</ProgramGuard></main>
         ) : (
           <main className="wh" style={{ maxWidth: 'var(--wh-maxw)', margin: '0 auto', padding: '24px 40px' }}>
-            {children}
+            <ProgramGuard>{children}</ProgramGuard>
           </main>
         )}
       </div>

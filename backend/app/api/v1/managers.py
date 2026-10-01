@@ -15,6 +15,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.deps import Auth
 from app.core.permissions import MANAGER, forbid_while_impersonating, is_owner, require_owner
+from app.core import programs
 from app.core.security import get_password_hash
 from app.db.session import get_db
 from app.models.client import Client
@@ -28,12 +29,15 @@ class ManagerCreate(BaseModel):
     email: EmailStr
     nickname: str = Field(..., min_length=1, max_length=50)
     phone: Optional[str] = Field(None, max_length=20)
+    # 사용 프로그램 (docs/login_logic P11): 대표가 열어 준 것만. 키는 app/core/programs.py
+    allowed_programs: list[str] = []
 
 
 class ManagerUpdate(BaseModel):
     nickname: Optional[str] = Field(None, min_length=1, max_length=50)
     phone: Optional[str] = Field(None, max_length=20)
     is_active: Optional[bool] = None
+    allowed_programs: Optional[list[str]] = None  # null 을 보내면 '전부 허용'
 
 
 def _temp_password() -> str:
@@ -46,6 +50,13 @@ async def _get_user_or_404(db: AsyncSession, user_id: str) -> User:
     if user is None:
         raise HTTPException(status_code=404, detail="계정을 찾을 수 없습니다.")
     return user
+
+
+@router.get("/programs")
+async def list_programs(ctx: Auth):
+    """고를 수 있는 프로그램 목록(관리 화면 체크박스용)."""
+    require_owner(ctx.effective)
+    return [{"key": k, "label": n, "group": g} for k, n, g in programs.PROGRAMS]
 
 
 @router.get("")
@@ -72,6 +83,7 @@ async def create_manager(body: ManagerCreate, ctx: Auth, db: AsyncSession = Depe
         is_active=True,
         role=MANAGER,
         created_by_user_id=ctx.actor.id,
+        allowed_programs=programs.normalize(body.allowed_programs),
     )
     db.add(user)
     await db.commit()
@@ -111,6 +123,10 @@ async def update_manager(user_id: str, body: ManagerUpdate, ctx: Auth, db: Async
         user.nickname = data["nickname"].strip()
     if "phone" in data:
         user.phone = (data["phone"] or "").strip() or None
+    if "allowed_programs" in data:
+        if is_owner(user):
+            raise HTTPException(status_code=400, detail="대표 계정은 모든 프로그램을 씁니다.")
+        user.allowed_programs = programs.normalize(data["allowed_programs"])
 
     await db.commit()
     await db.refresh(user)

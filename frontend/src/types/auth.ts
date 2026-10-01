@@ -11,6 +11,8 @@ export interface User {
   is_active: boolean;
   /** 역할 — 판정은 서버(app/core/permissions.py)가 한다. 화면은 메뉴 표시용으로만 쓴다. */
   role: 'owner' | 'manager';
+  /** 사용 가능 프로그램 키 (docs/login_logic P11, lib/programs.ts) */
+  programs?: string[];
   created_at: string;
   updated_at: string;
 }

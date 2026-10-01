@@ -3,6 +3,7 @@
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { useAuthStore } from '@/stores/auth';
+import { canOpen } from '@/lib/programs';
 
 /* ------------------------------------------------------------------ */
 /*  Nav model — 실제 라우트 기반                                          */
@@ -113,7 +114,10 @@ export function TopNav() {
 
   const isActive = (g: NavGroup) => g.match.some((m) => pathname === m || pathname.startsWith(m + '/'));
   const isOwner = user?.role === 'owner';
-  const navGroups = NAV.filter((g) => !g.ownerOnly || isOwner);
+  // 매니저는 대표가 열어 준 프로그램만 메뉴에 보인다 (docs/login_logic P11)
+  const navGroups = NAV.filter((g) => !g.ownerOnly || isOwner)
+    .map((g) => (g.items ? { ...g, items: g.items.filter((it) => canOpen(user, it.href)) } : g))
+    .filter((g) => !g.items || g.items.length > 0);
 
   const displayName = user?.nickname || user?.email || 'User';
   const initials = displayName.slice(0, 2).toUpperCase();

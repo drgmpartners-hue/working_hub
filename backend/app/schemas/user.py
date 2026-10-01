@@ -25,6 +25,7 @@ class UserResponse(UserBase):
     phone: Optional[str] = None
     is_active: bool
     role: str = "manager"  # "owner" | "manager" (is_superuser 는 계속 비노출)
+    programs: list[str] = []  # 사용 가능 프로그램 (docs/login_logic P11)
     created_at: datetime
     updated_at: datetime
 

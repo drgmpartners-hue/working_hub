@@ -23,6 +23,9 @@ export interface ManagerRow {
   last_login: string | null;
   created_at: string;
   deactivated_at: string | null;
+  /** 사용 프로그램 (docs/login_logic P11): null = 전부 */
+  allowed_programs?: string[] | null;
+  programs?: string[];
   stats: ManagerStats;
 }
 
