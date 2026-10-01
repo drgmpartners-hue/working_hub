@@ -21,7 +21,7 @@ from app.schemas.company_report import (
     CandidateSearchRequest, CompanyCreate, CompanyOut, CompanyUpdate, KeywordSet,
     KeywordSuggestRequest, PreviewRequest,
 )
-from app.services.company_report import company_finder, search
+from app.services.company_report import company_finder, cron_status, search
 from app.services.company_report import visibility as vis
 from app.services.company_report.visibility import View, assert_company, get_view
 from app.services.company_report.timeutil import now_kst, today_kst
@@ -1173,6 +1173,7 @@ async def _settings_out(db: AsyncSession, user=None) -> dict:
         "models": await crcfg.get_models(db),
         "last_run_at": await settings_store.get(db, crcfg.LAST_RUN_AT),
         "last_send_at": await settings_store.get(db, crcfg.LAST_SEND_AT),
+        "cron": await cron_status.report(db),
         "keys": keys,
         "send_logs": [{
             "briefing_type": l.briefing_type, "briefing_id": l.briefing_id, "phone": l.phone[:3] + "****" + l.phone[-4:],

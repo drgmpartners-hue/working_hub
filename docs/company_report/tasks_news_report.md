@@ -62,6 +62,7 @@
 - [x] **P1-F2** [BE] 발송·멱등성(`status=sent`), LMS 대체, `briefing_send_logs`, 승인 모드(`news_briefing_review_until`), 승인 API는 `is_superuser`만
 - [x] **P1-F3** [BE] 수신자 API(직원 2~5명 선택), 테스트 발송(나에게)
 - [ ] **P1-F4** [OPS] `scripts/run_news_briefing.py` (`daily-build`, `send`, `collect`) + Railway Cron 2개 (`0 22 * * 0-4`, `30 23 * * 0-4`)
+  - 2026-10-01: 발송 설정 탭에 **자동 실행 상태(Railway Cron)** 카드 추가 — 배치가 돌 때마다 `cr_cron_last:<명령>` 기록, 예정 시각과 비교해 정상/멈춤 의심/실패/기록 없음 표시(`services/company_report/cron_status.py`). 화면 [지금 만들기]·[지금 발송]은 기록 안 함. 세 서비스(briefing-build·briefing-send·briefing-monthly)가 '정상'이 되면 체크
   - 진행: 스크립트 완료(`backend/scripts/run_news_briefing.py`, `summarize` 추가). Railway Cron 서비스 등록은 [수동]
 - [ ] **P1-F5** [수동] 시범 운영 7일(승인 모드), 매일 브리핑 품질 확인
 

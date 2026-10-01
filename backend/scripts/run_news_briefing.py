@@ -57,7 +57,27 @@ async def main() -> int:
     p.add_argument("--month")
     a = p.parse_args()
     day = date.fromisoformat(a.date) if a.date else None
+    try:
+        await _run(a, day)
+    except Exception as e:
+        await _record(a.cmd, False, f"{type(e).__name__}: {e}")
+        raise
+    await _record(a.cmd, True)
+    return 0
 
+
+async def _record(cmd: str, ok: bool, note: str = "") -> None:
+    """발송 설정 탭 '자동 실행 상태'용 기록(실패해도 배치 결과에는 영향 없음)."""
+    try:
+        from app.services.company_report import cron_status
+
+        async with AsyncSessionLocal() as db:
+            await cron_status.record(db, cmd, ok, note)
+    except Exception as e:
+        print(f"[cron-status] 기록 실패: {e}", flush=True)
+
+
+async def _run(a, day) -> None:
     async with AsyncSessionLocal() as db:
         if a.cmd == "daily-build":
             _print("daily-build", await daily.build_daily(db, day, collect=not a.no_collect, force=a.force))
@@ -105,7 +125,6 @@ async def main() -> int:
         from app.services.company_report import usage
 
         await usage.flush(db)  # AI 사용량 기록
-    return 0
 
 
 if __name__ == "__main__":

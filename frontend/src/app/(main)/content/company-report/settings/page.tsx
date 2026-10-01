@@ -17,6 +17,7 @@ import { crGet, crPost, crPut } from '@/lib/companyReportApi';
 import { useCrMe } from '@/lib/useCrMe';
 import { AdminCard } from '@/components/company-report/AdminCard';
 import { RecipientsCard } from '@/components/company-report/RecipientsCard';
+import { CronStatusCard, type CronJob } from '@/components/company-report/CronStatusCard';
 import { isManagerView, useViewAs } from '@/lib/crViewAs';
 import { useAuthStore } from '@/stores/auth';
 import {
@@ -46,6 +47,7 @@ interface Settings {
   models: { main: string; writer?: string; review: string; summary: string };
   last_run_at: string | null;
   last_send_at: string | null;
+  cron?: CronJob[];
   keys: Record<string, boolean>;
   send_logs: {
     briefing_type: string;
@@ -298,6 +300,8 @@ export default function SettingsPage() {
           </div>
         </div>
       </Card>
+
+      <CronStatusCard jobs={s.cron} />
 
       <RecipientsCard admin={admin || managerView} mine={role !== 'owner'} />
 
