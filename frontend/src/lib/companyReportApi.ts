@@ -85,6 +85,40 @@ export async function crDownload(path: string, fallbackName = 'download') {
   setTimeout(() => URL.revokeObjectURL(url), 5000);
 }
 
+/** POST 로 파일 받기(일괄 zip 등). */
+export async function crDownloadPost(path: string, body: unknown, fallbackName = 'download') {
+  const token = authLib.getToken();
+  const res = await fetch(`${CR_BASE}${path}`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      ...viewAsHeader(),
+    },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) {
+    let detail = `요청 실패 (${res.status})`;
+    try {
+      const b = await res.json();
+      if (b?.detail) detail = String(b.detail);
+    } catch {
+      /* 본문 없음 */
+    }
+    throw new ApiError(res.status, detail);
+  }
+  const cd = res.headers.get('Content-Disposition') || '';
+  const m = cd.match(/filename\*=UTF-8''([^;]+)/);
+  const url = URL.createObjectURL(await res.blob());
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = m ? decodeURIComponent(m[1]) : fallbackName;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 5000);
+}
+
 export async function crUpload<T>(path: string, form: FormData): Promise<T> {
   return crFetch<T>(path, { method: 'POST', body: form });
 }

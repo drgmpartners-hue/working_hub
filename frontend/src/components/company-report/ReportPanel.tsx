@@ -1,9 +1,11 @@
 'use client';
 
 /**
- * 기업 상세 > 반기 보고서 (기획 6장, P4-5 화면 1차).
+ * 기업 상세 > 반기 보고서 (기획 6장, P4-5·P4-7·P4-9·P4-10).
  * [보고서 만들기] → 진행 상황 → 본문(한 장 요약·10개 항목·부록), 문장별 출처 번호, 검토에서 '확인 필요'로 남은 문장,
- * 그림(차트·자료 그림), 영업 대화 노트(내부용). 편집·버전 비교·PDF/DOCX 출력·고객 발송은 다음 단계(P4-7·9·10).
+ * 그림(차트·자료 그림), 영업 대화 노트(내부용).
+ * [고치기]: 문장·표 행 고치기/지우기/'확인함', 그림 넣기/빼기·설명. 공용본이나 검토 완료본을 고치면 '내 버전'이 새로 생긴다.
+ * [검토 완료] → PDF·DOCX(고객용 포함) 출력, 고객에게 카톡 링크 발송. 대표 승인 절차는 없다(2026-10-01 결정).
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Card } from '@/components/common/Card';
@@ -15,7 +17,9 @@ import {
   inputStyle,
   mutedText,
 } from '@/components/company-report/ui';
-import { crBlob, crGet, crPost } from '@/lib/companyReportApi';
+import { DocRequestPanel } from '@/components/company-report/DocRequestPanel';
+import { ReportSendDialog } from '@/components/company-report/ReportSendDialog';
+import { crBlob, crDownload, crGet, crPatch, crPost } from '@/lib/companyReportApi';
 
 interface Sent {
   id: string;
@@ -25,6 +29,8 @@ interface Sent {
   date?: string;
   disputed?: boolean;
   review_note?: string;
+  edited?: boolean;
+  resolved?: boolean;
 }
 interface Row {
   id: string;
@@ -33,6 +39,7 @@ interface Row {
   note?: string;
   disputed?: boolean;
   review_note?: string;
+  edited?: boolean;
 }
 type Block =
   | { type: 'para'; items: Sent[] }
@@ -59,6 +66,7 @@ interface Img {
   source_label: string | null;
   rights_note: string | null;
   selected: boolean;
+  sort_order?: number;
 }
 interface Brief {
   id: string;
@@ -119,6 +127,28 @@ interface Full extends Brief {
   } | null;
   sales_note: { key_messages: string[]; qa: { q: string; a: string }[]; careful: string[] } | null;
   images: Img[];
+  mine?: boolean;
+  disputed_count?: number;
+  finalized_by_name?: string | null;
+  finalized_at?: string | null;
+}
+
+interface ItemBody {
+  text?: string;
+  cells?: string[];
+  delete?: boolean;
+  resolve?: boolean;
+}
+interface ImageBody {
+  selected?: boolean;
+  caption?: string;
+  section_no?: number;
+}
+/** 편집 모드일 때만 내려온다. */
+interface EditApi {
+  item: (id: string, body: ItemBody) => Promise<void>;
+  image: (id: string, body: ImageBody) => Promise<void>;
+  busy: boolean;
 }
 
 const STAGES = ['개발', '출시', '매출 발생', '흑자', '상장 준비', '상장'];
@@ -172,7 +202,46 @@ const disputedStyle: React.CSSProperties = {
   padding: '0 3px',
 };
 
-function SentText({ s, sources }: { s: Sent; sources: Record<string, Source> }) {
+const miniBtn: React.CSSProperties = {
+  fontSize: 11,
+  padding: '0 6px',
+  marginLeft: 3,
+  border: '1px solid var(--border)',
+  borderRadius: 4,
+  background: 'transparent',
+  color: 'var(--text-secondary)',
+  cursor: 'pointer',
+  lineHeight: '18px',
+};
+
+function SentText({ s, sources, edit }: { s: Sent; sources: Record<string, Source>; edit?: EditApi }) {
+  const [draft, setDraft] = useState<string | null>(null);
+  if (edit && draft !== null) {
+    return (
+      <span style={{ display: 'inline-flex', flexDirection: 'column', width: '100%', gap: 4, margin: '4px 0' }}>
+        <textarea
+          aria-label="문장 고치기"
+          value={draft}
+          onChange={(e) => setDraft(e.target.value)}
+          rows={Math.min(6, Math.max(2, Math.ceil(draft.length / 60)))}
+          style={{ ...inputStyle, fontSize: 13 }}
+        />
+        <span>
+          <button
+            type="button"
+            className="wh-btn wh-btn-primary wh-btn-sm"
+            disabled={edit.busy || !draft.trim()}
+            onClick={() => void edit.item(s.id, { text: draft }).then(() => setDraft(null))}
+          >
+            저장
+          </button>{' '}
+          <button type="button" className="wh-btn wh-btn-ghost wh-btn-sm" onClick={() => setDraft(null)}>
+            취소
+          </button>
+        </span>
+      </span>
+    );
+  }
   return (
     <span
       style={s.disputed ? disputedStyle : undefined}
@@ -185,7 +254,67 @@ function SentText({ s, sources }: { s: Sent; sources: Record<string, Source> }) 
       )}
       {s.text}
       <Cite ids={s.source_ids} sources={sources} />
+      {edit && s.edited && (
+        <span style={{ fontSize: 10, color: 'var(--text-muted)', marginLeft: 3 }}>(수정)</span>
+      )}
+      {edit && (
+        <span className="wh-no-print">
+          <button type="button" style={miniBtn} disabled={edit.busy} onClick={() => setDraft(s.text)}>
+            고치기
+          </button>
+          {s.disputed && (
+            <button
+              type="button"
+              style={miniBtn}
+              disabled={edit.busy}
+              title="출처를 확인했고 이대로 둡니다"
+              onClick={() => void edit.item(s.id, { resolve: true })}
+            >
+              확인함
+            </button>
+          )}
+          <button
+            type="button"
+            style={{ ...miniBtn, color: 'var(--danger)' }}
+            disabled={edit.busy}
+            onClick={() => window.confirm('이 문장을 지울까요?') && void edit.item(s.id, { delete: true })}
+          >
+            삭제
+          </button>
+        </span>
+      )}
     </span>
+  );
+}
+
+function RowEditor({ row, edit, onDone }: { row: Row; edit: EditApi; onDone: () => void }) {
+  const [cells, setCells] = useState(row.cells);
+  return (
+    <tr>
+      {cells.map((c, i) => (
+        <td key={i} style={{ padding: 4 }}>
+          <input
+            aria-label={`칸 ${i + 1}`}
+            value={c}
+            onChange={(e) => setCells(cells.map((x, k) => (k === i ? e.target.value : x)))}
+            style={{ ...inputStyle, padding: '4px 6px', fontSize: 13 }}
+          />
+        </td>
+      ))}
+      <td style={{ padding: 4, whiteSpace: 'nowrap' }}>
+        <button
+          type="button"
+          className="wh-btn wh-btn-primary wh-btn-sm"
+          disabled={edit.busy}
+          onClick={() => void edit.item(row.id, { cells }).then(onDone)}
+        >
+          저장
+        </button>{' '}
+        <button type="button" className="wh-btn wh-btn-ghost wh-btn-sm" onClick={onDone}>
+          취소
+        </button>
+      </td>
+    </tr>
   );
 }
 
@@ -238,11 +367,75 @@ function Figure({ im, url }: { im: Img; url?: string }) {
   );
 }
 
-function ReportView({ r }: { r: Full }) {
+function ImagesManager({ r, edit, urls }: { r: Full; edit: EditApi; urls: Record<string, string> }) {
+  const n = r.images.filter((i) => i.selected).length;
+  return (
+    <Card padding={20}>
+      <SectionTitle>
+        그림 고르기{' '}
+        <span className={`wh-badge ${n >= 2 && n <= 10 ? 'pos' : 'warn'}`} style={{ marginLeft: 6 }}>
+          {n}개 넣음 (2~10개)
+        </span>
+      </SectionTitle>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: 12 }}>
+        {r.images.map((im) => (
+          <div
+            key={im.id}
+            style={{
+              border: `1px solid ${im.selected ? 'var(--accent, #3b82f6)' : 'var(--border)'}`,
+              borderRadius: 8,
+              padding: 8,
+              opacity: im.selected ? 1 : 0.7,
+            }}
+          >
+            {urls[im.id] ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img src={urls[im.id]} alt={im.caption || '그림'} style={{ width: '100%', height: 110, objectFit: 'contain', background: '#fff' }} />
+            ) : (
+              <Spinner />
+            )}
+            <label style={{ display: 'flex', gap: 6, alignItems: 'center', fontSize: 12, marginTop: 6 }}>
+              <input
+                type="checkbox"
+                checked={im.selected}
+                disabled={edit.busy}
+                onChange={(e) => void edit.image(im.id, { selected: e.target.checked })}
+              />
+              보고서에 넣기 · {im.kind === 'chart' ? '차트' : '자료 그림'}
+            </label>
+            <select
+              aria-label="넣을 항목"
+              value={im.section_no || 1}
+              disabled={edit.busy}
+              onChange={(e) => void edit.image(im.id, { section_no: Number(e.target.value) })}
+              style={{ ...inputStyle, padding: '2px 6px', fontSize: 12, marginTop: 4 }}
+            >
+              {Array.from({ length: 10 }, (_, k) => k + 1).map((no) => (
+                <option key={no} value={no}>
+                  {no}번 항목
+                </option>
+              ))}
+            </select>
+            <input
+              aria-label="그림 설명"
+              defaultValue={im.caption || ''}
+              placeholder="그림 설명"
+              onBlur={(e) => e.target.value !== (im.caption || '') && void edit.image(im.id, { caption: e.target.value })}
+              style={{ ...inputStyle, padding: '2px 6px', fontSize: 12, marginTop: 4 }}
+            />
+          </div>
+        ))}
+      </div>
+    </Card>
+  );
+}
+
+function ReportView({ r, edit }: { r: Full; edit?: EditApi }) {
   const c = r.content!;
+  const [editRow, setEditRow] = useState<string | null>(null);
   const sources = r.sources || {};
   const selected = r.images.filter((i) => i.selected);
-  const urls = useImageUrls(selected);
+  const urls = useImageUrls(edit ? r.images : selected);
   const imgsBy = useMemo(() => {
     const m: Record<number, Img[]> = {};
     selected.forEach((i) => {
@@ -303,7 +496,7 @@ function ReportView({ r }: { r: Full }) {
           <ul style={{ margin: 0, paddingLeft: 18, lineHeight: 1.8 }}>
             {c.summary.three_lines.map((s) => (
               <li key={s.id}>
-                <SentText s={s} sources={sources} />
+                <SentText s={s} sources={sources} edit={edit} />
               </li>
             ))}
           </ul>
@@ -315,7 +508,7 @@ function ReportView({ r }: { r: Full }) {
               <ul style={{ margin: 0, paddingLeft: 18, lineHeight: 1.8 }}>
                 {c.summary.changes.map((s) => (
                   <li key={s.id}>
-                    <SentText s={s} sources={sources} />
+                    <SentText s={s} sources={sources} edit={edit} />
                   </li>
                 ))}
               </ul>
@@ -336,7 +529,7 @@ function ReportView({ r }: { r: Full }) {
               </div>
               {c.summary.stage_note && (
                 <div style={{ fontSize: 13, marginTop: 6 }}>
-                  <SentText s={c.summary.stage_note} sources={sources} />
+                  <SentText s={c.summary.stage_note} sources={sources} edit={edit} />
                 </div>
               )}
             </div>
@@ -357,7 +550,7 @@ function ReportView({ r }: { r: Full }) {
               <p key={bi} style={{ margin: '0 0 10px', lineHeight: 1.85, fontSize: 14 }}>
                 {blk.items.map((s) => (
                   <span key={s.id}>
-                    <SentText s={s} sources={sources} />{' '}
+                    <SentText s={s} sources={sources} edit={edit} />{' '}
                   </span>
                 ))}
               </p>
@@ -369,7 +562,7 @@ function ReportView({ r }: { r: Full }) {
                 {blk.items.map((s) => (
                   <li key={s.id}>
                     <b style={{ marginRight: 6, color: 'var(--text-muted)' }}>{s.date}</b>
-                    <SentText s={s} sources={sources} />
+                    <SentText s={s} sources={sources} edit={edit} />
                   </li>
                 ))}
               </ul>
@@ -383,25 +576,55 @@ function ReportView({ r }: { r: Full }) {
                           {col}
                         </th>
                       ))}
+                      {edit && <th style={th} />}
                     </tr>
                   </thead>
                   <tbody>
-                    {blk.rows.map((row) => (
-                      <tr
-                        key={row.id}
-                        style={row.disputed ? { background: 'var(--warning-bg)' } : undefined}
-                        title={row.review_note || undefined}
-                      >
-                        {row.cells.map((cell, ci) => (
-                          <td key={ci} style={td}>
-                            {cell}
-                            {ci === row.cells.length - 1 && (
-                              <Cite ids={row.source_ids} sources={sources} />
-                            )}
-                          </td>
-                        ))}
-                      </tr>
-                    ))}
+                    {blk.rows.map((row) =>
+                      edit && editRow === row.id ? (
+                        <RowEditor key={row.id} row={row} edit={edit} onDone={() => setEditRow(null)} />
+                      ) : (
+                        <tr
+                          key={row.id}
+                          style={row.disputed ? { background: 'var(--warning-bg)' } : undefined}
+                          title={row.review_note || undefined}
+                        >
+                          {row.cells.map((cell, ci) => (
+                            <td key={ci} style={td}>
+                              {cell}
+                              {ci === row.cells.length - 1 && (
+                                <Cite ids={row.source_ids} sources={sources} />
+                              )}
+                            </td>
+                          ))}
+                          {edit && (
+                            <td style={{ ...td, whiteSpace: 'nowrap' }}>
+                              <button type="button" style={miniBtn} disabled={edit.busy} onClick={() => setEditRow(row.id)}>
+                                고치기
+                              </button>
+                              {row.disputed && (
+                                <button
+                                  type="button"
+                                  style={miniBtn}
+                                  disabled={edit.busy}
+                                  onClick={() => void edit.item(row.id, { resolve: true })}
+                                >
+                                  확인함
+                                </button>
+                              )}
+                              <button
+                                type="button"
+                                style={{ ...miniBtn, color: 'var(--danger)' }}
+                                disabled={edit.busy}
+                                onClick={() => window.confirm('이 행을 지울까요?') && void edit.item(row.id, { delete: true })}
+                              >
+                                삭제
+                              </button>
+                            </td>
+                          )}
+                        </tr>
+                      ),
+                    )}
                   </tbody>
                 </table>
                 {blk.rows.some((x) => x.note) && (
@@ -420,6 +643,8 @@ function ReportView({ r }: { r: Full }) {
           ))}
         </Card>
       ))}
+
+      {edit && r.images.length > 0 && <ImagesManager r={r} edit={edit} urls={urls} />}
 
       <Card padding={20}>
         <SectionTitle>부록</SectionTitle>
@@ -575,6 +800,10 @@ export function ReportPanel({ companyId }: { companyId: string }) {
   const options = useMemo(halves, []);
   const [pick, setPick] = useState(`${options[0].year}-${options[0].half}`);
   const reload = useCallback(() => setTick((t) => t + 1), []);
+  const [editing, setEditing] = useState(false);
+  const [ebusy, setEbusy] = useState(false);
+  const [notice, setNotice] = useState<string | null>(null);
+  const [dialog, setDialog] = useState<'send' | 'export' | null>(null);
 
   useEffect(() => {
     let alive = true;
@@ -610,6 +839,59 @@ export function ReportPanel({ companyId }: { companyId: string }) {
     return () => clearTimeout(t);
   }, [generating, list, reload]);
 
+  // 고친 결과가 새 버전(내 버전)이면 그 버전으로 옮겨 간다
+  const applyNew = (r: Full) => {
+    setFull(r);
+    if (r.id !== selId) {
+      setSelId(r.id);
+      setNotice(
+        r.version > 1 && r.mine
+          ? `검토 완료본을 고쳐 새 버전(v${r.version})을 만들었습니다.`
+          : '내 버전을 만들어 고쳤습니다. 공용 자동 생성본은 그대로 남습니다.',
+      );
+      reload();
+    }
+  };
+  const run = async (fn: () => Promise<void>) => {
+    setEbusy(true);
+    setError(null);
+    try {
+      await fn();
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setEbusy(false);
+    }
+  };
+  const editApi: EditApi | undefined =
+    editing && full
+      ? {
+          busy: ebusy,
+          item: (id, body) =>
+            run(async () => applyNew(await crPatch<Full>(`/reports/${full.id}/items/${id}`, body))),
+          image: (id, body) =>
+            run(async () => applyNew(await crPatch<Full>(`/reports/${full.id}/images/${id}`, body))),
+        }
+      : undefined;
+  const finalize = () => {
+    if (!full) return;
+    const n = full.disputed_count || 0;
+    const msg = n
+      ? `확인 필요(노란색) 문장이 ${n}개 남아 있습니다. 그래도 검토 완료할까요?`
+      : '검토 완료할까요? 완료하면 고객에게 보낼 수 있습니다(이후 고치면 새 버전이 생깁니다).';
+    if (!window.confirm(msg)) return;
+    void run(async () => {
+      const res = await crPost<{ report: Full; warnings: { disputed: number; images: number; image_warning: string | null } }>(
+        `/reports/${full.id}/finalize`,
+      );
+      setEditing(false);
+      applyNew(res.report);
+      setNotice(`검토 완료했습니다(v${res.report.version}).${res.warnings.image_warning ? ' ' + res.warnings.image_warning : ''}`);
+    });
+  };
+  const download = (fmt: 'pdf' | 'docx') =>
+    full && void run(() => crDownload(`/reports/${full.id}/export?format=${fmt}`, `보고서.${fmt}`));
+
   const create = async () => {
     const [year, half] = pick.split('-').map(Number);
     if (
@@ -631,8 +913,10 @@ export function ReportPanel({ companyId }: { companyId: string }) {
     }
   };
 
+  const ready = !!(full && full.id === selId && full.content && sel && sel.status !== 'generating');
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+      <DocRequestPanel companyId={companyId} />
       <Card padding={16}>
         <SectionTitle
           right={
@@ -701,7 +985,65 @@ export function ReportPanel({ companyId }: { companyId: string }) {
             )}
           </div>
         )}
+        {ready && full && (
+          <div
+            className="wh-no-print"
+            style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center', marginTop: 10, paddingTop: 10, borderTop: '1px solid var(--border-soft)' }}
+          >
+            <button
+              type="button"
+              className={`wh-btn wh-btn-sm ${editing ? 'wh-btn-primary' : 'wh-btn-ghost'}`}
+              onClick={() => setEditing((v) => !v)}
+            >
+              {editing ? '고치기 끝' : '고치기'}
+            </button>
+            {full.status === 'draft' && (
+              <button type="button" className="wh-btn wh-btn-ghost wh-btn-sm" disabled={ebusy} onClick={finalize}>
+                검토 완료
+              </button>
+            )}
+            <span style={{ width: 1, height: 18, background: 'var(--border)', margin: '0 4px' }} />
+            <button type="button" className="wh-btn wh-btn-ghost wh-btn-sm" disabled={ebusy} onClick={() => download('pdf')}>
+              PDF
+            </button>
+            <button type="button" className="wh-btn wh-btn-ghost wh-btn-sm" disabled={ebusy} onClick={() => download('docx')}>
+              DOCX
+            </button>
+            <button type="button" className="wh-btn wh-btn-ghost wh-btn-sm" disabled={ebusy} onClick={() => setDialog('export')}>
+              고객용 출력
+            </button>
+            <button
+              type="button"
+              className="wh-btn wh-btn-primary wh-btn-sm"
+              disabled={ebusy || full.status !== 'final' || !full.mine}
+              title={full.status !== 'final' ? '검토 완료한 보고서만 보낼 수 있습니다' : undefined}
+              onClick={() => setDialog('send')}
+            >
+              고객에게 보내기
+            </button>
+            <span style={{ ...mutedText, fontSize: 12, marginLeft: 4 }}>
+              {full.status === 'final'
+                ? `검토 완료 ${full.finalized_by_name ? `(${full.finalized_by_name}, ${fmtDate(full.finalized_at ?? null, true)})` : ''} — 고치면 새 버전이 생깁니다`
+                : full.mine
+                  ? `내 버전(검토 중)${full.disputed_count ? ` · 확인 필요 ${full.disputed_count}개` : ''}`
+                  : `공용 자동 생성본 — 고치거나 검토 완료하면 내 버전이 생깁니다${full.disputed_count ? ` · 확인 필요 ${full.disputed_count}개` : ''}`}
+            </span>
+          </div>
+        )}
+        {notice && (
+          <div role="status" style={{ marginTop: 8, fontSize: 13, color: 'var(--success)' }}>
+            {notice}
+          </div>
+        )}
       </Card>
+      {dialog && full && (
+        <ReportSendDialog
+          reportId={full.id}
+          mode={dialog}
+          title={`${full.content?.cover.company || ''} ${full.period_label} v${full.version}`}
+          onClose={() => setDialog(null)}
+        />
+      )}
 
       {list === null ? (
         <Spinner />
@@ -742,7 +1084,7 @@ export function ReportPanel({ companyId }: { companyId: string }) {
           </div>
         </Card>
       ) : full && full.id === selId && full.content ? (
-        <ReportView r={full} />
+        <ReportView r={full} edit={editApi} />
       ) : (
         <Spinner />
       )}

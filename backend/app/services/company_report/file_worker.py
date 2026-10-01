@@ -4,6 +4,7 @@ Railway Volume은 한 서비스에만 붙는다. Cron 서비스는 파일을 쓰
 'files_dirty_at'만 남기고, 웹 서비스의 이 루프가 30분마다 확인해 파일을 만든다.
 - 표시가 있거나 마지막 갱신 후 12시간이 지나면: 활성 기업 자동 파일 갱신
 - 발송된 데일리 브리핑 중 PDF가 없는 것(최근 30일)은 '_포트폴리오 공통'에 저장
+- 자료함 읽기 놓친 것, Cron 이 예약한 반기 보고서 작성(report_jobs.run_queued)
 """
 from __future__ import annotations
 
@@ -82,6 +83,14 @@ async def run_once(force: bool = False) -> dict:
         except Exception as e:
             await db.rollback()
             logger.warning("자료함 처리 실패: %s", e)
+        # 반기 보고서: Cron 이 예약해 둔 것을 몇 건씩 작성(그림·차트 저장은 Volume 이 있는 여기서만 가능)
+        try:
+            from app.services.company_report import report_jobs
+
+            out["reports"] = await report_jobs.run_queued(db)
+        except Exception as e:
+            await db.rollback()
+            logger.warning("예약 보고서 처리 실패: %s", e)
         return out
 
 

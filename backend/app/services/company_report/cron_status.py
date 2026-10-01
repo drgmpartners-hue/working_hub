@@ -20,7 +20,7 @@ from app.services.company_report.timeutil import now_kst
 KEY_PREFIX = "cr_cron_last:"
 GRACE = timedelta(minutes=40)  # 예정 시각 뒤 이만큼 지나도 기록이 없으면 '늦음'
 
-# (명령, 화면 이름, KST 시, 분, 평일만, Railway 서비스 이름, UTC cron)
+# (명령, 화면 이름, KST 시, 분, 평일만/특정 날짜(dates)/특정 요일(weekday, 월=0), Railway 서비스 이름, UTC cron)
 JOBS: list[dict] = [
     {"cmd": "daily-build", "label": "데일리 브리핑 작성", "hour": 7, "minute": 0, "weekdays_only": True,
      "service": "briefing-build", "cron_utc": "0 22 * * 0-4", "when": "평일 07:00"},
@@ -28,6 +28,16 @@ JOBS: list[dict] = [
      "service": "briefing-send", "cron_utc": "30 23 * * 0-4", "when": "평일 08:30"},
     {"cmd": "monthly", "label": "월간 브리핑 작성", "hour": 3, "minute": 0, "weekdays_only": False,
      "service": "briefing-monthly", "cron_utc": "0 18 * * *", "when": "매일 03:00 (1일에만 작성)"},
+    # 반기 보고서(P4-11). 드물게 도는 작업(rare)은 한 번도 안 돌았어도 첫 예정일 전이면 빨간불이 아니라 '첫 실행 대기'.
+    {"cmd": "half-year", "label": "반기 보고서 예약", "hour": 2, "minute": 0, "weekdays_only": False,
+     "dates": [(1, 31), (7, 31)], "rare": True,
+     "service": "report-half-year", "cron_utc": "0 17 30 1,7 *", "when": "1/31·7/31 02:00"},
+    {"cmd": "doc-requests", "label": "보고서 자료 요청 알림", "hour": 9, "minute": 0, "weekdays_only": False,
+     "dates": [(6, 30), (12, 30)], "rare": True,
+     "service": "report-doc-requests", "cron_utc": "0 0 30 6,12 *", "when": "6/30·12/30 09:00"},
+    {"cmd": "report-reminders", "label": "보고서 검토 알림", "hour": 9, "minute": 0, "weekdays_only": False,
+     "weekday": 0, "rare": True,
+     "service": "report-reminders", "cron_utc": "0 0 * * 1", "when": "매주 월 09:00"},
 ]
 TRACKED = {j["cmd"] for j in JOBS}
 
@@ -40,15 +50,33 @@ async def record(db: AsyncSession, cmd: str, ok: bool, note: str = "") -> None:
     await settings_store.set_value(db, KEY_PREFIX + cmd, json.dumps(payload, ensure_ascii=False))
 
 
+def _runs_on(job: dict, d) -> bool:
+    if job.get("dates"):
+        return (d.month, d.day) in job["dates"]
+    if job.get("weekday") is not None:
+        return d.weekday() == job["weekday"]
+    return not job["weekdays_only"] or d.weekday() < 5
+
+
 def last_expected(job: dict, now: datetime) -> Optional[datetime]:
     """now(KST) 기준, 이미 GRACE 까지 지났어야 하는 가장 최근 예정 시각."""
     cutoff = now - GRACE
     d = cutoff.date()
-    for _ in range(10):
+    for _ in range(370):
         t = datetime(d.year, d.month, d.day, job["hour"], job["minute"])
-        if t <= cutoff and (not job["weekdays_only"] or t.weekday() < 5):
+        if t <= cutoff and _runs_on(job, d):
             return t
         d -= timedelta(days=1)
+    return None
+
+
+def next_expected(job: dict, now: datetime) -> Optional[datetime]:
+    d = now.date()
+    for _ in range(370):
+        t = datetime(d.year, d.month, d.day, job["hour"], job["minute"])
+        if t > now and _runs_on(job, d):
+            return t
+        d += timedelta(days=1)
     return None
 
 
@@ -66,7 +94,8 @@ def _parse(raw: Optional[str]) -> Optional[dict]:
 def evaluate(job: dict, last: Optional[dict], now: datetime) -> dict:
     expected = last_expected(job, now)
     if last is None:
-        status = "never"
+        # 드문 작업은 배포 후 첫 예정일이 아직 안 왔을 수 있다 → 빨간불 대신 '첫 실행 대기'
+        status = "pending" if job.get("rare") else "never"
     elif not last.get("ok", True):
         status = "failed"
     elif expected and datetime.fromisoformat(last["at"]) < expected - timedelta(minutes=5):
@@ -80,6 +109,7 @@ def evaluate(job: dict, last: Optional[dict], now: datetime) -> dict:
         "last_at": last["at"] if last else None, "last_ok": last.get("ok") if last else None,
         "last_note": last.get("note") if last else None,
         "expected_at": expected.isoformat(timespec="minutes") if expected else None,
+        "next_at": (lambda n: n.isoformat(timespec="minutes") if n else None)(next_expected(job, now)),
         "status": status,
     }
 

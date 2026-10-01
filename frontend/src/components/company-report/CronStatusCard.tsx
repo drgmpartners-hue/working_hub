@@ -19,7 +19,8 @@ export interface CronJob {
   last_ok: boolean | null;
   last_note: string | null;
   expected_at: string | null;
-  status: 'ok' | 'late' | 'failed' | 'never';
+  next_at?: string | null;
+  status: 'ok' | 'late' | 'failed' | 'never' | 'pending';
 }
 
 const BADGE: Record<CronJob['status'], { text: string; color: string; bg: string }> = {
@@ -27,6 +28,7 @@ const BADGE: Record<CronJob['status'], { text: string; color: string; bg: string
   late: { text: '멈춤 의심', color: 'var(--warning)', bg: 'var(--warning-bg)' },
   failed: { text: '마지막 실행 실패', color: 'var(--danger)', bg: 'var(--danger-bg)' },
   never: { text: '실행 기록 없음', color: 'var(--danger)', bg: 'var(--danger-bg)' },
+  pending: { text: '첫 실행 대기', color: 'var(--text-muted)', bg: 'var(--bg-surface)' },
 };
 
 const code: React.CSSProperties = {
@@ -39,7 +41,9 @@ const code: React.CSSProperties = {
 
 export function CronStatusCard({ jobs }: { jobs?: CronJob[] | null }) {
   if (!Array.isArray(jobs) || jobs.length === 0) return null;
-  const bad = jobs.filter((j) => j.status !== 'ok');
+  // pending: 반기 보고서처럼 드물게 도는 작업이 배포 후 아직 한 번도 예정일을 맞지 않은 것 — 문제로 치지 않는다
+  const bad = jobs.filter((j) => j.status !== 'ok' && j.status !== 'pending');
+  const pending = jobs.filter((j) => j.status === 'pending');
   if (bad.length === 0) {
     // 모두 정상이면 한 줄만
     const last = jobs.map((j) => j.last_at).filter(Boolean).sort().pop();
@@ -55,9 +59,24 @@ export function CronStatusCard({ jobs }: { jobs?: CronJob[] | null }) {
             자동 실행 정상
           </span>
           <span style={mutedText}>
-            Railway가 데일리 작성·발송, 월간 작성을 예정대로 실행하고 있습니다. (마지막 {fmtDate(last, true)})
+            Railway가 예정대로 실행하고 있습니다. (마지막 {fmtDate(last, true)})
           </span>
         </div>
+        {pending.length > 0 && (
+          <details style={{ marginTop: 6, fontSize: 12 }}>
+            <summary style={{ cursor: 'pointer', color: 'var(--text-muted)' }}>
+              아직 예정일이 오지 않은 작업 {pending.length}개 (Railway에 서비스를 만들어 두었는지 확인)
+            </summary>
+            <ul style={{ margin: '6px 0 0', paddingLeft: 18, lineHeight: 1.8 }}>
+              {pending.map((j) => (
+                <li key={j.cmd}>
+                  {j.label} — 다음 {fmtDate(j.next_at ?? null, true)} · 서비스 <b>{j.service}</b>, Start Command{' '}
+                  <span style={code}>{j.command}</span>, Cron <span style={code}>{j.cron_utc}</span> (UTC, {j.when} KST)
+                </li>
+              ))}
+            </ul>
+          </details>
+        )}
       </Card>
     );
   }
@@ -115,10 +134,11 @@ export function CronStatusCard({ jobs }: { jobs?: CronJob[] | null }) {
             <span style={code}>/backend</span>, 환경변수는 백엔드 서비스와 같게(DATABASE_URL 등) 넣습니다.
           </div>
           <ul style={{ margin: '8px 0 0', paddingLeft: 18 }}>
-            {bad.map((j) => (
+            {[...bad, ...pending].map((j) => (
               <li key={j.cmd} style={{ marginBottom: 4 }}>
                 <b>{j.service}</b> — Start Command <span style={code}>{j.command}</span>, Cron Schedule{' '}
                 <span style={code}>{j.cron_utc}</span> (UTC, {j.when} KST)
+                {j.status === 'pending' && <span style={mutedText}> · 첫 실행 예정 {fmtDate(j.next_at ?? null, true)}</span>}
               </li>
             ))}
           </ul>

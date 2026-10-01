@@ -12,7 +12,10 @@
   public-data [--force]                                      공공데이터 스냅샷(국민연금·국세청·KIPRIS·KIS)
   monthly     [--month YYYY-MM] [--force]                    매일 03:00 KST, 1일에만 지난 달 월간 브리핑 작성(cron: 0 18 * * *)
   send-monthly [--date YYYY-MM-DD]                           월간 발송만(보통은 send가 함께 보냄)
-반기(half-year)는 P4에서 추가한다.
+  half-year   [--year Y --half H]                            1/31·7/31 02:00 KST, 끝난 반기 보고서 예약(cron: 0 17 30 1,7 *)
+                                                             실제 작성은 웹 서비스가 30분마다 몇 건씩(그림 저장소가 웹에만 있음)
+  doc-requests [--dry-run]                                   6/30·12/30 09:00 KST, 보고서 자료 요청 문자(cron: 0 0 30 6,12 *)
+  report-reminders [--dry-run]                               매주 월 09:00 KST, 검토 완료 안 한 보고서 알림(cron: 0 0 * * 1)
 """
 import argparse
 import asyncio
@@ -49,20 +52,26 @@ def _print(title: str, obj) -> None:
 
 async def main() -> int:
     p = argparse.ArgumentParser()
-    p.add_argument("cmd", choices=["daily-build", "send", "collect", "summarize", "facts", "reindex-check", "reindex", "public-data", "monthly", "send-monthly", "verify-facts"])
+    p.add_argument("cmd", choices=["daily-build", "send", "collect", "summarize", "facts", "reindex-check", "reindex", "public-data", "monthly", "send-monthly", "verify-facts",
+                                    "half-year", "doc-requests", "report-reminders"])
     p.add_argument("--date")
     p.add_argument("--no-collect", action="store_true")
     p.add_argument("--force", action="store_true")
     p.add_argument("--limit", type=int, default=400)
     p.add_argument("--month")
+    p.add_argument("--year", type=int)
+    p.add_argument("--half", type=int, choices=[1, 2])
+    p.add_argument("--dry-run", action="store_true")
     a = p.parse_args()
     day = date.fromisoformat(a.date) if a.date else None
     try:
         await _run(a, day)
     except Exception as e:
-        await _record(a.cmd, False, f"{type(e).__name__}: {e}")
+        if not a.dry_run:
+            await _record(a.cmd, False, f"{type(e).__name__}: {e}")
         raise
-    await _record(a.cmd, True)
+    if not a.dry_run:  # 시험 실행(--dry-run)은 자동 실행 기록에 남기지 않는다
+        await _record(a.cmd, True)
     return 0
 
 
@@ -122,6 +131,20 @@ async def _run(a, day) -> None:
             _print("public-data", await public_data.snapshot_due(db, force=a.force))
         elif a.cmd == "reindex":
             _print("reindex", await search.reindex_all(db))
+        elif a.cmd == "half-year":
+            from app.services.company_report import report_jobs
+
+            if (a.year is None) != (a.half is None):
+                raise SystemExit("--year 와 --half 를 함께 주세요.")
+            _print("half-year", await report_jobs.queue_half_year(db, a.year, a.half, today=day))
+        elif a.cmd == "doc-requests":
+            from app.services.company_report import doc_requests
+
+            _print("doc-requests", await doc_requests.notify(db, dry_run=a.dry_run, today=day))
+        elif a.cmd == "report-reminders":
+            from app.services.company_report import report_jobs
+
+            _print("report-reminders", await report_jobs.remind(db, dry_run=a.dry_run, today=day))
         from app.services.company_report import usage
 
         await usage.flush(db)  # AI 사용량 기록

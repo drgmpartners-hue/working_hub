@@ -4,6 +4,9 @@
 #   briefing-build: python scripts/run_news_briefing.py daily-build   / 0 22 * * 0-4
 #   briefing-send : python scripts/run_news_briefing.py send          / 30 23 * * 0-4   (월간도 함께 발송)
 #   briefing-monthly: python scripts/run_news_briefing.py monthly     / 0 18 * * *      (매일 03:00 KST, 1일에만 실행)
+#   report-half-year: python scripts/run_news_briefing.py half-year   / 0 17 30 1,7 *   (1/31·7/31 02:00 KST, 반기 보고서 예약)
+#   report-doc-requests: python scripts/run_news_briefing.py doc-requests / 0 0 30 6,12 * (6/30·12/30 09:00 KST)
+#   report-reminders: python scripts/run_news_briefing.py report-reminders / 0 0 * * 1   (매주 월 09:00 KST)
 [build]
 builder = "DOCKERFILE"
 dockerfilePath = "Dockerfile"

@@ -6,7 +6,7 @@ import logging
 from datetime import date, datetime, timedelta
 from typing import Optional
 
-from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, HTTPException, Query, UploadFile
+from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, HTTPException, Query, Request, UploadFile
 from pydantic import BaseModel, Field
 from sqlalchemy import and_, func, select
 from sqlalchemy.orm import aliased
@@ -1875,12 +1875,26 @@ async def create_half_year_report(company_id: str, body: ReportCreate, backgroun
     start, _ = half_year.half_range(year, half)
     if start > today_kst():
         raise HTTPException(422, "아직 시작하지 않은 반기입니다.")
+    from app.services.company_report import report_jobs
+
     running = (await db.execute(select(CompanyReport.id).where(
         CompanyReport.company_id == company_id, CompanyReport.period_year == year, CompanyReport.period_half == half,
         CompanyReport.owner_user_id.is_(None), CompanyReport.status == "generating",
+        CompanyReport.progress_step != report_jobs.QUEUED,
         CompanyReport.created_at > func.now() - timedelta(hours=2)))).first()  # created_at 은 DB 시계(server_default)
     if running:
         raise HTTPException(409, "이 반기 보고서를 이미 만들고 있습니다. 끝날 때까지 기다려 주세요.")
+
+    queued = (await db.execute(select(CompanyReport).where(
+        CompanyReport.company_id == company_id, CompanyReport.period_year == year, CompanyReport.period_half == half,
+        CompanyReport.owner_user_id.is_(None), CompanyReport.status == "generating",
+        CompanyReport.progress_step == report_jobs.QUEUED))).scalars().first()
+    if queued:  # 자동 예약(1/31·7/31)된 것이 아직 차례를 기다리면 지금 바로 시작
+        queued.progress_step, queued.created_by = "대기", current_user.id
+        await db.commit()
+        await db.refresh(queued)
+        background.add_task(half_year.run_in_background, queued.id)
+        return _report_brief(queued, {})
     r = await half_year.create_report(db, company_id, year, half, current_user.id)
     background.add_task(half_year.run_in_background, r.id)
     return _report_brief(r, {})
@@ -1902,19 +1916,27 @@ async def list_half_year_reports(company_id: str, current_user=Depends(get_curre
     return [_report_brief(r, names) for r in rows]
 
 
-@router.get("/reports/{report_id}")
-async def get_half_year_report(report_id: str, current_user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
-    """보고서 본문·출처·검토 결과·이미지·영업 노트."""
+async def _report_detail(db: AsyncSession, r, user) -> dict:
     from app.models.company_report import ReportImage
+    from app.services.company_report import report_edit
 
-    r = await _report_for(db, current_user, report_id)
     imgs = (await db.execute(select(ReportImage).where(ReportImage.report_id == r.id).order_by(ReportImage.sort_order))).scalars().all()
-    names = await _user_names(db, [r.owner_user_id])
+    names = await _user_names(db, [r.owner_user_id, r.finalized_by])
     return {**_report_brief(r, names), "content": r.content, "sources": r.sources, "review": r.review,
             "sales_note": r.sales_note, "token_usage": r.token_usage, "main_model": r.main_model, "review_model": r.review_model,
+            "mine": r.owner_user_id == user.id, "disputed_count": report_edit.disputed_count(r.content or {}),
+            "finalized_by_name": names.get(r.finalized_by or ""),
+            "finalized_at": r.finalized_at.isoformat() if r.finalized_at else None,
             "images": [{"id": i.id, "section_no": i.section_no, "kind": i.kind, "caption": i.caption,
                         "source_label": i.source_label, "rights_note": i.rights_note, "width": i.width, "height": i.height,
                         "sort_order": i.sort_order, "selected": i.selected} for i in imgs]}
+
+
+@router.get("/reports/{report_id}")
+async def get_half_year_report(report_id: str, current_user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    """보고서 본문·출처·검토 결과·이미지·영업 노트."""
+    r = await _report_for(db, current_user, report_id)
+    return await _report_detail(db, r, current_user)
 
 
 @router.get("/report-images/{image_id}/file")
@@ -1934,3 +1956,376 @@ async def report_image_file(image_id: str, current_user=Depends(get_current_user
         raise HTTPException(404, "그림 파일이 없습니다.")
     ext = im.storage_key.rsplit(".", 1)[-1].lower()
     return Response(content=data, media_type=company_db.MIME.get(ext, "image/png"), headers={"Cache-Control": "private, max-age=3600"})
+
+
+# --------------------------------------------------------------------------- 반기 보고서 편집·검토 완료 (P4-9)
+
+class ItemEdit(BaseModel):
+    text: Optional[str] = Field(None, max_length=600)
+    cells: Optional[list[str]] = Field(None, max_length=8)
+    delete: bool = False
+    resolve: bool = False
+
+
+class ImagePatch(BaseModel):
+    selected: Optional[bool] = None
+    caption: Optional[str] = Field(None, max_length=300)
+    section_no: Optional[int] = Field(None, ge=1, le=10)
+    sort_order: Optional[int] = Field(None, ge=0, le=10000)
+
+
+@router.patch("/reports/{report_id}/items/{item_id}")
+async def edit_report_item(report_id: str, item_id: str, body: ItemEdit, current_user=Depends(get_current_user),
+                           db: AsyncSession = Depends(get_db)):
+    """문장·표 행 고치기/지우기/'확인했음'. 공용본이나 검토 완료본을 고치면 내 버전이 새로 생긴다(응답의 id 가 바뀜)."""
+    import copy
+
+    from app.services.company_report import report_edit
+
+    if body.text is None and body.cells is None and not body.delete and not body.resolve:
+        raise HTTPException(422, "바꿀 내용이 없습니다.")
+    r = await _report_for(db, current_user, report_id)
+    mine = await report_edit.own_copy(db, r, current_user.id)
+    content = copy.deepcopy(mine.content)
+    report_edit.edit_item(content, item_id, text=body.text, cells=body.cells, delete=body.delete, resolve=body.resolve)
+    mine.content = content  # JSONB 는 통째로 바꿔야 저장된다
+    await db.commit()
+    await db.refresh(mine)
+    return await _report_detail(db, mine, current_user)
+
+
+@router.patch("/reports/{report_id}/images/{image_id}")
+async def edit_report_image(report_id: str, image_id: str, body: ImagePatch, current_user=Depends(get_current_user),
+                            db: AsyncSession = Depends(get_db)):
+    """그림 넣기/빼기·설명 고치기·항목 옮기기(내 버전에서)."""
+    from app.services.company_report import report_edit
+
+    r = await _report_for(db, current_user, report_id)
+    from app.models.company_report import ReportImage
+
+    src = await db.get(ReportImage, image_id)
+    if src is None or src.report_id != r.id:
+        raise HTTPException(404, "그림을 찾을 수 없습니다.")
+    mine = await report_edit.own_copy(db, r, current_user.id)
+    iid = await report_edit.copy_image_id(db, image_id, mine)
+    await report_edit.set_image(db, mine, iid, selected=body.selected, caption=body.caption, section_no=body.section_no,
+                                sort_order=body.sort_order)
+    await db.commit()
+    await db.refresh(mine)
+    return await _report_detail(db, mine, current_user)
+
+
+@router.post("/reports/{report_id}/finalize")
+async def finalize_report(report_id: str, current_user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    """[검토 완료] — 승인 절차 없이 본인이 확정한다(2026-10-01 결정). 확인 필요 문장이 남아 있어도 막지 않고 개수만 알려 준다."""
+    from app.services.company_report import report_edit
+
+    r = await _report_for(db, current_user, report_id)
+    if r.status == "final" and r.owner_user_id == current_user.id:
+        raise HTTPException(409, "이미 검토 완료한 버전입니다.")
+    mine, warnings = await report_edit.finalize(db, r, current_user.id)
+    await db.commit()
+    await db.refresh(mine)
+    return {"report": await _report_detail(db, mine, current_user), "warnings": warnings}
+
+
+# --------------------------------------------------------------------------- 출력·발송 (P4-7·P4-10)
+
+def _file_response(data: bytes, name: str, mime: str):
+    from urllib.parse import quote
+
+    from fastapi.responses import Response
+
+    return Response(content=data, media_type=mime, headers={"Content-Disposition": f"attachment; filename*=UTF-8''{quote(name)}"})
+
+
+@router.get("/reports/{report_id}/export")
+async def export_report(report_id: str, format: str = Query("pdf", pattern="^(pdf|docx)$"), client_id: Optional[str] = None,
+                        current_user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    """PDF·DOCX 내려받기. client_id 를 주면 표지에 고객 이름, 쪽 아래에 그 고객 담당 매니저 연락처(내 고객만)."""
+    from app.core.permissions import assert_client
+    from app.services.company_report import exporters
+
+    r = await _report_for(db, current_user, report_id)
+    if client_id:
+        await assert_client(db, current_user, client_id)
+    try:
+        data, name, mime = await exporters.export(db, r, format, user_id=current_user.id, client_id=client_id)
+    except ValueError as e:
+        raise HTTPException(409, str(e))
+    return _file_response(data, name, mime)
+
+
+@router.get("/report-send/clients")
+async def report_send_clients(report_id: Optional[str] = None, q: str = Query("", max_length=50),
+                              current_user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    """보고서를 보낼 수 있는 고객(매니저는 자기 담당 고객만). report_id 를 주면 이미 보낸 고객 표시."""
+    from app.core.permissions import scope_clients
+    from app.models.client import Client
+    from app.models.company_report import ReportExport
+
+    stmt = scope_clients(select(Client), current_user)
+    if q.strip():
+        stmt = stmt.where(Client.name.contains(q.strip()))
+    rows = (await db.execute(stmt.order_by(Client.name).limit(500))).scalars().all()
+    sent: dict[str, str] = {}
+    if report_id:
+        r = await _report_for(db, current_user, report_id)
+        for cid, at in (await db.execute(select(ReportExport.client_id, ReportExport.exported_at).where(
+                ReportExport.report_id == r.id, ReportExport.format == "link"))).all():
+            if cid:
+                sent[cid] = at.isoformat() if at else ""
+    names = await _user_names(db, [c.user_id for c in rows])
+
+    def mask(p: Optional[str]) -> Optional[str]:
+        d = "".join(ch for ch in (p or "") if ch.isdigit())
+        return f"{d[:3]}-****-{d[-4:]}" if len(d) >= 10 else None
+
+    return [{"id": c.id, "name": c.name, "phone_masked": mask(c.phone), "has_phone": bool(c.phone),
+             "manager_name": names.get(c.user_id or ""), "sent_at": sent.get(c.id)} for c in rows]
+
+
+class ReportSendBody(BaseModel):
+    client_ids: list[str] = Field(..., min_length=1, max_length=200)
+
+
+@router.post("/reports/{report_id}/send")
+async def send_report(report_id: str, body: ReportSendBody, request: Request,
+                      current_user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    """고객에게 카톡(알림톡 템플릿 승인 전에는 문자) 링크 발송. 검토 완료된 내 보고서만, 내 담당 고객에게만."""
+    from app.core.permissions import assert_client, forbid_while_impersonating, is_owner
+    from app.services.company_report import report_share
+
+    ctx = getattr(request.state, "auth_ctx", None)
+    if ctx is not None:
+        forbid_while_impersonating(ctx)
+    r = await _report_for(db, current_user, report_id)
+    if r.status != "final":
+        raise HTTPException(409, "검토 완료한 보고서만 고객에게 보낼 수 있습니다. 먼저 [검토 완료]를 눌러 주세요.")
+    if r.owner_user_id != current_user.id and not is_owner(current_user):
+        raise HTTPException(403, "본인이 검토 완료한 보고서만 보낼 수 있습니다.")
+    clients = []
+    for cid in dict.fromkeys(body.client_ids):
+        clients.append(await assert_client(db, current_user, cid))
+    return await report_share.send(db, r, clients, current_user)
+
+
+@router.get("/reports/{report_id}/exports")
+async def report_export_history(report_id: str, current_user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    r = await _report_for(db, current_user, report_id)
+    return await _export_rows(db, current_user, [r.id])
+
+
+async def _export_rows(db: AsyncSession, user, report_ids: Optional[list[str]] = None, limit: int = 300) -> list[dict]:
+    """출력·발송 기록. 고객 이름은 그 고객을 볼 수 있는 사람에게만 보인다."""
+    from app.core.permissions import client_ids_subquery
+    from app.models.client import Client
+    from app.models.company_report import CompanyReport, ReportExport
+    from app.services.company_report.half_year import half_label
+
+    stmt = (select(ReportExport, CompanyReport, PortfolioCompany.name)
+            .join(CompanyReport, CompanyReport.id == ReportExport.report_id)
+            .join(PortfolioCompany, PortfolioCompany.id == CompanyReport.company_id))
+    if report_ids is not None:
+        stmt = stmt.where(ReportExport.report_id.in_(report_ids))
+    ids = await vis.readable_company_ids(db, user)
+    if ids is not None:
+        stmt = stmt.where(CompanyReport.company_id.in_(ids), ReportExport.exported_by == user.id)
+    rows = (await db.execute(stmt.order_by(ReportExport.exported_at.desc()).limit(limit))).all()
+    cids = {e.client_id for e, _, _ in rows if e.client_id}
+    sub = client_ids_subquery(user)
+    cstmt = select(Client.id, Client.name).where(Client.id.in_(cids))
+    if sub is not None:
+        cstmt = cstmt.where(Client.id.in_(sub))
+    cnames = dict((await db.execute(cstmt)).all()) if cids else {}
+    unames = await _user_names(db, [e.exported_by for e, _, _ in rows])
+    return [{"id": e.id, "report_id": e.report_id, "version": e.version, "format": e.format, "company_name": cname,
+             "period_label": half_label(r.period_year, r.period_half), "client_name": cnames.get(e.client_id or ""),
+             "for_client": bool(e.client_id), "file_id": e.file_id, "exported_by_name": unames.get(e.exported_by or ""),
+             "exported_at": e.exported_at.isoformat() if e.exported_at else None} for e, r, cname in rows]
+
+
+# --------------------------------------------------------------------------- 보고서 관리 화면 (P4-10) · 연동 API (P4-8)
+
+def _half_or_latest(year: Optional[int], half: Optional[int]) -> tuple[int, int]:
+    from app.services.company_report import half_year
+
+    if (year is None) != (half is None):
+        raise HTTPException(422, "연도와 반기를 함께 주세요.")
+    return (year, half) if year else half_year.latest_closed_half()
+
+
+@router.get("/reports-overview")
+async def reports_overview(year: Optional[int] = Query(None, ge=2000, le=2100), half: Optional[int] = Query(None, ge=1, le=2),
+                           view: View = Depends(get_view), current_user=Depends(get_current_user),
+                           db: AsyncSession = Depends(get_db)):
+    """반기별 진행 현황: 지금 보는 목록(내 기업 / 대표는 전체·매니저별)의 기업마다 보고서 단계."""
+    from app.services.company_report import doc_requests, report_hub
+    from app.services.company_report.half_year import half_label
+
+    y, h = _half_or_latest(year, half)
+    ids = await vis.visible_company_ids(db, view)
+    if ids is None:
+        ids = set((await db.execute(select(PortfolioCompany.id).where(PortfolioCompany.deleted_at.is_(None)))).scalars().all())
+    rows = await report_hub.overview(db, current_user, list(ids), y, h)
+    names = await _user_names(db, [o["owner_user_id"] for row in rows for o in row["others"]])
+    for row in rows:
+        for o in row["others"]:
+            o["owner_name"] = names.get(o["owner_user_id"])
+    counts: dict[str, int] = {}
+    for row in rows:
+        counts[row["stage"]] = counts.get(row["stage"], 0) + 1
+    dy, dh = doc_requests.target_half()
+    return {"year": y, "half": h, "period_label": half_label(y, h), "companies": rows, "counts": counts,
+            "doc_season": doc_requests.in_request_season(), "doc_period": {"year": dy, "half": dh, "label": half_label(dy, dh)}}
+
+
+@router.get("/report-exports")
+async def report_exports(current_user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    """출력·발송 기록(최근 300건). 매니저는 본인 기록만, 대표는 전체."""
+    return await _export_rows(db, current_user)
+
+
+class ExportBatchBody(BaseModel):
+    company_ids: list[str] = Field(..., min_length=1, max_length=100)
+    year: int = Field(..., ge=2000, le=2100)
+    half: int = Field(..., ge=1, le=2)
+    format: str = Field("pdf", pattern="^(pdf|docx)$")
+
+
+@router.post("/reports/export-batch")
+async def export_batch(body: ExportBatchBody, current_user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    """여러 기업 보고서를 zip 하나로(기업마다 '지금 쓸 보고서'). 완성본이 없는 기업은 zip 안 _빠진_기업.txt 에 적는다."""
+    from app.services.company_report import report_hub
+
+    ids = list(dict.fromkeys(body.company_ids))
+    await vis.assert_company_ids(db, current_user, ids)
+    data, name, skipped = await report_hub.batch_zip(db, current_user, ids, body.year, body.half, body.format)
+    if len(skipped) == len(ids):
+        raise HTTPException(409, "고른 기업 중 완성된 보고서가 있는 곳이 없습니다.")
+    return _file_response(data, name, "application/zip")
+
+
+@router.get("/companies/{company_id}/report-content")
+async def report_content(company_id: str, year: Optional[int] = Query(None, ge=2000, le=2100),
+                         half: Optional[int] = Query(None, ge=1, le=2), current_user=Depends(get_current_user),
+                         db: AsyncSession = Depends(get_db)):
+    """고객자산관리 종합 보고서 연동용: 이 기업의 그 반기 보고서 요약(내부 표시 뺌). 반기를 안 주면 가장 최근 완성본."""
+    from app.models.company_report import CompanyReport
+    from app.services.company_report import report_hub
+
+    await assert_company(db, current_user, company_id)
+    stmt = select(CompanyReport).where(CompanyReport.company_id == company_id, CompanyReport.status.in_(report_hub.READY))
+    if year is not None or half is not None:
+        y, h = _half_or_latest(year, half)
+        stmt = stmt.where(CompanyReport.period_year == y, CompanyReport.period_half == h)
+    rows = (await db.execute(stmt)).scalars().all()
+    if not rows:
+        return {"available": False}
+    latest = max((r.period_year, r.period_half) for r in rows)
+    p = report_hub.pick([r for r in rows if (r.period_year, r.period_half) == latest], current_user.id)
+    if p is None:
+        return {"available": False}
+    return {"available": True, **report_hub.content_view(p)}
+
+
+# --------------------------------------------------------------------------- 자료 요청 체크리스트 (P4-4)
+
+class DocRequestPatch(BaseModel):
+    key: str = Field(..., max_length=30)
+    done: Optional[bool] = None
+    note: Optional[str] = Field(None, max_length=300)
+
+
+@router.get("/companies/{company_id}/doc-requests")
+async def get_doc_requests(company_id: str, year: Optional[int] = Query(None, ge=2000, le=2100),
+                           half: Optional[int] = Query(None, ge=1, le=2), current_user=Depends(get_current_user),
+                           db: AsyncSession = Depends(get_db)):
+    from app.services.company_report import doc_requests
+
+    await assert_company(db, current_user, company_id)
+    if (year is None) != (half is None):
+        raise HTTPException(422, "연도와 반기를 함께 주세요.")
+    y, h = (year, half) if year else doc_requests.target_half()
+    return await doc_requests.checklist(db, company_id, y, h)
+
+
+@router.patch("/companies/{company_id}/doc-requests")
+async def patch_doc_requests(company_id: str, body: DocRequestPatch, year: int = Query(..., ge=2000, le=2100),
+                             half: int = Query(..., ge=1, le=2), current_user=Depends(get_current_user),
+                             db: AsyncSession = Depends(get_db)):
+    from app.services.company_report import doc_requests
+
+    await assert_company(db, current_user, company_id)
+    try:
+        return await doc_requests.mark(db, company_id, year, half, body.key, done=body.done, note=body.note,
+                                       user_id=current_user.id)
+    except ValueError as e:
+        raise HTTPException(422, str(e))
+
+
+# --------------------------------------------------------------------------- 고객용 폰 화면 (로그인 없음)
+
+async def _public_report(db: AsyncSession, t: str):
+    from app.models.client import Client
+    from app.models.company_report import CompanyReport
+    from app.services.company_report import report_share
+
+    try:
+        rid, cid = report_share.parse(t)
+    except report_share.ShareError as e:
+        raise HTTPException(403, str(e))
+    r = await db.get(CompanyReport, rid)
+    cl = await db.get(Client, cid)
+    if r is None or cl is None or r.status != "final" or not r.content:
+        raise HTTPException(404, "보고서를 찾을 수 없습니다. 담당자에게 문의해 주세요.")
+    c = await db.get(PortfolioCompany, r.company_id)
+    if c is None or c.deleted_at is not None:
+        raise HTTPException(404, "보고서를 찾을 수 없습니다. 담당자에게 문의해 주세요.")
+    return r, cl, c
+
+
+@router.get("/m/report")
+async def mobile_report(t: str = Query(..., max_length=200), db: AsyncSession = Depends(get_db)):
+    """카톡·문자 [보고서 보기] → 고객용 폰 화면. 내부 표시(확인 필요·영업 노트·검토 의견)는 뺀다."""
+    from app.models.company_report import ReportImage
+    from app.services.company_report import exporters, report_share
+    from app.services.company_report.half_year import half_label
+
+    r, cl, c = await _public_report(db, t)
+    imgs = (await db.execute(select(ReportImage).where(ReportImage.report_id == r.id, ReportImage.selected == True)  # noqa: E712
+                             .order_by(ReportImage.sort_order))).scalars().all()
+    return {"client_name": cl.name, "company_name": c.name, "period_label": half_label(r.period_year, r.period_half),
+            "as_of_date": r.as_of_date.isoformat() if r.as_of_date else None, "version": r.version,
+            "contact": await exporters.contact_for(db, cl.user_id or r.owner_user_id),
+            "content": report_share.public_content(r.content),
+            "images": [{"id": i.id, "section_no": i.section_no, "caption": i.caption, "source_label": i.source_label}
+                       for i in imgs]}
+
+
+@router.get("/m/report/image/{image_id}")
+async def mobile_report_image(image_id: str, t: str = Query(..., max_length=200), db: AsyncSession = Depends(get_db)):
+    from fastapi.responses import Response
+
+    from app.models.company_report import ReportImage
+    from app.services.company_report import company_db, storage
+
+    r, _, _ = await _public_report(db, t)
+    im = await db.get(ReportImage, image_id)
+    if im is None or im.report_id != r.id or not im.selected:
+        raise HTTPException(404, "그림을 찾을 수 없습니다.")
+    try:
+        data = storage.read_bytes(im.storage_key)
+    except Exception:
+        raise HTTPException(404, "그림 파일이 없습니다.")
+    ext = im.storage_key.rsplit(".", 1)[-1].lower()
+    return Response(content=data, media_type=company_db.MIME.get(ext, "image/png"), headers={"Cache-Control": "private, max-age=3600"})
+
+
+@router.get("/m/report/pdf")
+async def mobile_report_pdf(t: str = Query(..., max_length=200), db: AsyncSession = Depends(get_db)):
+    from app.services.company_report import exporters
+
+    r, cl, _ = await _public_report(db, t)
+    data, name, mime = await exporters.export(db, r, "pdf", user_id=None, client_id=cl.id, record=False)
+    return _file_response(data, name, mime)

@@ -141,14 +141,14 @@
 - [x] **P4-1** [DB] `company_documents`, `company_reports`(period_year·period_half·sales_note), `report_images`, `report_exports` — 마이그레이션 `e1r2p3t4h5y6`. 보고서는 자동 생성본(owner_user_id 없음) + 담당자가 고친 자기 버전(owner_user_id), 출력 기록에 고객(client_id)
 - [x] **P4-2** [BE] 자료함 파서 7종(pdf·docx·md·pptx·hwpx·hwp·ppt) 텍스트·이미지 추출 + AI 문서 메모, 투자사 보고서 포함 (고객 개인 투자 금액·지분은 제외) — `doc_parser.py`(+xlsx·csv·txt), `documents.py`. 03_자료 업로드 시 자동 읽기, 스캔본 PDF 는 Claude 가 PDF 를 직접 읽음, AI 메모(종류·요약·핵심 사실·고객 개인 투자 정보 표시·공개 여부), 본문 검색 색인, 놓친 건 file_worker 가 재처리. 화면: 기업 상세 > 반기 보고서 탭 '자료함'
 - [x] **P4-3** [OPS] LibreOffice 설치 여부 결정(Dockerfile 또는 별도 변환 워커) — **설치하지 않음**(이미지 수백 MB 증가·변환 워커 운영 부담). hwp 는 OLE 레코드 직접 해석(olefile), ppt 는 글자 레코드만 읽음. doc·xls(옛 형식)는 '새 형식으로 저장해 다시 올려 달라' 안내. 표·그림이 중요한 문서는 PDF·hwpx·pptx 권장(화면 안내)
-- [ ] **P4-4** [BE] 자료 요청 절차: 6월 말·12월 말 알림, 기업별 체크리스트
+- [x] **P4-4** [BE] 자료 요청 절차: 6월 말·12월 말 알림, 기업별 체크리스트 — `doc_requests.py`. 체크리스트 6항목(IR·재무·주주명부·투자사 보고서·보도자료·기타)은 app_settings `doc_request:{기업}:{2026H1}`, 자료함에 그 종류 문서가 올라오면 자동 '받음'. 6/30·12/30 09:00 그 기업을 목록에 둔 사람에게 문자 1통(발송 꺼짐이면 안 보냄). 화면: 반기 보고서 탭 '자료 요청'(6/15~7/31·12/15~1/31 안내 띠), 보고서 관리 안내 띠
 - [x] **P4-5** [BE] `half_year.py`: 10개 항목 + 부록(링크), 웹 보강, 교차 검토, 영업 대화 노트, 문장 규칙(두괄식·고등학생 수준·출처 번호) (기획 6장) — 출처 P·G·F·R·M·A·D·X·W, 웹 보강(주소 없는 웹 사실은 버림), 초안(블록: 문단·표·타임라인), 교차 검토(Gemini 그라운딩 → Claude, 불합의는 노란 표시로 남김), 부록 자동 생성(인용 순 번호·비공개 자료 링크 없음), 검색 색인. API: `POST/GET /companies/{id}/reports`, `GET /reports/{id}`, `GET /report-images/{id}/file`. 화면 1차: 반기 보고서 탭 [보고서 만들기]·진행률·본문 보기
 - [x] **P4-6** [BE] 이미지: 기본 차트 2종(투자유치 타임라인, 재무 추이 또는 사건 타임라인) + 후보 선정·캡션, 2~10개 제한, 기사 사진 사용 금지 — `charts.py`(matplotlib·나눔고딕), 자료함 그림 최대 12장을 Claude 가 보고 골라 항목·측션 지정(고객 개인 투자 정보가 있는 문서 그림 제외)
-- [ ] **P4-7** [BE] `exporters.py`: 인쇄용 PDF(A4, Dr.GM 브랜드, 링크 클릭)·DOCX, 기업DB `04_보고서` 자동 저장, 출력 기록
-- [ ] **P4-8** [BE] `report-content` API(고객자산관리 종합 보고서 연동용), 일괄 출력(zip)
-- [ ] **P4-9** [FE] 기업 상세 > 반기 보고서 탭: 본문·이미지 / 문장별 출처·검토 결과, 편집, 버전, [검토 완료]
-- [ ] **P4-10** [FE] 보고서 관리: 반기별 진행 현황, 관리자 승인, 출력, 출력 기록
-- [ ] **P4-11** [OPS] Cron `0 17 30 1,7 *`(1/31·7/31 02:00 KST), 미승인 보고서 매주 월요일 알림
+- [x] **P4-7** [BE] `exporters.py`: 인쇄용 PDF(A4, Dr.GM 브랜드, 링크 클릭)·DOCX, 기업DB `04_보고서` 자동 저장, 출력 기록 — reportlab(나눔고딕, 남색·금색 표지·한 장 요약·단계 막대·부록 링크·쪽 아래 연락처)·python-docx. `GET /reports/{id}/export?format=pdf|docx&client_id=`. 기업DB 저장은 공용 자동 생성본만(그 기업을 추가한 모든 매니저가 보는 폴더라 고객용·개인 수정본은 기록만). 고객용은 표지에 고객 이름, 쪽 아래 그 고객 담당자 연락처(내 고객만)
+- [x] **P4-8** [BE] `report-content` API(고객자산관리 종합 보고서 연동용), 일괄 출력(zip) — `GET /companies/{id}/report-content?year&half`(요약 3줄·달라진 점·단계·재무, 내부 표시 뺌), `POST /reports/export-batch`(기업마다 '지금 쓸 보고서': 내 검토 완료본 → 내 검토 중 → 공용본, 없으면 zip 안 `_빠진_기업.txt`). `report_hub.py`
+- [x] **P4-9** [FE] 기업 상세 > 반기 보고서 탭: 본문·이미지 / 문장별 출처·검토 결과, 편집, 버전, [검토 완료] — [고치기]: 문장·표 행 고치기/삭제/'확인함', 그림 넣기·빼기(2~10)·설명·항목. 공용본을 고치면 '내 버전'이 새로 생기고(공용본은 그대로), 검토 완료본을 고치면 새 버전(v+1). [검토 완료]는 확인 필요 문장이 남아도 막지 않고 개수를 묻는다. `report_edit.py`, `PATCH /reports/{id}/items/{item}`·`/images/{img}`, `POST /reports/{id}/finalize`
+- [x] **P4-10** [FE] 보고서 관리: 반기별 진행 현황, ~~관리자 승인~~(대표 결정으로 없음), 출력, 출력 기록 — 보고서 관리 탭: 단계별 개수·기업별 단계·확인 필요·출력/발송 수, 대표는 매니저별 개인 버전도 봄, PDF/DOCX 한꺼번에(zip), 출력·발송 기록. 고객 발송: [고객에게 보내기](검토 완료한 내 버전만, 내 담당 고객만) → 알림톡 템플릿 D 승인 전에는 문자(LMS)로 링크, `briefing_send_logs`(report)·`report_exports`(link) 기록. 고객 폰 화면 `/m/report?t=`(로그인 없음, 서명 열쇠 180일, 내부 표시 뺌, 고른 그림만, PDF 저장, 담당자 연락처) — `report_share.py`
+- [x] **P4-11** [OPS] Cron `0 17 30 1,7 *`(1/31·7/31 02:00 KST), 미승인 보고서 매주 월요일 알림 — `run_news_briefing.py half-year`(예약만; Cron 에는 그림 저장소가 없어 실제 작성은 웹 서비스 file_worker 가 30분마다 3건씩, 2시간 넘게 멈춘 것은 실패 처리), `report-reminders`(매주 월 09:00, '검토 완료' 안 한 보고서가 있는 사람에게 문자), `doc-requests`(6/30·12/30). 자동 실행 상태 카드에 3개 추가(드문 작업은 첫 예정일 전 '첫 실행 대기'). **Railway 에 Cron 서비스 3개를 만들어야 함**(report-half-year·report-doc-requests·report-reminders, `railway.cron.toml` 주석 참고)
 - [ ] **P4-12** [수동] 품질 시험: 기업 3곳(비상장 2, 상장 1) 보고서를 전 문장 대조
 
 ---
