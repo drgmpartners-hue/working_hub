@@ -99,7 +99,7 @@ const API_PROVIDERS: ProviderDef[] = [
   {
     key: 'kis',
     label: '한국투자증권(KIS) Open API',
-    description: '주식·ETF 시세(수정주가 OHLCV), 주식기본조회에 사용됩니다. (주식·ETF 추천 고도화 주력 시세 소스)',
+    description: '주식·ETF 시세(수정주가 OHLCV), 주식기본조회에 사용됩니다. (주식, 펀드 관리 시세 조회)',
     icon: '📊',
     color: '#0A4DA0',
     fields: [

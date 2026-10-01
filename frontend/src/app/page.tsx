@@ -39,7 +39,7 @@ const PROBLEMS = [
 
 const SOLUTIONS = [
   { ic: I.hub, t: '하나로 통합된 데이터', d: '고객·계좌·포트폴리오가 한곳에. 입력 한 번이면 분석·보고서·포털까지 자동 연결됩니다.' },
-  { ic: I.bolt, t: '정산·분석 자동화', d: '엑셀 업로드만으로 수당이 계산되고, 수익률·순자산 추이가 즉시 시각화됩니다.' },
+  { ic: I.bolt, t: '자산 분석 자동화', d: '계좌 데이터만 올리면 수익률·순자산 추이와 은퇴 현금흐름이 즉시 시각화됩니다.' },
   { ic: I.spark, t: '원클릭 콘텐츠 & 포털', d: 'AI로 보고서·카드뉴스를 생성하고, 고객에게 상시조회·변경제안 링크를 바로 발송합니다.' },
 ];
 
@@ -48,16 +48,13 @@ const PROGRAMS = [
   { ic: I.grid, t: '증권사 상품 관리', d: '상품 마스터' },
   { ic: I.chart, t: '투자상품 관리', d: '상품 등록·관리' },
   { ic: I.doc, t: '투자 상품 관리기', d: '수익률·리밸런싱' },
-  { ic: I.gear, t: 'Dr.GM 수당정산', d: '자동 계산' },
-  { ic: I.receipt, t: '증권사 수당정산', d: '정산·검증' },
   { ic: I.shield, t: '은퇴플랜 관리', d: '현금흐름 설계' },
-  { ic: I.trend, t: '주식·ETF 추천', d: 'AI 추천' },
   { ic: I.image, t: '콘텐츠 제작', d: '카드뉴스·보고서' },
 ];
 
 const STATS = [
   { n: '40%↓', l: '반복 업무 시간 절감' },
-  { n: '9', l: '통합 업무 프로그램' },
+  { n: '6', l: '통합 업무 프로그램' },
   { n: '1-Click', l: '보고서·콘텐츠 생성' },
   { n: '24/7', l: '고객 상시조회 포털' },
 ];
@@ -178,7 +175,7 @@ export default function LandingPage() {
           <div className="block-head">
             <span className="section-tag">Programs</span>
             <h2>필요한 도구가 전부 들어있습니다.</h2>
-            <p>9개의 업무 프로그램이 하나의 워크스페이스로 연결됩니다.</p>
+            <p>6개의 업무 프로그램이 하나의 워크스페이스로 연결됩니다.</p>
           </div>
           <div className="lp-grid c3">
             {PROGRAMS.map((p) => (

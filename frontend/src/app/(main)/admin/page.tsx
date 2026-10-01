@@ -13,7 +13,6 @@ const KPIS: { key: keyof Overview['totals']; label: string }[] = [
   { key: 'managers', label: '활성 매니저' },
   { key: 'clients', label: '전체 고객' },
   { key: 'accounts', label: '전체 계좌' },
-  { key: 'commission_calculations', label: '수당 정산' },
   { key: 'content_projects', label: '콘텐츠' },
 ];
 
@@ -103,14 +102,14 @@ export default function AdminOverviewPage() {
               <table style={{ width: '100%', borderCollapse: 'collapse' }}>
                 <thead>
                   <tr>
-                    {['이름', '역할', '고객', '계좌', '신규 고객(7일)', '문자(7일)', '수당 정산', '콘텐츠', '포트폴리오 분석', '최근 로그인', ''].map((h) => (
+                    {['이름', '역할', '고객', '계좌', '신규 고객(7일)', '문자(7일)', '콘텐츠', '포트폴리오 분석', '최근 로그인', ''].map((h) => (
                       <th key={h} style={headCell}>{h}</th>
                     ))}
                   </tr>
                 </thead>
                 <tbody>
                   {rows.length === 0 ? (
-                    <tr><td colSpan={11} style={{ ...cell, textAlign: 'center', color: 'var(--text-muted)', padding: 40 }}>계정이 없습니다.</td></tr>
+                    <tr><td colSpan={10} style={{ ...cell, textAlign: 'center', color: 'var(--text-muted)', padding: 40 }}>계정이 없습니다.</td></tr>
                   ) : rows.map((m) => (
                     <tr key={m.id} style={{ opacity: m.is_active ? 1 : 0.55 }}>
                       <td style={{ ...cell, fontWeight: 600 }}>
@@ -125,7 +124,6 @@ export default function AdminOverviewPage() {
                       <td style={cell}>{m.stats.accounts}</td>
                       <td style={cell}>{m.stats.new_clients_7d}</td>
                       <td style={cell}>{m.stats.messages_7d}</td>
-                      <td style={cell}>{m.stats.commission_calculations}</td>
                       <td style={cell}>{m.stats.content_projects}</td>
                       <td style={cell}>{m.stats.portfolio_analyses}</td>
                       <td style={{ ...cell, whiteSpace: 'nowrap', color: 'var(--text-secondary)' }}>{fmtDateTime(m.last_login)}</td>

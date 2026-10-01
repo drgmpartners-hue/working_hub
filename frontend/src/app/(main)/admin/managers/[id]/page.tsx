@@ -1,6 +1,6 @@
 /**
  * 대표 전용 — 매니저 상세 (docs/login_logic P4-6, 결정 D-3).
- * 한 매니저의 담당 고객 전체와 수당 정산·콘텐츠·포트폴리오 분석·문자 최근 항목을 모아 본다.
+ * 한 매니저의 담당 고객 전체와 콘텐츠·포트폴리오 분석·문자 최근 항목을 모아 본다. (수당정산은 2026-10-01 삭제)
  */
 'use client';
 
@@ -40,7 +40,6 @@ export default function AdminManagerDetailPage() {
   const kpis = [
     ['담당 고객', s.clients],
     ['계좌', s.accounts],
-    ['수당 정산', s.commission_calculations],
     ['콘텐츠', s.content_projects],
     ['문자(7일)', s.messages_7d],
   ] as const;
@@ -99,19 +98,6 @@ export default function AdminManagerDetailPage() {
                   <td style={{ ...cell, whiteSpace: 'nowrap', color: 'var(--text-muted)' }}>{fmtDateTime(r.sent_at)}</td>
                   <td style={cell}>{r.client_name}</td>
                   <td style={{ ...cell, color: 'var(--text-secondary)' }}>{r.summary}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </Section>
-        <Section title="최근 수당 정산" empty={data.recent_commission_calculations.length === 0}>
-          <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-            <tbody>
-              {data.recent_commission_calculations.map((r) => (
-                <tr key={r.id}>
-                  <td style={{ ...cell, whiteSpace: 'nowrap', color: 'var(--text-muted)' }}>{fmtDateTime(r.created_at)}</td>
-                  <td style={cell}>{r.calc_type === 'dr_gm' ? 'Dr.GM 수당정산' : r.calc_type === 'securities' ? '증권사 수당정산' : r.calc_type}</td>
-                  <td style={{ ...cell, color: 'var(--text-secondary)' }}>{r.status}</td>
                 </tr>
               ))}
             </tbody>

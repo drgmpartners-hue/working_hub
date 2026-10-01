@@ -17,11 +17,9 @@ export const PROGRAMS: ProgramDef[] = [
   { key: 'customers', label: '고객 정보 관리', group: '데이터 관리', paths: ['/customer-management'] },
   { key: 'product_master', label: '증권사 상품 관리', group: '데이터 관리', paths: ['/portfolio/product-master'] },
   { key: 'wrap_accounts', label: '투자상품 관리', group: '데이터 관리', paths: ['/data-management/wrap-accounts'] },
-  { key: 'commission_drgm', label: 'Dr.GM 수당정산', group: '업무 자동화', paths: ['/commission/dr-gm'] },
-  { key: 'commission_securities', label: '증권사 수당정산', group: '업무 자동화', paths: ['/commission/securities'] },
-  { key: 'portfolio', label: '주식, 펀드 관리', group: '투자 분석', paths: ['/portfolio/irp', '/portfolio/pension'] },
-  { key: 'retirement', label: '은퇴플랜 관리', group: '투자 분석', paths: ['/retirement'] },
-  { key: 'stock_recommend', label: '주식·ETF 추천', group: '투자 분석', paths: ['/investment'] },
+  // 업무 자동화(수당정산)·주식·ETF 추천은 2026-10-01 삭제
+  { key: 'portfolio', label: '주식, 펀드 관리', group: '자산관리', paths: ['/portfolio/irp', '/portfolio/pension'] },
+  { key: 'retirement', label: '은퇴플랜 관리', group: '자산관리', paths: ['/retirement'] },
   { key: 'company_report', label: '기업 리포트', group: '콘텐츠 제작', paths: ['/content/company-report'] },
 ];
 

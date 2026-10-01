@@ -16,9 +16,10 @@ def test_path_rules():
     assert p("/api/v1/retirement/profiles/x") == {"retirement"}
     assert p("/api/v1/retirement/wrap-accounts") is None          # 공용
     assert p("/api/v1/retirement/wrap-accounts/options") is None
-    assert p("/api/v1/portfolios/1") == {"portfolio", "stock_recommend"}
+    assert p("/api/v1/portfolios/1") == {"portfolio"}
     assert p("/api/v1/clients") is None                             # 공용
-    assert p("/api/v1/commissions/x") == {"commission_drgm", "commission_securities"}
+    assert p("/api/v1/commissions/x") is None  # 수당정산 삭제(2026-10-01)
+    assert p("/api/v1/stocks/x") is None
     assert p("/api/v1/company-reportx") is None
 
 
@@ -30,6 +31,8 @@ class _U:
 def test_allowed_and_check():
     assert programs.allowed_set(_U("owner", ["company_report"])) is None     # 대표는 전부
     assert programs.allowed_set(_U("manager", None)) is None                  # 기존 계정 = 전부
+    # 삭제된 프로그램 키가 저장돼 있어도 무시
+    assert programs.effective_list(_U("manager", ["stock_recommend", "company_report"])) == ["company_report"]
     assert programs.effective_list(_U("manager", ["company_report"])) == ["company_report"]
     programs.check_path(_U("manager", ["company_report"]), "/api/v1/company-report/companies")
     programs.check_path(_U("manager", ["company_report"]), "/api/v1/clients")

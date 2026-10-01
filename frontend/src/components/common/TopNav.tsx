@@ -67,20 +67,11 @@ const NAV: NavGroup[] = [
     ],
   },
   {
-    label: '업무 자동화',
-    match: ['/commission'],
-    items: [
-      { title: 'Dr.GM 수당정산', desc: '엑셀 업로드 자동 계산', href: '/commission/dr-gm', icon: ic.gear },
-      { title: '증권사 수당정산', desc: '크롤링·정산 검증', href: '/commission/securities', icon: ic.receipt },
-    ],
-  },
-  {
-    label: '투자 분석',
-    match: ['/portfolio/irp', '/retirement', '/investment'],
+    label: '자산관리',
+    match: ['/portfolio/irp', '/retirement'],
     items: [
       { title: '주식, 펀드 관리', desc: 'IRP/연금 수익률·리밸런싱', href: '/portfolio/irp', icon: ic.doc },
       { title: '은퇴플랜 관리', desc: '현금흐름 시뮬레이션', href: '/retirement', icon: ic.shield },
-      { title: '주식·ETF 추천', desc: '테마별 AI 추천', href: '/investment/stock-recommend', icon: ic.trend },
     ],
   },
   {

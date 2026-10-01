@@ -177,6 +177,16 @@
 - [x] **P11-4** [FE] 매니저 관리: 추가 폼 체크박스(기본 모두 해제 — 대표가 열어 줌), 목록 [사용 프로그램] 칸에서 바로 변경. 상단 메뉴·메인 프로그램 카드는 허용된 것만, 주소로 들어오면 '사용 권한이 없는 프로그램' 안내
 - [x] **P11-5** [TEST] `tests/test_programs.py` (경로 규칙·대표/기존 계정 전부·403·대행·잘못된 키·새 매니저)
 
+## P12 — 업무 자동화·주식·ETF 추천 삭제, '투자 분석' → '자산관리' (2026-10-01 대표님 지시)
+
+> 의도와 달라 쓰지 않음. 주식·ETF 추천은 다시 만든다면 구조가 완전히 달라질 예정이라 지금 코드는 남기지 않는다.
+
+- [x] **P12-1** [FE] 삭제: `app/(main)/commission`(Dr.GM·증권사 수당정산), `app/(main)/investment`(주식·ETF 추천), `components/commission`, `components/investment`. 상단 메뉴 '업무 자동화' 묶음 제거, '투자 분석' → '자산관리'. 메인·첫 화면 프로그램 카드·문구, 관리자 화면의 수당 정산 칸 정리
+- [x] **P12-2** [BE] 삭제: 라우터 `commission`·`crawling`·`upload`·`stock`·`market`, 이들만 쓰던 서비스 15개(`commission_service`·`crawler_service`·`excel_service`·`stock_service`·`daily_batch`·`theme_*`·`weight_calibration`·`indicator_engine`·`market_data_service`·`stock_advanced_service`·`stock_report`·`collectors/theme_mapping_collector`), `scripts/run_daily_batch.py`, 관련 테스트 14개
+- [x] **P12-3** [BE] 매니저 사용 프로그램 목록에서 3개 제거(예전에 저장된 키는 무시)
+- 유지: DB 테이블·기존 데이터(수당 계산·주식 추천 기록 등)는 지우지 않음. 되살릴 때는 git 기록에서 복원
+- 검증(삭제 전·후 비교): 백엔드 651 → 467(차이 184 = 삭제한 테스트 수와 정확히 일치), 실DB 72 → 72, 모든 모듈 import 성공, 프론트 tsc 통과, 빌드 성공(화면 37 → 34, 빠진 3개 = 삭제한 화면), 새 eslint 오류 0, 실제 서버에서 남은 화면 정상·삭제한 주소 404. PC 사본과 검증 사본 421개 파일 내용 동일 확인
+
 ---
 
 ## 결정 사항 (2026-09-30 대표님 확정)

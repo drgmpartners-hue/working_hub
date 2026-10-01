@@ -6,8 +6,8 @@ from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 
 logger = logging.getLogger(__name__)
-from app.api.v1 import auth, users, brand, ai_settings, upload, crawling, commission, content, portfolio, stock
-from app.api.v1 import market as market_router
+# 업무 자동화(수당정산)·주식·ETF 추천은 2026-10-01 삭제 (docs/login_logic P12). 테이블·기존 데이터는 그대로 둔다
+from app.api.v1 import auth, users, brand, ai_settings, content, portfolio
 from app.api.v1 import clients as clients_router
 from app.api.v1 import snapshots as snapshots_router
 from app.api.v1 import product_master as product_master_router
@@ -72,13 +72,9 @@ app.add_middleware(
 app.include_router(auth.router, prefix="/api/v1")
 app.include_router(users.router, prefix="/api/v1")
 app.include_router(brand.router, prefix="/api/v1")
-app.include_router(upload.router, prefix="/api/v1")
-app.include_router(crawling.router, prefix="/api/v1")
 app.include_router(ai_settings.router, prefix="/api/v1")
-app.include_router(commission.router, prefix="/api/v1")
 app.include_router(content.router, prefix="/api/v1")
 app.include_router(portfolio.router, prefix="/api/v1")
-app.include_router(stock.router, prefix="/api/v1")
 app.include_router(clients_router.router, prefix="/api/v1")
 app.include_router(snapshots_router.router, prefix="/api/v1")
 app.include_router(product_master_router.router, prefix="/api/v1")
@@ -106,7 +102,6 @@ app.include_router(inflation_rate_router.router, prefix="/api/v1")
 app.include_router(deposit_accounts_router, prefix="/api/v1")
 app.include_router(deposit_transactions_router, prefix="/api/v1")
 app.include_router(notion_router.router, prefix="/api/v1")
-app.include_router(market_router.router, prefix="/api/v1")
 app.include_router(company_report_router.router, prefix="/api/v1")
 app.include_router(managers_router.router, prefix="/api/v1")
 app.include_router(admin_router.router, prefix="/api/v1")

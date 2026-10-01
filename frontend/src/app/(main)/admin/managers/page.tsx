@@ -190,7 +190,7 @@ export default function AdminManagersPage() {
             <button className="wh-btn wh-btn-primary wh-btn-sm" onClick={transferAll}>전체 이관</button>
           </div>
           <div style={{ padding: '0 24px 16px', fontSize: 13, color: 'var(--text-muted)' }}>
-            고객과 그 계좌·플랜·기록이 한 번에 넘어갑니다. 수당 정산·콘텐츠 같은 개인 자료는 원래 계정에 남습니다.
+            고객과 그 계좌·플랜·기록이 한 번에 넘어갑니다. 콘텐츠 같은 개인 자료는 원래 계정에 남습니다.
           </div>
         </div>
       )}

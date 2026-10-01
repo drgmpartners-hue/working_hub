@@ -49,16 +49,13 @@ const PROGRAMS = [
   { ic: I.grid, t: '증권사 상품 관리', d: '상품 마스터', href: '/portfolio/product-master' },
   { ic: I.chart, t: '투자상품 관리', d: '상품 등록·관리', href: '/data-management/wrap-accounts' },
   { ic: I.doc, t: '투자 상품 관리기', d: '수익률·리밸런싱', href: '/portfolio/irp' },
-  { ic: I.gear, t: 'Dr.GM 수당정산', d: '자동 계산', href: '/commission/dr-gm' },
-  { ic: I.receipt, t: '증권사 수당정산', d: '정산·검증', href: '/commission/securities' },
   { ic: I.shield, t: '은퇴플랜 관리', d: '현금흐름 설계', href: '/retirement' },
-  { ic: I.trend, t: '주식·ETF 추천', d: 'AI 추천', href: '/investment/stock-recommend' },
   { ic: I.doc, t: '기업 리포트', d: '투자기업 브리핑·보고서', href: '/content/company-report' },
 ];
 
 const STATS = [
   { n: '40%↓', l: '반복 업무 시간 절감' },
-  { n: '9', l: '통합 업무 프로그램' },
+  { n: '6', l: '통합 업무 프로그램' },
   { n: '1-Click', l: '보고서·콘텐츠 생성' },
   { n: '24/7', l: '고객 상시조회 포털' },
 ];

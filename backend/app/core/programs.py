@@ -4,6 +4,7 @@
 - users.allowed_programs: NULL = 전부 허용(기존 계정), 목록 = 그 프로그램만.
 - 대표는 언제나 전부. 대행 중에는 대행 대상 매니저의 권한을 따른다.
 - 메인·대시보드·내 정보·설정은 누구나.
+- 2026-10-01: 업무 자동화(Dr.GM·증권사 수당정산)·주식·ETF 추천 프로그램 삭제. 예전에 저장된 그 키는 무시한다.
 
 서버 판정(check_path)은 그 프로그램만 쓰는 API 에만 건다. 고객 목록(/clients)·상품 마스터 읽기·투자상품 목록처럼
 여러 프로그램이 같이 쓰는 API 는 막지 않는다(막으면 다른 프로그램이 깨진다). 화면(메뉴·주소)은 프론트에서 막는다.
@@ -19,11 +20,8 @@ PROGRAMS: list[tuple[str, str, str]] = [
     ("customers", "고객 정보 관리", "데이터 관리"),
     ("product_master", "증권사 상품 관리", "데이터 관리"),
     ("wrap_accounts", "투자상품 관리", "데이터 관리"),
-    ("commission_drgm", "Dr.GM 수당정산", "업무 자동화"),
-    ("commission_securities", "증권사 수당정산", "업무 자동화"),
-    ("portfolio", "주식, 펀드 관리", "투자 분석"),
-    ("retirement", "은퇴플랜 관리", "투자 분석"),
-    ("stock_recommend", "주식·ETF 추천", "투자 분석"),
+    ("portfolio", "주식, 펀드 관리", "자산관리"),
+    ("retirement", "은퇴플랜 관리", "자산관리"),
     ("company_report", "기업 리포트", "콘텐츠 제작"),
 ]
 PROGRAM_KEYS = [k for k, _, _ in PROGRAMS]
@@ -33,11 +31,7 @@ _OPEN = None  # 공용
 PATH_RULES: list[tuple[str, Optional[set[str]]]] = sorted(
     [
         ("/company-report", {"company_report"}),
-        ("/commissions", {"commission_drgm", "commission_securities"}),
-        ("/crawling", {"commission_drgm", "commission_securities"}),
-        ("/upload", {"commission_drgm", "commission_securities"}),
-        ("/stocks", {"stock_recommend"}),
-        ("/portfolios", {"portfolio", "stock_recommend"}),
+        ("/portfolios", {"portfolio"}),
         ("/snapshots", {"portfolio"}),
         ("/reports", {"portfolio"}),
         ("/recommended-portfolio", {"portfolio"}),
