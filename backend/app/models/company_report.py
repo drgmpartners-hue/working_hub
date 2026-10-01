@@ -227,3 +227,121 @@ class ShortLink(Base):
     article_id: Mapped[Optional[str]] = mapped_column(String(36), index=True)
     hits: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now(), nullable=False)
+
+
+# --------------------------------------------------------------------------- 반기 기업 종합보고서 (기획 6장, P4)
+
+class CompanyDocument(Base):
+    """자료함: 기업DB 03_자료에 올린 문서를 읽은 결과(텍스트·이미지·AI 메모). 원본 파일은 company_files.
+
+    extract_status: pending(읽는 중) / done / failed / unsupported(형식 미지원)
+    doc_type: ir / financial / shareholders / investor_report / contract / press / product / certificate / other
+    has_personal_investment: 고객 개인의 투자 금액·지분이 들어 있다고 AI가 본 문서 — 보고서에 그 내용은 쓰지 않는다
+    """
+
+    __tablename__ = "company_documents"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    company_id: Mapped[str] = _company_fk()
+    file_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("company_files.id", ondelete="CASCADE"), nullable=False, unique=True
+    )
+    filename: Mapped[str] = mapped_column(String(300), nullable=False)
+    file_type: Mapped[str] = mapped_column(String(10), nullable=False)
+    size: Mapped[int] = mapped_column(BigInteger, default=0, nullable=False)
+    page_count: Mapped[Optional[int]] = mapped_column(Integer)
+    extract_status: Mapped[str] = mapped_column(String(12), default="pending", nullable=False)
+    extract_method: Mapped[Optional[str]] = mapped_column(String(30))  # pypdf / claude_pdf / python-docx / hwp5 / …
+    extract_error: Mapped[Optional[str]] = mapped_column(Text)
+    extracted_text: Mapped[Optional[str]] = mapped_column(Text)
+    extracted_images: Mapped[Optional[list]] = mapped_column(JSONB)  # [{key, ext, page, width, height, name}]
+    doc_type: Mapped[Optional[str]] = mapped_column(String(20))
+    ai_memo: Mapped[Optional[str]] = mapped_column(Text)
+    ai_facts: Mapped[Optional[list]] = mapped_column(JSONB)  # 보고서에 쓸 만한 핵심 사실 몇 줄
+    has_personal_investment: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    use_in_report: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    is_public: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)  # 부록에 링크를 걸어도 되는 공개 자료
+    uploaded_by: Mapped[Optional[str]] = mapped_column(String(36))
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now(), nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now(), onupdate=func.now(), nullable=False)
+
+
+class CompanyReport(Base):
+    """반기 기업 종합보고서(또는 수시 보고서). 수정하면 새 버전.
+
+    owner_user_id: NULL = 자동 생성본(그 기업을 추가한 모두가 본다), 값 = 그 사람이 고친 자기 버전.
+    매니저 보고서는 대표 승인 없이 매니저가 검토·출력한다(2026-10-01 결정).
+    status: generating / draft(검토 중) / final(검토 완료) / failed
+    """
+
+    __tablename__ = "company_reports"
+    __table_args__ = (Index("ix_company_reports_period", "company_id", "period_year", "period_half"),)
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    company_id: Mapped[str] = _company_fk()
+    report_type: Mapped[str] = mapped_column(String(12), default="half_year", nullable=False)  # half_year/adhoc
+    period_year: Mapped[int] = mapped_column(Integer, nullable=False)
+    period_half: Mapped[int] = mapped_column(Integer, nullable=False)  # 1(상반기)/2(하반기)
+    version: Mapped[int] = mapped_column(Integer, default=1, nullable=False)
+    owner_user_id: Mapped[Optional[str]] = mapped_column(
+        String(36), ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    base_report_id: Mapped[Optional[str]] = mapped_column(String(36))  # 어느 버전을 고쳐 만들었나
+    status: Mapped[str] = mapped_column(String(12), default="generating", nullable=False)
+    progress_step: Mapped[Optional[str]] = mapped_column(String(40))
+    progress: Mapped[int] = mapped_column(Integer, default=0, nullable=False)  # 0~100
+    as_of_date: Mapped[Optional[date]] = mapped_column(Date)
+    content: Mapped[Optional[dict]] = mapped_column(JSONB)      # 표지·한 장 요약·10개 항목·부록
+    sources: Mapped[Optional[dict]] = mapped_column(JSONB)      # 출처 번호 → {title, url, date, kind}
+    review: Mapped[Optional[dict]] = mapped_column(JSONB)       # 교차 검토 결과·합의 안 된 문장
+    sales_note: Mapped[Optional[dict]] = mapped_column(JSONB)   # 영업 대화 노트(내부용)
+    main_model: Mapped[Optional[str]] = mapped_column(String(60))
+    review_model: Mapped[Optional[str]] = mapped_column(String(60))
+    token_usage: Mapped[Optional[dict]] = mapped_column(JSONB)
+    error: Mapped[Optional[str]] = mapped_column(Text)
+    created_by: Mapped[Optional[str]] = mapped_column(String(36))
+    finalized_by: Mapped[Optional[str]] = mapped_column(String(36))
+    finalized_at: Mapped[Optional[datetime]] = mapped_column(DateTime)
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now(), nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now(), onupdate=func.now(), nullable=False)
+
+
+class ReportImage(Base):
+    """보고서 이미지 후보·선택(보고서당 선택 2~10개). 기사 사진은 쓰지 않는다."""
+
+    __tablename__ = "report_images"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    report_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("company_reports.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    section_no: Mapped[Optional[int]] = mapped_column(Integer)  # 1~10
+    kind: Mapped[str] = mapped_column(String(12), nullable=False)  # chart/document/homepage/press_kit
+    storage_key: Mapped[str] = mapped_column(String(300), nullable=False)
+    document_id: Mapped[Optional[str]] = mapped_column(String(36))
+    caption: Mapped[Optional[str]] = mapped_column(String(300))
+    source_label: Mapped[Optional[str]] = mapped_column(String(200))
+    source_url: Mapped[Optional[str]] = mapped_column(String(500))
+    rights_note: Mapped[Optional[str]] = mapped_column(String(200))
+    width: Mapped[Optional[int]] = mapped_column(Integer)
+    height: Mapped[Optional[int]] = mapped_column(Integer)
+    sort_order: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    selected: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now(), nullable=False)
+
+
+class ReportExport(Base):
+    """출력 기록: 보고서·버전·형식·내려받은 사람·시각(·어느 고객용)."""
+
+    __tablename__ = "report_exports"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    report_id: Mapped[Optional[str]] = mapped_column(
+        String(36), ForeignKey("company_reports.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    version: Mapped[Optional[int]] = mapped_column(Integer)
+    format: Mapped[str] = mapped_column(String(6), nullable=False)  # pdf/docx/zip
+    client_id: Mapped[Optional[str]] = mapped_column(String(36))   # 고객용으로 뽑은 경우
+    file_id: Mapped[Optional[str]] = mapped_column(String(36))     # 기업DB 04_보고서에 저장된 파일
+    exported_by: Mapped[Optional[str]] = mapped_column(String(36))
+    exported_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now(), nullable=False)

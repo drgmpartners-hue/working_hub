@@ -137,9 +137,9 @@
 
 - (2026-10-01) 담당자별 규칙: 기업 목록은 '추가한 계정' 방식(docs/login_logic P13). 반기 보고서는 고객에게 가므로 데일리·월간과 별도의 고객 수신자 명단이 필요
 - (2026-10-01 대표님 결정) 매니저가 만든 반기 보고서는 **대표 승인 없이** 매니저가 독립적으로 검토·출력·발송한다. P4-10의 '관리자 승인'은 매니저 보고서에 걸지 않는다
-- [ ] **P4-1** [DB] `company_documents`, `company_reports`(period_year·period_half·sales_note), `report_images`, `report_exports`
-- [ ] **P4-2** [BE] 자료함 파서 7종(pdf·docx·md·pptx·hwpx·hwp·ppt) 텍스트·이미지 추출 + AI 문서 메모, 투자사 보고서 포함 (고객 개인 투자 금액·지분은 제외)
-- [ ] **P4-3** [OPS] LibreOffice 설치 여부 결정(Dockerfile 또는 별도 변환 워커)
+- [x] **P4-1** [DB] `company_documents`, `company_reports`(period_year·period_half·sales_note), `report_images`, `report_exports` — 마이그레이션 `e1r2p3t4h5y6`. 보고서는 자동 생성본(owner_user_id 없음) + 담당자가 고친 자기 버전(owner_user_id), 출력 기록에 고객(client_id)
+- [x] **P4-2** [BE] 자료함 파서 7종(pdf·docx·md·pptx·hwpx·hwp·ppt) 텍스트·이미지 추출 + AI 문서 메모, 투자사 보고서 포함 (고객 개인 투자 금액·지분은 제외) — `doc_parser.py`(+xlsx·csv·txt), `documents.py`. 03_자료 업로드 시 자동 읽기, 스캔본 PDF 는 Claude 가 PDF 를 직접 읽음, AI 메모(종류·요약·핵심 사실·고객 개인 투자 정보 표시·공개 여부), 본문 검색 색인, 놓친 건 file_worker 가 재처리. 화면: 기업 상세 > 반기 보고서 탭 '자료함'
+- [x] **P4-3** [OPS] LibreOffice 설치 여부 결정(Dockerfile 또는 별도 변환 워커) — **설치하지 않음**(이미지 수백 MB 증가·변환 워커 운영 부담). hwp 는 OLE 레코드 직접 해석(olefile), ppt 는 글자 레코드만 읽음. doc·xls(옛 형식)는 '새 형식으로 저장해 다시 올려 달라' 안내. 표·그림이 중요한 문서는 PDF·hwpx·pptx 권장(화면 안내)
 - [ ] **P4-4** [BE] 자료 요청 절차: 6월 말·12월 말 알림, 기업별 체크리스트
 - [ ] **P4-5** [BE] `half_year.py`: 10개 항목 + 부록(링크), 웹 보강, 교차 검토, 영업 대화 노트, 문장 규칙(두괄식·고등학생 수준·출처 번호) (기획 6장)
 - [ ] **P4-6** [BE] 이미지: 기본 차트 2종(투자유치 타임라인, 재무 추이 또는 사건 타임라인) + 후보 선정·캡션, 2~10개 제한, 기사 사진 사용 금지

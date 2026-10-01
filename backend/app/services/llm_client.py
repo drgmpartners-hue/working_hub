@@ -169,6 +169,32 @@ async def claude_text(
     raise LLMError(str(last_err))
 
 
+async def claude_pdf_text(api_key: str, pdf: bytes, prompt: str, *, model: str = DEFAULT_WRITER_MODEL,
+                          max_tokens: int = 16000, timeout: float = 240, stage: Optional[str] = None) -> LLMResult:
+    """PDF 를 그대로 보내 읽게 한다(스캔본·표 중심 문서, 기획 6장 '자료 읽기'). 32MB·100쪽 이하."""
+    import base64
+
+    body: dict[str, Any] = {
+        "model": model,
+        "max_tokens": max_tokens,
+        "messages": [{"role": "user", "content": [
+            {"type": "document", "source": {"type": "base64", "media_type": "application/pdf",
+                                            "data": base64.b64encode(pdf).decode()}},
+            {"type": "text", "text": prompt},
+        ]}],
+    }
+    headers = {"x-api-key": api_key, "anthropic-version": ANTHROPIC_VERSION, "content-type": "application/json"}
+    async with httpx.AsyncClient(timeout=timeout) as client:
+        res = await client.post(ANTHROPIC_URL, headers=headers, json=body)
+    if res.status_code >= 400:
+        raise LLMError(f"Claude 오류 {res.status_code}: {res.text[:200]}")
+    data = res.json()
+    text = "".join(b.get("text", "") for b in data.get("content", []) if b.get("type") == "text")
+    usage = data.get("usage", {}) or {}
+    _record(data.get("model", model), usage, 0, stage)
+    return LLMResult(text=text, model=data.get("model", model), usage=usage)
+
+
 async def claude_json(api_key: str, prompt: str, **kwargs) -> LLMResult:
     """JSON만 출력하게 하고 파싱까지 한다. 파싱 실패 시 한 번 더 요청한다."""
     system = kwargs.pop("system", None) or ""

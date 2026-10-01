@@ -1510,11 +1510,12 @@ async def db_files(company: Optional[list[str]] = Query(None), portfolio: bool =
 
 
 @router.post("/db/files", status_code=201)
-async def db_upload(file: UploadFile = File(...), company_id: Optional[str] = Form(None), folder: str = Form("docs"),
-                    doc_kind: Optional[str] = Form(None), memo: Optional[str] = Form(None),
+async def db_upload(background: BackgroundTasks, file: UploadFile = File(...), company_id: Optional[str] = Form(None),
+                    folder: str = Form("docs"), doc_kind: Optional[str] = Form(None), memo: Optional[str] = Form(None),
                     current_user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
-    """업로드 — 파일명 규칙에 맞게 자동으로 이름이 바뀐다(원래 이름은 따로 보관)."""
-    from app.services.company_report import company_db
+    """업로드 — 파일명 규칙에 맞게 자동으로 이름이 바뀐다(원래 이름은 따로 보관).
+    03_자료에 올린 문서는 자료함에 등록하고 뒤에서 읽는다(반기 보고서 재료, P4-2)."""
+    from app.services.company_report import company_db, documents
 
     if company_id:
         await assert_company(db, current_user, company_id, write=True)
@@ -1524,9 +1525,113 @@ async def db_upload(file: UploadFile = File(...), company_id: Optional[str] = Fo
                                          data=data, user_id=current_user.id, doc_kind=(doc_kind or None), memo=memo)
     except ValueError as e:
         raise HTTPException(422, str(e))
+    doc = await documents.register(db, f, current_user.id)
     await db.commit()
     await db.refresh(f)
+    if doc:
+        background.add_task(documents.process_in_background, doc.id)
     return company_db.file_out(f)
+
+
+# --------------------------------------------------------------------------- 자료함 (P4-2)
+
+@router.get("/companies/{company_id}/documents")
+async def list_documents(company_id: str, background: BackgroundTasks, current_user=Depends(get_current_user),
+                         db: AsyncSession = Depends(get_db)):
+    """기업 자료함: 03_자료 문서를 읽은 결과. 예전에 올린 파일도 처음 열 때 등록해 읽는다."""
+    from app.models.company_report import CompanyDocument, CompanyFile
+    from app.services.company_report import documents
+
+    await assert_company(db, current_user, company_id)
+    new_ids = await documents.sync_company(db, company_id)
+    if new_ids:
+        await db.commit()
+        for i in new_ids:
+            background.add_task(documents.process_in_background, i)
+    rows = (await db.execute(
+        select(CompanyDocument, CompanyFile).join(CompanyFile, CompanyFile.id == CompanyDocument.file_id)
+        .where(CompanyDocument.company_id == company_id, CompanyFile.status != "deleted")
+        .order_by(CompanyDocument.created_at.desc())
+    )).all()
+    return {"items": [documents.doc_out(d, f) for d, f in rows], "doc_types": documents.DOC_TYPES,
+            "can_edit": await vis.can_edit(db, current_user, await db.get(PortfolioCompany, company_id))}
+
+
+async def _doc_for(db: AsyncSession, user, doc_id: str, write: bool = False):
+    from app.models.company_report import CompanyDocument
+
+    d = await db.get(CompanyDocument, doc_id)
+    if not d:
+        raise HTTPException(404, "자료를 찾을 수 없습니다.")
+    await assert_company(db, user, d.company_id, write=write)
+    return d
+
+
+class DocumentPatch(BaseModel):
+    use_in_report: Optional[bool] = None
+    is_public: Optional[bool] = None
+    doc_type: Optional[str] = None
+    ai_memo: Optional[str] = Field(None, max_length=1500)
+
+
+@router.patch("/documents/{doc_id}")
+async def patch_document(doc_id: str, body: DocumentPatch, current_user=Depends(get_current_user),
+                         db: AsyncSession = Depends(get_db)):
+    """보고서에 쓸지·공개 자료인지·종류·메모 고치기."""
+    from app.models.company_report import CompanyFile
+    from app.services.company_report import documents
+
+    d = await _doc_for(db, current_user, doc_id, write=True)
+    data = body.model_dump(exclude_unset=True)
+    if "doc_type" in data and data["doc_type"] not in documents.DOC_TYPES:
+        raise HTTPException(422, "자료 종류가 올바르지 않습니다.")
+    for k, v in data.items():
+        setattr(d, k, v)
+    await db.commit()
+    await db.refresh(d)
+    return documents.doc_out(d, await db.get(CompanyFile, d.file_id))
+
+
+@router.post("/documents/{doc_id}/reparse")
+async def reparse_document(doc_id: str, background: BackgroundTasks, current_user=Depends(get_current_user),
+                           db: AsyncSession = Depends(get_db)):
+    """다시 읽기(파일을 바꿔 올렸거나 AI 메모가 비었을 때)."""
+    from app.services.company_report import documents
+
+    d = await _doc_for(db, current_user, doc_id, write=True)
+    d.extract_status, d.extract_error = "pending", None
+    await db.commit()
+    background.add_task(documents.process_in_background, d.id)
+    return {"id": d.id, "extract_status": "pending"}
+
+
+@router.get("/documents/{doc_id}/text")
+async def document_text(doc_id: str, current_user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    """읽어 낸 글 미리보기."""
+    d = await _doc_for(db, current_user, doc_id)
+    return {"id": d.id, "filename": d.filename, "text": d.extracted_text or "", "images": [
+        {"index": i, "page": im.get("page"), "width": im.get("width"), "height": im.get("height")}
+        for i, im in enumerate(d.extracted_images or [])]}
+
+
+@router.get("/documents/{doc_id}/images/{index}")
+async def document_image(doc_id: str, index: int, current_user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    """자료에서 꺼낸 그림(보고서 이미지 후보)."""
+    from fastapi.responses import Response
+
+    from app.services.company_report import company_db, storage
+
+    d = await _doc_for(db, current_user, doc_id)
+    imgs = d.extracted_images or []
+    if index < 0 or index >= len(imgs):
+        raise HTTPException(404, "그림을 찾을 수 없습니다.")
+    im = imgs[index]
+    try:
+        data = storage.read_bytes(im["key"])
+    except Exception:
+        raise HTTPException(404, "그림 파일이 없습니다.")
+    return Response(content=data, media_type=company_db.MIME.get(im.get("ext") or "png", "application/octet-stream"),
+                    headers={"Cache-Control": "private, max-age=3600"})
 
 
 class FilePatch(BaseModel):

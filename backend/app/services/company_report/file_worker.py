@@ -74,6 +74,14 @@ async def run_once(force: bool = False) -> dict:
                 except Exception as e:
                     await db.rollback()
                     logger.warning("브리핑 PDF 저장 실패(%s): %s", b.briefing_date, e)
+        # 자료함: 업로드 직후 읽기를 놓친 문서(재시작 등) 다시 처리
+        try:
+            from app.services.company_report import documents
+
+            out["documents"] = await documents.process_pending(db)
+        except Exception as e:
+            await db.rollback()
+            logger.warning("자료함 처리 실패: %s", e)
         return out
 
 
