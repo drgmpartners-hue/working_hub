@@ -18,8 +18,6 @@ import { useCrMe } from '@/lib/useCrMe';
 import { AdminCard } from '@/components/company-report/AdminCard';
 import { RecipientsCard } from '@/components/company-report/RecipientsCard';
 import { CronStatusCard, type CronJob } from '@/components/company-report/CronStatusCard';
-import { isManagerView, useViewAs } from '@/lib/crViewAs';
-import { useAuthStore } from '@/stores/auth';
 import {
   CostHistoryCard,
   StageCostCard,
@@ -48,6 +46,7 @@ interface Settings {
   last_run_at: string | null;
   last_send_at: string | null;
   cron?: CronJob[];
+  manager_self?: { name: string; phone_masked: string | null; has_phone: boolean; company_count: number }[];
   keys: Record<string, boolean>;
   send_logs: {
     briefing_type: string;
@@ -104,8 +103,6 @@ export default function SettingsPage() {
   const [me, reloadMe] = useCrMe(true);
   const admin = !!me?.is_admin;
   // 수신자 명단은 담당자별: 매니저는 자기 명단을 직접 관리 (docs/login_logic P9)
-  const role = useAuthStore((st) => st.user?.role);
-  const managerView = isManagerView(role, useViewAs());
   const [s, setS] = useState<Settings | null>(null);
   const [tpl, setTpl] = useState({ daily: '', monthly: '' });
   const [models, setModels] = useState({ main: '', writer: '', review: '', summary: '' });
@@ -303,7 +300,9 @@ export default function SettingsPage() {
 
       <CronStatusCard jobs={s.cron} />
 
-      <RecipientsCard admin={admin || managerView} mine={role !== 'owner'} />
+      <RecipientsCard admin={admin} />
+
+      <ManagerSelfCard rows={s.manager_self} />
 
       <Card padding={16}>
         <SectionTitle
@@ -530,5 +529,36 @@ export default function SettingsPage() {
         )}
       </Card>
     </div>
+  );
+}
+
+/** 매니저 본인 자동 발송 현황(2026-10-01): 매니저는 자기가 추가한 기업 브리핑을 본인 휴대폰으로 받는다 */
+function ManagerSelfCard({ rows }: { rows?: Settings['manager_self'] }) {
+  if (!Array.isArray(rows)) return null;
+  return (
+    <Card padding={16}>
+      <SectionTitle>매니저 자동 발송</SectionTitle>
+      <div style={{ ...mutedText, fontSize: 12, marginTop: -4, marginBottom: 10 }}>
+        기업을 한 곳 이상 추가한 매니저는 따로 등록하지 않아도 자기 기업 브리핑을 본인 휴대폰(내 정보)으로 받습니다.
+        회사 수신자 명단에 같은 번호가 있으면 한 번만 갑니다.
+      </div>
+      {rows.length === 0 ? (
+        <div style={mutedText}>아직 기업을 추가한 매니저가 없습니다.</div>
+      ) : (
+        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+          <tbody>
+            {rows.map((r) => (
+              <tr key={r.name} style={{ borderTop: '1px solid var(--border)' }}>
+                <td style={{ padding: '8px' }}>{r.name}</td>
+                <td style={{ padding: '8px' }}>기업 {r.company_count}곳</td>
+                <td style={{ padding: '8px', color: r.has_phone ? 'var(--text-secondary)' : 'var(--danger)' }}>
+                  {r.has_phone ? r.phone_masked : '휴대폰 번호 없음 — 받지 못함'}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+    </Card>
   );
 }

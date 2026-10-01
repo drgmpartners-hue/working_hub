@@ -84,45 +84,39 @@ async def _replace_keywords(db: AsyncSession, company_id: str, ks: KeywordSet, s
                 db.add(CompanyKeyword(company_id=company_id, keyword=kw[:100], kind=kind, source=source))
 
 
-def _out(c: PortfolioCompany, ks: KeywordSet, stats: Optional[dict] = None, *, manager_name: Optional[str] = None,
-         is_hidden: bool = False, can_edit: bool = False) -> CompanyOut:
+def _out(c: PortfolioCompany, ks: KeywordSet, stats: Optional[dict] = None, *, added_by: Optional[list] = None,
+         is_mine: bool = False, can_edit: bool = False, can_manage: bool = False) -> CompanyOut:
     from app.services.company_report.ksic import industry_label
 
-    data = {k: getattr(c, k) for k in CompanyOut.model_fields
-            if hasattr(c, k) and k not in ("keywords", "stats", "scope", "manager_name", "is_hidden", "can_edit")}
+    skip = ("keywords", "stats", "scope", "manager_name", "manager_user_id", "is_hidden", "can_edit", "can_manage",
+            "added_by", "is_mine")
+    data = {k: getattr(c, k) for k in CompanyOut.model_fields if hasattr(c, k) and k not in skip}
     data["industry"] = industry_label(data.get("industry"))  # 이미 저장된 DART 숫자 업종코드도 이름으로 보여준다
-    return CompanyOut(**data, keywords=ks, stats=stats or {}, scope="manager" if c.manager_user_id else "common",
-                      manager_name=manager_name, is_hidden=is_hidden, can_edit=can_edit)
-
-
-async def _manager_names(db: AsyncSession, ids) -> dict[str, str]:
-    from app.models.user import User
-
-    ids = [i for i in set(ids) if i]
-    if not ids:
-        return {}
-    return dict((await db.execute(select(User.id, User.nickname).where(User.id.in_(ids)))).all())
+    return CompanyOut(**data, keywords=ks, stats=stats or {}, added_by=added_by or [], is_mine=is_mine,
+                      can_edit=can_edit, can_manage=can_manage)
 
 
 async def _out_one(db: AsyncSession, c: PortfolioCompany, user, stats: Optional[dict] = None, view: Optional[View] = None) -> CompanyOut:
-    names = await _manager_names(db, [c.manager_user_id])
-    hidden = c.id in await vis.hidden_ids(db, view) if view else False
-    return _out(c, await _keywords(db, c.id), stats, manager_name=names.get(c.manager_user_id or ""),
-                is_hidden=hidden, can_edit=await vis.can_edit(db, user, c))
+    manage_all = await vis.can_manage_all(db, user)
+    mine_uid = view.member_id if view else user.id
+    added = (await vis.member_names(db, [c.id])).get(c.id, []) if manage_all else []
+    return _out(c, await _keywords(db, c.id), stats, added_by=added,
+                is_mine=await vis.is_member(db, mine_uid, c.id),
+                can_edit=manage_all or await vis.is_member(db, user.id, c.id), can_manage=manage_all)
 
 
 @router.get("/companies", response_model=list[CompanyOut])
 async def list_companies(active: Optional[bool] = None, q: Optional[str] = None, deleted: bool = False,
-                         hidden: bool = False, view: View = Depends(get_view), db: AsyncSession = Depends(get_db)):
-    """deleted=true 이면 '삭제된 기업'(1단계 삭제) 목록만. hidden=true 이면 이 담당자 화면에서 숨긴 공통 기업만.
-    담당자별 분리(docs/login_logic P9): 매니저는 회사 공통(숨김 제외) + 자기 기업, 대표는 고른 담당자 기준."""
+                         view: View = Depends(get_view), db: AsyncSession = Depends(get_db)):
+    """deleted=true 이면 '삭제된 기업'(1단계 삭제) 목록만 — 대표·관리자만 본다.
+    매니저는 자기가 추가한 기업, 대표는 전체(또는 [담당자 선택]한 목록). 2026-10-01 개편."""
     current_user = view.user
+    manage_all = await vis.can_manage_all(db, current_user)
+    if deleted and not manage_all:
+        return []
     stmt = select(PortfolioCompany).where(
         PortfolioCompany.deleted_at.is_not(None) if deleted else PortfolioCompany.deleted_at.is_(None))
-    hidden_set = await vis.hidden_ids(db, view)
-    if hidden:
-        stmt = stmt.where(PortfolioCompany.id.in_(list(hidden_set) or [""]))
-    else:
+    if not deleted:
         stmt = vis.scope_companies(stmt, view)
     if active is not None:
         stmt = stmt.where(PortfolioCompany.is_active == active)
@@ -154,88 +148,53 @@ async def list_companies(active: Optional[bool] = None, q: Optional[str] = None,
         ks = kws.setdefault(r.company_id, KeywordSet())
         if r.kind in ("required", "boost", "exclude"):
             getattr(ks, r.kind).append(r.keyword)
-    names = await _manager_names(db, [c.manager_user_id for c in companies])
-    manage_all = await vis.can_manage_all(db, current_user)
+    members = await vis.member_names(db, [c.id for c in companies])
+    mine_uid = view.member_id
     return [_out(c, kws.get(c.id, KeywordSet()), stats.get(c.id, {"today": 0, "week": 0, "caution_week": 0, "total": 0}),
-                 manager_name=names.get(c.manager_user_id or ""), is_hidden=c.id in hidden_set,
-                 can_edit=manage_all or (c.manager_user_id is not None and c.manager_user_id == current_user.id))
+                 added_by=members.get(c.id, []) if manage_all else [],
+                 is_mine=any(m["id"] == mine_uid for m in members.get(c.id, [])),
+                 can_edit=manage_all or any(m["id"] == current_user.id for m in members.get(c.id, [])),
+                 can_manage=manage_all)
             for c in companies]
-
-
-@router.post("/companies/{company_id}/hide")
-async def hide_company(company_id: str, view: View = Depends(get_view), db: AsyncSession = Depends(get_db)):
-    """회사 공통 기업을 이 담당자 화면(목록·브리핑·문자)에서 숨긴다. 데이터·수집은 그대로."""
-    from app.models.news_briefing import CompanyHidden
-
-    if view.mode != "manager":
-        raise HTTPException(400, "숨기기는 매니저 화면에서만 씁니다. 대표는 위쪽 [담당자 선택]에서 매니저를 고르세요.")
-    c = await assert_company(db, view.user, company_id)
-    if c.manager_user_id:
-        raise HTTPException(400, "매니저가 추가한 기업은 숨기지 말고 삭제하세요.")
-    exists = (await db.execute(select(CompanyHidden).where(
-        CompanyHidden.user_id == view.manager_id, CompanyHidden.company_id == c.id))).scalar_one_or_none()
-    if not exists:
-        db.add(CompanyHidden(user_id=view.manager_id, company_id=c.id))
-        await db.commit()
-    return {"id": c.id, "is_hidden": True}
-
-
-@router.post("/companies/{company_id}/unhide")
-async def unhide_company(company_id: str, view: View = Depends(get_view), db: AsyncSession = Depends(get_db)):
-    from sqlalchemy import delete as sa_delete
-
-    from app.models.news_briefing import CompanyHidden
-
-    if view.mode != "manager":
-        raise HTTPException(400, "숨기기 해제는 매니저 화면에서만 씁니다.")
-    await db.execute(sa_delete(CompanyHidden).where(
-        CompanyHidden.user_id == view.manager_id, CompanyHidden.company_id == company_id))
-    await db.commit()
-    return {"id": company_id, "is_hidden": False}
 
 
 @router.post("/companies", response_model=CompanyOut, status_code=201)
 async def create_company(body: CompanyCreate, background: BackgroundTasks,
                          view: View = Depends(get_view), db: AsyncSession = Depends(get_db)):
-    """등록하는 사람 기준으로 담당이 정해진다(docs/login_logic P9).
-    매니저 → 그 매니저 기업 / 대표 → 회사 공통(매니저 화면을 고른 상태면 그 매니저 기업).
-    같은 기업을 두 번 수집하지 않도록 중복은 전사 기준으로 막는다."""
+    """기업 추가 — 보고 있는 사람의 목록에 넣는다(대표가 매니저 화면을 고른 상태면 그 매니저 목록).
+
+    같은 기업(DART 고유번호, 없으면 이름)이 이미 있으면 새로 만들지 않고 목록에만 넣는다 — 기사 수집은 한 번.
+    다른 사람이 먼저 추가했는지는 알리지 않는다. 같은 계정이 다시 추가할 때만 '이미 추가한 기업'(409).
+    화면에서 삭제된 기업이면 되살려서 넣는다."""
     current_user = view.user
-    target = view.manager_id if view.mode == "manager" else None
+    target = view.member_id
     dup = (await db.execute(select(PortfolioCompany).where(
         (PortfolioCompany.corp_code == body.corp_code) if body.corp_code else (PortfolioCompany.name == body.name)
-    ))).scalars().first()
+    ).order_by(PortfolioCompany.deleted_at.is_not(None)))).scalars().first()
     if dup:
-        owner_name = (await _manager_names(db, [dup.manager_user_id])).get(dup.manager_user_id or "", "다른 매니저")
-        if dup.deleted_at:
-            if not vis.can_read(current_user, dup):
-                raise HTTPException(409, f"'{dup.name}'은(는) {owner_name}님이 등록했다가 삭제한 기업입니다. 대표에게 복구를 요청하세요.")
-            raise HTTPException(409, f"'{dup.name}'은(는) 삭제된 기업 목록에 있습니다. 목록의 [삭제된 기업]에서 복구하세요.")
-        if dup.manager_user_id is None:
-            if target and dup.id in await vis.hidden_ids(db, view):
-                from sqlalchemy import delete as sa_delete
+        if dup.deleted_at is None and await vis.is_member(db, target, dup.id):
+            who = "" if target == current_user.id else f"{view.manager_name or '이 담당자'}님 목록에 "
+            raise HTTPException(409, f"{who}이미 추가한 기업입니다: {dup.name}")
+        if dup.deleted_at is not None:
+            from app.services.company_report import company_delete
 
-                from app.models.news_briefing import CompanyHidden
+            await company_delete.restore(db, dup)
+            from sqlalchemy import delete as sa_delete
 
-                await db.execute(sa_delete(CompanyHidden).where(
-                    CompanyHidden.user_id == target, CompanyHidden.company_id == dup.id))
-                await db.commit()
-                return await _out_one(db, dup, current_user, view=view)  # 숨겨 둔 공통 기업 → 다시 보이게
-            raise HTTPException(409, f"'{dup.name}'은(는) 이미 회사 공통 기업이라 목록에 있습니다.")
-        if dup.manager_user_id == target:
-            raise HTTPException(409, f"이미 등록된 기업입니다: {dup.name}")
-        if target is None and await vis.can_manage_all(db, current_user):
-            dup.manager_user_id = None  # 대표가 같은 기업을 등록 → 회사 공통으로 전환
-            await db.commit()
-            await db.refresh(dup)
-            return await _out_one(db, dup, current_user, view=view)
-        raise HTTPException(409, f"'{dup.name}'은(는) {owner_name}님이 등록한 기업입니다. "
-                                 "같은 기업을 두 번 수집하지 않도록, 대표에게 회사 공통으로 바꿔 달라고 요청하세요.")
+            from app.models.news_briefing import CompanyMember
+
+            # 되살릴 때는 새로 추가하는 사람 목록에만 넣는다(예전 사람들이 다시 보게 되지 않도록)
+            await db.execute(sa_delete(CompanyMember).where(CompanyMember.company_id == dup.id))
+        await vis.add_member(db, dup.id, target)
+        await db.commit()
+        await db.refresh(dup)
+        return await _out_one(db, dup, current_user, view=view)
     data = body.model_dump(exclude={"keywords", "backfill_months"})
-    data["manager_user_id"] = target
+    data["manager_user_id"] = target if view.mode == "manager" else None  # 기록용(처음 추가한 매니저)
     company = PortfolioCompany(**data)
     db.add(company)
     await db.flush()
+    await vis.add_member(db, company.id, target)
     ks = body.keywords
     if not ks.required:
         ks.required = [body.name]
@@ -281,20 +240,9 @@ async def update_company(company_id: str, body: CompanyUpdate, background: Backg
     current_user = view.user
     c = await assert_company(db, current_user, company_id, write=True)
     data = body.model_dump(exclude_unset=True, exclude={"keywords"})
-    if "manager_user_id" in data:
-        # 담당 바꾸기(공통 ↔ 매니저 기업)는 대표만
-        new_mid = data.pop("manager_user_id") or None
-        if new_mid != c.manager_user_id:
-            if not await vis.can_manage_all(db, current_user):
-                raise HTTPException(403, "기업의 담당을 바꾸는 것은 대표만 할 수 있습니다.")
-            if new_mid:
-                from app.core.permissions import MANAGER
-                from app.models.user import User
-
-                m = await db.get(User, new_mid)
-                if not m or m.role != MANAGER:
-                    raise HTTPException(422, "매니저 계정만 고를 수 있습니다.")
-            c.manager_user_id = new_mid
+    data.pop("manager_user_id", None)  # (예전) 담당 바꾸기 — 더 쓰지 않음
+    if "is_active" in data and data["is_active"] != c.is_active and not await vis.can_manage_all(db, current_user):
+        raise HTTPException(403, "비활성·다시 활성은 대표(또는 기업 리포트 관리자)만 할 수 있습니다.")
     if "name" in data and data["name"] and data["name"] != c.name:
         # 이전 사명은 별칭으로 보존(검색·기업DB용)
         aliases = list(c.aliases or [])
@@ -322,8 +270,8 @@ async def update_company(company_id: str, body: CompanyUpdate, background: Backg
 @router.delete("/companies/{company_id}", status_code=204)
 async def deactivate_company(company_id: str, current_user=Depends(get_current_user),
                              db: AsyncSession = Depends(get_db)):
-    """삭제하지 않고 비활성화한다(수집만 멈추고 데이터는 보존)."""
-    c = await assert_company(db, current_user, company_id, write=True)
+    """삭제하지 않고 비활성화한다(수집만 멈추고 데이터는 보존). 모든 사람에게 영향 → 대표·관리자만."""
+    c = await vis.assert_company_admin(db, current_user, company_id)
     c.is_active = False
     await search.index_company(db, c)
     await db.commit()
@@ -634,9 +582,26 @@ async def me(current_user=Depends(get_current_user), db: AsyncSession = Depends(
 
     from app.core.permissions import is_owner
 
-    return {"id": current_user.id, "name": getattr(current_user, "nickname", ""),
-            "is_admin": await admin.is_admin(db, current_user), "can_claim": await admin.can_claim(db),
-            "is_owner": is_owner(current_user)}
+    out = {"id": current_user.id, "name": getattr(current_user, "nickname", ""),
+           "is_admin": await admin.is_admin(db, current_user), "can_claim": await admin.can_claim(db),
+           "is_owner": is_owner(current_user)}
+    if not is_owner(current_user):
+        out["self_send"] = await _self_send_info(db, current_user)
+    return out
+
+
+async def _self_send_info(db: AsyncSession, user) -> dict:
+    """매니저 본인 자동 발송 상태(브리핑 탭 안내용)."""
+    from app.models.news_briefing import CompanyMember
+    from app.services import settings_store
+    from app.services.company_report import config as crcfg
+
+    n = (await db.execute(select(func.count()).select_from(CompanyMember).join(
+        PortfolioCompany, PortfolioCompany.id == CompanyMember.company_id).where(
+        CompanyMember.user_id == user.id, PortfolioCompany.is_active == True,  # noqa: E712
+        PortfolioCompany.deleted_at.is_(None)))).scalar_one()
+    return {"enabled": await settings_store.get_bool(db, crcfg.BRIEFING_ENABLED, default=False),
+            "has_phone": bool(user.phone), "phone_masked": _mask_phone(user.phone), "company_count": n}
 
 
 @router.post("/admins/claim")
@@ -923,17 +888,17 @@ def _mask_phone(p: Optional[str]) -> Optional[str]:
 
 
 def _list_view(view: View) -> View:
-    """수신자 명단: 매니저 화면이면 그 매니저 명단, 전체·회사 공통이면 회사(대표) 명단."""
+    """수신자 명단은 회사(대표) 명단 하나뿐(2026-10-01). 매니저는 본인 휴대폰으로 자동 발송된다."""
     return view
 
 
 @router.get("/recipients")
 async def get_recipients(view: View = Depends(get_view), db: AsyncSession = Depends(get_db)):
-    """보는 담당자의 수신자 명단 + 직원 계정 목록(빠른 선택용). 명단은 담당자별(docs/login_logic P9)."""
+    """회사 수신자 명단 + 직원 계정 목록(빠른 선택용). 대표·관리자만(매니저는 본인 자동 발송)."""
     from app.models.user import User
     from app.services.company_report import sender
 
-    _list_view(view)
+    await require_admin(db, view.user)
     targets = await sender.recipient_targets(db, include_no_phone=True, list_owner=view.list_owner)
     selected = [{"id": t.recipient_id, "kind": t.kind, "ref_id": t.user_id or t.client_id, "name": t.name,
                  "phone_masked": _mask_phone(t.phone), "has_phone": bool(t.phone)} for t in targets]
@@ -952,7 +917,7 @@ async def search_recipients(q: str = Query(..., min_length=1, max_length=50), vi
     from app.models.client import Client
     from app.models.user import User
 
-    _list_view(view)
+    await require_admin(db, view.user)
     current_user = view.user
     like = f"%{q.strip()}%"
     in_list = _recipient_list_cond(view.list_owner)
@@ -986,10 +951,8 @@ def _recipient_list_cond(list_owner: Optional[str]):
 
 
 async def _assert_list_editable(db: AsyncSession, view: View) -> None:
-    """매니저는 자기 명단, 대표는 고른 명단(회사 또는 매니저). 회사 명단은 대표·기업 리포트 관리자만."""
-    _list_view(view)
-    if view.list_owner is None:
-        await require_admin(db, view.user)
+    """회사 명단은 대표·기업 리포트 관리자만."""
+    await require_admin(db, view.user)
 
 
 class RecipientAdd(BaseModel):
@@ -1107,6 +1070,12 @@ def _add_business_days(start: date, n: int) -> date:
         d += timedelta(days=1)
 
 
+async def _mgr_targets(db: AsyncSession) -> list:
+    from app.services.company_report import sender as _sender
+
+    return await _sender.manager_self_targets(db, include_no_phone=True)
+
+
 async def _settings_out(db: AsyncSession, user=None) -> dict:
     from app.services import settings_store
     from app.services.company_report import config as crcfg
@@ -1174,6 +1143,9 @@ async def _settings_out(db: AsyncSession, user=None) -> dict:
         "last_run_at": await settings_store.get(db, crcfg.LAST_RUN_AT),
         "last_send_at": await settings_store.get(db, crcfg.LAST_SEND_AT),
         "cron": await cron_status.report(db),
+        "manager_self": [{"name": t.name, "phone_masked": _mask_phone(t.phone), "has_phone": bool(t.phone),
+                          "company_count": len(await vis.visible_company_ids(db, t.view) or [])}
+                         for t in await _mgr_targets(db)],
         "keys": keys,
         "send_logs": [{
             "briefing_type": l.briefing_type, "briefing_id": l.briefing_id, "phone": l.phone[:3] + "****" + l.phone[-4:],
@@ -1667,10 +1639,20 @@ async def refresh_public_data(company_id: str, current_user=Depends(get_current_
 
 @router.post("/companies/{company_id}/trash")
 async def trash_company(company_id: str, current_user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
-    """1단계 · 화면에서 삭제: 목록·검색·수집에서 빠진다. 데이터·폴더는 남고 복구할 수 있다."""
+    """1단계 · 화면에서 삭제: 목록·검색·수집에서 빠진다. 데이터·폴더는 남고 복구할 수 있다.
+    매니저는 '내 목록에서 빼기' — 마지막 한 명이 빼면 화면에서 삭제된다(대표가 [삭제된 기업]에서 복구 가능)."""
     from app.services.company_report import company_delete
 
-    c = await assert_company(db, current_user, company_id, write=True)
+    c = await assert_company(db, current_user, company_id)
+    if not await vis.can_manage_all(db, current_user):
+        left = await vis.remove_member(db, c.id, current_user.id)
+        if left == 0:
+            try:
+                await company_delete.trash(db, c, current_user.id)
+            except company_delete.DeleteError:
+                pass  # 구축 중이면 목록에서만 빠진다(수집은 다음 정리 때)
+        await db.commit()
+        return {"id": c.id, "name": c.name, "removed_from_list": True}
     try:
         await company_delete.trash(db, c, current_user.id)
     except company_delete.DeleteError as e:
@@ -1683,7 +1665,7 @@ async def trash_company(company_id: str, current_user=Depends(get_current_user),
 async def restore_company(company_id: str, current_user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
     from app.services.company_report import company_delete
 
-    c = await assert_company(db, current_user, company_id, write=True)
+    c = await vis.assert_company_admin(db, current_user, company_id)
     dup = (await db.execute(select(PortfolioCompany.id).where(
         PortfolioCompany.name == c.name, PortfolioCompany.id != c.id, PortfolioCompany.deleted_at.is_(None)))).first()
     if dup:
@@ -1698,7 +1680,7 @@ async def purge_summary(company_id: str, current_user=Depends(get_current_user),
     """2단계 전에 지워질 데이터 건수·파일 용량."""
     from app.services.company_report import company_delete
 
-    c = await assert_company(db, current_user, company_id, write=True)
+    c = await vis.assert_company_admin(db, current_user, company_id)
     return {"name": c.name, "trashed": bool(c.deleted_at), **(await company_delete.summary(db, company_id))}
 
 

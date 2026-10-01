@@ -112,7 +112,7 @@ async def _run(monkeypatch):
                               "OR key = 'company_report_admin_ids'"))
         await db.execute(text("DELETE FROM users WHERE email LIKE 'mb-%'"))
         admin = User(email=f"mb-{uuid.uuid4().hex[:6]}@x.com", hashed_password=get_password_hash("pw"), nickname="관리자",
-                     phone="010-1111-2222", is_active=True, is_superuser=True)
+                     phone="010-1111-2222", is_active=True, is_superuser=True, role="owner")
         db.add(admin)
         a_co = PortfolioCompany(name="알파바이오", industry="바이오")
         b_co = PortfolioCompany(name="베타로보틱스")

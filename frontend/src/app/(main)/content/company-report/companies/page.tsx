@@ -10,8 +10,6 @@ import { useCrMe } from '@/lib/useCrMe';
 import type { Company } from '@/components/company-report/types';
 import { ErrorBox, Spinner, fmtDate, inputStyle, mutedText } from '@/components/company-report/ui';
 import { crDelete, crGet, crPost, crPut } from '@/lib/companyReportApi';
-import { isManagerView, useViewAs } from '@/lib/crViewAs';
-import { useAuthStore } from '@/stores/auth';
 
 const th: React.CSSProperties = {
   textAlign: 'left',
@@ -56,42 +54,39 @@ export default function CompaniesPage() {
   const [trashTarget, setTrashTarget] = useState<{ id: string; name: string } | null>(null);
   const [purgeTarget, setPurgeTarget] = useState<{ id: string; name: string } | null>(null);
   const me = useCrMe();
-  // 담당자별 분리 (docs/login_logic P9)
-  const role = useAuthStore((st) => st.user?.role);
-  const viewAs = useViewAs();
-  const managerView = isManagerView(role, viewAs);
-  const [hiddenView, setHiddenView] = useState(false);
-  const [hiddenItems, setHiddenItems] = useState<Company[]>([]);
+  // 담당자별 목록 (2026-10-01): 매니저는 자기가 추가한 기업만, 대표는 전체 + 추가한 사람
+  const canManage = !!me?.is_admin;
 
   const load = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
-      const [list, del, hid] = await Promise.all([
+      const [list, del] = await Promise.all([
         crGet<Company[]>(showInactive ? '/companies' : '/companies?active=true'),
         crGet<Company[]>('/companies?deleted=true'),
-        managerView ? crGet<Company[]>('/companies?hidden=true') : Promise.resolve([] as Company[]),
       ]);
       setItems(list);
       setTrashed(del);
-      setHiddenItems(hid);
     } catch (e) {
       setError((e as Error).message);
     } finally {
       setLoading(false);
     }
-  }, [showInactive, managerView]);
+  }, [showInactive]);
 
   useEffect(() => {
     void load();
   }, [load]);
 
-  const setHidden = async (c: Company, hide: boolean) => {
+  /** 매니저: 내 목록에서 빼기(다른 사람 목록·수집에는 영향 없음) */
+  const removeMine = async (c: Company) => {
+    if (!window.confirm(`${c.name}을(를) 내 목록에서 뺄까요? 내 브리핑에서도 빠집니다. 다시 추가하면 모은 기사를 그대로 볼 수 있습니다.`)) return;
     setBusy(c.id);
     setNotice(null);
     try {
-      await crPost(`/companies/${c.id}/${hide ? 'hide' : 'unhide'}`);
-      setNotice(hide ? `${c.name}을(를) 이 화면과 브리핑에서 숨겼습니다. [숨긴 기업]에서 다시 보이게 할 수 있습니다.` : `${c.name}을(를) 다시 보이게 했습니다.`);
+      await crPost(`/companies/${c.id}/trash`);
+      setNotice(`${c.name}을(를) 내 목록에서 뺐습니다.`);
+      setPicked((p) => p.filter((x) => x !== c.id));
       await load();
     } catch (e) {
       setError((e as Error).message);
@@ -202,22 +197,14 @@ export default function CompaniesPage() {
               <input type="checkbox" checked={showInactive} onChange={(e) => setShowInactive(e.target.checked)} />
               비활성 기업 포함
             </label>
-            <button
-              type="button"
-              className={`wh-btn wh-btn-sm ${trashView ? 'wh-btn-primary' : 'wh-btn-ghost'}`}
-              onClick={() => { setTrashView((v) => !v); setHiddenView(false); }}
-              aria-pressed={trashView}
-            >
-              삭제된 기업 {trashed.length}
-            </button>
-            {managerView && (
+            {canManage && (
               <button
                 type="button"
-                className={`wh-btn wh-btn-sm ${hiddenView ? 'wh-btn-primary' : 'wh-btn-ghost'}`}
-                onClick={() => { setHiddenView((v) => !v); setTrashView(false); }}
-                aria-pressed={hiddenView}
+                className={`wh-btn wh-btn-sm ${trashView ? 'wh-btn-primary' : 'wh-btn-ghost'}`}
+                onClick={() => setTrashView((v) => !v)}
+                aria-pressed={trashView}
               >
-                숨긴 기업 {hiddenItems.length}
+                삭제된 기업 {trashed.length}
               </button>
             )}
           </div>
@@ -245,43 +232,7 @@ export default function CompaniesPage() {
           {notice && <div style={{ ...mutedText, marginBottom: 12, color: 'var(--success)' }}>{notice}</div>}
         </div>
 
-        {hiddenView ? (
-          hiddenItems.length === 0 ? (
-            <div style={{ ...mutedText, padding: '32px 16px', textAlign: 'center' }}>숨긴 기업이 없습니다.</div>
-          ) : (
-            <div style={{ overflow: 'auto', maxHeight: 'max(360px, calc(100vh - 380px))' }}>
-              <div style={{ ...mutedText, fontSize: 12, padding: '0 16px 8px' }}>
-                회사 공통 기업 중 이 화면과 브리핑·문자에서 뺀 기업입니다. 수집은 회사 차원에서 계속됩니다.
-              </div>
-              <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 520 }}>
-                <thead>
-                  <tr>
-                    <th style={th}>기업</th>
-                    <th style={{ ...th, textAlign: 'right' }}>누적 기사</th>
-                    <th style={{ ...th, textAlign: 'right' }}>작업</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {hiddenItems.map((c) => (
-                    <tr key={c.id}>
-                      <td style={td}>
-                        <Link href={`/content/company-report/companies/${c.id}`} style={{ color: 'var(--text-secondary)', fontWeight: 600 }}>
-                          {c.name}
-                        </Link>
-                      </td>
-                      <td style={num}>{c.stats.total}</td>
-                      <td style={{ ...td, textAlign: 'right' }}>
-                        <button type="button" className="wh-btn wh-btn-ghost wh-btn-sm" disabled={busy === c.id} onClick={() => void setHidden(c, false)}>
-                          다시 보이기
-                        </button>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )
-        ) : trashView ? (
+        {trashView ? (
           trashed.length === 0 ? (
             <div style={{ ...mutedText, padding: '32px 16px', textAlign: 'center' }}>삭제된 기업이 없습니다.</div>
           ) : (
@@ -335,7 +286,7 @@ export default function CompaniesPage() {
           <Spinner />
         ) : shown.length === 0 ? (
           <div style={{ ...mutedText, padding: '32px 16px', textAlign: 'center' }}>
-            {items.length === 0 ? '등록된 투자기업이 없습니다. [+ 투자기업 등록]으로 시작하세요.' : '조건에 맞는 기업이 없습니다.'}
+            {items.length === 0 ? (canManage ? '등록된 투자기업이 없습니다. [+ 투자기업 등록]으로 시작하세요.' : '아직 추가한 기업이 없습니다. [+ 투자기업 등록]으로 담당 기업을 추가하세요. 추가한 기업만 내 화면과 브리핑에 나옵니다.') : '조건에 맞는 기업이 없습니다.'}
           </div>
         ) : (
           <div style={{ overflow: 'auto', maxHeight: 'max(360px, calc(100vh - 380px))' }}>
@@ -378,12 +329,14 @@ export default function CompaniesPage() {
                       </Link>
                       <div style={{ display: 'flex', gap: 6, marginTop: 4, flexWrap: 'wrap' }}>
                         <span className={`wh-badge ${c.is_listed ? 'info' : 'warn'}`}>{c.is_listed ? '상장' : '비상장'}</span>
-                        {c.scope === 'manager' ? (
-                          <span className="wh-badge pos" title="매니저가 추가한 기업 — 그 매니저와 대표만 봅니다">
-                            {role === 'owner' ? `${c.manager_name ?? '매니저'} 기업` : '내 기업'}
+                        {(c.added_by || []).map((m) => (
+                          <span key={m.id} className={`wh-badge ${m.role === 'owner' ? '' : 'pos'}`} title="이 기업을 추가한 계정">
+                            {m.name}
+                            {m.role === 'owner' && !m.name.includes('대표') ? ' (대표)' : ''}
                           </span>
-                        ) : (
-                          <span className="wh-badge" title="대표가 등록한 회사 공통 기업 — 모든 매니저에게 보입니다">회사 공통</span>
+                        ))}
+                        {canManage && (c.added_by || []).length === 0 && (
+                          <span className="wh-badge" title="추가한 계정이 없는 기업 — 대표 전체 화면에만 보입니다">추가한 사람 없음</span>
                         )}
                         {!c.is_active && <span className="wh-badge neg">비활성</span>}
                       </div>
@@ -398,19 +351,19 @@ export default function CompaniesPage() {
                     <td style={num}>{c.stats.total}</td>
                     <td style={{ ...td, whiteSpace: 'nowrap', fontSize: 13 }}>{fmtDate(c.last_collected_at, true)}</td>
                     <td style={{ ...td, textAlign: 'right', whiteSpace: 'nowrap' }}>
-                      {c.can_edit !== false ? (
+                      {c.can_edit !== false && c.is_active && (
+                        <button
+                          type="button"
+                          className="wh-btn wh-btn-ghost wh-btn-sm"
+                          disabled={busy === c.id}
+                          onClick={() => void collect(c)}
+                          style={{ marginRight: 6 }}
+                        >
+                          지금 수집
+                        </button>
+                      )}
+                      {c.can_manage ? (
                         <>
-                          {c.is_active && (
-                            <button
-                              type="button"
-                              className="wh-btn wh-btn-ghost wh-btn-sm"
-                              disabled={busy === c.id}
-                              onClick={() => void collect(c)}
-                              style={{ marginRight: 6 }}
-                            >
-                              지금 수집
-                            </button>
-                          )}
                           <button type="button" className="wh-btn wh-btn-ghost wh-btn-sm" disabled={busy === c.id} onClick={() => void toggleActive(c)}>
                             {c.is_active ? '비활성' : '다시 활성'}
                           </button>{' '}
@@ -424,17 +377,15 @@ export default function CompaniesPage() {
                             삭제
                           </button>
                         </>
-                      ) : null}
-                      {managerView && c.scope !== 'manager' && (
+                      ) : (
                         <button
                           type="button"
                           className="wh-btn wh-btn-ghost wh-btn-sm"
                           disabled={busy === c.id}
-                          onClick={() => void setHidden(c, true)}
-                          title="내 화면과 브리핑·문자에서 뺍니다(회사 공통 기업은 대표만 고칠 수 있어요)"
-                          style={{ marginLeft: 6 }}
+                          onClick={() => void removeMine(c)}
+                          title="내 목록·내 브리핑에서 뺍니다"
                         >
-                          숨기기
+                          내 목록에서 빼기
                         </button>
                       )}
                     </td>

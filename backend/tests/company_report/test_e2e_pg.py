@@ -180,6 +180,14 @@ async def _run(monkeypatch):
         assert r.status_code == 201, r.text
         cid = r.json()["id"]
         assert (await c.post("/companies", headers=H, json={"name": "테스트바이오", "backfill_months": 0})).status_code == 409
+        # 2026-10-01: 매니저(직원)는 빈 목록에서 시작 → 같은 기업을 추가하면 조용히 자기 목록에 들어온다(기업은 하나)
+        assert (await c.get("/companies", headers=HS)).json() == []
+        r = await c.post("/companies", headers=HS, json={"name": "테스트바이오", "backfill_months": 0})
+        assert r.status_code == 201 and r.json()["id"] == cid and r.json()["added_by"] == [], r.text
+        r = await c.post("/companies", headers=HS, json={"name": "테스트바이오", "backfill_months": 0})
+        assert r.status_code == 409 and "이미 추가한" in r.json()["detail"]
+        added = (await c.get(f"/companies/{cid}", headers=H)).json()["added_by"]
+        assert [x["name"] for x in added] == ["관리자", "직원"], added
 
         # ---- 수집·요약·사실 추출
         async with AsyncSessionLocal() as db:
@@ -412,8 +420,13 @@ async def _run(monkeypatch):
         folder = Path(storage.root()) / cid
         assert folder.exists()
         assert (await c.post(f"/companies/{cid}/purge", headers=H, json={"confirm_name": "테스트바이오"})).status_code == 409  # 1단계 전
-        # 회사 공통 기업은 매니저(직원)가 지울 수 없다 — 숨기기만 (docs/login_logic P9)
-        assert (await c.post(f"/companies/{cid}/trash", headers=HS)).status_code == 403
+        # 2026-10-01: 매니저(직원)의 [삭제]는 '내 목록에서 빼기' — 기업은 대표 목록에 그대로 남는다
+        r = await c.post(f"/companies/{cid}/trash", headers=HS)
+        assert r.status_code == 200 and r.json()["removed_from_list"] is True, r.text
+        assert (await c.get("/companies", headers=HS)).json() == []
+        assert (await c.get(f"/companies/{cid}", headers=HS)).status_code == 404
+        assert [x["name"] for x in (await c.get(f"/companies/{cid}", headers=H)).json()["added_by"]] == ["관리자"]
+        assert (await c.post(f"/companies/{cid}/restore", headers=HS)).status_code == 404  # 매니저는 복구·완전 삭제 없음
         assert (await c.post(f"/companies/{cid}/trash", headers=H)).status_code == 200
         assert all(x["id"] != cid for x in (await c.get("/companies", headers=H)).json())
         assert [x["id"] for x in (await c.get("/companies", params={"deleted": "true"}, headers=H)).json()] == [cid]
@@ -422,9 +435,11 @@ async def _run(monkeypatch):
         # 남는 것은 지난 데일리 브리핑(발송 기록)과 그 PDF뿐
         assert (await c.get("/search/suggest", params={"q": "테스"}, headers=H)).json() == []
         assert all(x["id"] != cid for x in (await c.get("/db/tree", headers=H)).json()["companies"])
-        r = await c.post("/companies", headers=H, json={"name": "테스트바이오", "backfill_months": 0})
-        assert r.status_code == 409 and "삭제된 기업" in r.json()["detail"]
         assert folder.exists()  # 1단계는 폴더 유지
+        # 삭제된 기업을 다시 추가하면 되살려서 추가한 사람 목록에 넣는다(기사·원장은 그대로)
+        r = await c.post("/companies", headers=H, json={"name": "테스트바이오", "backfill_months": 0})
+        assert r.status_code == 201 and r.json()["id"] == cid and r.json()["deleted_at"] is None, r.text
+        assert (await c.post(f"/companies/{cid}/trash", headers=H)).status_code == 200
         r = await c.post(f"/companies/{cid}/restore", headers=H)
         assert r.status_code == 200 and r.json()["articles"] >= 1
         assert (await c.get("/search", params={"q": "시리즈B"}, headers=H)).json()["total"] >= 1  # 색인 복구
@@ -455,14 +470,13 @@ async def _run(monkeypatch):
             await db.commit()
             cl_id, cl2_id = cl.id, cl2.id
         # 권한체계(docs/login_logic): 매니저(직원)는 담당 고객만 검색된다 → 대표 고객은 안 보임
-        r = await c.get("/recipients/search", params={"q": "민호"}, headers=HS)
-        found = [x for x in r.json() if x["kind"] == "client"]
-        assert not ({x["ref_id"] for x in found} & {cl_id, cl2_id})
+        # 2026-10-01: 수신자 명단은 회사 명단 하나 — 매니저는 못 본다(본인 자동 발송)
+        assert (await c.get("/recipients/search", params={"q": "민호"}, headers=HS)).status_code == 403
+        assert (await c.get("/recipients", headers=HS)).status_code == 403
         r = await c.get("/recipients/search", params={"q": "민호"}, headers=H)
         found = [x for x in r.json() if x["kind"] == "client"]
         assert {x["ref_id"] for x in found} >= {cl_id, cl2_id} and any(x["phone_masked"] == "010-****-6666" for x in found)
-        # 매니저는 자기 명단에 자기 담당 고객만 넣을 수 있다(대표 고객은 안 보임 → 404) — docs/login_logic P9
-        assert (await c.post("/recipients", headers=HS, json={"kind": "client", "ref_id": cl_id})).status_code == 404
+        assert (await c.post("/recipients", headers=HS, json={"kind": "client", "ref_id": cl_id})).status_code == 403
         assert (await c.post("/recipients", headers=H, json={"kind": "client", "ref_id": cl2_id})).status_code == 422  # 번호 없음
         assert (await c.post("/recipients", headers=H, json={"kind": "client", "ref_id": cl_id})).status_code == 201
         assert (await c.post("/recipients", headers=H, json={"kind": "client", "ref_id": cl_id})).status_code == 409

@@ -235,8 +235,50 @@ async def recipient_targets(db: AsyncSession, include_no_phone: bool = False, li
     return out
 
 
+def _digits(p: Optional[str]) -> str:
+    return "".join(ch for ch in (p or "") if ch.isdigit())
+
+
+async def manager_self_targets(db: AsyncSession, include_no_phone: bool = False) -> list[Target]:
+    """매니저 본인 자동 발송(2026-10-01): 활성 매니저 중 기업 리포트를 쓸 수 있고, 자기 목록에 활성 기업이 한 곳 이상.
+    받는 내용은 그 매니저가 추가한 기업만."""
+    from app.core.permissions import MANAGER
+    from app.core.programs import allowed_set
+    from app.models.news_briefing import CompanyMember, PortfolioCompany
+    from app.services.company_report import visibility as vis
+
+    has_company = (
+        select(CompanyMember.user_id)
+        .join(PortfolioCompany, PortfolioCompany.id == CompanyMember.company_id)
+        .where(PortfolioCompany.is_active == True, PortfolioCompany.deleted_at.is_(None))  # noqa: E712
+    )
+    users = (await db.execute(select(User).where(
+        User.role == MANAGER, User.is_active == True, User.id.in_(has_company)  # noqa: E712
+    ).order_by(User.nickname))).scalars().all()
+    out: list[Target] = []
+    for u in users:
+        progs = allowed_set(u)
+        if progs is not None and "company_report" not in progs:
+            continue
+        if not u.phone and not include_no_phone:
+            continue
+        t = Target(None, u.nickname, u.phone, user_id=u.id, kind="self")
+        t.view = vis.manager_view(u, u.id, u.nickname)
+        out.append(t)
+    return out
+
+
 async def recipients(db: AsyncSession) -> list[Target]:
-    return await recipient_targets(db)
+    """발송 대상 = 회사 수신자 명단(전체 기업) + 매니저 본인(자기 기업). 같은 번호는 한 번만(회사 명단이 우선)."""
+    company = await recipient_targets(db, list_owner=None)
+    seen = {_digits(t.phone) for t in company}
+    out = list(company)
+    for t in await manager_self_targets(db):
+        d = _digits(t.phone)
+        if d and d not in seen:
+            seen.add(d)
+            out.append(t)
+    return out
 
 
 async def _deliver_generic(db: AsyncSession, briefing_id: str, targets: list, briefing_type: str, template_key: str,

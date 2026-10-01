@@ -269,6 +269,8 @@ async def query_database(
     database_id: str,
     filters: Optional[str] = None,
     props: Optional[str] = None,
+    assignee_property: Optional[str] = None,
+    assignee: Optional[str] = None,
     current_user=Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
@@ -279,15 +281,39 @@ async def query_database(
     props: JSON 문자열 [컬럼명, ...] — 지정 시 해당 속성만 응답에 포함(filter_properties).
     롤업·관계형 등 무거운 속성 해석을 생략해 페이지당 응답 시간을 크게 줄인다.
     """
+    import json as _json
+
+    # 담당자 거르기(고객 추가 > 노션, 2026-10-01): assignee_property 를 주면 그 칸 값이 assignee 인 행만 돌려준다.
+    # 매니저는 언제나 본인 이름만. 담당자 칸이 비어 있는 행은 빠진다.
+    if assignee_property is not None:
+        from app.core.permissions import is_owner
+
+        assignee = (assignee or "").strip()
+        if not assignee:
+            raise HTTPException(422, "담당자를 먼저 선택하세요. 담당자를 정해야 노션에서 고객을 가져올 수 있습니다.")
+        own = (getattr(current_user, "nickname", "") or "").strip()
+        if not is_owner(current_user) and _norm_name(assignee) != _norm_name(own):
+            raise HTTPException(403, "매니저는 본인 이름의 고객만 가져올 수 있습니다.")
+
     token = await _get_notion_token(current_user.id, db)
 
     # 필터/속성 축소에 필요한 스키마 1회 조회
-    import json as _json
     schema_props: dict | None = None
-    if filters or props:
+    if filters or props or assignee_property is not None:
         schema_res = await _notion_request("GET", f"{NOTION_BASE}/databases/{database_id}", token)
         if schema_res.status_code == 200:
             schema_props = schema_res.json().get("properties", {})
+        elif assignee_property is not None:
+            _handle_error(schema_res)
+    if assignee_property is not None:
+        if assignee_property not in (schema_props or {}):
+            raise HTTPException(422, f"노션 DB에 '{assignee_property}' 칸이 없어 담당자별로 가져올 수 없습니다.")
+        extra = [{"property": assignee_property, "value": assignee}]
+        try:
+            prev = _json.loads(filters) if filters else []
+        except Exception:
+            prev = []
+        filters = _json.dumps((prev if isinstance(prev, list) else []) + extra, ensure_ascii=False)
 
     # 서버측 필터 구성 (실패 시 전체 조회로 폴백)
     notion_filter = None
@@ -368,5 +394,19 @@ async def query_database(
             val = _extract_value(prop)
             if val is not None:
                 extracted[name] = val
+        if assignee_property is not None and not _assignee_matches(extracted.get(assignee_property), assignee):
+            continue  # 담당자가 다르거나 비어 있는 고객은 가져오지 않는다(서버 필터가 생략돼도 여기서 확정)
         rows.append(NotionRow(id=page["id"], properties=extracted))
     return rows
+
+
+def _norm_name(v: Optional[str]) -> str:
+    return "".join((v or "").split())
+
+
+def _assignee_matches(value: Optional[str], assignee: Optional[str]) -> bool:
+    """노션 담당자 칸 값(여러 명이면 쉼표로 이어짐) 중 하나가 담당자 이름과 정확히 같은지. 띄어쓰기는 무시."""
+    want = _norm_name(assignee)
+    if not want or not value:
+        return False
+    return any(_norm_name(part) == want for part in str(value).split(","))

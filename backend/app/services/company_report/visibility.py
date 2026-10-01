@@ -1,17 +1,19 @@
-"""기업 리포트 담당자별 분리 (docs/login_logic P9).
+"""기업 리포트 담당자별 분리 (docs/login_logic P9, 2026-10-01 개편).
 
-규칙 (결정 D-7)
-- 회사 공통 기업  : portfolio_companies.manager_user_id IS NULL. 대표가 등록. 모든 매니저에게 보인다.
-- 매니저 추가 기업: manager_user_id = 그 매니저. 그 매니저와 대표만 본다.
-- 매니저는 회사 공통 기업을 자기 화면에서 '숨기기'만 할 수 있다(company_hidden). 고치기·삭제는 대표만.
-- 브리핑은 하루 한 번 전사로 만들고, 볼 때·보낼 때 '보는 사람이 볼 수 있는 기업' 카드만 남긴다.
-- 수신자 명단도 담당자별(briefing_recipients.manager_user_id, NULL = 회사·대표 명단).
+규칙
+- 기업마다 '추가한 계정' 목록(company_members)이 있다. 같은 기업을 여러 명이 추가해도 기업·기사는 하나(수집 한 번).
+- 매니저: 자기가 추가한 기업만 본다. 새 매니저는 빈 목록에서 시작한다.
+  다른 사람이 이미 추가한 기업을 추가하면 조용히 자기 목록에 들어온다(중복 알림 없음).
+  자기가 이미 추가한 기업을 다시 추가할 때만 '이미 추가한 기업' 안내.
+- 대표: 모든 기업을 본다(누가 추가했는지와 함께). [담당자 선택]으로 특정 매니저 목록 / 대표 본인 목록만 볼 수 있다.
+- 고치기(정보·키워드·수집): 그 기업을 추가한 사람 또는 대표·기업 리포트 관리자.
+  비활성·삭제·복구: 대표·관리자만. 매니저의 [삭제]는 '내 목록에서 빼기'(마지막 한 명이 빼면 화면에서 삭제).
+- 브리핑은 하루 한 번 전사로 만들고, 볼 때·보낼 때 '보는 사람의 기업' 카드만 남긴다.
+- 데일리·월간은 매니저 본인 휴대폰으로 자동 발송. 수신자 명단은 대표의 회사 명단 하나뿐(전체 기업).
 
 '보는 관점(View)'
-- 매니저(대행 중 포함) : 언제나 자기 관점. 헤더는 무시한다.
-- 대표                 : X-View-As 헤더로 고른다. 없음/'all' = 전체(모든 담당자 기업을 담당 표시와 함께, 결정 D-3),
-                         'company' = 회사 공통만, 매니저 id = 그 매니저 화면 그대로.
-  수신자 명단은 '전체'·'회사 공통'일 때 회사(대표) 명단을 쓴다.
+- 매니저(대행 중 포함) : 언제나 자기 목록. 헤더는 무시한다.
+- 대표                 : X-View-As 헤더. 없음/'all' = 전체, 'company' = 대표 본인이 추가한 기업, 매니저 id = 그 매니저 목록.
 """
 from __future__ import annotations
 
@@ -21,16 +23,16 @@ from types import SimpleNamespace
 from typing import Any, Optional
 
 from fastapi import Depends, HTTPException, Request
-from sqlalchemy import and_, or_, select
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core import permissions
 from app.core.deps import get_current_user
 from app.db.session import get_db
-from app.models.news_briefing import CompanyHidden, PortfolioCompany
+from app.models.news_briefing import CompanyMember, PortfolioCompany
 
 VIEW_AS_HEADER = "X-View-As"
-COMPANY = "company"
+COMPANY = "company"   # 대표 본인 목록
 ALL = "all"
 
 
@@ -38,11 +40,11 @@ ALL = "all"
 class View:
     """누구 관점으로 기업 목록을 보는가.
 
-    mode: 'company'(회사 공통·대표 명단) / 'manager'(manager_id 의 화면) / 'all'(대표 전용 전체)
+    mode: 'company'(대표 본인 목록) / 'manager'(manager_id 의 목록) / 'all'(전체)
     """
 
     user: Any                       # 실제 권한 주체(대행 중이면 매니저)
-    mode: str = COMPANY
+    mode: str = ALL
     manager_id: Optional[str] = None
     manager_name: Optional[str] = None
 
@@ -52,8 +54,15 @@ class View:
 
     @property
     def list_owner(self) -> Optional[str]:
-        """수신자 명단·숨김의 주인. 회사 관점이면 None."""
-        return self.manager_id if self.mode == "manager" else None
+        """수신자 명단 주인. 2026-10-01부터 명단은 회사(대표) 명단 하나뿐이라 언제나 None."""
+        return None
+
+    @property
+    def member_id(self) -> Optional[str]:
+        """이 관점에서 '추가'하면 누구 목록에 들어가는가."""
+        if self.mode == "manager":
+            return self.manager_id
+        return getattr(self.user, "id", None)
 
     def as_dict(self) -> dict:
         return {"mode": self.mode, "manager_id": self.manager_id, "manager_name": self.manager_name}
@@ -85,32 +94,76 @@ async def get_view(request: Request, user=Depends(get_current_user), db: AsyncSe
 
 
 async def list_view(db: AsyncSession, list_owner: Optional[str]) -> View:
-    """수신자 명단 주인 기준 관점(발송·폰 링크용). None = 회사 명단 → 회사 공통 기업."""
+    """수신자 명단 기준 관점(발송·폰 링크용). None = 회사 명단 → 전체 기업. 매니저 id = 그 매니저 목록."""
     if not list_owner:
-        return View(user=None, mode=COMPANY)
+        return View(user=None, mode=ALL)
     from app.models.user import User
 
     m = await db.get(User, list_owner)
+    if m is not None and permissions.is_owner(m):
+        return View(user=None, mode=ALL)
     return manager_view(m, list_owner, getattr(m, "nickname", None))
 
 
+# --------------------------------------------------------------------------- 추가한 계정
+
+def member_subquery(user_id: str):
+    return select(CompanyMember.company_id).where(CompanyMember.user_id == user_id)
+
+
+async def is_member(db: AsyncSession, user_id: Optional[str], company_id: str) -> bool:
+    if not user_id:
+        return False
+    return (await db.execute(select(CompanyMember.id).where(
+        CompanyMember.user_id == user_id, CompanyMember.company_id == company_id))).first() is not None
+
+
+async def add_member(db: AsyncSession, company_id: str, user_id: str) -> bool:
+    """목록에 넣는다. 새로 넣었으면 True(커밋은 호출한 쪽)."""
+    if await is_member(db, user_id, company_id):
+        return False
+    db.add(CompanyMember(company_id=company_id, user_id=user_id))
+    await db.flush()
+    return True
+
+
+async def remove_member(db: AsyncSession, company_id: str, user_id: str) -> int:
+    """목록에서 뺀다. 남은 사람 수를 돌려준다(커밋은 호출한 쪽)."""
+    from sqlalchemy import delete as sa_delete, func
+
+    await db.execute(sa_delete(CompanyMember).where(CompanyMember.company_id == company_id, CompanyMember.user_id == user_id))
+    await db.flush()
+    return (await db.execute(select(func.count()).select_from(CompanyMember).where(
+        CompanyMember.company_id == company_id))).scalar_one()
+
+
+async def member_names(db: AsyncSession, company_ids) -> dict[str, list[dict]]:
+    """기업 id → [{id, name, role}] (추가한 순서)."""
+    from app.models.user import User
+
+    ids = [i for i in set(company_ids) if i]
+    if not ids:
+        return {}
+    rows = (await db.execute(
+        select(CompanyMember.company_id, User.id, User.nickname, User.role)
+        .join(User, User.id == CompanyMember.user_id)
+        .where(CompanyMember.company_id.in_(ids))
+        .order_by(CompanyMember.created_at)
+    )).all()
+    out: dict[str, list[dict]] = {}
+    for cid, uid, name, role in rows:
+        out.setdefault(cid, []).append({"id": uid, "name": name, "role": role})
+    return out
+
+
 # --------------------------------------------------------------------------- 기업 가시성
-
-def hidden_subquery(user_id: str):
-    return select(CompanyHidden.company_id).where(CompanyHidden.user_id == user_id)
-
 
 def visible_clause(view: View):
     """PortfolioCompany 에 거는 조건. 전체 보기면 None."""
     if view.mode == ALL:
         return None
-    if view.mode == COMPANY:
-        return PortfolioCompany.manager_user_id.is_(None)
-    mid = view.manager_id
-    return or_(
-        and_(PortfolioCompany.manager_user_id.is_(None), PortfolioCompany.id.not_in(hidden_subquery(mid))),
-        PortfolioCompany.manager_user_id == mid,
-    )
+    uid = view.manager_id if view.mode == "manager" else getattr(view.user, "id", None)
+    return PortfolioCompany.id.in_(member_subquery(uid or ""))
 
 
 def scope_companies(stmt, view: View):
@@ -127,13 +180,12 @@ async def visible_company_ids(db: AsyncSession, view: View) -> Optional[set[str]
 
 
 async def hidden_ids(db: AsyncSession, view: View) -> set[str]:
-    if view.mode != "manager":
-        return set()
-    return set((await db.execute(hidden_subquery(view.manager_id))).scalars().all())
+    """(예전 숨기기 기능 — 더 쓰지 않음)"""
+    return set()
 
 
 async def can_manage_all(db: AsyncSession, user) -> bool:
-    """회사 공통 기업까지 고칠 수 있는 사람: 대표 또는 기업 리포트 관리자."""
+    """모든 기업을 고치고 비활성·삭제·복구할 수 있는 사람: 대표 또는 기업 리포트 관리자."""
     if permissions.is_owner(user):
         return True
     from app.services.company_report import admin
@@ -142,26 +194,33 @@ async def can_manage_all(db: AsyncSession, user) -> bool:
 
 
 async def can_edit(db: AsyncSession, user, c: PortfolioCompany) -> bool:
-    if c.manager_user_id and c.manager_user_id == user.id:
+    """정보·키워드·수집: 그 기업을 추가한 사람 또는 대표·관리자."""
+    if await is_member(db, user.id, c.id):
         return True
     return await can_manage_all(db, user)
 
 
-def can_read(user, c: PortfolioCompany) -> bool:
-    """상세·하위 자료 읽기. 숨긴 공통 기업도 직접 열면 볼 수 있다(목록·브리핑에서만 빠짐)."""
+async def can_read(db: AsyncSession, user, c: PortfolioCompany) -> bool:
+    """상세·하위 자료 읽기: 대표는 전부, 매니저는 자기가 추가한 기업."""
     if permissions.is_owner(user):
         return True
-    return c.manager_user_id is None or c.manager_user_id == user.id
+    return await is_member(db, user.id, c.id)
 
 
 async def assert_company(db: AsyncSession, user, company_id: str, write: bool = False) -> PortfolioCompany:
     c = await db.get(PortfolioCompany, company_id)
-    if not c or not can_read(user, c):
+    if not c or not await can_read(db, user, c):
         raise HTTPException(404, "기업을 찾을 수 없습니다.")
     if write and not await can_edit(db, user, c):
-        raise HTTPException(
-            403, "회사 공통 기업은 대표만 고칠 수 있습니다. 내 화면에서 빼려면 기업 목록의 [숨기기]를 쓰세요."
-        )
+        raise HTTPException(403, "이 기업을 고칠 권한이 없습니다.")
+    return c
+
+
+async def assert_company_admin(db: AsyncSession, user, company_id: str) -> PortfolioCompany:
+    """비활성·삭제·복구처럼 모든 사람에게 영향을 주는 작업: 대표·관리자만."""
+    c = await assert_company(db, user, company_id)
+    if not await can_manage_all(db, user):
+        raise HTTPException(403, "이 작업은 대표(또는 기업 리포트 관리자)만 할 수 있습니다.")
     return c
 
 
@@ -171,10 +230,10 @@ async def assert_company_ids(db: AsyncSession, user, company_ids: list[str], wri
 
 
 def readable_clause(user):
-    """사람 기준 읽기 범위(숨김 무시). 검색·기업DB처럼 '상세로 들어갈 수 있는 것' 기준."""
+    """사람 기준 읽기 범위. 검색·기업DB처럼 '상세로 들어갈 수 있는 것' 기준."""
     if permissions.is_owner(user):
         return None
-    return or_(PortfolioCompany.manager_user_id.is_(None), PortfolioCompany.manager_user_id == user.id)
+    return PortfolioCompany.id.in_(member_subquery(user.id))
 
 
 async def readable_company_ids(db: AsyncSession, user) -> Optional[set[str]]:

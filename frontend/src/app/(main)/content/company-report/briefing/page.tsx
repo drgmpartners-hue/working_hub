@@ -6,11 +6,11 @@ import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { Card } from '@/components/common/Card';
 import { DailyBriefingView } from '@/components/company-report/DailyBriefingView';
 import { MonthlyPanel } from '@/components/company-report/MonthlyPanel';
-import { RecipientsCard } from '@/components/company-report/RecipientsCard';
+import Link from 'next/link';
 import type { BriefingListItem, DailyBriefing } from '@/components/company-report/types';
 import { ErrorBox, Spinner, inputStyle, mutedText } from '@/components/company-report/ui';
 import { ApiError, crGet, crPost } from '@/lib/companyReportApi';
-import { useCrMe } from '@/lib/useCrMe';
+import { useCrMe, type CrMe } from '@/lib/useCrMe';
 
 const STATUS: Record<string, { label: string; cls: string }> = {
   draft: { label: '승인 대기', cls: 'warn' },
@@ -19,6 +19,40 @@ const STATUS: Record<string, { label: string; cls: string }> = {
   failed: { label: '발송 실패', cls: 'neg' },
   skipped: { label: '건너뜀', cls: 'info' },
 };
+
+/** 매니저: 데일리·월간은 내 휴대폰으로 자동 발송(내가 추가한 기업만) — 2026-10-01 */
+function SelfSendNotice({ s }: { s: CrMe['self_send'] }) {
+  if (!s) return null;
+  let text: React.ReactNode;
+  let warn = false;
+  if (s.company_count === 0) {
+    warn = true;
+    text = <>아직 추가한 기업이 없어 브리핑을 보내지 않습니다. [투자기업 관리]에서 담당 기업을 추가하세요.</>;
+  } else if (!s.has_phone) {
+    warn = true;
+    text = (
+      <>
+        휴대폰 번호가 없어 브리핑을 받을 수 없습니다. <Link href="/profile">내 정보</Link>에서 휴대폰 번호를 저장하세요.
+      </>
+    );
+  } else if (!s.enabled) {
+    text = <>회사 발송이 꺼져 있어 지금은 보내지 않습니다. 켜지면 내 휴대폰({s.phone_masked})으로 갑니다.</>;
+  } else {
+    text = <>평일 08:30 데일리, 매월 초 월간 브리핑이 내 휴대폰({s.phone_masked})으로 갑니다. 내가 추가한 기업 {s.company_count}곳만 담깁니다.</>;
+  }
+  return (
+    <div
+      role="status"
+      style={{
+        padding: '10px 14px', borderRadius: 10, fontSize: 13,
+        background: warn ? 'var(--warning-bg)' : 'var(--bg-card)', color: warn ? 'var(--warning)' : 'var(--text-muted)',
+        border: '1px solid var(--border)',
+      }}
+    >
+      {text}
+    </div>
+  );
+}
 
 function BriefingInner() {
   const params = useSearchParams();
@@ -29,9 +63,7 @@ function BriefingInner() {
     ? 'monthly'
     : params.get('tab') === 'monthly'
       ? 'monthly'
-      : params.get('tab') === 'recipients'
-        ? 'recipients' // 매니저 '내 수신자 명단' (발송 설정 탭 대신)
-        : 'daily';
+      : 'daily';
   const date = params.get('date') || '';
   const month = params.get('month') || '';
 
@@ -125,11 +157,6 @@ function BriefingInner() {
           <button type="button" className={`wh-btn wh-btn-sm ${tab === 'monthly' ? 'wh-btn-primary' : 'wh-btn-ghost'}`} onClick={() => go({ tab: 'monthly' })}>
             월간
           </button>
-          {me && !me.is_admin && (
-            <button type="button" className={`wh-btn wh-btn-sm ${tab === 'recipients' ? 'wh-btn-primary' : 'wh-btn-ghost'}`} onClick={() => go({ tab: 'recipients' })}>
-              내 수신자 명단
-            </button>
-          )}
         </div>
         {tab === 'monthly' && <div ref={setToolbarEl} style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }} />}
         {tab === 'daily' && (
@@ -169,10 +196,9 @@ function BriefingInner() {
 
       <ErrorBox message={error} />
       {notice && <div style={{ ...mutedText, color: 'var(--success)' }}>{notice}</div>}
+      {me?.self_send && <SelfSendNotice s={me.self_send} />}
 
-      {tab === 'recipients' ? (
-        <RecipientsCard admin mine />
-      ) : tab === 'monthly' ? (
+      {tab === 'monthly' ? (
         <MonthlyPanel month={month} isAdmin={!!me?.is_admin} toolbarEl={toolbarEl} onMonth={(m) => go(m ? { month: m } : { tab: 'monthly' })} />
       ) : loading ? (
         <Spinner />

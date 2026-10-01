@@ -103,6 +103,15 @@ async def _move_company_report(db: AsyncSession, from_id: str, target: User) -> 
         else:
             r.manager_user_id = new_owner
     await db.execute(delete(CompanyHidden).where(CompanyHidden.user_id == from_id))
+    # 기업 목록(2026-10-01): 넘겨받는 사람 목록으로 옮긴다(이미 있으면 그대로)
+    from app.models.news_briefing import CompanyMember
+
+    have_c = set((await db.execute(select(CompanyMember.company_id).where(CompanyMember.user_id == target.id))).scalars().all())
+    for m in (await db.execute(select(CompanyMember).where(CompanyMember.user_id == from_id))).scalars().all():
+        if m.company_id in have_c:
+            await db.delete(m)
+        else:
+            m.user_id = target.id
 
 
 async def history(db: AsyncSession, client_id: str) -> list[dict]:

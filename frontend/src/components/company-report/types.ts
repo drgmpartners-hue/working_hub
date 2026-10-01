@@ -37,13 +37,13 @@ export interface Company {
   created_at: string;
   keywords: KeywordSet;
   stats: CompanyStats;
-  /** 담당자별 분리 (docs/login_logic P9): common = 회사 공통(대표 등록), manager = 매니저가 추가 */
-  scope?: 'common' | 'manager';
-  manager_user_id?: string | null;
-  manager_name?: string | null;
-  /** 지금 보는 담당자 화면에서 숨긴 공통 기업 */
-  is_hidden?: boolean;
-  /** 로그인한 사람이 고칠 수 있는지(공통 기업은 대표만) */
+  /** 이 기업을 추가한 계정(대표·관리자에게만 채워짐) — 2026-10-01 */
+  added_by?: { id: string; name: string; role: string }[];
+  /** 보고 있는 사람(또는 고른 매니저)의 목록에 있는지 */
+  is_mine?: boolean;
+  /** 비활성·삭제·복구(대표·관리자) */
+  can_manage?: boolean;
+  /** 정보·키워드·수집을 고칠 수 있는지(추가한 사람 또는 대표·관리자) */
   can_edit?: boolean;
 }
 

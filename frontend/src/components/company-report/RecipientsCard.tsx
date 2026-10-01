@@ -32,20 +32,12 @@ const KIND: Record<string, { label: string; cls: string }> = {
   user: { label: '직원 계정', cls: 'pos' },
 };
 
-interface ListView {
-  mode: 'all' | 'company' | 'manager';
-  manager_id: string | null;
-  manager_name: string | null;
-}
-
 /**
- * 수신자 명단 — 담당자별 (docs/login_logic P9).
- * admin: 이 명단을 고칠 수 있는지(매니저는 자기 명단, 회사 명단은 대표·기업 리포트 관리자).
- * mine: 로그인한 매니저 본인 명단인지(제목 표시용).
+ * 회사 수신자 명단 (2026-10-01: 명단은 하나 — 매니저는 본인 휴대폰으로 자동 발송).
+ * admin: 이 명단을 고칠 수 있는지(대표·기업 리포트 관리자).
  */
-export function RecipientsCard({ admin, mine = false }: { admin: boolean; mine?: boolean }) {
+export function RecipientsCard({ admin }: { admin: boolean }) {
   const [selected, setSelected] = useState<Selected[]>([]);
-  const [view, setView] = useState<ListView | null>(null);
   const [q, setQ] = useState('');
   const [results, setResults] = useState<Candidate[] | null>(null);
   const [searching, setSearching] = useState(false);
@@ -55,9 +47,8 @@ export function RecipientsCard({ admin, mine = false }: { admin: boolean; mine?:
 
   const load = useCallback(async () => {
     try {
-      const r = await crGet<{ selected: Selected[]; view?: ListView }>('/recipients');
+      const r = await crGet<{ selected: Selected[] }>('/recipients');
       setSelected(Array.isArray(r?.selected) ? r.selected : []);
-      setView(r?.view ?? null);
     } catch (e) {
       setError((e as Error).message);
     }
@@ -127,17 +118,10 @@ export function RecipientsCard({ admin, mine = false }: { admin: boolean; mine?:
   return (
     <Card padding={16}>
       <SectionTitle right={<span style={mutedText}>{selected.length}/5명 · 2명 이상 권장</span>}>
-        {view?.mode === 'manager'
-          ? mine
-            ? '내 수신자 명단'
-            : `${view.manager_name ?? '매니저'} 수신자 명단`
-          : '회사 수신자 명단'}{' '}
-        (데일리·월간 공통)
+        회사 수신자 명단 (데일리·월간 공통)
       </SectionTitle>
       <div style={{ ...mutedText, fontSize: 12, marginTop: -4, marginBottom: 10 }}>
-        {view?.mode === 'manager'
-          ? '이 명단의 사람들은 이 담당자 화면의 기업(회사 공통 중 숨기지 않은 기업 + 추가한 기업) 브리핑만 받습니다. 고객은 담당 고객만 추가할 수 있습니다.'
-          : '이 명단의 사람들은 회사 공통 기업 브리핑을 받습니다.'}
+        이 명단의 사람들은 모든 기업의 브리핑을 받습니다. 매니저는 따로 넣지 않아도 자기가 추가한 기업 브리핑이 본인 휴대폰으로 갑니다.
       </div>
       <ErrorBox message={error} />
       {notice && <div style={{ ...mutedText, color: 'var(--success)', marginBottom: 8 }}>{notice}</div>}

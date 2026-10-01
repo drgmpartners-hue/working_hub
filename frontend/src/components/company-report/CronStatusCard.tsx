@@ -40,6 +40,27 @@ const code: React.CSSProperties = {
 export function CronStatusCard({ jobs }: { jobs?: CronJob[] | null }) {
   if (!Array.isArray(jobs) || jobs.length === 0) return null;
   const bad = jobs.filter((j) => j.status !== 'ok');
+  if (bad.length === 0) {
+    // 모두 정상이면 한 줄만
+    const last = jobs.map((j) => j.last_at).filter(Boolean).sort().pop();
+    return (
+      <Card padding={12}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', fontSize: 13 }}>
+          <span
+            style={{
+              display: 'inline-block', padding: '2px 8px', borderRadius: 999, fontSize: 12, fontWeight: 600,
+              color: BADGE.ok.color, background: BADGE.ok.bg,
+            }}
+          >
+            자동 실행 정상
+          </span>
+          <span style={mutedText}>
+            Railway가 데일리 작성·발송, 월간 작성을 예정대로 실행하고 있습니다. (마지막 {fmtDate(last, true)})
+          </span>
+        </div>
+      </Card>
+    );
+  }
   return (
     <Card padding={16}>
       <SectionTitle>자동 실행 상태 (Railway Cron)</SectionTitle>

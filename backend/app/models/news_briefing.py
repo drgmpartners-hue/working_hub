@@ -51,7 +51,7 @@ class PortfolioCompany(Base):
     owner_user_id: Mapped[Optional[str]] = mapped_column(
         String(36), ForeignKey("users.id", ondelete="SET NULL"), nullable=True
     )
-    # 담당자별 분리(docs/login_logic P9): NULL = 회사 공통(대표 등록), 값 = 그 매니저가 추가한 기업
+    # (예전, P9) NULL = 회사 공통, 값 = 매니저가 추가. 2026-10-01부터 누가 보는지는 company_members 가 정한다(기록용으로 남김)
     manager_user_id: Mapped[Optional[str]] = mapped_column(
         String(36), ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True
     )
@@ -65,6 +65,23 @@ class PortfolioCompany(Base):
     updated_at: Mapped[datetime] = mapped_column(
         DateTime, server_default=func.now(), onupdate=func.now(), nullable=False
     )
+
+
+class CompanyMember(Base):
+    """이 기업을 자기 목록에 추가한 계정(2026-10-01). 같은 기업을 여러 명이 추가해도 기업·기사는 하나.
+
+    매니저는 자기가 추가한 기업만 보고, 대표는 전부(누가 추가했는지와 함께) 본다.
+    """
+
+    __tablename__ = "company_members"
+    __table_args__ = (UniqueConstraint("company_id", "user_id", name="uq_company_member"),)
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    company_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("portfolio_companies.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    user_id: Mapped[str] = mapped_column(String(36), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now(), nullable=False)
 
 
 class CompanyHidden(Base):

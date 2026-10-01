@@ -1,4 +1,8 @@
-"""기업 리포트 담당자별 분리 (docs/login_logic P9, 결정 D-7).
+"""기업 리포트 담당자별 목록 (docs/login_logic P9, 2026-10-01 개편).
+
+- 매니저는 빈 목록에서 시작, 자기가 추가한 기업만 본다. 같은 기업은 하나(추가한 계정만 늘어남).
+- 대표는 전체 + 누가 추가했는지. 같은 계정이 다시 추가할 때만 '이미 추가한 기업'.
+- 데일리·월간은 매니저 본인에게 자동 발송, 수신자 명단은 회사 명단 하나(대표·관리자).
 
 실제 PostgreSQL 필요: PERM_PG_URL 지정 시 실행 (tests/test_permissions.py 와 같은 시드 사용).
 """
@@ -20,8 +24,7 @@ def _name(tag: str) -> str:
 
 async def _create(c, h, name, view=None):
     headers = {**h, **({"X-View-As": view} if view else {})}
-    r = await c.post(f"{CR}/companies", headers=headers, json={"name": name, "backfill_months": 0})
-    return r
+    return await c.post(f"{CR}/companies", headers=headers, json={"name": name, "backfill_months": 0})
 
 
 async def _ids(c, h, view=None, **params):
@@ -34,112 +37,107 @@ async def _ids(c, h, view=None, **params):
 async def _setup(env):  # noqa: F811
     c, d, hdr = env["c"], env["d"], env["hdr"]
     ho, ha, hb = hdr(d["owner"]), hdr(d["A"]), hdr(d["B"])
-    r = await _create(c, ho, _name("공통"))
+    r = await _create(c, ho, _name("대표"))
     assert r.status_code == 201, r.text
-    common = r.json()
-    assert common["scope"] == "common" and common["manager_user_id"] is None and common["can_edit"] is True
+    own_o = r.json()
+    assert own_o["can_edit"] and own_o["can_manage"] and [x["id"] for x in own_o["added_by"]] == [d["owner"]]
     r = await _create(c, ha, _name("A"))
     assert r.status_code == 201, r.text
     own_a = r.json()
-    assert own_a["scope"] == "manager" and own_a["manager_user_id"] == d["A"] and own_a["manager_name"] == "매니저A"
-    return c, d, ho, ha, hb, common, own_a
+    assert own_a["is_mine"] and own_a["can_edit"] and not own_a["can_manage"] and own_a["added_by"] == []
+    return c, d, ho, ha, hb, own_o, own_a
 
 
-async def test_visibility_by_role_and_view(env):  # noqa: F811
-    c, d, ho, ha, hb, common, own_a = await _setup(env)
+async def test_manager_starts_empty_and_sees_only_own(env):  # noqa: F811
+    c, d, ho, ha, hb, own_o, own_a = await _setup(env)
     a = await _ids(c, ha)
     b = await _ids(c, hb)
-    assert common["id"] in a and own_a["id"] in a
-    assert common["id"] in b and own_a["id"] not in b          # 다른 매니저 기업은 안 보임
-    assert a[common["id"]]["can_edit"] is False and a[own_a["id"]]["can_edit"] is True
-    o_all = await _ids(c, ho)                                   # 대표 기본 = 전체
-    assert {common["id"], own_a["id"]} <= set(o_all)
-    o_company = await _ids(c, ho, view="company")
-    assert common["id"] in o_company and own_a["id"] not in o_company
-    o_a = await _ids(c, ho, view=d["A"])                        # 대표가 매니저A 화면 그대로
-    assert {common["id"], own_a["id"]} <= set(o_a)
-    o_b = await _ids(c, ho, view=d["B"])
-    assert own_a["id"] not in o_b
-    # 매니저가 헤더를 보내도 무시된다
-    a2 = await _ids(c, ha, view=d["B"])
-    assert set(a2) == set(a)
-    # 상세·하위 자료: 다른 매니저 기업은 404
-    assert (await c.get(f"{CR}/companies/{own_a['id']}", headers=hb)).status_code == 404
-    assert (await c.get(f"{CR}/companies/{own_a['id']}/articles", headers=hb)).status_code == 404
-    assert (await c.get(f"{CR}/companies/{own_a['id']}/facts", headers=hb)).status_code == 404
+    assert set(a) == {own_a["id"]}                         # 대표 기업은 물려받지 않는다
+    assert b == {}                                         # 새 매니저는 빈 목록
+    o_all = await _ids(c, ho)                              # 대표 = 전체 + 추가한 사람
+    assert {own_o["id"], own_a["id"]} <= set(o_all)
+    assert [x["name"] for x in o_all[own_a["id"]]["added_by"]] == ["매니저A"]
+    assert set(await _ids(c, ho, view="company")) >= {own_o["id"]} and own_a["id"] not in await _ids(c, ho, view="company")
+    assert set(await _ids(c, ho, view=d["A"])) == {own_a["id"]}
+    assert set(await _ids(c, ha, view=d["B"])) == set(a)  # 매니저가 헤더를 보내도 무시
+    # 상세·하위 자료: 목록에 없는 기업은 404
+    for path in ("", "/articles", "/facts"):
+        assert (await c.get(f"{CR}/companies/{own_a['id']}{path}", headers=hb)).status_code == 404
+        assert (await c.get(f"{CR}/companies/{own_o['id']}{path}", headers=ha)).status_code == 404
     assert (await c.get(f"{CR}/companies/{own_a['id']}", headers=ho)).status_code == 200
+    # 숨기기 기능은 없어졌다
+    assert (await c.post(f"{CR}/companies/{own_o['id']}/hide", headers=ha)).status_code in (404, 405)
 
 
-async def test_manager_can_only_hide_common(env):  # noqa: F811
-    c, d, ho, ha, hb, common, own_a = await _setup(env)
-    # 공통 기업 고치기·삭제·수집은 대표만
-    assert (await c.put(f"{CR}/companies/{common['id']}", headers=ha, json={"memo": "x"})).status_code == 403
-    assert (await c.post(f"{CR}/companies/{common['id']}/trash", headers=ha)).status_code == 403
-    assert (await c.post(f"{CR}/companies/{common['id']}/facts", headers=ha,
-                         json={"title": "t", "fact_type": "other"})).status_code == 403
-    # 자기 기업은 고칠 수 있다, 담당 바꾸기는 대표만
-    assert (await c.put(f"{CR}/companies/{own_a['id']}", headers=ha, json={"memo": "내 메모"})).status_code == 200
-    assert (await c.put(f"{CR}/companies/{own_a['id']}", headers=ha, json={"manager_user_id": None})).status_code == 403
-    # 숨기기 → A 목록에서 빠지고 숨김 목록에 보임, B 는 그대로
-    assert (await c.post(f"{CR}/companies/{common['id']}/hide", headers=ha)).status_code == 200
-    assert common["id"] not in await _ids(c, ha)
-    hidden = await _ids(c, ha, hidden="true")
-    assert common["id"] in hidden and hidden[common["id"]]["is_hidden"] is True
-    assert common["id"] in await _ids(c, hb)
-    assert common["id"] not in await _ids(c, ho, view=d["A"])   # 대표가 A 화면을 보면 숨김 반영
-    # 숨겨도 직접 열면 볼 수 있다
-    assert (await c.get(f"{CR}/companies/{common['id']}", headers=ha)).status_code == 200
-    # 자기 기업은 숨기기 대상이 아님
-    assert (await c.post(f"{CR}/companies/{own_a['id']}/hide", headers=ha)).status_code == 400
-    # 대표 '전체' 화면에서는 숨기기 없음
-    assert (await c.post(f"{CR}/companies/{common['id']}/hide", headers=ho)).status_code == 400
-    # 숨긴 공통 기업을 다시 등록하면 → 숨김 해제
-    r = await _create(c, ha, common["name"])
-    assert r.status_code == 201 and r.json()["id"] == common["id"], r.text
-    assert common["id"] in await _ids(c, ha)
-    assert (await c.post(f"{CR}/companies/{common['id']}/hide", headers=ha)).status_code == 200
-    assert (await c.post(f"{CR}/companies/{common['id']}/unhide", headers=ha)).status_code == 200
-    assert common["id"] in await _ids(c, ha)
-
-
-async def test_duplicate_rules(env):  # noqa: F811
-    c, d, ho, ha, hb, common, own_a = await _setup(env)
+async def test_add_same_company_rules(env):  # noqa: F811
+    c, d, ho, ha, hb, own_o, own_a = await _setup(env)
+    # B 가 A 의 기업을 추가 → 중복 알림 없이 B 목록에 들어온다(같은 기업 하나)
     r = await _create(c, hb, own_a["name"])
-    assert r.status_code == 409 and "매니저A" in r.json()["detail"], r.text      # 두 번 수집 방지
-    r = await _create(c, ha, own_a["name"])
-    assert r.status_code == 409 and "이미 등록된" in r.json()["detail"]
-    r = await _create(c, ha, common["name"])
-    assert r.status_code == 409 and "회사 공통" in r.json()["detail"]
-    # 대표가 같은 기업을 등록하면 회사 공통으로 전환 → B 에게도 보인다
-    r = await _create(c, ho, own_a["name"])
-    assert r.status_code == 201 and r.json()["id"] == own_a["id"] and r.json()["scope"] == "common", r.text
+    assert r.status_code == 201 and r.json()["id"] == own_a["id"] and r.json()["added_by"] == [], r.text
     assert own_a["id"] in await _ids(c, hb)
-    # 대표가 매니저 화면을 고른 채 등록하면 그 매니저 기업
-    r = await _create(c, ho, _name("B"), view=d["B"])
-    assert r.status_code == 201 and r.json()["manager_user_id"] == d["B"]
-    # 대표는 담당을 바꿀 수 있다
-    cid = r.json()["id"]
-    r = await c.put(f"{CR}/companies/{cid}", headers=ho, json={"manager_user_id": None})
-    assert r.status_code == 200 and r.json()["scope"] == "common"
-    assert (await c.put(f"{CR}/companies/{cid}", headers=ho, json={"manager_user_id": d["owner"]})).status_code == 422
+    # 같은 계정이 다시 추가할 때만 안내
+    r = await _create(c, hb, own_a["name"])
+    assert r.status_code == 409 and "이미 추가한" in r.json()["detail"]
+    r = await _create(c, ha, own_a["name"])
+    assert r.status_code == 409
+    # 대표 화면: 추가한 사람 둘
+    o = await _ids(c, ho)
+    assert [x["name"] for x in o[own_a["id"]]["added_by"]] == ["매니저A", "매니저B"]
+    # 대표가 매니저 B 화면을 고른 채 추가하면 B 목록으로
+    r = await _create(c, ho, own_o["name"], view=d["B"])
+    assert r.status_code == 201 and r.json()["id"] == own_o["id"]
+    assert own_o["id"] in await _ids(c, hb)
+    r = await _create(c, ho, own_o["name"], view=d["B"])
+    assert r.status_code == 409 and "매니저B" in r.json()["detail"]
+    # 대표 본인도 같은 규칙
+    r = await _create(c, ho, own_a["name"])
+    assert r.status_code == 201
+    assert (await _create(c, ho, own_a["name"])).status_code == 409
+
+
+async def test_edit_and_remove_rules(env):  # noqa: F811
+    c, d, ho, ha, hb, own_o, own_a = await _setup(env)
+    await _create(c, hb, own_a["name"])
+    # 추가한 사람은 정보·키워드를 고칠 수 있다, 목록에 없는 사람은 404
+    assert (await c.put(f"{CR}/companies/{own_a['id']}", headers=hb, json={"memo": "B 메모"})).status_code == 200
+    assert (await c.put(f"{CR}/companies/{own_o['id']}", headers=ha, json={"memo": "x"})).status_code == 404
+    # 비활성·복구·완전 삭제는 대표만(모두에게 영향)
+    assert (await c.put(f"{CR}/companies/{own_a['id']}", headers=ha, json={"is_active": False})).status_code == 403
+    assert (await c.delete(f"{CR}/companies/{own_a['id']}", headers=ha)).status_code == 403
+    # 매니저 [삭제] = 내 목록에서 빼기. 다른 사람이 남아 있으면 기업은 그대로
+    r = await c.post(f"{CR}/companies/{own_a['id']}/trash", headers=ha)
+    assert r.status_code == 200 and r.json()["removed_from_list"] is True
+    assert own_a["id"] not in await _ids(c, ha)
+    assert own_a["id"] in await _ids(c, hb)
+    assert (await c.get(f"{CR}/companies/{own_a['id']}", headers=ho)).json()["deleted_at"] is None
+    # 마지막 한 명이 빼면 화면에서 삭제 → 대표의 [삭제된 기업]에 보인다, 매니저는 삭제된 목록을 못 본다
+    assert (await c.post(f"{CR}/companies/{own_a['id']}/trash", headers=hb)).status_code == 200
+    assert own_a["id"] in await _ids(c, ho, deleted="true")
+    assert await _ids(c, hb, deleted="true") == {}
+    # 다시 추가하면 되살려서 추가한 사람 목록에만
+    r = await _create(c, ha, own_a["name"])
+    assert r.status_code == 201 and r.json()["id"] == own_a["id"] and r.json()["deleted_at"] is None
+    assert own_a["id"] not in await _ids(c, hb)
+    o = await _ids(c, ho)
+    assert [x["name"] for x in o[own_a["id"]]["added_by"]] == ["매니저A"]
 
 
 async def test_briefing_is_filtered_per_viewer(env):  # noqa: F811
     from app.models.news_briefing import NewsBriefing
 
-    c, d, ho, ha, hb, common, own_a = await _setup(env)
-    r = await _create(c, hb, _name("Bown"))
-    own_b = r.json()
+    c, d, ho, ha, hb, own_o, own_a = await _setup(env)
+    own_b = (await _create(c, hb, _name("Bown"))).json()
+    await _create(c, hb, own_a["name"])  # B 도 A 기업을 추가
     day = date(2031, 1, 2 + int(uuid.uuid4().int % 25))
     cards = [
-        {"company_id": common["id"], "name": common["name"], "article_count": 2, "caution_count": 1,
-         "articles": [{"id": "a1", "title": "공통1"}, {"id": "a2", "title": "공통2"}]},
+        {"company_id": own_o["id"], "name": own_o["name"], "article_count": 2, "caution_count": 1,
+         "articles": [{"id": "a1", "title": "대표1"}, {"id": "a2", "title": "대표2"}]},
         {"company_id": own_a["id"], "name": own_a["name"], "article_count": 1, "caution_count": 0,
          "articles": [{"id": "a3", "title": "A1"}]},
         {"company_id": own_b["id"], "name": own_b["name"], "article_count": 4, "caution_count": 2,
          "articles": [{"id": "a4", "title": "B1"}]},
     ]
-    overall = [{"text": "공통 이야기", "source_ids": ["S1"]}, {"text": "B 이야기", "source_ids": ["S4"]},
+    overall = [{"text": "대표 기업 이야기", "source_ids": ["S1"]}, {"text": "B 이야기", "source_ids": ["S4"]},
                {"text": "시장 전반", "source_ids": []}]
     async with env["Session"]() as db:
         old = (await db.execute(__import__("sqlalchemy").select(NewsBriefing).where(NewsBriefing.briefing_date == day))).scalar_one_or_none()
@@ -152,56 +150,52 @@ async def test_briefing_is_filtered_per_viewer(env):  # noqa: F811
         await db.commit()
     p = {"date": day.isoformat()}
     ra = (await c.get(f"{CR}/briefings/daily", headers=ha, params=p)).json()
-    assert {x["company_id"] for x in ra["company_summaries"]} == {common["id"], own_a["id"]}
-    assert ra["article_count"] == 3 and ra["caution_count"] == 1 and ra["basic_info"]["company_with_news"] == 2
-    assert [x["text"] for x in ra["overall"]] == ["공통 이야기", "시장 전반"]     # B 기업 문장은 빠짐
+    assert [x["company_id"] for x in ra["company_summaries"]] == [own_a["id"]]
+    assert ra["article_count"] == 1 and ra["basic_info"]["company_with_news"] == 1
+    assert "대표 기업 이야기" not in [x["text"] for x in ra["overall"]] and "B 이야기" not in [x["text"] for x in ra["overall"]]
     rb = (await c.get(f"{CR}/briefings/daily", headers=hb, params=p)).json()
-    assert {x["company_id"] for x in rb["company_summaries"]} == {common["id"], own_b["id"]}
+    assert {x["company_id"] for x in rb["company_summaries"]} == {own_a["id"], own_b["id"]}
+    assert "B 이야기" in [x["text"] for x in rb["overall"]]
     ro = (await c.get(f"{CR}/briefings/daily", headers=ho, params=p)).json()
     assert len(ro["company_summaries"]) == 3 and ro["article_count"] == 7        # 대표 전체
-    # A 가 공통 기업을 숨기면 브리핑에서도 빠진다
-    await c.post(f"{CR}/companies/{common['id']}/hide", headers=ha)
-    ra = (await c.get(f"{CR}/briefings/daily", headers=ha, params=p)).json()
-    assert [x["company_id"] for x in ra["company_summaries"]] == [own_a["id"]]
-    assert ra["overall"][-1]["text"] == "시장 전반" or "담당 기업" in ra["overall"][0]["text"]
     lst = (await c.get(f"{CR}/briefings/daily/list", headers=ha, params={"limit": 120})).json()
     row = next(x for x in lst if x["briefing_date"] == day.isoformat())
     assert row["article_count"] == 1
 
 
-async def test_recipient_lists_per_manager_and_send_filter(env, monkeypatch):  # noqa: F811
+async def test_manager_self_send_and_company_list(env, monkeypatch):  # noqa: F811
     from sqlalchemy import update
 
-    from app.models.client import Client
     from app.models.news_briefing import BriefingRecipient, NewsBriefing
+    from app.models.user import User
     from app.services.company_report import mobile_link, sender
 
-    c, d, ho, ha, hb, common, own_a = await _setup(env)
+    c, d, ho, ha, hb, own_o, own_a = await _setup(env)
+    # 매니저는 수신자 명단을 못 본다(본인 자동 발송)
+    assert (await c.get(f"{CR}/recipients", headers=ha)).status_code == 403
+    assert (await c.post(f"{CR}/recipients", headers=ha, json={"kind": "client", "ref_id": d["client_A"]})).status_code == 403
+    me = (await c.get(f"{CR}/me", headers=ha)).json()["self_send"]
+    assert me["company_count"] == 1 and me["has_phone"] is False
     async with env["Session"]() as db:
-        await db.execute(update(Client).where(Client.id.in_([d["client_A"], d["client_B"]])).values(phone="010-7777-8888"))
+        await db.execute(update(User).where(User.id == d["A"]).values(phone="010-1212-3434"))
+        await db.execute(update(User).where(User.id == d["B"]).values(phone="010-5656-7878"))
         await db.commit()
-    # A 는 자기 명단에 자기 고객만
-    assert (await c.post(f"{CR}/recipients", headers=ha, json={"kind": "client", "ref_id": d["client_B"]})).status_code == 404
-    assert (await c.post(f"{CR}/recipients", headers=ha, json={"kind": "client", "ref_id": d["client_A"]})).status_code == 201
-    sel_a = (await c.get(f"{CR}/recipients", headers=ha)).json()["selected"]
-    assert [x["ref_id"] for x in sel_a] == [d["client_A"]]
-    assert (await c.get(f"{CR}/recipients", headers=hb)).json()["selected"] == []
-    rid = sel_a[0]["id"]
-    assert (await c.delete(f"{CR}/recipients/{rid}", headers=hb)).status_code == 404   # 남의 명단
-    # 대표: 전체 화면 = 회사 명단(비어 있음), 매니저A 를 고르면 A 명단
-    assert all(x["ref_id"] != d["client_A"] for x in (await c.get(f"{CR}/recipients", headers=ho)).json()["selected"])
-    sel_oa = (await c.get(f"{CR}/recipients", headers={**ho, "X-View-As": d["A"]})).json()["selected"]
-    assert [x["id"] for x in sel_oa] == [rid]
-    # 대표가 A 명단에 B 고객을 넣으려 하면 거절
-    r = await c.post(f"{CR}/recipients", headers={**ho, "X-View-As": d["A"]}, json={"kind": "client", "ref_id": d["client_B"]})
-    assert r.status_code == 422
-    # 폰 링크: A 명단 수신자에게는 A 화면 기업만
+    me = (await c.get(f"{CR}/me", headers=ha)).json()["self_send"]
+    assert me["has_phone"] and me["phone_masked"] == "010-****-3434"
     async with env["Session"]() as db:
-        ids = await mobile_link.subject_company_ids(db, rid)
-        assert own_a["id"] in ids and common["id"] in ids
-        tg = await sender.recipient_targets(db, list_owner=d["A"])
-        assert [t.recipient_id for t in tg] == [rid] and tg[0].list_owner == d["A"]
-    # 발송: 수신자마다 자기 명단 주인의 카드만 들어간다
+        mine = {t.user_id: t for t in await sender.manager_self_targets(db) if t.user_id in (d["A"], d["B"])}
+        assert set(mine) == {d["A"]}                    # B 는 목록이 비어 있어 안 보냄
+        # 대표 발송 설정에 매니저 자동 발송 현황
+    st = (await c.get(f"{CR}/settings", headers=ho)).json()
+    assert any(x["name"] == "매니저A" and x["company_count"] == 1 for x in st["manager_self"]), st["manager_self"]
+    # 사용 프로그램에서 기업 리포트를 빼면 보내지 않는다
+    async with env["Session"]() as db:
+        await db.execute(update(User).where(User.id == d["A"]).values(allowed_programs=["customers"]))
+        await db.commit()
+        assert all(t.user_id != d["A"] for t in await sender.manager_self_targets(db))
+        await db.execute(update(User).where(User.id == d["A"]).values(allowed_programs=None))
+        await db.commit()
+
     captured = []
 
     async def fake_send(db, msgs):
@@ -210,40 +204,47 @@ async def test_recipient_lists_per_manager_and_send_filter(env, monkeypatch):  #
 
     monkeypatch.setattr("app.services.solapi_service.send_many_alimtalk", fake_send)
     day = date(2032, 3, 1 + int(uuid.uuid4().int % 27))
-    cards = [{"company_id": common["id"], "name": "공통카드", "article_count": 1, "caution_count": 0, "one_liner": "공통 한줄",
+    cards = [{"company_id": own_a["id"], "name": "A카드", "article_count": 1, "caution_count": 0, "one_liner": "A 한줄",
               "articles": [{"id": "x1"}]},
-             {"company_id": str(uuid.uuid4()), "name": "남의카드", "article_count": 1, "caution_count": 0, "one_liner": "남 한줄",
+             {"company_id": own_o["id"], "name": "대표카드", "article_count": 1, "caution_count": 0, "one_liner": "대표 한줄",
               "articles": [{"id": "x2"}]}]
     async with env["Session"]() as db:
         b = NewsBriefing(briefing_date=day, status="approved", company_summaries=cards, article_count=2, caution_count=0,
                          basic_info={"company_with_news": 2},
-                         review_summary={"overall": [{"text": "남 기업 문장", "source_ids": ["S2"]}], "source_map": {"S2": "x2"}})
+                         review_summary={"overall": [{"text": "대표 기업 문장", "source_ids": ["S2"]}], "source_map": {"S2": "x2"}})
         db.add(b)
         await db.commit()
-        await sender._deliver(db, b, await sender.recipient_targets(db, list_owner=d["A"]), "test")
-        await db.rollback()
-    text = captured[0]["text"]
-    assert "공통카드" in text and "남의카드" not in text and "남 기업 문장" not in text, text
-    async with env["Session"]() as db:
-        await db.execute(BriefingRecipient.__table__.delete().where(BriefingRecipient.id == rid))
+        targets = [t for t in await sender.recipients(db) if t.user_id == d["A"]]
+        assert len(targets) == 1 and targets[0].kind == "self"
+        await sender._deliver(db, b, targets, "test")
+        # 폰 링크: 매니저 본인 링크는 자기 기업만
+        ids = await mobile_link.subject_company_ids(db, f"u{d['A']}")
+        assert ids == {own_a["id"]}
+        # 같은 번호가 회사 명단에 있으면 한 번만(회사 명단 우선)
+        r = BriefingRecipient(user_id=d["A"], name="매니저A", is_active=True)
+        db.add(r)
         await db.commit()
+        allt = [t for t in await sender.recipients(db) if t.user_id == d["A"]]
+        assert len(allt) == 1 and allt[0].kind == "user"
+        await db.delete(r)
+        await db.commit()
+    text = captured[0]["text"]
+    assert captured[0]["to"] == "010-1212-3434"
+    assert "A카드" in text and "대표카드" not in text and "대표 기업 문장" not in text, text
 
 
-async def test_offboarding_moves_companies_and_recipients(env):  # noqa: F811
-    from sqlalchemy import select
-
-    from app.models.news_briefing import BriefingRecipient, PortfolioCompany
+async def test_offboarding_moves_company_list(env):  # noqa: F811
     from app.models.user import User
     from app.services import transfer_service
 
-    c, d, ho, ha, hb, common, own_a = await _setup(env)
-    assert (await c.post(f"{CR}/recipients", headers=ha, json={"kind": "user", "ref_id": d["A"]})).status_code in (201, 422)
+    c, d, ho, ha, hb, own_o, own_a = await _setup(env)
+    shared = (await _create(c, ha, _name("공유"))).json()
+    await _create(c, hb, shared["name"])
     async with env["Session"]() as db:
         a = await db.get(User, d["A"])
         b = await db.get(User, d["B"])
         await transfer_service.transfer_all(db, a, b, d["owner"], "퇴사")
-        moved = await db.get(PortfolioCompany, own_a["id"])
-        assert moved.manager_user_id == d["B"]
-        left = (await db.execute(select(BriefingRecipient).where(BriefingRecipient.manager_user_id == d["A"]))).scalars().all()
-        assert left == []
-    assert own_a["id"] in await _ids(c, hb)
+    b_ids = await _ids(c, hb)
+    assert {own_a["id"], shared["id"]} <= set(b_ids)
+    o = await _ids(c, ho)
+    assert [x["name"] for x in o[shared["id"]]["added_by"]] == ["매니저B"]   # 중복 없이 하나

@@ -97,6 +97,10 @@ export default function CustomerManagementPage() {
   const [notionRowSearch, setNotionRowSearch] = useState('');
   const [notionSelectedRows, setNotionSelectedRows] = useState<Set<string>>(new Set());
   const [notionBulkLoading, setNotionBulkLoading] = useState(false);
+  // 노션 담당자 거르기(2026-10-01): 고른 담당자의 이름이 노션 '담당자(main)'에 있는 고객만 가져온다
+  const myNickname = useAuthStore((st) => st.user?.nickname ?? '');
+  const [notionAssignee, setNotionAssignee] = useState<{ column: string; name: string } | null>(null);
+  const assigneeName = isOwner ? (managers.find((m) => m.id === newManagerId)?.nickname ?? '') : myNickname;
 
   /* ---------------------------------------------------------------- */
   /*  Fetch                                                            */
@@ -190,6 +194,10 @@ export default function CustomerManagementPage() {
   }
 
   async function loadNotionDbs() {
+    if (!assigneeName) {
+      setNotionError('담당자를 먼저 선택하세요. 담당자를 정해야 노션에서 그 담당자의 고객만 가져올 수 있습니다.');
+      return;
+    }
     // Check localStorage first - if saved config exists, skip DB selection
     const saved = loadNotionCustomerConfig();
     if (saved) {
@@ -231,15 +239,29 @@ export default function CustomerManagementPage() {
     setNotionSelectedDb(dbId);
     try {
       const token = authLib.getToken();
-      // 속성 목록 + 행 데이터 동시 조회
-      const [propsRes, rowsRes] = await Promise.all([
-        fetch(`${API_URL}/api/v1/notion/databases/${dbId}/properties`, { headers: { Authorization: `Bearer ${token}` } }),
-        fetch(`${API_URL}/api/v1/notion/databases/${dbId}/rows`, { headers: { Authorization: `Bearer ${token}` } }),
-      ]);
-      if (!propsRes.ok || !rowsRes.ok) throw new Error('데이터 조회 실패');
+      if (!assigneeName) throw new Error('담당자를 먼저 선택하세요.');
+      // 속성 목록 → '담당자(main)' 칸을 찾고, 그 담당자 이름의 행만 조회(서버가 한 번 더 확인)
+      const propsRes = await fetch(`${API_URL}/api/v1/notion/databases/${dbId}/properties`, { headers: { Authorization: `Bearer ${token}` } });
+      if (!propsRes.ok) throw new Error('데이터 조회 실패');
       const props: { name: string; type: string }[] = await propsRes.json();
-      const rows: { id: string; properties: Record<string, string> }[] = await rowsRes.json();
       const cols = props.map(p => p.name);
+      const assigneeCol = cols.find(c => c.replace(/\s/g, '') === '담당자(main)')
+        ?? cols.find(c => c.includes('담당자') && c.toLowerCase().includes('main'))
+        ?? cols.find(c => c.includes('담당자'));
+      if (!assigneeCol) {
+        throw new Error(`'${notionSelectedDbTitle || '선택한 DB'}'에 '담당자(main)' 칸이 없어 가져올 수 없습니다. 노션 고객 DB를 고르세요.`);
+      }
+      const qs = new URLSearchParams({ assignee_property: assigneeCol, assignee: assigneeName });
+      const rowsRes = await fetch(`${API_URL}/api/v1/notion/databases/${dbId}/rows?${qs}`, { headers: { Authorization: `Bearer ${token}` } });
+      if (!rowsRes.ok) {
+        const d = await rowsRes.json().catch(() => ({}));
+        throw new Error(typeof d?.detail === 'string' ? d.detail : '데이터 조회 실패');
+      }
+      const rows: { id: string; properties: Record<string, string> }[] = await rowsRes.json();
+      if (rows.length === 0) {
+        throw new Error(`노션 '${assigneeCol}'이(가) '${assigneeName}'인 고객이 없습니다. Working Hub 계정 이름과 노션 담당자 이름이 같아야 가져올 수 있습니다.`);
+      }
+      setNotionAssignee({ column: assigneeCol, name: assigneeName });
       setNotionColumns(cols);
       setNotionRows(rows);
 
@@ -330,7 +352,20 @@ export default function CustomerManagementPage() {
     await fetchCustomers();
   }
 
+  /** 담당자를 바꾸면 이미 불러온 노션 고객(이전 담당자 것)은 버린다 */
+  function changeNewManager(id: string) {
+    setNewManagerId(id);
+    if (id !== newManagerId) {
+      setNotionStep('idle');
+      setNotionRows([]);
+      setNotionSelectedRows(new Set());
+      setNotionAssignee(null);
+      setNotionError(null);
+    }
+  }
+
   function resetNotion() {
+    setNotionAssignee(null);
     setNotionStep('idle');
     setNotionDbs([]);
     setNotionRows([]);
@@ -936,7 +971,7 @@ export default function CustomerManagementPage() {
 
             {/* ── 담당자 (맨 위 고정: Notion 가져오기·직접 입력 모두 이 담당자로 등록) ── */}
             {!editTarget && (
-              <ManagerSelectField value={newManagerId} onChange={setNewManagerId} labelStyle={labelStyle} inputStyle={inputStyle} />
+              <ManagerSelectField value={newManagerId} onChange={changeNewManager} labelStyle={labelStyle} inputStyle={inputStyle} />
             )}
 
             {/* ── Notion에서 가져오기 ── */}
@@ -945,16 +980,21 @@ export default function CustomerManagementPage() {
                 {notionStep === 'idle' && (
                   <button
                     onClick={loadNotionDbs}
-                    disabled={notionLoading}
+                    disabled={notionLoading || !assigneeName}
+                    title={assigneeName ? `노션 '담당자(main)'가 ${assigneeName}인 고객만 가져옵니다` : '담당자를 먼저 선택하세요'}
                     style={{
                       width: '100%', padding: '10px', borderRadius: '8px',
                       border: '1px dashed var(--border-strong)', background: 'var(--bg-surface)',
                       color: 'var(--text-secondary)', fontSize: '13px', fontWeight: 500,
-                      cursor: notionLoading ? 'wait' : 'pointer', display: 'flex', alignItems: 'center',
-                      justifyContent: 'center', gap: '8px', opacity: notionLoading ? 0.6 : 1,
+                      cursor: notionLoading ? 'wait' : !assigneeName ? 'not-allowed' : 'pointer', display: 'flex', alignItems: 'center',
+                      justifyContent: 'center', gap: '8px', opacity: notionLoading || !assigneeName ? 0.6 : 1,
                     }}
                   >
-                    {notionLoading ? <><span className="notion-spinner" style={{ marginRight: 6 }} />Notion 연결 중...</> : <>📝 Notion에서 가져오기</>}
+                    {notionLoading
+                      ? <><span className="notion-spinner" style={{ marginRight: 6 }} />Notion 연결 중...</>
+                      : assigneeName
+                        ? <>📝 Notion에서 가져오기 ({assigneeName} 담당 고객만)</>
+                        : <>📝 Notion에서 가져오기 — 담당자를 먼저 선택하세요</>}
                   </button>
                 )}
 
@@ -1023,7 +1063,14 @@ export default function CustomerManagementPage() {
                 {notionStep === 'mapping' && (
                   <div style={{ border: '1px solid var(--border)', borderRadius: '8px', overflow: 'hidden' }}>
                     <div style={{ padding: '8px 12px', background: 'var(--bg-surface)', fontSize: '12px', fontWeight: 600, color: 'var(--blue-400)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                      <span>필드 매핑 → 고객 선택{notionSelectedDbTitle ? ` (${notionSelectedDbTitle})` : ''}</span>
+                      <span>
+                        필드 매핑 → 고객 선택{notionSelectedDbTitle ? ` (${notionSelectedDbTitle})` : ''}
+                        {notionAssignee && (
+                          <span style={{ marginLeft: 8, color: 'var(--text-muted)', fontWeight: 500 }}>
+                            · {notionAssignee.column} = {notionAssignee.name} {notionRows.length}명
+                          </span>
+                        )}
+                      </span>
                       <div style={{ display: 'flex', gap: '8px' }}>
                         <button onClick={() => { clearNotionCustomerConfig(); setNotionRows([]); setNotionColumns([]); setNotionRowSearch(''); fetchNotionDbList(); }} style={{ background: 'none', border: 'none', color: 'var(--blue-400)', cursor: 'pointer', fontSize: '11px' }}>DB 변경</button>
                         <button onClick={resetNotion} style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', fontSize: '12px' }}>취소</button>

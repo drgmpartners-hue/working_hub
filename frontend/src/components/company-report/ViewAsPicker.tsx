@@ -2,7 +2,7 @@
 
 /**
  * 기업 리포트 — 대표 전용 [담당자 선택] (docs/login_logic P9).
- * 전체 / 회사 공통 / 매니저별 화면을 고른다. 매니저(대행 중 포함)에게는 보이지 않는다.
+ * 전체 / 대표 목록 / 매니저별 목록을 고른다. 매니저(대행 중 포함)에게는 보이지 않는다.
  */
 import { useEffect, useState } from 'react';
 import { adminApi, type ManagerRow } from '@/app/(main)/admin/_lib/api';
@@ -43,7 +43,7 @@ export function ViewAsPicker() {
         }}
       >
         <option value="">전체 (모든 담당자)</option>
-        <option value="company">회사 공통만</option>
+        <option value="company">대표가 추가한 기업만</option>
         {managers.map((m) => (
           <option key={m.id} value={m.id}>
             {m.nickname} 화면{m.is_active ? '' : ' (비활성)'}
@@ -61,13 +61,13 @@ export function ViewAsNotice() {
   if (!user) return null;
   let text: string;
   if (user.role !== 'owner') {
-    text = '회사 공통 기업과 내가 추가한 기업이 보입니다. 공통 기업은 [숨기기]로 내 화면·브리핑에서 뺄 수 있고, 고치기는 대표만 합니다.';
+    text = '내가 추가한 기업만 보입니다. 내 브리핑(평일 08:30 내 휴대폰)에도 이 기업들만 담깁니다.';
   } else if (!viewAs) {
-    text = '모든 담당자의 기업을 보고 있습니다. 매니저가 추가한 기업에는 담당자 이름이 붙습니다.';
+    text = '모든 기업을 보고 있습니다. 기업마다 추가한 사람이 표시됩니다.';
   } else if (viewAs === 'company') {
-    text = '회사 공통 기업만 보고 있습니다. 회사 수신자 명단은 이 기업들의 브리핑을 받습니다.';
+    text = '대표가 추가한 기업만 보고 있습니다.';
   } else {
-    text = '선택한 매니저의 화면을 그대로 보고 있습니다. 여기서 등록한 기업·수신자는 그 매니저 것으로 들어갑니다.';
+    text = '선택한 매니저의 목록을 그대로 보고 있습니다. 여기서 추가한 기업은 그 매니저 목록에 들어갑니다.';
   }
   return <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>{text}</div>;
 }

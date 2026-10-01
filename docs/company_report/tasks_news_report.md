@@ -135,6 +135,7 @@
 > - 브리핑 발송·수신자·발송 설정 같은 회사 차원 설정은 기존 기업 리포트 관리자 체계 유지. 대표(owner)는 항상 관리자로 인정됨.
 > - 설계 시 P4-10 '관리자 승인' 단계가 매니저 생성 흐름을 막지 않도록 할 것(승인 필요 여부는 착수 시 대표님 확인).
 
+- (2026-10-01) 담당자별 규칙: 기업 목록은 '추가한 계정' 방식(docs/login_logic P13). 반기 보고서는 고객에게 가므로 데일리·월간과 별도의 고객 수신자 명단이 필요
 - [ ] **P4-1** [DB] `company_documents`, `company_reports`(period_year·period_half·sales_note), `report_images`, `report_exports`
 - [ ] **P4-2** [BE] 자료함 파서 7종(pdf·docx·md·pptx·hwpx·hwp·ppt) 텍스트·이미지 추출 + AI 문서 메모, 투자사 보고서 포함 (고객 개인 투자 금액·지분은 제외)
 - [ ] **P4-3** [OPS] LibreOffice 설치 여부 결정(Dockerfile 또는 별도 변환 워커)
