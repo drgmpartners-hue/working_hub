@@ -33,7 +33,7 @@ export default function AdminManagersPage() {
   const [newPrograms, setNewPrograms] = useState<string[]>([]);
   const [progEdit, setProgEdit] = useState<{ m: ManagerRow; value: string[] } | null>(null);
   const [saving, setSaving] = useState(false);
-  const [editing, setEditing] = useState<{ id: string; nickname: string; phone: string } | null>(null);
+  const [editing, setEditing] = useState<{ id: string; nickname: string; phone: string; email: string } | null>(null);
   // 퇴사 처리: 고객 일괄 이관 (지시서 9.4 — 이관 → 담당 고객 0명 확인 → 비활성화)
   const [moving, setMoving] = useState<{ from: ManagerRow; to: string; reason: string } | null>(null);
 
@@ -124,7 +124,7 @@ export default function AdminManagersPage() {
       if (!editing) return;
       await adminApi(`/managers/${editing.id}`, {
         method: 'PATCH',
-        body: JSON.stringify({ nickname: editing.nickname.trim(), phone: editing.phone.trim() || null }),
+        body: JSON.stringify({ nickname: editing.nickname.trim(), phone: editing.phone.trim() || null, email: editing.email.trim() || undefined }),
       });
       setEditing(null);
       setNotice('저장했습니다.');
@@ -252,7 +252,17 @@ export default function AdminManagersPage() {
                         <Link href={`/admin/managers/${m.id}`} style={{ color: 'var(--text-primary)' }}>{m.nickname}</Link>
                       )}
                     </td>
-                    <td style={{ ...cell, color: 'var(--text-secondary)' }}>{m.email}</td>
+                    <td style={{ ...cell, color: 'var(--text-secondary)' }}>
+                      {isEditing && !isOwnerRow ? (
+                        <input
+                          style={{ ...input, width: 200 }}
+                          type="email"
+                          title="로그인 아이디. 지메일로 바꾸면 그 구글 계정으로 구글 로그인을 할 수 있습니다."
+                          value={editing.email}
+                          onChange={(e) => setEditing({ ...editing, email: e.target.value })}
+                        />
+                      ) : m.email}
+                    </td>
                     <td style={{ ...cell, color: 'var(--text-secondary)' }}>
                       {isEditing ? (
                         <input style={{ ...input, width: 140 }} value={editing.phone} onChange={(e) => setEditing({ ...editing, phone: e.target.value })} />
@@ -287,7 +297,7 @@ export default function AdminManagersPage() {
                           </>
                         ) : (
                           <>
-                            <button className="wh-btn wh-btn-ghost wh-btn-sm" onClick={() => setEditing({ id: m.id, nickname: m.nickname, phone: m.phone || '' })}>수정</button>
+                            <button className="wh-btn wh-btn-ghost wh-btn-sm" onClick={() => setEditing({ id: m.id, nickname: m.nickname, phone: m.phone || '', email: m.email })}>수정</button>
                             {m.stats.clients > 0 && (
                               <button className="wh-btn wh-btn-ghost wh-btn-sm" onClick={() => setMoving({ from: m, to: '', reason: '' })}>
                                 고객 일괄 이관

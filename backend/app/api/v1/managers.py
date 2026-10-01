@@ -34,6 +34,8 @@ class ManagerCreate(BaseModel):
 
 
 class ManagerUpdate(BaseModel):
+    # 로그인 아이디(이메일) 변경 — 예: 네이버 메일로 만든 계정을 지메일로 바꿔 구글 로그인을 쓰게 할 때
+    email: Optional[EmailStr] = None
     nickname: Optional[str] = Field(None, min_length=1, max_length=50)
     phone: Optional[str] = Field(None, max_length=20)
     is_active: Optional[bool] = None
@@ -118,6 +120,18 @@ async def update_manager(user_id: str, body: ManagerUpdate, ctx: Auth, db: Async
         else:
             user.is_active = True
             user.deactivated_at = None
+
+    if data.get("email"):
+        new_email = str(data["email"]).lower().strip()
+        if new_email != (user.email or "").lower():
+            if is_owner(user):
+                raise HTTPException(status_code=400, detail="대표 계정의 이메일은 여기서 바꿀 수 없습니다.")
+            dup = (await db.execute(
+                select(User.id).where(func.lower(User.email) == new_email, User.id != user.id)
+            )).scalar_one_or_none()
+            if dup:
+                raise HTTPException(status_code=409, detail="이미 다른 계정이 쓰는 이메일입니다.")
+            user.email = new_email
 
     if "nickname" in data and data["nickname"]:
         user.nickname = data["nickname"].strip()

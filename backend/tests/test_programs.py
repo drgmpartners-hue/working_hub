@@ -78,3 +78,23 @@ async def test_owner_sets_programs_and_server_enforces(env):  # noqa: F811
     r = await c.post("/managers", headers=ho, json={"email": f"perm-new-{uuid.uuid4().hex[:6]}@x.com", "nickname": "신규",
                                                      "allowed_programs": ["customers", "retirement"]})
     assert r.status_code == 201 and r.json()["allowed_programs"] == ["customers", "retirement"], r.text
+
+
+@pytestmark_pg
+async def test_owner_changes_manager_email(env):  # noqa: F811
+    """매니저 로그인 아이디(이메일) 변경 — 지메일로 바꿔 구글 로그인을 쓰게 할 때."""
+    import uuid
+
+    c, d, hdr = env["c"], env["d"], env["hdr"]
+    ho = hdr(d["owner"])
+    new = f"perm-Gmail-{uuid.uuid4().hex[:6]}@Gmail.com"
+    r = await c.patch(f"/managers/{d['A']}", headers=ho, json={"email": new})
+    assert r.status_code == 200 and r.json()["email"] == new.lower(), r.text
+    # 새 이메일로 비밀번호 로그인
+    assert (await c.post("/auth/login/json", json={"email": new.lower(), "password": "pw"})).status_code == 200
+    # 다른 계정 이메일과 겹치면 409, 대표 계정은 400, 매니저는 403
+    me_b = (await c.get("/users/me", headers=hdr(d["B"]))).json()["email"]
+    assert (await c.patch(f"/managers/{d['A']}", headers=ho, json={"email": me_b})).status_code == 409
+    assert (await c.patch(f"/managers/{d['owner']}", headers=ho, json={"email": "perm-x@x.com"})).status_code == 400
+    assert (await c.patch(f"/managers/{d['B']}", headers=hdr(d["A"]), json={"email": "perm-y@x.com"})).status_code == 403
+    assert (await c.patch(f"/managers/{d['A']}", headers=ho, json={"email": "not-an-email"})).status_code == 422
