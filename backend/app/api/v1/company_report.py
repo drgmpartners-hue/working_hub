@@ -1186,17 +1186,18 @@ async def _settings_out(db: AsyncSession, user=None) -> dict:
 @router.get("/costs")
 async def get_costs(unit: str = Query("month", pattern="^(day|month|quarter|year)$"), current_user=Depends(get_current_user),
                     db: AsyncSession = Depends(get_db)):
-    """비용 종합: 기간(일/월/분기/연)별 AI 사용액 + SOLAPI 발송비, 발송 횟수, 1회당 평균."""
+    """비용 종합: 기간(일/월/분기/연)별 AI 사용액 + SOLAPI 발송비, 발송 횟수, 1회당 평균. 관리자만(발송 설정 탭)."""
     from app.services.company_report import usage
 
+    await require_admin(db, current_user)
     return await usage.cost_history(db, unit)
 
 
 @router.get("/settings")
 async def get_settings(current_user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
-    from app.services.company_report import admin
-
-    return await _settings_out(db, None if await admin.is_admin(db, current_user) else current_user)
+    """발송 설정 탭 — 대표·기업 리포트 관리자만. 매니저는 탭이 없고 수신자 명단은 브리핑 탭에서 관리한다."""
+    await require_admin(db, current_user)
+    return await _settings_out(db)
 
 
 @router.put("/settings")

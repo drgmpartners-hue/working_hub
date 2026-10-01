@@ -482,6 +482,9 @@ async def _run(monkeypatch):
         me_s = (await c.get("/me", headers=HS)).json()
         assert me_s["is_admin"] is False and me_s["can_claim"] is False
         assert (await c.put("/settings", headers=HS, json={"weather_region": "부산"})).status_code == 403
+        # 발송 설정 탭은 관리자 전용: 매니저는 조회도 403
+        assert (await c.get("/settings", headers=HS)).status_code == 403
+        assert (await c.get("/costs", headers=HS)).status_code == 403
         assert (await c.post("/admins/claim", headers=HS)).status_code == 409
         # 대표가 관리자로 추가하면 그때부터 관리자
         assert (await c.put("/admins", headers=H, json={"user_ids": [staff_id]})).status_code == 200

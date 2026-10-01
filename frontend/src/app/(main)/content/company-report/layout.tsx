@@ -5,11 +5,13 @@
  * 상단 탭: 투자기업 관리 · 브리핑 · 보고서 관리 · 기업DB · 발송 설정 (+ 공통 검색창)
  * 기업 상세(/companies/[id])는 투자기업 관리 탭 안에서 열린다.
  */
+import { useEffect } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
 import { Tab } from '@/components/common/Tab';
 import { SearchBar } from '@/components/company-report/SearchBar';
 import { ViewAsNotice, ViewAsPicker } from '@/components/company-report/ViewAsPicker';
 import { useViewAs } from '@/lib/crViewAs';
+import { useCrMe } from '@/lib/useCrMe';
 
 const TABS = [
   { key: 'companies', label: '투자기업 관리', href: '/content/company-report/companies' },
@@ -22,7 +24,15 @@ const TABS = [
 export default function CompanyReportLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname() || '';
   const router = useRouter();
-  const active = TABS.find((t) => pathname.startsWith(t.href))?.key ?? (pathname.includes('/search') ? '' : 'briefing');
+  // 발송 설정 탭은 대표·기업 리포트 관리자만 (매니저는 브리핑 탭에서 '내 수신자 명단'을 관리)
+  const me = useCrMe();
+  const tabs = TABS.filter((t) => t.key !== 'settings' || !!me?.is_admin);
+  const active = tabs.find((t) => pathname.startsWith(t.href))?.key ?? (pathname.includes('/search') ? '' : 'briefing');
+  useEffect(() => {
+    if (me && !me.is_admin && pathname.startsWith('/content/company-report/settings')) {
+      router.replace('/content/company-report/briefing?tab=recipients');
+    }
+  }, [me, pathname, router]);
   const viewAs = useViewAs(); // 담당자를 바꾸면 아래 화면을 새로 그려 다시 불러온다
 
 
@@ -42,7 +52,7 @@ export default function CompanyReportLayout({ children }: { children: React.Reac
       </div>
       <ViewAsNotice />
       <Tab
-        items={TABS.map(({ key, label }) => ({ key, label }))}
+        items={tabs.map(({ key, label }) => ({ key, label }))}
         activeKey={active}
         onChange={(key) => {
           const t = TABS.find((x) => x.key === key);

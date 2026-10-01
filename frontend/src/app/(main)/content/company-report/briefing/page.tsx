@@ -6,6 +6,7 @@ import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { Card } from '@/components/common/Card';
 import { DailyBriefingView } from '@/components/company-report/DailyBriefingView';
 import { MonthlyPanel } from '@/components/company-report/MonthlyPanel';
+import { RecipientsCard } from '@/components/company-report/RecipientsCard';
 import type { BriefingListItem, DailyBriefing } from '@/components/company-report/types';
 import { ErrorBox, Spinner, inputStyle, mutedText } from '@/components/company-report/ui';
 import { ApiError, crGet, crPost } from '@/lib/companyReportApi';
@@ -24,7 +25,13 @@ function BriefingInner() {
   const router = useRouter();
   const pathname = usePathname();
   const me = useCrMe();
-  const tab = params.get('month') ? 'monthly' : params.get('tab') === 'monthly' ? 'monthly' : 'daily';
+  const tab = params.get('month')
+    ? 'monthly'
+    : params.get('tab') === 'monthly'
+      ? 'monthly'
+      : params.get('tab') === 'recipients'
+        ? 'recipients' // 매니저 '내 수신자 명단' (발송 설정 탭 대신)
+        : 'daily';
   const date = params.get('date') || '';
   const month = params.get('month') || '';
 
@@ -118,6 +125,11 @@ function BriefingInner() {
           <button type="button" className={`wh-btn wh-btn-sm ${tab === 'monthly' ? 'wh-btn-primary' : 'wh-btn-ghost'}`} onClick={() => go({ tab: 'monthly' })}>
             월간
           </button>
+          {me && !me.is_admin && (
+            <button type="button" className={`wh-btn wh-btn-sm ${tab === 'recipients' ? 'wh-btn-primary' : 'wh-btn-ghost'}`} onClick={() => go({ tab: 'recipients' })}>
+              내 수신자 명단
+            </button>
+          )}
         </div>
         {tab === 'monthly' && <div ref={setToolbarEl} style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }} />}
         {tab === 'daily' && (
@@ -158,7 +170,9 @@ function BriefingInner() {
       <ErrorBox message={error} />
       {notice && <div style={{ ...mutedText, color: 'var(--success)' }}>{notice}</div>}
 
-      {tab === 'monthly' ? (
+      {tab === 'recipients' ? (
+        <RecipientsCard admin mine />
+      ) : tab === 'monthly' ? (
         <MonthlyPanel month={month} isAdmin={!!me?.is_admin} toolbarEl={toolbarEl} onMonth={(m) => go(m ? { month: m } : { tab: 'monthly' })} />
       ) : loading ? (
         <Spinner />
