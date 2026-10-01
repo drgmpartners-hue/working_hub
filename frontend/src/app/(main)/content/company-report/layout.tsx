@@ -8,6 +8,8 @@
 import { usePathname, useRouter } from 'next/navigation';
 import { Tab } from '@/components/common/Tab';
 import { SearchBar } from '@/components/company-report/SearchBar';
+import { ViewAsNotice, ViewAsPicker } from '@/components/company-report/ViewAsPicker';
+import { useViewAs } from '@/lib/crViewAs';
 
 const TABS = [
   { key: 'companies', label: '투자기업 관리', href: '/content/company-report/companies' },
@@ -21,6 +23,7 @@ export default function CompanyReportLayout({ children }: { children: React.Reac
   const pathname = usePathname() || '';
   const router = useRouter();
   const active = TABS.find((t) => pathname.startsWith(t.href))?.key ?? (pathname.includes('/search') ? '' : 'briefing');
+  const viewAs = useViewAs(); // 담당자를 바꾸면 아래 화면을 새로 그려 다시 불러온다
 
 
   return (
@@ -32,8 +35,12 @@ export default function CompanyReportLayout({ children }: { children: React.Reac
             투자기업 뉴스 브리핑 · 월간 브리핑 · 반기 기업 종합보고서
           </p>
         </div>
-        <SearchBar />
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+          <ViewAsPicker />
+          <SearchBar />
+        </div>
       </div>
+      <ViewAsNotice />
       <Tab
         items={TABS.map(({ key, label }) => ({ key, label }))}
         activeKey={active}
@@ -42,7 +49,7 @@ export default function CompanyReportLayout({ children }: { children: React.Reac
           if (t) router.push(t.href);
         }}
       />
-      <div>{children}</div>
+      <div key={viewAs || 'all'}>{children}</div>
     </div>
   );
 }

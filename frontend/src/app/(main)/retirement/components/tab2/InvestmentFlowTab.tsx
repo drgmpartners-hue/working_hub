@@ -9,6 +9,7 @@ import { Section } from '../common/Section';
 import { formatCurrency, formatInputCurrency, parseCurrency } from '../../utils/formatCurrency';
 import { API_URL } from '@/lib/api-url';
 import { authLib } from '@/lib/auth';
+import { loadClientContact, setPdfContact } from '@/lib/reportContact';
 
 const AssetGrowthChart = dynamic(() => import('./AnnualFlowChart').then(m => m.AssetGrowthChart), { ssr: false });
 const LifetimeRetirementFlow = dynamic(() => import('./LifetimeRetirementFlow').then(m => m.LifetimeRetirementFlow), { ssr: false });
@@ -1613,6 +1614,7 @@ export function InvestmentFlowTab() {
         chartIds: ['print-chart-growth', 'print-chart-lifetime'],
       };
 
+      setPdfContact(await loadClientContact(selectedCustomer?.id)); // 담당 매니저 이름·연락처 (docs/login_logic P9)
       await generateInvestmentFlowPdf(pdfData, `투자흐름_${selectedCustomer?.name ?? '보고서'}_${new Date().toISOString().slice(0, 10)}.pdf`);
     } catch (e: any) {
       console.error('PDF 생성 실패:', e);

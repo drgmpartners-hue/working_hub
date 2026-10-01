@@ -84,6 +84,26 @@ async def subject_active(db: AsyncSession, subject: str) -> bool:
     return bool(r and r.is_active)
 
 
+async def subject_company_ids(db: AsyncSession, subject: str) -> Optional[set[str]]:
+    """링크를 받은 사람에게 보여 줄 기업(docs/login_logic P9). None = 거르지 않음.
+
+    - 수신자: 그 수신자가 속한 명단의 주인 기준(매니저 명단 → 그 매니저 화면, 회사 명단 → 회사 공통)
+    - 본인 테스트('u'+계정): 매니저면 자기 화면, 대표면 전체
+    """
+    from app.core.permissions import is_owner
+    from app.models.news_briefing import BriefingRecipient
+    from app.models.user import User
+    from app.services.company_report import visibility as vis
+
+    if subject.startswith("u"):
+        u = await db.get(User, subject[1:])
+        if not u or is_owner(u):
+            return None
+        return await vis.visible_company_ids(db, vis.manager_view(u, u.id))
+    r = await db.get(BriefingRecipient, subject)
+    return await vis.visible_company_ids(db, await vis.list_view(db, r.manager_user_id if r else None))
+
+
 def page_url(kind: str, token: str) -> str:
     """문자(LMS)로 나갈 때 본문에 넣는 폰 화면 주소."""
     return f"{config.WEB_BASE}/m/{'daily' if kind == 'd' else 'monthly'}?t={token}"

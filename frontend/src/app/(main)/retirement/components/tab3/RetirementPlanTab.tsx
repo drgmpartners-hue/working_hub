@@ -15,6 +15,7 @@ import type {
   SimulationCalculateResponse,
   RetirementPlanData,
 } from '../../types/retirement';
+import { loadClientContact, setPdfContact } from '@/lib/reportContact';
 
 /* ------------------------------------------------------------------ */
 /*  1번탭 desired-plans 응답 타입 (필요 필드만)                         */
@@ -692,6 +693,7 @@ export function RetirementPlanTab() {
               };
 
               const pdfData: PData = { customer, info, simRows, retirementAge: retAge, chartId: 'pdf-tab2-growth-chart' };
+              setPdfContact(await loadClientContact(selectedCustomer?.id)); // 담당 매니저 이름·연락처 (docs/login_logic P9)
               await generateRetirementPlanPdf(pdfData, `은퇴플랜_${selectedCustomer?.name ?? ''}_${new Date().toISOString().slice(0, 10)}.pdf`);
             } catch (e: unknown) {
               const msg = e instanceof Error ? e.message : String(e);

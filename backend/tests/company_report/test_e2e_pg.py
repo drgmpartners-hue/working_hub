@@ -412,7 +412,9 @@ async def _run(monkeypatch):
         folder = Path(storage.root()) / cid
         assert folder.exists()
         assert (await c.post(f"/companies/{cid}/purge", headers=H, json={"confirm_name": "테스트바이오"})).status_code == 409  # 1단계 전
-        assert (await c.post(f"/companies/{cid}/trash", headers=HS)).status_code == 200  # 직원도 1단계 가능
+        # 회사 공통 기업은 매니저(직원)가 지울 수 없다 — 숨기기만 (docs/login_logic P9)
+        assert (await c.post(f"/companies/{cid}/trash", headers=HS)).status_code == 403
+        assert (await c.post(f"/companies/{cid}/trash", headers=H)).status_code == 200
         assert all(x["id"] != cid for x in (await c.get("/companies", headers=H)).json())
         assert [x["id"] for x in (await c.get("/companies", params={"deleted": "true"}, headers=H)).json()] == [cid]
         res = (await c.get("/search", params={"q": "테스트바이오"}, headers=H)).json()
@@ -459,7 +461,8 @@ async def _run(monkeypatch):
         r = await c.get("/recipients/search", params={"q": "민호"}, headers=H)
         found = [x for x in r.json() if x["kind"] == "client"]
         assert {x["ref_id"] for x in found} >= {cl_id, cl2_id} and any(x["phone_masked"] == "010-****-6666" for x in found)
-        assert (await c.post("/recipients", headers=HS, json={"kind": "client", "ref_id": cl_id})).status_code == 403  # 관리자만
+        # 매니저는 자기 명단에 자기 담당 고객만 넣을 수 있다(대표 고객은 안 보임 → 404) — docs/login_logic P9
+        assert (await c.post("/recipients", headers=HS, json={"kind": "client", "ref_id": cl_id})).status_code == 404
         assert (await c.post("/recipients", headers=H, json={"kind": "client", "ref_id": cl2_id})).status_code == 422  # 번호 없음
         assert (await c.post("/recipients", headers=H, json={"kind": "client", "ref_id": cl_id})).status_code == 201
         assert (await c.post("/recipients", headers=H, json={"kind": "client", "ref_id": cl_id})).status_code == 409
@@ -475,15 +478,17 @@ async def _run(monkeypatch):
         assert (await c.delete(f"/recipients/{rid}", headers=H)).status_code == 204
 
         # ---- 관리자 지정: 기업 리포트 관리자가 없으면 첫 사용자가 지정, 그다음부터는 관리자만 추가
+        # 대표 계정이 있으면 대표가 곧 관리자 → 매니저는 '첫 관리자 지정'을 할 수 없다 (docs/login_logic P9)
         me_s = (await c.get("/me", headers=HS)).json()
-        assert me_s["is_admin"] is False and me_s["can_claim"] is True
+        assert me_s["is_admin"] is False and me_s["can_claim"] is False
         assert (await c.put("/settings", headers=HS, json={"weather_region": "부산"})).status_code == 403
-        assert (await c.post("/admins/claim", headers=HS)).status_code == 200
-        assert (await c.get("/me", headers=HS)).json() == {**me_s, "is_admin": True, "can_claim": False}
+        assert (await c.post("/admins/claim", headers=HS)).status_code == 409
+        # 대표가 관리자로 추가하면 그때부터 관리자
+        assert (await c.put("/admins", headers=H, json={"user_ids": [staff_id]})).status_code == 200
+        assert (await c.get("/me", headers=HS)).json() == {**me_s, "is_admin": True}
         assert (await c.put("/settings", headers=HS, json={"weather_region": "부산"})).status_code == 200
-        assert (await c.post("/admins/claim", headers=H)).status_code == 409
         names = {a["name"] for a in (await c.get("/admins", headers=HS)).json()}
-        assert names == {"관리자", "직원"}
+        assert names >= {"관리자", "직원"}  # 대표(owner) 계정은 항상 관리자로 함께 표시된다
 
 
 def test_e2e(monkeypatch):

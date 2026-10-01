@@ -17,6 +17,8 @@ import { crGet, crPost, crPut } from '@/lib/companyReportApi';
 import { useCrMe } from '@/lib/useCrMe';
 import { AdminCard } from '@/components/company-report/AdminCard';
 import { RecipientsCard } from '@/components/company-report/RecipientsCard';
+import { isManagerView, useViewAs } from '@/lib/crViewAs';
+import { useAuthStore } from '@/stores/auth';
 import {
   CostHistoryCard,
   StageCostCard,
@@ -99,6 +101,9 @@ const KEY_LABEL: Record<string, string> = {
 export default function SettingsPage() {
   const [me, reloadMe] = useCrMe(true);
   const admin = !!me?.is_admin;
+  // 수신자 명단은 담당자별: 매니저는 자기 명단을 직접 관리 (docs/login_logic P9)
+  const role = useAuthStore((st) => st.user?.role);
+  const managerView = isManagerView(role, useViewAs());
   const [s, setS] = useState<Settings | null>(null);
   const [tpl, setTpl] = useState({ daily: '', monthly: '' });
   const [models, setModels] = useState({ main: '', writer: '', review: '', summary: '' });
@@ -294,7 +299,7 @@ export default function SettingsPage() {
         </div>
       </Card>
 
-      <RecipientsCard admin={admin} />
+      <RecipientsCard admin={admin || managerView} mine={role !== 'owner'} />
 
       <Card padding={16}>
         <SectionTitle

@@ -3,6 +3,7 @@
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import html2canvas from 'html2canvas';
+import { REPORT_BRAND, getPdfContact } from '@/lib/reportContact';
 
 /* ================================================================
    은퇴플랜 설계 PDF — jspdf-autotable 기반
@@ -75,6 +76,10 @@ function drawFooter(pdf: jsPDF, pg: number) {
   pdf.setTextColor(156, 163, 175);
   pdf.text(`출력일: ${new Date().toLocaleDateString('ko-KR')}`, M, fy);
   pdf.text(`${pg} / ${_tp}`, PW - M, fy, { align: 'right' });
+  // 고객용 보고서: Dr.GM 으로 통일 + 담당 매니저 이름·연락처 (docs/login_logic P9)
+  const contact = getPdfContact();
+  pdf.rect(PW / 2 - 60, fy - 4, 120, 6, 'F');
+  pdf.text(contact ? `${REPORT_BRAND} · ${contact}` : REPORT_BRAND, PW / 2, fy, { align: 'center' });
 }
 
 function secTitle(pdf: jsPDF, title: string, y: number): number {

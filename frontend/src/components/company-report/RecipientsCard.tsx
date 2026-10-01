@@ -32,8 +32,20 @@ const KIND: Record<string, { label: string; cls: string }> = {
   user: { label: '직원 계정', cls: 'pos' },
 };
 
-export function RecipientsCard({ admin }: { admin: boolean }) {
+interface ListView {
+  mode: 'all' | 'company' | 'manager';
+  manager_id: string | null;
+  manager_name: string | null;
+}
+
+/**
+ * 수신자 명단 — 담당자별 (docs/login_logic P9).
+ * admin: 이 명단을 고칠 수 있는지(매니저는 자기 명단, 회사 명단은 대표·기업 리포트 관리자).
+ * mine: 로그인한 매니저 본인 명단인지(제목 표시용).
+ */
+export function RecipientsCard({ admin, mine = false }: { admin: boolean; mine?: boolean }) {
   const [selected, setSelected] = useState<Selected[]>([]);
+  const [view, setView] = useState<ListView | null>(null);
   const [q, setQ] = useState('');
   const [results, setResults] = useState<Candidate[] | null>(null);
   const [searching, setSearching] = useState(false);
@@ -43,8 +55,9 @@ export function RecipientsCard({ admin }: { admin: boolean }) {
 
   const load = useCallback(async () => {
     try {
-      const r = await crGet<{ selected: Selected[] }>('/recipients');
+      const r = await crGet<{ selected: Selected[]; view?: ListView }>('/recipients');
       setSelected(Array.isArray(r?.selected) ? r.selected : []);
+      setView(r?.view ?? null);
     } catch (e) {
       setError((e as Error).message);
     }
@@ -113,7 +126,19 @@ export function RecipientsCard({ admin }: { admin: boolean }) {
 
   return (
     <Card padding={16}>
-      <SectionTitle right={<span style={mutedText}>{selected.length}/5명 · 2명 이상 권장</span>}>수신자 (데일리·월간 공통)</SectionTitle>
+      <SectionTitle right={<span style={mutedText}>{selected.length}/5명 · 2명 이상 권장</span>}>
+        {view?.mode === 'manager'
+          ? mine
+            ? '내 수신자 명단'
+            : `${view.manager_name ?? '매니저'} 수신자 명단`
+          : '회사 수신자 명단'}{' '}
+        (데일리·월간 공통)
+      </SectionTitle>
+      <div style={{ ...mutedText, fontSize: 12, marginTop: -4, marginBottom: 10 }}>
+        {view?.mode === 'manager'
+          ? '이 명단의 사람들은 이 담당자 화면의 기업(회사 공통 중 숨기지 않은 기업 + 추가한 기업) 브리핑만 받습니다. 고객은 담당 고객만 추가할 수 있습니다.'
+          : '이 명단의 사람들은 회사 공통 기업 브리핑을 받습니다.'}
+      </div>
       <ErrorBox message={error} />
       {notice && <div style={{ ...mutedText, color: 'var(--success)', marginBottom: 8 }}>{notice}</div>}
 
@@ -201,7 +226,7 @@ export function RecipientsCard({ admin }: { admin: boolean }) {
           )}
         </>
       ) : (
-        <div style={mutedText}>수신자 추가·삭제는 기업 리포트 관리자만 할 수 있습니다.</div>
+        <div style={mutedText}>회사 수신자 명단은 대표(기업 리포트 관리자)만 고칠 수 있습니다.</div>
       )}
     </Card>
   );

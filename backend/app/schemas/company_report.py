@@ -75,6 +75,8 @@ class CompanyUpdate(BaseModel):
     memo: Optional[str] = None
     is_active: Optional[bool] = None
     keywords: Optional[KeywordSet] = None
+    # 대표 전용: 담당 바꾸기. null = 회사 공통으로, 매니저 id = 그 매니저 기업으로 (docs/login_logic P9)
+    manager_user_id: Optional[str] = None
 
 
 class CompanyOut(CompanyBase):
@@ -85,5 +87,11 @@ class CompanyOut(CompanyBase):
     created_at: datetime
     keywords: KeywordSet = KeywordSet()
     stats: dict = {}
+    # 담당자별 분리 (docs/login_logic P9)
+    scope: str = "common"                  # common(회사 공통) / manager(매니저 추가)
+    manager_user_id: Optional[str] = None
+    manager_name: Optional[str] = None
+    is_hidden: bool = False                # 지금 보는 담당자 화면에서 숨김
+    can_edit: bool = False                 # 요청한 사람이 고칠 수 있는지
 
     model_config = {"from_attributes": True}

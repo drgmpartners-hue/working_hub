@@ -72,6 +72,7 @@ function DetailInner() {
   };
 
   if (!company) return error ? <ErrorBox message={error} /> : <Spinner />;
+  const canEdit = company.can_edit !== false; // 회사 공통 기업은 대표만 고친다 (docs/login_logic P9)
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
@@ -84,6 +85,9 @@ function DetailInner() {
             {company.name}
             {company.name_en && <span style={{ ...mutedText, fontWeight: 400, marginLeft: 8 }}>{company.name_en}</span>}
             {!company.is_active && <span className="wh-badge neg" style={{ marginLeft: 8, verticalAlign: 'middle' }}>비활성</span>}
+            <span className={`wh-badge ${company.scope === 'manager' ? 'pos' : ''}`} style={{ marginLeft: 8, verticalAlign: 'middle' }}>
+              {company.scope === 'manager' ? `${company.manager_name ?? '매니저'} 기업` : '회사 공통'}
+            </span>
           </h2>
           <div style={{ ...mutedText, marginTop: 4 }}>
             대표 {company.ceo_name || '-'} · {company.industry || '업종 미상'} · {company.is_listed ? `상장 ${company.stock_code || ''}` : '비상장'} · 누적 기사{' '}
@@ -94,7 +98,7 @@ function DetailInner() {
           <button type="button" className="wh-btn wh-btn-ghost wh-btn-sm" onClick={() => setShowInfo((v) => !v)} aria-expanded={showInfo}>
             {showInfo ? '정보 접기' : '기본 정보·키워드'}
           </button>
-          {!company.deleted_at && (
+          {!company.deleted_at && canEdit && (
             <button type="button" className="wh-btn wh-btn-ghost wh-btn-sm" onClick={() => void collect()}>
               지금 수집
             </button>
@@ -104,7 +108,12 @@ function DetailInner() {
 
       <ErrorBox message={error} />
       {notice && <div style={{ ...mutedText, color: 'var(--success)' }}>{notice}</div>}
-      {company.deleted_at && (
+      {!canEdit && (
+        <div role="status" style={{ padding: '10px 14px', borderRadius: 10, background: 'var(--bg-card)', border: '1px solid var(--border)', fontSize: 13, color: 'var(--text-muted)' }}>
+          회사 공통 기업이라 읽기만 할 수 있습니다. 키워드·원장 수정과 수집은 대표가 합니다. 내 화면에서 빼려면 목록에서 [숨기기]를 누르세요.
+        </div>
+      )}
+      {company.deleted_at && canEdit && (
         <div
           role="status"
           style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap', padding: '10px 14px', borderRadius: 10, background: 'var(--warning-bg)', color: 'var(--warning)', fontSize: 13 }}
@@ -162,11 +171,11 @@ function DetailInner() {
                       저장
                     </button>
                   </div>
-                ) : (
+                ) : canEdit ? (
                   <button type="button" className="wh-btn wh-btn-ghost wh-btn-sm" onClick={() => setEditKw(company.keywords)}>
                     수정
                   </button>
-                )
+                ) : null
               }
             >
               검색 키워드

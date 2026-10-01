@@ -51,6 +51,10 @@ class PortfolioCompany(Base):
     owner_user_id: Mapped[Optional[str]] = mapped_column(
         String(36), ForeignKey("users.id", ondelete="SET NULL"), nullable=True
     )
+    # 담당자별 분리(docs/login_logic P9): NULL = 회사 공통(대표 등록), 값 = 그 매니저가 추가한 기업
+    manager_user_id: Mapped[Optional[str]] = mapped_column(
+        String(36), ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True
+    )
     memo: Mapped[Optional[str]] = mapped_column(Text)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     last_collected_at: Mapped[Optional[datetime]] = mapped_column(DateTime)
@@ -61,6 +65,20 @@ class PortfolioCompany(Base):
     updated_at: Mapped[datetime] = mapped_column(
         DateTime, server_default=func.now(), onupdate=func.now(), nullable=False
     )
+
+
+class CompanyHidden(Base):
+    """매니저가 회사 공통 기업을 자기 화면(브리핑·문자 포함)에서 숨김. 대표만 공통 기업을 고칠 수 있다."""
+
+    __tablename__ = "company_hidden"
+    __table_args__ = (UniqueConstraint("user_id", "company_id", name="uq_company_hidden_user_company"),)
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    user_id: Mapped[str] = mapped_column(String(36), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    company_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("portfolio_companies.id", ondelete="CASCADE"), nullable=False
+    )
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now(), nullable=False)
 
 
 class CompanyKeyword(Base):
@@ -141,7 +159,9 @@ class NewsBriefing(Base):
 
 
 class BriefingRecipient(Base):
-    """브리핑 수신자(2~5명). 데일리·월간 공통.
+    """브리핑 수신자. 데일리·월간 공통. 명단은 담당자별(manager_user_id: NULL = 회사·대표 명단).
+
+    받는 사람에게는 명단 주인이 볼 수 있는 기업 카드만 간다.
 
     직원 계정(user_id) 또는 데이터 관리 > 고객 정보 관리(client_id)에서 이름으로 찾아 추가한다.
     휴대폰 번호는 발송할 때마다 원본(계정·고객 정보)에서 다시 읽는다.
@@ -151,10 +171,13 @@ class BriefingRecipient(Base):
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
     user_id: Mapped[Optional[str]] = mapped_column(
-        String(36), ForeignKey("users.id", ondelete="CASCADE"), nullable=True, unique=True
+        String(36), ForeignKey("users.id", ondelete="CASCADE"), nullable=True
     )
     client_id: Mapped[Optional[str]] = mapped_column(
-        String(36), ForeignKey("clients.id", ondelete="CASCADE"), nullable=True, unique=True
+        String(36), ForeignKey("clients.id", ondelete="CASCADE"), nullable=True
+    )
+    manager_user_id: Mapped[Optional[str]] = mapped_column(
+        String(36), ForeignKey("users.id", ondelete="CASCADE"), nullable=True, index=True
     )
     name: Mapped[Optional[str]] = mapped_column(String(100))
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)

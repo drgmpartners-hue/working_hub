@@ -192,33 +192,42 @@ def daily_token(b: NewsBriefing, t) -> str:
 
 
 class Target:
-    """발송 대상 한 명(직원 계정 또는 고객 정보)."""
+    """발송 대상 한 명(직원 계정 또는 고객 정보). list_owner: 속한 명단의 주인(None = 회사 명단)."""
 
     def __init__(self, recipient_id: Optional[str], name: str, phone: Optional[str], user_id: Optional[str] = None,
-                 client_id: Optional[str] = None, kind: str = "user"):
+                 client_id: Optional[str] = None, kind: str = "user", list_owner: Optional[str] = None):
         self.recipient_id, self.name, self.phone = recipient_id, name, phone
         self.user_id, self.client_id, self.kind = user_id, client_id, kind
+        self.list_owner = list_owner
 
 
-async def recipient_targets(db: AsyncSession, include_no_phone: bool = False) -> list[Target]:
-    """활성 수신자 → 지금 원본(계정·고객 정보)의 휴대폰 번호로."""
+_ALL_LISTS = object()
+
+
+async def recipient_targets(db: AsyncSession, include_no_phone: bool = False, list_owner=_ALL_LISTS) -> list[Target]:
+    """활성 수신자 → 지금 원본(계정·고객 정보)의 휴대폰 번호로.
+    list_owner: 생략하면 모든 명단(발송 배치), None 이면 회사 명단, 매니저 id 면 그 매니저 명단."""
     from app.models.client import Client
 
-    rows = (await db.execute(
+    stmt = (
         select(BriefingRecipient, User, Client)
         .outerjoin(User, User.id == BriefingRecipient.user_id)
         .outerjoin(Client, Client.id == BriefingRecipient.client_id)
         .where(BriefingRecipient.is_active == True)  # noqa: E712
         .order_by(BriefingRecipient.created_at)
-    )).all()
+    )
+    if list_owner is not _ALL_LISTS:
+        stmt = stmt.where(BriefingRecipient.manager_user_id == list_owner if list_owner
+                          else BriefingRecipient.manager_user_id.is_(None))
+    rows = (await db.execute(stmt)).all()
     out: list[Target] = []
     for r, u, c in rows:
         if u is not None:
             if not u.is_active:
                 continue
-            t = Target(r.id, u.nickname, u.phone, user_id=u.id, kind="user")
+            t = Target(r.id, u.nickname, u.phone, user_id=u.id, kind="user", list_owner=r.manager_user_id)
         elif c is not None:
-            t = Target(r.id, c.name, c.phone, client_id=c.id, kind="client")
+            t = Target(r.id, c.name, c.phone, client_id=c.id, kind="client", list_owner=r.manager_user_id)
         else:
             continue
         if t.phone or include_no_phone:
@@ -255,10 +264,34 @@ async def _deliver_generic(db: AsyncSession, briefing_id: str, targets: list, br
     return {"success": ok, "channel": channel, "count": len(targets), "error": None if ok else res.get("error") or res.get("errorMessage")}
 
 
+async def _target_ids(db: AsyncSession, t) -> Optional[set[str]]:
+    """받는 사람에게 보여 줄 기업(docs/login_logic P9). 명단 주인 기준. 본인 테스트면 그 사람 기준."""
+    from app.services.company_report import visibility as vis
+
+    if getattr(t, "view", None) is not None:
+        return await vis.visible_company_ids(db, t.view)
+    return await vis.visible_company_ids(db, await vis.list_view(db, getattr(t, "list_owner", None)))
+
+
+async def _views_for(db: AsyncSession, obj, targets: list, filt) -> dict[int, object]:
+    cache: dict = {}
+    out: dict[int, object] = {}
+    for t in targets:
+        key = ("v", id(t.view)) if getattr(t, "view", None) is not None else ("l", getattr(t, "list_owner", None))
+        if key not in cache:
+            cache[key] = filt(obj, await _target_ids(db, t))
+        out[id(t)] = cache[key]
+    return out
+
+
 async def _deliver(db: AsyncSession, b: NewsBriefing, targets: list, briefing_type: str) -> dict:
+    from app.services.company_report.visibility import filter_daily
+
+    views = await _views_for(db, b, targets, filter_daily)
     return await _deliver_generic(
         db, b.id, targets, briefing_type, config.TEMPLATE_DAILY, "[사내] 투자기업 데일리 브리핑", TEMPLATE_B,
-        lambda t: render_text(b, t.name, daily_token(b, t)), lambda t: template_b_variables(b, t.name, daily_token(b, t)),
+        lambda t: render_text(views[id(t)], t.name, daily_token(b, t)),
+        lambda t: template_b_variables(views[id(t)], t.name, daily_token(b, t)),
     )
 
 
@@ -288,13 +321,25 @@ async def send_daily(db: AsyncSession, day: Optional[date] = None) -> dict:
     return r
 
 
-async def send_test(db: AsyncSession, briefing_id: str, user: User, recipient_id: Optional[str] = None) -> dict:
-    """테스트 발송: 지정한 수신자 한 명(없으면 요청한 본인). 브리핑 상태는 바꾸지 않는다."""
+async def _self_target(user: User, view=None) -> Target:
+    t = Target(None, user.nickname, user.phone, user_id=user.id)
+    t.view = view  # 본인 테스트: 지금 보고 있는 담당자 화면 그대로
+    return t
+
+
+def _list_of(view) -> object:
+    return _ALL_LISTS if view is None else view.list_owner
+
+
+async def send_test(db: AsyncSession, briefing_id: str, user: User, recipient_id: Optional[str] = None, view=None) -> dict:
+    """테스트 발송: 지정한 수신자 한 명(없으면 요청한 본인). 브리핑 상태는 바꾸지 않는다.
+    view: 보고 있는 담당자 화면 — 수신자는 그 명단 안에서만 고를 수 있다."""
     b = await db.get(NewsBriefing, briefing_id)
     if not b:
         return {"success": False, "error": "브리핑이 없습니다."}
     if recipient_id:
-        t = next((x for x in await recipient_targets(db, include_no_phone=True) if x.recipient_id == recipient_id), None)
+        t = next((x for x in await recipient_targets(db, include_no_phone=True, list_owner=_list_of(view))
+                  if x.recipient_id == recipient_id), None)
         if not t:
             return {"success": False, "error": "수신자를 찾을 수 없습니다."}
         if not t.phone:
@@ -302,8 +347,8 @@ async def send_test(db: AsyncSession, briefing_id: str, user: User, recipient_id
         target = t
     else:
         if not user.phone:
-            return {"success": False, "error": "내 계정에 휴대폰 번호가 없습니다. 오른쪽 위 설정(톱니바퀴) > 개인정보에서 휴대폰 번호를 저장해 주세요."}
-        target = Target(None, user.nickname, user.phone, user_id=user.id)
+            return {"success": False, "error": "내 계정에 휴대폰 번호가 없습니다. 오른쪽 위 이름 > 내 정보에서 휴대폰 번호를 저장해 주세요."}
+        target = await _self_target(user, view)
     r = await _deliver(db, b, [target], "test")
     await db.commit()
     return {**r, "to": target.name}
@@ -389,10 +434,13 @@ def monthly_token(mb, t) -> str:
 
 
 async def _deliver_monthly(db: AsyncSession, mb, targets: list, briefing_type: str) -> dict:
+    from app.services.company_report.visibility import filter_monthly
+
+    views = await _views_for(db, mb, targets, filter_monthly)
     return await _deliver_generic(
         db, mb.id, targets, briefing_type, config.TEMPLATE_MONTHLY, "[사내] 투자기업 월간 브리핑", TEMPLATE_C,
-        lambda t: render_monthly_text(mb, t.name, monthly_token(mb, t)),
-        lambda t: template_c_variables(mb, t.name, monthly_token(mb, t)),
+        lambda t: render_monthly_text(views[id(t)], t.name, monthly_token(mb, t)),
+        lambda t: template_c_variables(views[id(t)], t.name, monthly_token(mb, t)),
     )
 
 
@@ -436,21 +484,23 @@ async def send_monthly(db: AsyncSession, day: Optional[date] = None, *, ignore_d
     return {**r, "month": month}
 
 
-async def send_monthly_test(db: AsyncSession, monthly_id: str, user: User, recipient_id: Optional[str] = None) -> dict:
+async def send_monthly_test(db: AsyncSession, monthly_id: str, user: User, recipient_id: Optional[str] = None,
+                            view=None) -> dict:
     from app.models.company_report import MonthlyBriefing
 
     mb = await db.get(MonthlyBriefing, monthly_id)
     if not mb:
         return {"success": False, "error": "월간 브리핑이 없습니다."}
     if recipient_id:
-        t = next((x for x in await recipient_targets(db, include_no_phone=True) if x.recipient_id == recipient_id), None)
+        t = next((x for x in await recipient_targets(db, include_no_phone=True, list_owner=_list_of(view))
+                  if x.recipient_id == recipient_id), None)
         if not t or not t.phone:
             return {"success": False, "error": "수신자를 찾을 수 없거나 휴대폰 번호가 없습니다."}
         target = t
     else:
         if not user.phone:
-            return {"success": False, "error": "내 계정에 휴대폰 번호가 없습니다. 오른쪽 위 설정(톱니바퀴) > 개인정보에서 휴대폰 번호를 저장해 주세요."}
-        target = Target(None, user.nickname, user.phone, user_id=user.id)
+            return {"success": False, "error": "내 계정에 휴대폰 번호가 없습니다. 오른쪽 위 이름 > 내 정보에서 휴대폰 번호를 저장해 주세요."}
+        target = await _self_target(user, view)
     r = await _deliver_monthly(db, mb, [target], "test")
     await db.commit()
     return {**r, "to": target.name}

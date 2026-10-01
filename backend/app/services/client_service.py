@@ -37,7 +37,10 @@ def _build_client_response(client: Client) -> dict:
         client.ssn_masked = None
     # 담당 매니저 — 관계가 이미 로드된 경우에만 (비동기 세션에서 지연 로드 방지)
     owner = client.__dict__.get("user")
-    client.manager = {"id": owner.id, "nickname": owner.nickname} if owner is not None else None
+    client.manager = (
+        {"id": owner.id, "nickname": owner.nickname, "phone": owner.phone, "email": owner.email}
+        if owner is not None else None
+    )
     return client
 
 

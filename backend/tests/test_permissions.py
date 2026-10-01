@@ -370,7 +370,9 @@ async def test_client_response_has_manager(env):
     c, d, hdr = env["c"], env["d"], env["hdr"]
     r = await c.get("/clients", params={"manager_id": d["A"]}, headers=hdr(d["owner"]))
     row = next(x for x in r.json() if x["id"] == d["client_A"])
-    assert row["manager"] == {"id": d["A"], "nickname": "매니저A"}
+    # 고객용 보고서의 '담당 OOO · 연락처'에 쓰려고 연락처도 함께 내려준다 (P9)
+    assert row["manager"] == {"id": d["A"], "nickname": "매니저A", "phone": None, "email": row["manager"]["email"]}
+    assert row["manager"]["email"].startswith("perm-")
 
 
 async def test_04_delete_other_managers_snapshot_is_404(env):

@@ -177,7 +177,10 @@ def _term_cond(term: str, alias_to: Optional[str]):
 
 async def search(db: AsyncSession, q: str, *, group: Optional[str] = None, company_ids: Optional[list[str]] = None,
                  date_from: Optional[date] = None, date_to: Optional[date] = None, tag: Optional[str] = None,
-                 include_inactive: bool = True, sort: str = "relevance", page: int = 1, size: int = 20) -> dict[str, Any]:
+                 include_inactive: bool = True, sort: str = "relevance", page: int = 1, size: int = 20,
+                 allowed: Optional[set[str]] = None) -> dict[str, Any]:
+    """allowed: 볼 수 있는 기업 id(매니저). None 이면 전체(대표).
+    매니저에게는 전사 브리핑 색인(기업 없음)을 빼고 '_포트폴리오 공통' 파일만 남긴다(다른 담당자 기업 내용이 섞여 있으므로)."""
     terms = parse_query(q)
     if not terms:
         return {"q": q, "terms": [], "total": 0, "counts": {}, "items": []}
@@ -186,6 +189,9 @@ async def search(db: AsyncSession, q: str, *, group: Optional[str] = None, compa
     base.append(SearchIndex.is_latest == True)  # noqa: E712
     if company_ids:
         base.append(SearchIndex.company_id.in_(company_ids))
+    if allowed is not None:
+        base.append(or_(SearchIndex.company_id.in_(list(allowed) or [""]),
+                        and_(SearchIndex.company_id.is_(None), SearchIndex.entity_type == "file")))
     if date_from:
         base.append(SearchIndex.doc_date >= date_from)
     if date_to:
@@ -230,14 +236,15 @@ async def search(db: AsyncSession, q: str, *, group: Optional[str] = None, compa
     return {"q": q, "terms": terms, "total": total, "counts": counts, "items": items, "page": page, "size": size}
 
 
-async def suggest(db: AsyncSession, q: str, limit: int = 8) -> list[dict]:
+async def suggest(db: AsyncSession, q: str, limit: int = 8, allowed: Optional[set[str]] = None) -> list[dict]:
     q = (q or "").strip()
     if not q:
         return []
     like = f"%{q}%"
+    extra = [] if allowed is None else [PortfolioCompany.id.in_(list(allowed) or [""])]
     rows = (await db.execute(
         select(PortfolioCompany.id, PortfolioCompany.name, PortfolioCompany.is_active)
-        .where(PortfolioCompany.deleted_at.is_(None),
+        .where(PortfolioCompany.deleted_at.is_(None), *extra,
                or_(PortfolioCompany.name.ilike(like), PortfolioCompany.name_en.ilike(like),
                    func.cast(PortfolioCompany.aliases, type_=_text_type()).ilike(like)))
         .order_by(PortfolioCompany.is_active.desc(), func.length(PortfolioCompany.name)).limit(limit)

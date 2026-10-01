@@ -7,6 +7,7 @@ import { Section } from '../common/Section';
 // PDF export는 pensionPlanPdf.ts 사용
 import { API_URL } from '@/lib/api-url';
 import { authLib } from '@/lib/auth';
+import { loadClientContact, setPdfContact } from '@/lib/reportContact';
 
 const PensionOptionChart = dynamic(() => import('./PensionOptionChart'), { ssr: false });
 
@@ -529,6 +530,7 @@ export function PensionPlanTab() {
                 goalRows: [],
               };
 
+              setPdfContact(await loadClientContact(selectedCustomer?.id)); // 담당 매니저 이름·연락처 (docs/login_logic P9)
               await generatePensionPlanPdf(pdfData, `연금수령계획_${selectedCustomer?.name ?? ''}_${new Date().toISOString().slice(0, 10)}.pdf`);
             } catch (e: unknown) {
               const msg = e instanceof Error ? e.message : String(e);

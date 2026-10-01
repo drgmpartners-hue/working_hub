@@ -55,7 +55,7 @@ GET은 전부 그대로 열려 있음(매니저가 상품 마스터를 읽어야
 |---|---|
 | crawling.py, upload.py | 수당 정산(계층 B 업무)의 입력 도구 → 매니저도 사용, 제한 없음 |
 | market / stock_search / inflation_rate / notion | 시장·외부 조회, 고객 데이터 없음 → 인증만 |
-| company_report.py (나머지) | 자체 관리자 체계(`is_superuser` + `company_report_admin_ids`)로 이미 쓰기 통제 중. 대표(owner)로 통합할지 결정 필요 → tasks P2-17 [확인] |
+| company_report.py (나머지) | **P9(결정 D-7)로 담당자별 분리.** `services/company_report/visibility.py`: 회사 공통 기업(manager_user_id NULL)은 전원 읽기·대표만 쓰기, 매니저 추가 기업은 그 매니저+대표만. 매니저는 공통 기업 숨기기만. 브리핑은 보는 사람 기준으로 거름, 수신자 명단은 담당자별. 대표는 X-View-As 헤더로 매니저 화면 보기 |
 | auth.py | 공개 가입 닫힘(403), Google 로그인은 등록된 활성 계정만, 비활성 계정 로그인 차단. 대행 3종은 P3 |
 | users.py | P3에서 대행 중 수정·삭제 차단 |
 

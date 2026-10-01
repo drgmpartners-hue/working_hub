@@ -88,7 +88,7 @@ from app.models.deposit_transaction import DepositTransaction
 
 # 기업 리포트 (depends on users)
 from app.models.news_briefing import (
-    PortfolioCompany, CompanyKeyword, NewsArticle, NewsBriefing, BriefingRecipient,
+    PortfolioCompany, CompanyHidden, CompanyKeyword, NewsArticle, NewsBriefing, BriefingRecipient,
     BriefingSendLog, AIReviewLog, BackfillJob,
 )
 from app.models.company_report import (
@@ -141,6 +141,7 @@ __all__ = [
     "DepositAccount",
     "DepositTransaction",
     "PortfolioCompany",
+    "CompanyHidden",
     "CompanyKeyword",
     "NewsArticle",
     "NewsBriefing",

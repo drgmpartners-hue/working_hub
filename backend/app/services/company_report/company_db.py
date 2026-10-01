@@ -430,10 +430,12 @@ async def save_briefing_pdf(db: AsyncSession, b: NewsBriefing) -> Optional[Compa
 
 # --------------------------------------------------------------------------- 조회·zip
 
-async def tree(db: AsyncSession) -> dict:
-    companies = (await db.execute(select(PortfolioCompany).where(PortfolioCompany.deleted_at.is_(None))
-                                  .order_by(PortfolioCompany.name))).scalars().all()
-    names = folder_names(list(companies))
+async def tree(db: AsyncSession, allowed: Optional[set[str]] = None) -> dict:
+    """allowed: 볼 수 있는 기업 id(매니저). None 이면 전체."""
+    all_companies = (await db.execute(select(PortfolioCompany).where(PortfolioCompany.deleted_at.is_(None))
+                                      .order_by(PortfolioCompany.name))).scalars().all()
+    names = folder_names(list(all_companies))  # 폴더 이름 규칙(동명 구분)은 전체 기준으로 고정
+    companies = [c for c in all_companies if allowed is None or c.id in allowed]
     counts: dict[Optional[str], dict[str, int]] = defaultdict(dict)
     rows = (await db.execute(select(CompanyFile.company_id, CompanyFile.folder, func.count())
                              .where(CompanyFile.status != "deleted").group_by(CompanyFile.company_id, CompanyFile.folder))).all()
@@ -459,8 +461,11 @@ def file_out(f: CompanyFile, company_name: Optional[str] = None, folder_name: Op
 async def list_files(db: AsyncSession, *, company_ids: Optional[list[str]] = None, portfolio: bool = False,
                      folder: Optional[str] = None, file_type: Optional[str] = None, origin: Optional[str] = None,
                      status: Optional[str] = None, date_from: Optional[date] = None, date_to: Optional[date] = None,
-                     q: Optional[str] = None, include_inactive: bool = True, page: int = 1, size: int = 50) -> dict:
+                     q: Optional[str] = None, include_inactive: bool = True, page: int = 1, size: int = 50,
+                     allowed: Optional[set[str]] = None) -> dict:
     cond = [CompanyFile.status != "deleted"] if not status else [CompanyFile.status == status]
+    if allowed is not None:  # 매니저: 볼 수 있는 기업 + '_포트폴리오 공통'
+        cond.append(or_(CompanyFile.company_id.is_(None), CompanyFile.company_id.in_(list(allowed) or [""])))
     cond.append(PortfolioCompany.deleted_at.is_(None))  # 1단계 삭제된 기업 파일은 목록에서 뺀다(폴더는 남음)
     if portfolio:
         cond.append(CompanyFile.company_id.is_(None))

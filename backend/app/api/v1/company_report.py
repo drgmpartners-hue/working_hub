@@ -22,6 +22,8 @@ from app.schemas.company_report import (
     KeywordSuggestRequest, PreviewRequest,
 )
 from app.services.company_report import company_finder, search
+from app.services.company_report import visibility as vis
+from app.services.company_report.visibility import View, assert_company, get_view
 from app.services.company_report.timeutil import now_kst, today_kst
 
 logger = logging.getLogger(__name__)
@@ -82,20 +84,46 @@ async def _replace_keywords(db: AsyncSession, company_id: str, ks: KeywordSet, s
                 db.add(CompanyKeyword(company_id=company_id, keyword=kw[:100], kind=kind, source=source))
 
 
-def _out(c: PortfolioCompany, ks: KeywordSet, stats: Optional[dict] = None) -> CompanyOut:
+def _out(c: PortfolioCompany, ks: KeywordSet, stats: Optional[dict] = None, *, manager_name: Optional[str] = None,
+         is_hidden: bool = False, can_edit: bool = False) -> CompanyOut:
     from app.services.company_report.ksic import industry_label
 
-    data = {k: getattr(c, k) for k in CompanyOut.model_fields if hasattr(c, k) and k not in ("keywords", "stats")}
+    data = {k: getattr(c, k) for k in CompanyOut.model_fields
+            if hasattr(c, k) and k not in ("keywords", "stats", "scope", "manager_name", "is_hidden", "can_edit")}
     data["industry"] = industry_label(data.get("industry"))  # 이미 저장된 DART 숫자 업종코드도 이름으로 보여준다
-    return CompanyOut(**data, keywords=ks, stats=stats or {})
+    return CompanyOut(**data, keywords=ks, stats=stats or {}, scope="manager" if c.manager_user_id else "common",
+                      manager_name=manager_name, is_hidden=is_hidden, can_edit=can_edit)
+
+
+async def _manager_names(db: AsyncSession, ids) -> dict[str, str]:
+    from app.models.user import User
+
+    ids = [i for i in set(ids) if i]
+    if not ids:
+        return {}
+    return dict((await db.execute(select(User.id, User.nickname).where(User.id.in_(ids)))).all())
+
+
+async def _out_one(db: AsyncSession, c: PortfolioCompany, user, stats: Optional[dict] = None, view: Optional[View] = None) -> CompanyOut:
+    names = await _manager_names(db, [c.manager_user_id])
+    hidden = c.id in await vis.hidden_ids(db, view) if view else False
+    return _out(c, await _keywords(db, c.id), stats, manager_name=names.get(c.manager_user_id or ""),
+                is_hidden=hidden, can_edit=await vis.can_edit(db, user, c))
 
 
 @router.get("/companies", response_model=list[CompanyOut])
 async def list_companies(active: Optional[bool] = None, q: Optional[str] = None, deleted: bool = False,
-                         current_user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
-    """deleted=true 이면 '삭제된 기업'(1단계 삭제) 목록만."""
+                         hidden: bool = False, view: View = Depends(get_view), db: AsyncSession = Depends(get_db)):
+    """deleted=true 이면 '삭제된 기업'(1단계 삭제) 목록만. hidden=true 이면 이 담당자 화면에서 숨긴 공통 기업만.
+    담당자별 분리(docs/login_logic P9): 매니저는 회사 공통(숨김 제외) + 자기 기업, 대표는 고른 담당자 기준."""
+    current_user = view.user
     stmt = select(PortfolioCompany).where(
         PortfolioCompany.deleted_at.is_not(None) if deleted else PortfolioCompany.deleted_at.is_(None))
+    hidden_set = await vis.hidden_ids(db, view)
+    if hidden:
+        stmt = stmt.where(PortfolioCompany.id.in_(list(hidden_set) or [""]))
+    else:
+        stmt = vis.scope_companies(stmt, view)
     if active is not None:
         stmt = stmt.where(PortfolioCompany.is_active == active)
     if q:
@@ -126,21 +154,85 @@ async def list_companies(active: Optional[bool] = None, q: Optional[str] = None,
         ks = kws.setdefault(r.company_id, KeywordSet())
         if r.kind in ("required", "boost", "exclude"):
             getattr(ks, r.kind).append(r.keyword)
-    return [_out(c, kws.get(c.id, KeywordSet()), stats.get(c.id, {"today": 0, "week": 0, "caution_week": 0, "total": 0}))
+    names = await _manager_names(db, [c.manager_user_id for c in companies])
+    manage_all = await vis.can_manage_all(db, current_user)
+    return [_out(c, kws.get(c.id, KeywordSet()), stats.get(c.id, {"today": 0, "week": 0, "caution_week": 0, "total": 0}),
+                 manager_name=names.get(c.manager_user_id or ""), is_hidden=c.id in hidden_set,
+                 can_edit=manage_all or (c.manager_user_id is not None and c.manager_user_id == current_user.id))
             for c in companies]
+
+
+@router.post("/companies/{company_id}/hide")
+async def hide_company(company_id: str, view: View = Depends(get_view), db: AsyncSession = Depends(get_db)):
+    """회사 공통 기업을 이 담당자 화면(목록·브리핑·문자)에서 숨긴다. 데이터·수집은 그대로."""
+    from app.models.news_briefing import CompanyHidden
+
+    if view.mode != "manager":
+        raise HTTPException(400, "숨기기는 매니저 화면에서만 씁니다. 대표는 위쪽 [담당자 선택]에서 매니저를 고르세요.")
+    c = await assert_company(db, view.user, company_id)
+    if c.manager_user_id:
+        raise HTTPException(400, "매니저가 추가한 기업은 숨기지 말고 삭제하세요.")
+    exists = (await db.execute(select(CompanyHidden).where(
+        CompanyHidden.user_id == view.manager_id, CompanyHidden.company_id == c.id))).scalar_one_or_none()
+    if not exists:
+        db.add(CompanyHidden(user_id=view.manager_id, company_id=c.id))
+        await db.commit()
+    return {"id": c.id, "is_hidden": True}
+
+
+@router.post("/companies/{company_id}/unhide")
+async def unhide_company(company_id: str, view: View = Depends(get_view), db: AsyncSession = Depends(get_db)):
+    from sqlalchemy import delete as sa_delete
+
+    from app.models.news_briefing import CompanyHidden
+
+    if view.mode != "manager":
+        raise HTTPException(400, "숨기기 해제는 매니저 화면에서만 씁니다.")
+    await db.execute(sa_delete(CompanyHidden).where(
+        CompanyHidden.user_id == view.manager_id, CompanyHidden.company_id == company_id))
+    await db.commit()
+    return {"id": company_id, "is_hidden": False}
 
 
 @router.post("/companies", response_model=CompanyOut, status_code=201)
 async def create_company(body: CompanyCreate, background: BackgroundTasks,
-                         current_user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+                         view: View = Depends(get_view), db: AsyncSession = Depends(get_db)):
+    """등록하는 사람 기준으로 담당이 정해진다(docs/login_logic P9).
+    매니저 → 그 매니저 기업 / 대표 → 회사 공통(매니저 화면을 고른 상태면 그 매니저 기업).
+    같은 기업을 두 번 수집하지 않도록 중복은 전사 기준으로 막는다."""
+    current_user = view.user
+    target = view.manager_id if view.mode == "manager" else None
     dup = (await db.execute(select(PortfolioCompany).where(
         (PortfolioCompany.corp_code == body.corp_code) if body.corp_code else (PortfolioCompany.name == body.name)
     ))).scalars().first()
     if dup:
+        owner_name = (await _manager_names(db, [dup.manager_user_id])).get(dup.manager_user_id or "", "다른 매니저")
         if dup.deleted_at:
+            if not vis.can_read(current_user, dup):
+                raise HTTPException(409, f"'{dup.name}'은(는) {owner_name}님이 등록했다가 삭제한 기업입니다. 대표에게 복구를 요청하세요.")
             raise HTTPException(409, f"'{dup.name}'은(는) 삭제된 기업 목록에 있습니다. 목록의 [삭제된 기업]에서 복구하세요.")
-        raise HTTPException(409, f"이미 등록된 기업입니다: {dup.name}")
+        if dup.manager_user_id is None:
+            if target and dup.id in await vis.hidden_ids(db, view):
+                from sqlalchemy import delete as sa_delete
+
+                from app.models.news_briefing import CompanyHidden
+
+                await db.execute(sa_delete(CompanyHidden).where(
+                    CompanyHidden.user_id == target, CompanyHidden.company_id == dup.id))
+                await db.commit()
+                return await _out_one(db, dup, current_user, view=view)  # 숨겨 둔 공통 기업 → 다시 보이게
+            raise HTTPException(409, f"'{dup.name}'은(는) 이미 회사 공통 기업이라 목록에 있습니다.")
+        if dup.manager_user_id == target:
+            raise HTTPException(409, f"이미 등록된 기업입니다: {dup.name}")
+        if target is None and await vis.can_manage_all(db, current_user):
+            dup.manager_user_id = None  # 대표가 같은 기업을 등록 → 회사 공통으로 전환
+            await db.commit()
+            await db.refresh(dup)
+            return await _out_one(db, dup, current_user, view=view)
+        raise HTTPException(409, f"'{dup.name}'은(는) {owner_name}님이 등록한 기업입니다. "
+                                 "같은 기업을 두 번 수집하지 않도록, 대표에게 회사 공통으로 바꿔 달라고 요청하세요.")
     data = body.model_dump(exclude={"keywords", "backfill_months"})
+    data["manager_user_id"] = target
     company = PortfolioCompany(**data)
     db.add(company)
     await db.flush()
@@ -153,7 +245,7 @@ async def create_company(body: CompanyCreate, background: BackgroundTasks,
     await db.refresh(company)
     if body.backfill_months > 0:
         background.add_task(_run_initial_backfill, company.id, body.backfill_months, current_user.id)
-    return _out(company, await _keywords(db, company.id))
+    return await _out_one(db, company, current_user, view=view)
 
 
 async def _run_initial_backfill(company_id: str, months: int, user_id: str) -> None:
@@ -166,10 +258,9 @@ async def _run_initial_backfill(company_id: str, months: int, user_id: str) -> N
 
 
 @router.get("/companies/{company_id}", response_model=CompanyOut)
-async def get_company(company_id: str, current_user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
-    c = await db.get(PortfolioCompany, company_id)
-    if not c:
-        raise HTTPException(404, "기업을 찾을 수 없습니다.")
+async def get_company(company_id: str, view: View = Depends(get_view), db: AsyncSession = Depends(get_db)):
+    current_user = view.user
+    c = await assert_company(db, current_user, company_id)
     now = now_kst()
     today0 = now.replace(hour=0, minute=0, second=0, microsecond=0)
     week = now - timedelta(days=7)
@@ -181,16 +272,29 @@ async def get_company(company_id: str, current_user=Depends(get_current_user), d
             func.count(),
         ).where(NewsArticle.company_id == c.id, NewsArticle.is_hidden == False, NewsArticle.is_representative == True)  # noqa: E712
     )).one()
-    return _out(c, await _keywords(db, c.id), {"today": row[0], "week": row[1], "caution_week": row[2], "total": row[3]})
+    return await _out_one(db, c, current_user, {"today": row[0], "week": row[1], "caution_week": row[2], "total": row[3]}, view=view)
 
 
 @router.put("/companies/{company_id}", response_model=CompanyOut)
 async def update_company(company_id: str, body: CompanyUpdate, background: BackgroundTasks,
-                         current_user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
-    c = await db.get(PortfolioCompany, company_id)
-    if not c:
-        raise HTTPException(404, "기업을 찾을 수 없습니다.")
+                         view: View = Depends(get_view), db: AsyncSession = Depends(get_db)):
+    current_user = view.user
+    c = await assert_company(db, current_user, company_id, write=True)
     data = body.model_dump(exclude_unset=True, exclude={"keywords"})
+    if "manager_user_id" in data:
+        # 담당 바꾸기(공통 ↔ 매니저 기업)는 대표만
+        new_mid = data.pop("manager_user_id") or None
+        if new_mid != c.manager_user_id:
+            if not await vis.can_manage_all(db, current_user):
+                raise HTTPException(403, "기업의 담당을 바꾸는 것은 대표만 할 수 있습니다.")
+            if new_mid:
+                from app.core.permissions import MANAGER
+                from app.models.user import User
+
+                m = await db.get(User, new_mid)
+                if not m or m.role != MANAGER:
+                    raise HTTPException(422, "매니저 계정만 고를 수 있습니다.")
+            c.manager_user_id = new_mid
     if "name" in data and data["name"] and data["name"] != c.name:
         # 이전 사명은 별칭으로 보존(검색·기업DB용)
         aliases = list(c.aliases or [])
@@ -212,16 +316,14 @@ async def update_company(company_id: str, body: CompanyUpdate, background: Backg
     if kw_changed and c.is_active:
         # 바뀐 키워드로 최근 6개월을 다시 훑는다(이미 있는 기사는 건너뜀)
         background.add_task(_run_backfill_jobs, [(c.id, None)], {"months": 6, "trigger": "keyword_change", "user_id": current_user.id})
-    return _out(c, await _keywords(db, c.id))
+    return await _out_one(db, c, current_user, view=view)
 
 
 @router.delete("/companies/{company_id}", status_code=204)
 async def deactivate_company(company_id: str, current_user=Depends(get_current_user),
                              db: AsyncSession = Depends(get_db)):
     """삭제하지 않고 비활성화한다(수집만 멈추고 데이터는 보존)."""
-    c = await db.get(PortfolioCompany, company_id)
-    if not c:
-        raise HTTPException(404, "기업을 찾을 수 없습니다.")
+    c = await assert_company(db, current_user, company_id, write=True)
     c.is_active = False
     await search.index_company(db, c)
     await db.commit()
@@ -230,9 +332,7 @@ async def deactivate_company(company_id: str, current_user=Depends(get_current_u
 @router.post("/companies/{company_id}/collect")
 async def collect_now(company_id: str, background: BackgroundTasks, current_user=Depends(get_current_user),
                       db: AsyncSession = Depends(get_db)):
-    c = await db.get(PortfolioCompany, company_id)
-    if not c:
-        raise HTTPException(404, "기업을 찾을 수 없습니다.")
+    await assert_company(db, current_user, company_id, write=True)
     background.add_task(_run_collect, company_id)
     return {"queued": True}
 
@@ -274,6 +374,7 @@ async def list_articles(company_id: str, tag: Optional[str] = None, source_type:
                         include_hidden: bool = False, page: int = Query(1, ge=1), size: int = Query(30, ge=1, le=100),
                         current_user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
     """기업별 누적 기사(대표 기사만, 최신순). 날짜별 묶음은 화면에서 한다."""
+    await assert_company(db, current_user, company_id)
     cond = [NewsArticle.company_id == company_id, NewsArticle.is_representative == True]  # noqa: E712
     if not include_hidden:
         cond.append(NewsArticle.is_hidden == False)  # noqa: E712
@@ -303,6 +404,7 @@ async def patch_article(article_id: str, body: ArticlePatch, current_user=Depend
     a = await db.get(NewsArticle, article_id)
     if not a:
         raise HTTPException(404, "기사를 찾을 수 없습니다.")
+    await assert_company(db, current_user, a.company_id, write=True)
     if body.is_hidden is not None:
         a.is_hidden = body.is_hidden
         a.hidden_at = now_kst() if body.is_hidden else None
@@ -318,7 +420,8 @@ async def patch_article(article_id: str, body: ArticlePatch, current_user=Depend
 
 # --------------------------------------------------------------------------- 폰 전용 화면(로그인 없음, 열쇠값 필요)
 
-async def _mobile_subject(db: AsyncSession, kind: str, t: str) -> str:
+async def _mobile_subject(db: AsyncSession, kind: str, t: str) -> tuple[str, Optional[set[str]]]:
+    """(날짜·월 키, 볼 수 있는 기업 id). 받는 사람의 명단 주인(담당자) 기준으로 카드를 거른다."""
     from app.services.company_report import mobile_link
 
     try:
@@ -327,7 +430,7 @@ async def _mobile_subject(db: AsyncSession, kind: str, t: str) -> str:
         raise HTTPException(403, str(e))
     if not await mobile_link.subject_active(db, subject):
         raise HTTPException(403, "브리핑 수신자가 아니거나 해제되었습니다. Working Hub에 로그인해서 확인해 주세요.")
-    return key
+    return key, await mobile_link.subject_company_ids(db, subject)
 
 
 @router.get("/m/daily")
@@ -335,7 +438,7 @@ async def mobile_daily(t: str = Query(..., max_length=200), db: AsyncSession = D
     """카톡 [브리핑 보기] → 폰 화면용 데일리 브리핑(요약 + 문장별 원문 링크). 로그인 없이 열쇠값으로."""
     from app.services.company_report import mobile_view
 
-    key = await _mobile_subject(db, "d", t)
+    key, ids = await _mobile_subject(db, "d", t)
     try:
         day = date.fromisoformat(key)
     except ValueError:
@@ -343,7 +446,7 @@ async def mobile_daily(t: str = Query(..., max_length=200), db: AsyncSession = D
     b = (await db.execute(select(NewsBriefing).where(NewsBriefing.briefing_date == day))).scalar_one_or_none()
     if not b:
         raise HTTPException(404, "브리핑이 없습니다.")
-    return mobile_view.daily_view(b)
+    return mobile_view.daily_view(vis.filter_daily(b, ids))
 
 
 @router.get("/m/monthly")
@@ -351,11 +454,11 @@ async def mobile_monthly(t: str = Query(..., max_length=200), db: AsyncSession =
     from app.models.company_report import MonthlyBriefing
     from app.services.company_report import mobile_view
 
-    key = await _mobile_subject(db, "m", t)
+    key, ids = await _mobile_subject(db, "m", t)
     mb = (await db.execute(select(MonthlyBriefing).where(MonthlyBriefing.month == key))).scalar_one_or_none()
     if not mb:
         raise HTTPException(404, "월간 브리핑이 없습니다.")
-    return await mobile_view.monthly_view(db, mb)
+    return await mobile_view.monthly_view(db, vis.filter_monthly(mb, ids))
 
 
 @router.get("/r/{code}", include_in_schema=False)
@@ -378,6 +481,7 @@ async def article_content(article_id: str, current_user=Depends(get_current_user
     a = await db.get(NewsArticle, article_id)
     if not a:
         raise HTTPException(404, "기사를 찾을 수 없습니다.")
+    await assert_company(db, current_user, a.company_id)
     url = a.url
     await release(db)
     r = await article_reader.read(url)
@@ -403,6 +507,7 @@ def _job_out(j, full: bool = False) -> dict:
 
 @router.get("/companies/{company_id}/backfill-jobs")
 async def list_backfill_jobs(company_id: str, current_user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    await assert_company(db, current_user, company_id)
     rows = (await db.execute(
         select(BackfillJob).where(BackfillJob.company_id == company_id).order_by(BackfillJob.created_at.desc()).limit(10)
     )).scalars().all()
@@ -422,6 +527,7 @@ async def start_backfill(body: BackfillBody, background: BackgroundTasks, curren
     """[과거 데이터 가져오기] — 여러 기업·기간. 기업마다 작업을 만들고 차례로 실행."""
     if not body.company_ids:
         raise HTTPException(422, "기업을 골라 주세요.")
+    await vis.assert_company_ids(db, current_user, body.company_ids, write=True)
     if body.date_from and body.date_to and ((body.date_to - body.date_from).days > 370 or body.date_to < body.date_from):
         raise HTTPException(422, "기간은 최대 12개월입니다.")
     running = (await db.execute(select(BackfillJob.company_id).where(
@@ -459,6 +565,7 @@ async def get_backfill_job(job_id: str, current_user=Depends(get_current_user), 
     j = await db.get(BackfillJob, job_id)
     if not j:
         raise HTTPException(404, "작업을 찾을 수 없습니다.")
+    await assert_company(db, current_user, j.company_id)
     return {**_job_out(j, full=True), "counts": await backfill.monthly_counts(db, j)}
 
 
@@ -467,6 +574,7 @@ async def get_backfill_sample(job_id: str, current_user=Depends(get_current_user
     j = await db.get(BackfillJob, job_id)
     if not j:
         raise HTTPException(404, "작업을 찾을 수 없습니다.")
+    await assert_company(db, current_user, j.company_id)
     sample = j.sample_review or {}
     ids = [x["article_id"] for x in sample.get("items") or []]
     arts = {a.id: a for a in (await db.execute(select(NewsArticle).where(NewsArticle.id.in_(ids or [""])))).scalars().all()}
@@ -487,6 +595,7 @@ async def post_sample_review(job_id: str, body: SampleReviewBody, current_user=D
     j = await db.get(BackfillJob, job_id)
     if not j:
         raise HTTPException(404, "작업을 찾을 수 없습니다.")
+    await assert_company(db, current_user, j.company_id, write=True)
     ids = {x["article_id"] for x in (j.sample_review or {}).get("items") or []}
     answers = {k: v for k, v in body.answers.items() if k in ids}
     for aid, ok in answers.items():
@@ -512,6 +621,7 @@ async def post_confirm_gaps(job_id: str, body: GapsBody, current_user=Depends(ge
     j = await db.get(BackfillJob, job_id)
     if not j:
         raise HTTPException(404, "작업을 찾을 수 없습니다.")
+    await assert_company(db, current_user, j.company_id, write=True)
     j.coverage = {**(j.coverage or {}), "confirmed_gaps": sorted(set((j.coverage or {}).get("confirmed_gaps") or []) | set(body.months))}
     await backfill.refresh_verdict(db, j)
     return _job_out(j, full=True)
@@ -522,8 +632,11 @@ async def me(current_user=Depends(get_current_user), db: AsyncSession = Depends(
     """화면에서 관리자 전용 버튼(승인 등) 표시 여부. can_claim: 아직 관리자가 없어 내가 지정할 수 있음."""
     from app.services.company_report import admin
 
+    from app.core.permissions import is_owner
+
     return {"id": current_user.id, "name": getattr(current_user, "nickname", ""),
-            "is_admin": await admin.is_admin(db, current_user), "can_claim": await admin.can_claim(db)}
+            "is_admin": await admin.is_admin(db, current_user), "can_claim": await admin.can_claim(db),
+            "is_owner": is_owner(current_user)}
 
 
 @router.post("/admins/claim")
@@ -543,7 +656,12 @@ async def list_admins(current_user=Depends(get_current_user), db: AsyncSession =
     from app.services.company_report import admin
 
     ids = await admin.admin_ids(db)
-    users = (await db.execute(select(User).where((User.id.in_(ids or [""])) | (User.is_superuser == True)))).scalars().all()  # noqa: E712
+    from app.core.permissions import OWNER
+
+    # 대표는 항상 관리자(docs/login_logic D-2) → 목록에도 보여 준다
+    users = (await db.execute(select(User).where(
+        (User.id.in_(ids or [""])) | (User.is_superuser == True) | ((User.role == OWNER) & (User.is_active == True))  # noqa: E712
+    ))).scalars().all()
     return [{"user_id": u.id, "name": u.nickname, "email": u.email, "superuser": bool(u.is_superuser)} for u in users]
 
 
@@ -581,27 +699,39 @@ def _briefing_out(b: NewsBriefing) -> dict:
 
 
 @router.get("/briefings/daily")
-async def get_daily_briefing(date_: Optional[date] = Query(None, alias="date"), current_user=Depends(get_current_user),
+async def get_daily_briefing(date_: Optional[date] = Query(None, alias="date"), view: View = Depends(get_view),
                              db: AsyncSession = Depends(get_db)):
-    """해당 날짜 브리핑. 날짜가 없으면 가장 최근 것."""
+    """해당 날짜 브리핑. 날짜가 없으면 가장 최근 것. 보는 담당자의 기업 카드만 남긴다(docs/login_logic P9)."""
     stmt = select(NewsBriefing)
     stmt = stmt.where(NewsBriefing.briefing_date == date_) if date_ else stmt.order_by(NewsBriefing.briefing_date.desc()).limit(1)
     b = (await db.execute(stmt)).scalars().first()
     if not b:
         raise HTTPException(404, "브리핑이 없습니다.")
-    return _briefing_out(b)
+    return _briefing_out(vis.filter_daily(b, await vis.visible_company_ids(db, view)))
 
 
 @router.get("/briefings/daily/list")
-async def list_daily_briefings(limit: int = Query(30, ge=1, le=120), current_user=Depends(get_current_user),
+async def list_daily_briefings(limit: int = Query(30, ge=1, le=120), view: View = Depends(get_view),
                                db: AsyncSession = Depends(get_db)):
-    rows = (await db.execute(
-        select(NewsBriefing.id, NewsBriefing.briefing_date, NewsBriefing.status, NewsBriefing.article_count,
-               NewsBriefing.caution_count, NewsBriefing.is_fallback)
-        .order_by(NewsBriefing.briefing_date.desc()).limit(limit)
-    )).all()
-    return [{"id": r[0], "briefing_date": r[1].isoformat(), "status": r[2], "article_count": r[3],
-             "caution_count": r[4], "is_fallback": r[5]} for r in rows]
+    ids = await vis.visible_company_ids(db, view)
+    if ids is None:
+        rows = (await db.execute(
+            select(NewsBriefing.id, NewsBriefing.briefing_date, NewsBriefing.status, NewsBriefing.article_count,
+                   NewsBriefing.caution_count, NewsBriefing.is_fallback)
+            .order_by(NewsBriefing.briefing_date.desc()).limit(limit)
+        )).all()
+        return [{"id": r[0], "briefing_date": r[1].isoformat(), "status": r[2], "article_count": r[3],
+                 "caution_count": r[4], "is_fallback": r[5]} for r in rows]
+    out = []
+    for r in (await db.execute(
+        select(NewsBriefing.id, NewsBriefing.briefing_date, NewsBriefing.status, NewsBriefing.company_summaries,
+               NewsBriefing.is_fallback).order_by(NewsBriefing.briefing_date.desc()).limit(limit)
+    )).all():
+        cards = [c for c in (r[3] or []) if c.get("company_id") in ids]
+        out.append({"id": r[0], "briefing_date": r[1].isoformat(), "status": r[2],
+                    "article_count": sum(int(c.get("article_count") or 0) for c in cards),
+                    "caution_count": sum(int(c.get("caution_count") or 0) for c in cards), "is_fallback": r[4]})
+    return out
 
 
 class BuildRequest(BaseModel):
@@ -668,7 +798,7 @@ async def _get_monthly(db: AsyncSession, monthly_id: str):
 
 
 @router.get("/briefings/monthly")
-async def get_monthly_briefing(month: Optional[str] = Query(None, pattern=MONTH_PATTERN), current_user=Depends(get_current_user),
+async def get_monthly_briefing(month: Optional[str] = Query(None, pattern=MONTH_PATTERN), view: View = Depends(get_view),
                                db: AsyncSession = Depends(get_db)):
     """해당 월 월간 브리핑. 월이 없으면 가장 최근 것."""
     from app.models.company_report import MonthlyBriefing
@@ -678,15 +808,17 @@ async def get_monthly_briefing(month: Optional[str] = Query(None, pattern=MONTH_
     mb = (await db.execute(stmt)).scalars().first()
     if not mb:
         raise HTTPException(404, "월간 브리핑이 없습니다.")
-    return _monthly_out(mb)
+    return _monthly_out(vis.filter_monthly(mb, await vis.visible_company_ids(db, view)))
 
 
 @router.get("/briefings/monthly/list")
-async def list_monthly_briefings(limit: int = Query(24, ge=1, le=60), current_user=Depends(get_current_user),
+async def list_monthly_briefings(limit: int = Query(24, ge=1, le=60), view: View = Depends(get_view),
                                  db: AsyncSession = Depends(get_db)):
     from app.models.company_report import MonthlyBriefing
 
+    ids = await vis.visible_company_ids(db, view)
     rows = (await db.execute(select(MonthlyBriefing).order_by(MonthlyBriefing.month.desc()).limit(limit))).scalars().all()
+    rows = [vis.filter_monthly(m, ids) for m in rows]
     return [{"id": m.id, "month": m.month, "status": m.status, "article_count": (m.stats or {}).get("article_count", 0),
              "caution_count": (m.stats or {}).get("caution_count", 0)} for m in rows]
 
@@ -753,11 +885,11 @@ async def hold_monthly(monthly_id: str, body: HoldBody, current_user=Depends(get
 
 
 @router.post("/briefings/monthly/{monthly_id}/test-send")
-async def test_send_monthly(monthly_id: str, recipient_id: Optional[str] = None, current_user=Depends(get_current_user),
+async def test_send_monthly(monthly_id: str, recipient_id: Optional[str] = None, view: View = Depends(get_view),
                             db: AsyncSession = Depends(get_db)):
     from app.services.company_report import sender
 
-    r = await sender.send_monthly_test(db, monthly_id, current_user, recipient_id)
+    r = await sender.send_monthly_test(db, monthly_id, view.user, recipient_id, view=view)
     if not r.get("success"):
         raise HTTPException(400, f"테스트 발송 실패: {r.get('error')}")
     return r
@@ -779,6 +911,7 @@ async def company_digests(company_id: str, current_user=Depends(get_current_user
     """기업 원장 탭의 월간 요약 목록."""
     from app.services.company_report import monthly
 
+    await assert_company(db, current_user, company_id)
     return await monthly.digests_for(db, company_id)
 
 
@@ -789,40 +922,53 @@ def _mask_phone(p: Optional[str]) -> Optional[str]:
     return f"{d[:3]}-****-{d[-4:]}" if len(d) >= 8 else None
 
 
+def _list_view(view: View) -> View:
+    """수신자 명단: 매니저 화면이면 그 매니저 명단, 전체·회사 공통이면 회사(대표) 명단."""
+    return view
+
+
 @router.get("/recipients")
-async def get_recipients(current_user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
-    """선택된 수신자 + 직원 계정 목록(빠른 선택용)."""
+async def get_recipients(view: View = Depends(get_view), db: AsyncSession = Depends(get_db)):
+    """보는 담당자의 수신자 명단 + 직원 계정 목록(빠른 선택용). 명단은 담당자별(docs/login_logic P9)."""
     from app.models.user import User
     from app.services.company_report import sender
 
-    targets = await sender.recipient_targets(db, include_no_phone=True)
+    _list_view(view)
+    targets = await sender.recipient_targets(db, include_no_phone=True, list_owner=view.list_owner)
     selected = [{"id": t.recipient_id, "kind": t.kind, "ref_id": t.user_id or t.client_id, "name": t.name,
                  "phone_masked": _mask_phone(t.phone), "has_phone": bool(t.phone)} for t in targets]
     chosen_users = {t.user_id for t in targets if t.user_id}
     users = (await db.execute(select(User).where(User.is_active == True).order_by(User.nickname))).scalars().all()  # noqa: E712
     staff = [{"kind": "user", "ref_id": u.id, "name": u.nickname, "detail": u.email, "phone_masked": _mask_phone(u.phone),
               "has_phone": bool(u.phone), "selected": u.id in chosen_users} for u in users]
-    return {"selected": selected, "staff": staff}
+    return {"selected": selected, "staff": staff, "view": view.as_dict()}
 
 
 @router.get("/recipients/search")
-async def search_recipients(q: str = Query(..., min_length=1, max_length=50), current_user=Depends(get_current_user),
+async def search_recipients(q: str = Query(..., min_length=1, max_length=50), view: View = Depends(get_view),
                             db: AsyncSession = Depends(get_db)):
-    """이름으로 찾기: 데이터 관리 > 고객 정보 관리(clients) + 직원 계정(users)."""
+    """이름으로 찾기: 데이터 관리 > 고객 정보 관리(clients) + 직원 계정(users).
+    고객은 명단 주인의 담당 고객만(대표의 회사 명단이면 전체)."""
     from app.models.client import Client
     from app.models.user import User
 
+    _list_view(view)
+    current_user = view.user
     like = f"%{q.strip()}%"
-    chosen = set((await db.execute(select(BriefingRecipient.client_id).where(BriefingRecipient.client_id.is_not(None)))).scalars().all())
-    chosen_u = set((await db.execute(select(BriefingRecipient.user_id).where(BriefingRecipient.user_id.is_not(None)))).scalars().all())
+    in_list = _recipient_list_cond(view.list_owner)
+    chosen = set((await db.execute(select(BriefingRecipient.client_id).where(
+        BriefingRecipient.client_id.is_not(None), in_list))).scalars().all())
+    chosen_u = set((await db.execute(select(BriefingRecipient.user_id).where(
+        BriefingRecipient.user_id.is_not(None), in_list))).scalars().all())
     owners = aliased(User)
     from app.core.permissions import scope_clients
 
     # 고객 검색은 담당 고객만 (대표는 전체) — docs/login_logic
-    rows = (await db.execute(scope_clients(
-        select(Client, owners.nickname).outerjoin(owners, owners.id == Client.user_id)
-        .where(Client.name.ilike(like)).order_by(Client.name).limit(30), current_user)
-    )).all()
+    stmt = (select(Client, owners.nickname).outerjoin(owners, owners.id == Client.user_id)
+            .where(Client.name.ilike(like)).order_by(Client.name).limit(30))
+    if view.list_owner:  # 매니저 명단: 그 매니저 담당 고객만(대표가 매니저 화면을 골라도 같음)
+        stmt = stmt.where(Client.user_id == view.list_owner)
+    rows = (await db.execute(scope_clients(stmt, current_user))).all()
     out = [{"kind": "client", "ref_id": c.id, "name": c.name,
             "detail": " · ".join(x for x in ["고객 정보 관리", f"고유번호 {c.unique_code}" if c.unique_code else "",
                                              f"담당 {owner}" if owner else "",
@@ -835,25 +981,40 @@ async def search_recipients(q: str = Query(..., min_length=1, max_length=50), cu
     return out
 
 
+def _recipient_list_cond(list_owner: Optional[str]):
+    return (BriefingRecipient.manager_user_id == list_owner) if list_owner else BriefingRecipient.manager_user_id.is_(None)
+
+
+async def _assert_list_editable(db: AsyncSession, view: View) -> None:
+    """매니저는 자기 명단, 대표는 고른 명단(회사 또는 매니저). 회사 명단은 대표·기업 리포트 관리자만."""
+    _list_view(view)
+    if view.list_owner is None:
+        await require_admin(db, view.user)
+
+
 class RecipientAdd(BaseModel):
     kind: str  # client/user
     ref_id: str
 
 
 @router.post("/recipients", status_code=201)
-async def add_recipient(body: RecipientAdd, current_user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+async def add_recipient(body: RecipientAdd, view: View = Depends(get_view), db: AsyncSession = Depends(get_db)):
+    from app.core.permissions import assert_client
     from app.models.client import Client
     from app.models.user import User
 
-    await require_admin(db, current_user)
-    count = (await db.execute(select(func.count()).select_from(BriefingRecipient).where(BriefingRecipient.is_active == True))).scalar_one()  # noqa: E712
+    await _assert_list_editable(db, view)
+    lo = view.list_owner
+    in_list = _recipient_list_cond(lo)
+    count = (await db.execute(select(func.count()).select_from(BriefingRecipient).where(
+        BriefingRecipient.is_active == True, in_list))).scalar_one()  # noqa: E712
     if body.kind == "client":
-        c = await db.get(Client, body.ref_id)
-        if not c:
-            raise HTTPException(404, "고객 정보를 찾을 수 없습니다.")
+        c = await assert_client(db, view.user, body.ref_id)
+        if lo and c.user_id != lo:
+            raise HTTPException(422, f"{c.name}님은 이 매니저의 담당 고객이 아닙니다.")
         if not c.phone:
             raise HTTPException(422, f"{c.name}님은 고객 정보에 휴대폰 번호가 없습니다. 고객 정보 관리에서 먼저 입력하세요.")
-        r = (await db.execute(select(BriefingRecipient).where(BriefingRecipient.client_id == c.id))).scalar_one_or_none()
+        r = (await db.execute(select(BriefingRecipient).where(BriefingRecipient.client_id == c.id, in_list))).scalar_one_or_none()
         name = c.name
     elif body.kind == "user":
         u = await db.get(User, body.ref_id)
@@ -861,7 +1022,7 @@ async def add_recipient(body: RecipientAdd, current_user=Depends(get_current_use
             raise HTTPException(404, "직원 계정을 찾을 수 없습니다.")
         if not u.phone:
             raise HTTPException(422, f"{u.nickname}님 계정에 휴대폰 번호가 없습니다. 고객 정보 관리에서 이름으로 찾아 추가해 보세요.")
-        r = (await db.execute(select(BriefingRecipient).where(BriefingRecipient.user_id == u.id))).scalar_one_or_none()
+        r = (await db.execute(select(BriefingRecipient).where(BriefingRecipient.user_id == u.id, in_list))).scalar_one_or_none()
         name = u.nickname
     else:
         raise HTTPException(422, "kind는 client 또는 user입니다.")
@@ -873,16 +1034,17 @@ async def add_recipient(body: RecipientAdd, current_user=Depends(get_current_use
         r.is_active, r.name = True, name
     else:
         db.add(BriefingRecipient(user_id=body.ref_id if body.kind == "user" else None,
-                                 client_id=body.ref_id if body.kind == "client" else None, name=name, is_active=True))
+                                 client_id=body.ref_id if body.kind == "client" else None, name=name, is_active=True,
+                                 manager_user_id=lo))
     await db.commit()
     return {"name": name}
 
 
 @router.delete("/recipients/{recipient_id}", status_code=204)
-async def remove_recipient(recipient_id: str, current_user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
-    await require_admin(db, current_user)
+async def remove_recipient(recipient_id: str, view: View = Depends(get_view), db: AsyncSession = Depends(get_db)):
+    await _assert_list_editable(db, view)
     r = await db.get(BriefingRecipient, recipient_id)
-    if not r:
+    if not r or r.manager_user_id != view.list_owner:
         raise HTTPException(404, "수신자를 찾을 수 없습니다.")
     await db.delete(r)
     await db.commit()
@@ -893,9 +1055,10 @@ class RecipientsBody(BaseModel):
 
 
 @router.put("/recipients")
-async def put_recipients(body: RecipientsBody, current_user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
-    """(이전 방식) 직원 계정 목록으로 한 번에 지정. 고객 정보에서 추가한 수신자는 유지한다."""
-    await require_admin(db, current_user)
+async def put_recipients(body: RecipientsBody, view: View = Depends(get_view), db: AsyncSession = Depends(get_db)):
+    """(이전 방식) 직원 계정 목록으로 한 번에 지정. 고객 정보에서 추가한 수신자는 유지한다. 보는 담당자의 명단 기준."""
+    await _assert_list_editable(db, view)
+    in_list = _recipient_list_cond(view.list_owner)
     from app.models.user import User
 
     ids = list(dict.fromkeys(body.user_ids))
@@ -904,16 +1067,17 @@ async def put_recipients(body: RecipientsBody, current_user=Depends(get_current_
     if no_phone:
         raise HTTPException(422, f"휴대폰 번호가 없는 직원: {', '.join(no_phone)}")
     clients_n = (await db.execute(select(func.count()).select_from(BriefingRecipient).where(
-        BriefingRecipient.client_id.is_not(None), BriefingRecipient.is_active == True))).scalar_one()  # noqa: E712
+        BriefingRecipient.client_id.is_not(None), BriefingRecipient.is_active == True, in_list))).scalar_one()  # noqa: E712
     if len(ids) + clients_n > 5:
         raise HTTPException(422, "수신자는 최대 5명입니다.")
-    existing = {r.user_id: r for r in (await db.execute(select(BriefingRecipient).where(BriefingRecipient.user_id.is_not(None)))).scalars().all()}
+    existing = {r.user_id: r for r in (await db.execute(select(BriefingRecipient).where(
+        BriefingRecipient.user_id.is_not(None), in_list))).scalars().all()}
     names = {u.id: u.nickname for u in users}
     for uid, r in existing.items():
         r.is_active = uid in ids
     for uid in ids:
         if uid not in existing:
-            db.add(BriefingRecipient(user_id=uid, name=names.get(uid), is_active=True))
+            db.add(BriefingRecipient(user_id=uid, name=names.get(uid), is_active=True, manager_user_id=view.list_owner))
     await db.commit()
     return {"count": len(ids) + clients_n}
 
@@ -943,7 +1107,7 @@ def _add_business_days(start: date, n: int) -> date:
         d += timedelta(days=1)
 
 
-async def _settings_out(db: AsyncSession) -> dict:
+async def _settings_out(db: AsyncSession, user=None) -> dict:
     from app.services import settings_store
     from app.services.company_report import config as crcfg
     from app.services.company_report.keys import get_service_key
@@ -957,7 +1121,14 @@ async def _settings_out(db: AsyncSession) -> dict:
 
     keys["solapi"] = bool(app_settings.SOLAPI_API_KEY and app_settings.SOLAPI_API_SECRET and app_settings.SOLAPI_SENDER)
     keys["kakao_channel"] = bool(app_settings.SOLAPI_PF_ID)
-    logs = (await db.execute(select(BriefingSendLog).order_by(BriefingSendLog.sent_at.desc()).limit(20))).scalars().all()
+    logs = (await db.execute(select(BriefingSendLog).order_by(BriefingSendLog.sent_at.desc()).limit(200 if user is not None else 20))).scalars().all()
+    if user is not None:
+        # 매니저: 자기 명단으로 나간 기록과 자기 테스트 발송만(다른 담당자 고객 이름·번호가 보이지 않게)
+        from app.services.company_report import sender as _sender
+
+        own = await _sender.recipient_targets(db, include_no_phone=True, list_owner=user.id)
+        phones = {"".join(ch for ch in (t.phone or "") if ch.isdigit()) for t in own}
+        logs = [l for l in logs if l.user_id == user.id or "".join(ch for ch in l.phone if ch.isdigit()) in phones][:20]
     # 예전 기록(이름 칸 이전)은 계정 id·휴대폰 번호로 이름을 찾는다
     from app.models.client import Client
     from app.models.user import User
@@ -1023,7 +1194,9 @@ async def get_costs(unit: str = Query("month", pattern="^(day|month|quarter|year
 
 @router.get("/settings")
 async def get_settings(current_user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
-    return await _settings_out(db)
+    from app.services.company_report import admin
+
+    return await _settings_out(db, None if await admin.is_admin(db, current_user) else current_user)
 
 
 @router.put("/settings")
@@ -1052,26 +1225,26 @@ async def put_settings(body: SettingsBody, current_user=Depends(get_current_user
 
 
 @router.post("/briefings/daily/{briefing_id}/test-send")
-async def test_send(briefing_id: str, recipient_id: Optional[str] = None, current_user=Depends(get_current_user),
+async def test_send(briefing_id: str, recipient_id: Optional[str] = None, view: View = Depends(get_view),
                     db: AsyncSession = Depends(get_db)):
     """테스트 발송(상태 변화 없음): recipient_id가 있으면 그 수신자에게, 없으면 본인에게."""
     from app.services.company_report import sender
 
-    r = await sender.send_test(db, briefing_id, current_user, recipient_id)
+    r = await sender.send_test(db, briefing_id, view.user, recipient_id, view=view)
     if not r.get("success"):
         raise HTTPException(400, f"테스트 발송 실패: {r.get('error')}")
     return r
 
 
 @router.post("/recipients/{recipient_id}/test-send")
-async def test_send_latest(recipient_id: str, current_user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+async def test_send_latest(recipient_id: str, view: View = Depends(get_view), db: AsyncSession = Depends(get_db)):
     """발송 설정 화면: 가장 최근 데일리 브리핑을 이 수신자에게 테스트 발송."""
     from app.services.company_report import sender
 
     b = (await db.execute(select(NewsBriefing).order_by(NewsBriefing.briefing_date.desc()).limit(1))).scalars().first()
     if not b:
         raise HTTPException(404, "아직 만들어진 브리핑이 없습니다. 브리핑 탭에서 [지금 만들기]를 먼저 누르세요.")
-    r = await sender.send_test(db, b.id, current_user, recipient_id)
+    r = await sender.send_test(db, b.id, view.user, recipient_id, view=view)
     if not r.get("success"):
         raise HTTPException(400, f"테스트 발송 실패: {r.get('error')}")
     return r
@@ -1093,6 +1266,7 @@ async def get_article_dates(company_id: str, month: str = Query(..., pattern=r"^
                             current_user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
     from app.services.company_report import period
 
+    await assert_company(db, current_user, company_id)
     return await period.article_dates(db, company_id, month)
 
 
@@ -1108,6 +1282,7 @@ async def post_period_summary(company_id: str, body: PeriodSummaryBody, current_
     from app.services import llm_client
     from app.services.company_report import period
 
+    await assert_company(db, current_user, company_id)
     if body.date_to < body.date_from or (body.date_to - body.date_from).days > 366:
         raise HTTPException(422, "기간은 1년 이내로 골라 주세요.")
     try:
@@ -1139,6 +1314,7 @@ async def list_facts(company_id: str, status: Optional[str] = None, fact_type: O
     from app.models.company_report import CompanyFact
     from app.services.company_report import facts as facts_svc
 
+    await assert_company(db, current_user, company_id)
     cond = [CompanyFact.company_id == company_id]
     if status:
         cond.append(CompanyFact.status == status)
@@ -1158,6 +1334,7 @@ async def add_fact(company_id: str, body: FactBody, current_user=Depends(get_cur
     from app.models.company_report import CompanyFact
     from app.services.company_report import facts as facts_svc
 
+    await assert_company(db, current_user, company_id, write=True)
     if body.fact_type not in facts_svc.FACT_TYPES:
         raise HTTPException(422, "알 수 없는 사실 유형입니다.")
     f = CompanyFact(company_id=company_id, fact_type=body.fact_type, fact_date=body.fact_date, title=body.title.strip()[:300],
@@ -1180,6 +1357,7 @@ async def patch_fact(fact_id: str, body: FactPatch, background: BackgroundTasks,
     f = await db.get(CompanyFact, fact_id)
     if not f:
         raise HTTPException(404, "사실을 찾을 수 없습니다.")
+    await assert_company(db, current_user, f.company_id, write=True)
     changes = body.model_dump(exclude_unset=True, exclude={"status"})
     if changes:
         f = await facts_svc.edit_fact(db, f, changes, current_user.id)
@@ -1209,6 +1387,7 @@ async def list_funding(company_id: str, include_rejected: bool = False, current_
     from app.models.company_report import CompanyFundingRound
     from app.services.company_report import facts as facts_svc
 
+    await assert_company(db, current_user, company_id)
     cond = [CompanyFundingRound.company_id == company_id]
     if not include_rejected:
         cond.append(CompanyFundingRound.status != "rejected")
@@ -1222,6 +1401,7 @@ async def add_funding(company_id: str, body: FundingBody, current_user=Depends(g
     from app.models.company_report import CompanyFundingRound
     from app.services.company_report import facts as facts_svc
 
+    await assert_company(db, current_user, company_id, write=True)
     r = CompanyFundingRound(company_id=company_id, round_date=body.round_date, round_name=(body.round_name or "기타")[:50],
                             amount=body.amount, amount_disclosed=body.amount_disclosed if body.amount_disclosed is not None else bool(body.amount),
                             investors=body.investors or [], valuation=body.valuation, is_follow_on=bool(body.is_follow_on),
@@ -1242,6 +1422,7 @@ async def patch_funding(round_id: str, body: FundingBody, background: Background
     r = await db.get(CompanyFundingRound, round_id)
     if not r:
         raise HTTPException(404, "투자유치 기록을 찾을 수 없습니다.")
+    await assert_company(db, current_user, r.company_id, write=True)
     data = body.model_dump(exclude_unset=True)
     status = data.pop("status", None)
     if status and status not in ("confirmed", "rejected", "candidate"):
@@ -1261,8 +1442,10 @@ async def patch_funding(round_id: str, body: FundingBody, background: Background
 
 
 @router.post("/companies/{company_id}/extract-facts")
-async def extract_facts_now(company_id: str, background: BackgroundTasks, current_user=Depends(get_current_user)):
+async def extract_facts_now(company_id: str, background: BackgroundTasks, current_user=Depends(get_current_user),
+                            db: AsyncSession = Depends(get_db)):
     """아직 사실 추출이 안 된 기사에서 후보를 다시 뽑는다(백그라운드)."""
+    await assert_company(db, current_user, company_id, write=True)
     background.add_task(_run_extract, company_id)
     return {"queued": True}
 
@@ -1277,8 +1460,10 @@ async def _run_extract(company_id: str) -> None:
 
 
 @router.post("/companies/{company_id}/verify-facts")
-async def verify_facts_now(company_id: str, background: BackgroundTasks, current_user=Depends(get_current_user)):
+async def verify_facts_now(company_id: str, background: BackgroundTasks, current_user=Depends(get_current_user),
+                           db: AsyncSession = Depends(get_db)):
     """후보로 남은 사실을 자동 검증(원문 대조·주체 확인·출처 수·검색 교차 확인)한다(백그라운드)."""
+    await assert_company(db, current_user, company_id, write=True)
     background.add_task(_run_verify, company_id)
     return {"queued": True}
 
@@ -1303,12 +1488,13 @@ async def do_search(q: str = Query(..., min_length=1, max_length=200), group: Op
                     page: int = Query(1, ge=1), size: int = Query(20, ge=1, le=100),
                     current_user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
     return await search.search(db, q, group=group, company_ids=company, date_from=date_from, date_to=date_to, tag=tag,
-                               include_inactive=include_inactive, sort=sort, page=page, size=size)
+                               include_inactive=include_inactive, sort=sort, page=page, size=size,
+                               allowed=await vis.readable_company_ids(db, current_user))
 
 
 @router.get("/search/suggest")
 async def search_suggest(q: str = "", current_user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
-    return await search.suggest(db, q)
+    return await search.suggest(db, q, allowed=await vis.readable_company_ids(db, current_user))
 
 
 @router.post("/search/reindex")
@@ -1323,7 +1509,7 @@ async def search_reindex(current_user=Depends(get_current_user), db: AsyncSessio
 async def db_tree(current_user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
     from app.services.company_report import company_db
 
-    return await company_db.tree(db)
+    return await company_db.tree(db, allowed=await vis.readable_company_ids(db, current_user))
 
 
 @router.get("/db/files")
@@ -1336,7 +1522,8 @@ async def db_files(company: Optional[list[str]] = Query(None), portfolio: bool =
 
     return await company_db.list_files(db, company_ids=company, portfolio=portfolio, folder=folder, file_type=type,
                                        origin=origin, status=status, date_from=date_from, date_to=date_to, q=q,
-                                       include_inactive=include_inactive, page=page, size=size)
+                                       include_inactive=include_inactive, page=page, size=size,
+                                       allowed=await vis.readable_company_ids(db, current_user))
 
 
 @router.post("/db/files", status_code=201)
@@ -1346,6 +1533,8 @@ async def db_upload(file: UploadFile = File(...), company_id: Optional[str] = Fo
     """업로드 — 파일명 규칙에 맞게 자동으로 이름이 바뀐다(원래 이름은 따로 보관)."""
     from app.services.company_report import company_db
 
+    if company_id:
+        await assert_company(db, current_user, company_id, write=True)
     data = await file.read()
     try:
         f = await company_db.upload_file(db, company_id=company_id or None, folder=folder, filename=file.filename or "file",
@@ -1371,6 +1560,8 @@ async def db_patch_file(file_id: str, body: FilePatch, current_user=Depends(get_
     f = await db.get(CompanyFile, file_id)
     if not f or f.status == "deleted":
         raise HTTPException(404, "파일을 찾을 수 없습니다.")
+    if f.company_id:
+        await assert_company(db, current_user, f.company_id)
     if body.deleted:
         # 삭제는 올린 사람 또는 관리자만, 자동 파일은 삭제하지 않는다(파일은 남기고 목록에서만 뺀다)
         if f.origin == "auto":
@@ -1406,6 +1597,8 @@ async def db_download(file_id: str, inline: bool = False, current_user=Depends(g
     f = await db.get(CompanyFile, file_id)
     if not f or f.status == "deleted" or not storage.exists(f.storage_key):
         raise HTTPException(404, "파일을 찾을 수 없습니다.")
+    if f.company_id:
+        await assert_company(db, current_user, f.company_id)
     await company_db.log_download(db, file_id=f.id, company_id=f.company_id, user_id=current_user.id)
     disp = "inline" if inline else "attachment"
     return FileResponse(storage.path_of(f.storage_key), media_type=f.mime or "application/octet-stream",
@@ -1422,6 +1615,8 @@ async def db_zip(company_id: str, current_user=Depends(get_current_user), db: As
     from app.services.company_report import company_db
 
     cid = None if company_id == "_portfolio" else company_id
+    if cid:
+        await assert_company(db, current_user, cid)
     data, name = await company_db.zip_company(db, cid)
     await company_db.log_download(db, file_id=None, company_id=cid, user_id=current_user.id, kind="zip")
     return Response(content=data, media_type="application/zip",
@@ -1433,6 +1628,7 @@ async def db_refresh(company_id: str, current_user=Depends(get_current_user), db
     """자동 파일(월별 뉴스 모음·사실 원장·투자유치 엑셀·기업카드) 지금 다시 만들기."""
     from app.services.company_report import company_db
 
+    await assert_company(db, current_user, company_id)
     return await company_db.refresh_auto_files(db, company_id)
 
 
@@ -1452,6 +1648,7 @@ async def _refresh_files_bg(company_id: str) -> None:
 async def get_public_data(company_id: str, current_user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
     from app.services.company_report import public_data
 
+    await assert_company(db, current_user, company_id)
     return await public_data.company_public_data(db, company_id)
 
 
@@ -1459,9 +1656,7 @@ async def get_public_data(company_id: str, current_user=Depends(get_current_user
 async def refresh_public_data(company_id: str, current_user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
     from app.services.company_report import public_data
 
-    c = await db.get(PortfolioCompany, company_id)
-    if not c:
-        raise HTTPException(404, "기업을 찾을 수 없습니다.")
+    c = await assert_company(db, current_user, company_id)
     result = await public_data.snapshot_company(db, c)
     return {"result": result, **(await public_data.company_public_data(db, company_id))}
 
@@ -1473,9 +1668,7 @@ async def trash_company(company_id: str, current_user=Depends(get_current_user),
     """1단계 · 화면에서 삭제: 목록·검색·수집에서 빠진다. 데이터·폴더는 남고 복구할 수 있다."""
     from app.services.company_report import company_delete
 
-    c = await db.get(PortfolioCompany, company_id)
-    if not c:
-        raise HTTPException(404, "기업을 찾을 수 없습니다.")
+    c = await assert_company(db, current_user, company_id, write=True)
     try:
         await company_delete.trash(db, c, current_user.id)
     except company_delete.DeleteError as e:
@@ -1488,9 +1681,7 @@ async def trash_company(company_id: str, current_user=Depends(get_current_user),
 async def restore_company(company_id: str, current_user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
     from app.services.company_report import company_delete
 
-    c = await db.get(PortfolioCompany, company_id)
-    if not c:
-        raise HTTPException(404, "기업을 찾을 수 없습니다.")
+    c = await assert_company(db, current_user, company_id, write=True)
     dup = (await db.execute(select(PortfolioCompany.id).where(
         PortfolioCompany.name == c.name, PortfolioCompany.id != c.id, PortfolioCompany.deleted_at.is_(None)))).first()
     if dup:
@@ -1505,9 +1696,7 @@ async def purge_summary(company_id: str, current_user=Depends(get_current_user),
     """2단계 전에 지워질 데이터 건수·파일 용량."""
     from app.services.company_report import company_delete
 
-    c = await db.get(PortfolioCompany, company_id)
-    if not c:
-        raise HTTPException(404, "기업을 찾을 수 없습니다.")
+    c = await assert_company(db, current_user, company_id, write=True)
     return {"name": c.name, "trashed": bool(c.deleted_at), **(await company_delete.summary(db, company_id))}
 
 

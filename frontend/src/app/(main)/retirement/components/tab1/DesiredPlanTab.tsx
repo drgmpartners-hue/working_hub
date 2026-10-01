@@ -6,6 +6,7 @@ import { useRetirementStore } from '../../hooks/useRetirementStore';
 import { Section } from '../common/Section';
 import { API_URL } from '@/lib/api-url';
 import { authLib } from '@/lib/auth';
+import { loadClientContact, setPdfContact } from '@/lib/reportContact';
 
 // PDF export: desiredPlanPdf.ts
 const GrowthChart = dynamic(() => import('./GrowthChart'), { ssr: false });
@@ -873,6 +874,7 @@ export function DesiredPlanTab() {
                 retirementAge: rRetAge || cRetAge,
                 graphId: 'pdf-tab1-graph',
               };
+              setPdfContact(await loadClientContact(selectedCustomer?.id)); // 담당 매니저 이름·연락처 (docs/login_logic P9)
               await generateDesiredPlanPdf(pdfData, `은퇴플랜설계_${selectedCustomer?.name ?? ''}_${new Date().toISOString().slice(0, 10)}.pdf`);
             } catch (e: unknown) {
               const msg = e instanceof Error ? e.message : String(e);

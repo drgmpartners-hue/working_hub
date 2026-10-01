@@ -50,9 +50,11 @@ class ClientUpdate(BaseModel):
 
 
 class ClientManager(BaseModel):
-    """담당 매니저 (대표 화면의 담당자 컬럼용)."""
+    """담당 매니저 (대표 화면의 담당자 컬럼, 고객용 보고서의 '담당 OOO · 연락처')."""
     id: str
     nickname: str
+    phone: Optional[str] = None
+    email: Optional[str] = None
 
 
 class ClientResponse(ClientBase):

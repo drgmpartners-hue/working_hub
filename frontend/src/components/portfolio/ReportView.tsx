@@ -1,6 +1,7 @@
 'use client';
 
 import { forwardRef, useState, useMemo } from 'react';
+import { REPORT_BRAND } from '@/lib/reportContact';
 import {
   PieChart,
   Pie,
@@ -89,6 +90,8 @@ interface FullTableRow {
 interface ReportViewProps {
   reportData: ReportData | null;
   clientName: string;
+  /** '담당 OOO · 연락처' — 고객의 담당 매니저 (docs/login_logic P9) */
+  contactLine?: string;
   modifiedWeights: Record<string, number>;
   extraHoldings?: Holding[];
   fullTable?: FullTableRow[] | null;
@@ -717,6 +720,7 @@ const ReportView = forwardRef<HTMLDivElement, ReportViewProps>(
   ({
     reportData,
     clientName,
+    contactLine,
     modifiedWeights,
     extraHoldings = [],
     fullTable = null,
@@ -1576,7 +1580,7 @@ const ReportView = forwardRef<HTMLDivElement, ReportViewProps>(
               }}
             >
               <span>본 보고서는 참고 자료이며 투자 결과에 대한 책임은 투자자 본인에게 있습니다.</span>
-              <span>Working Hub Manager</span>
+              <span>{contactLine ? `${REPORT_BRAND} · ${contactLine}` : REPORT_BRAND}</span>
             </div>
 
             </div>{/* PAGE 4 끝 */}

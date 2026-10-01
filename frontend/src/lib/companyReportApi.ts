@@ -4,6 +4,7 @@
  */
 import { API_URL } from '@/lib/api-url';
 import { authLib } from '@/lib/auth';
+import { viewAsHeader } from '@/lib/crViewAs';
 
 export const CR_BASE = `${API_URL}/api/v1/company-report`;
 
@@ -20,6 +21,7 @@ export async function crFetch<T = unknown>(path: string, init: RequestInit = {})
   const headers: Record<string, string> = {
     ...(init.body && !(init.body instanceof FormData) ? { 'Content-Type': 'application/json' } : {}),
     ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    ...viewAsHeader(), // 대표의 [담당자 선택] (docs/login_logic P9)
     ...((init.headers as Record<string, string>) || {}),
   };
   let res: Response;
@@ -53,7 +55,9 @@ export const crDelete = <T,>(path: string) => crFetch<T>(path, { method: 'DELETE
 /** 인증이 필요한 파일 받기(미리보기·다운로드·zip) */
 export async function crBlob(path: string): Promise<{ blob: Blob; filename: string | null }> {
   const token = authLib.getToken();
-  const res = await fetch(`${CR_BASE}${path}`, { headers: token ? { Authorization: `Bearer ${token}` } : {} });
+  const res = await fetch(`${CR_BASE}${path}`, {
+    headers: { ...(token ? { Authorization: `Bearer ${token}` } : {}), ...viewAsHeader() },
+  });
   if (!res.ok) {
     let detail = `요청 실패 (${res.status})`;
     try {

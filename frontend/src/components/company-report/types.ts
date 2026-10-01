@@ -37,6 +37,14 @@ export interface Company {
   created_at: string;
   keywords: KeywordSet;
   stats: CompanyStats;
+  /** 담당자별 분리 (docs/login_logic P9): common = 회사 공통(대표 등록), manager = 매니저가 추가 */
+  scope?: 'common' | 'manager';
+  manager_user_id?: string | null;
+  manager_name?: string | null;
+  /** 지금 보는 담당자 화면에서 숨긴 공통 기업 */
+  is_hidden?: boolean;
+  /** 로그인한 사람이 고칠 수 있는지(공통 기업은 대표만) */
+  can_edit?: boolean;
 }
 
 export interface Candidate {

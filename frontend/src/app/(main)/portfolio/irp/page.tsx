@@ -14,6 +14,7 @@ import { authLib } from '@/lib/auth';
 import type { PeriodKey, HistoryPoint, DistributionItem } from '@/components/portfolio/PortfolioCharts';
 import { API_URL } from '@/lib/api-url';
 import type { ProductMaster } from '@/components/portfolio/ProductMasterTable';
+import { contactLine, type ReportManager } from '@/lib/reportContact';
 
 const PortfolioCharts = dynamic(
   () => import('@/components/portfolio/PortfolioCharts').then((m) => m.PortfolioCharts),
@@ -49,6 +50,8 @@ interface Client {
   email?: string;
   portal_token?: string;
   accounts: ClientAccount[];
+  /** 담당 매니저 — 보고서의 '담당 OOO · 연락처' (docs/login_logic P9) */
+  manager?: ReportManager | null;
 }
 
 interface Holding {
@@ -6742,6 +6745,7 @@ export default function IRPPage() {
             ref={reportRef}
             reportData={reportData}
             clientName={reportClientName}
+            contactLine={contactLine(clients.find((c) => c.id === tab3ClientId)?.manager)}
             modifiedWeights={modifiedWeights}
             extraHoldings={reportExtraHoldings}
             fullTable={reportFullTable}
