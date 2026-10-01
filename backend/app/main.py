@@ -59,10 +59,13 @@ async def _start_company_db_worker() -> None:
         pass
 
 ALLOWED_ORIGINS = ["http://localhost:3000", "http://127.0.0.1:3000", "https://working-hub.vercel.app"]
+# 회사 도메인의 하위 주소(예: https://hub.drgm.co.kr) — 아임웹 DNS에서 Vercel로 연결한 주소
+ALLOWED_ORIGIN_REGEX = r"https://([a-z0-9-]+\.)*drgm\.co\.kr"
 
 app.add_middleware(
     CORSMiddleware,
     allow_origins=ALLOWED_ORIGINS,
+    allow_origin_regex=ALLOWED_ORIGIN_REGEX,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
