@@ -3,6 +3,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { API_URL } from '@/lib/api-url';
 import { authLib } from '@/lib/auth';
+import { ManagerSelectField, managerMissing, useIsOwner } from '@/components/customer/ManagerSelectField';
 
 /* ------------------------------------------------------------------ */
 /*  Types                                                               */
@@ -310,6 +311,9 @@ export function ClientManagementModal({ isOpen, onClose, onClientAdded }: Client
 
   /* New row state */
   const [addingNew, setAddingNew] = useState(false);
+  // 신규 등록 담당자 (docs/login_logic P10): 대표는 고르고, 매니저는 본인 고정
+  const isOwner = useIsOwner();
+  const [newManagerId, setNewManagerId] = useState('');
   const [newRow, setNewRow] = useState<NewRow>({
     clientName: '',
     accountType: 'irp',
@@ -649,12 +653,17 @@ export function ClientManagementModal({ isOpen, onClose, onClientAdded }: Client
       alert('고객명을 입력하세요.');
       return;
     }
+    const miss = managerMissing(isOwner, newManagerId);
+    if (miss) {
+      alert(`${miss} (표 아래 담당자)`);
+      return;
+    }
     setNewSaving(true);
     try {
       const clientRes = await fetch(`${API_URL}/api/v1/clients`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', ...authLib.getAuthHeader() },
-        body: JSON.stringify({ name: newRow.clientName.trim() }),
+        body: JSON.stringify({ name: newRow.clientName.trim(), ...(isOwner ? { manager_id: newManagerId } : {}) }),
       });
       if (!clientRes.ok) {
         const err = await clientRes.json().catch(() => ({}));
@@ -1167,6 +1176,13 @@ export function ClientManagementModal({ isOpen, onClose, onClientAdded }: Client
           )}
         </div>
 
+        {/* 신규 등록 담당자 */}
+        {addingNew && (
+          <div style={{ padding: '12px 24px 0', borderTop: '1px solid var(--border)', maxWidth: 360 }}>
+            <ManagerSelectField value={newManagerId} onChange={setNewManagerId} style={{ marginBottom: 12 }} />
+          </div>
+        )}
+
         {/* Footer */}
         <div
           style={{
@@ -1184,7 +1200,7 @@ export function ClientManagementModal({ isOpen, onClose, onClientAdded }: Client
           </span>
           <div style={{ display: 'flex', gap: 8 }}>
             <button
-              onClick={() => { setAddingNew(true); setEditState(null); }}
+              onClick={() => { setAddingNew(true); setEditState(null); setNewManagerId(''); }}
               style={{
                 display: 'inline-flex', alignItems: 'center', gap: 5,
                 padding: '8px 16px', fontSize: '0.875rem', fontWeight: 700, color: '#fff',

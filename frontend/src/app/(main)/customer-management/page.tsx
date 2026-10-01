@@ -6,6 +6,7 @@ import { API_URL } from '@/lib/api-url';
 import { authLib } from '@/lib/auth';
 import { useAuthStore } from '@/stores/auth';
 import { OwnerClientActions } from '@/components/customer/OwnerClientActions';
+import { ManagerSelectField, managerMissing } from '@/components/customer/ManagerSelectField';
 
 /* ------------------------------------------------------------------ */
 /*  Types                                                               */
@@ -65,6 +66,11 @@ export default function CustomerManagementPage() {
   const [form, setForm] = useState<FormData>(EMPTY_FORM);
   const [submitting, setSubmitting] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
+  // 고객 추가 담당자 (docs/login_logic P10): 대표는 고르고, 매니저는 본인 고정(서버도 고정)
+  const [newManagerId, setNewManagerId] = useState('');
+  // 엑셀 대량 등록: 대표는 먼저 담당자를 고른다
+  const [excelPick, setExcelPick] = useState(false);
+  const [excelManagerId, setExcelManagerId] = useState('');
 
   /* Notion import */
   const NOTION_CUSTOMER_KEY = 'notion_customer_config';
@@ -284,6 +290,8 @@ export default function CustomerManagementPage() {
   async function bulkAddNotionRows(rows: { id: string; properties: Record<string, string> }[]) {
     const selected = rows.filter(r => notionSelectedRows.has(r.id));
     if (selected.length === 0) return;
+    const miss = managerMissing(isOwner, newManagerId);
+    if (miss) { setNotionError(`${miss} (창 맨 위 담당자)`); return; }
     setNotionBulkLoading(true);
     const token = authLib.getToken();
     // 기존 고객: 고객명 + 생년월일(YYYY-MM-DD) 로 중복 판정
@@ -300,6 +308,7 @@ export default function CustomerManagementPage() {
         birth_date: (row.properties[notionMapping.birth_date] ?? '').trim() || null,
         phone: (row.properties[notionMapping.phone] ?? '').trim() || null,
         email: (row.properties[notionMapping.email] ?? '').trim() || null,
+        ...(isOwner ? { manager_id: newManagerId } : {}),
       };
       try {
         const res = await fetch(`${API_URL}/api/v1/clients`, {
@@ -332,6 +341,7 @@ export default function CustomerManagementPage() {
   }
 
   function openAddModal() {
+    setNewManagerId('');
     setEditTarget(null);
     setForm(EMPTY_FORM);
     setFormError(null);
@@ -371,6 +381,13 @@ export default function CustomerManagementPage() {
       setFormError('생년월일은 필수입니다.');
       return;
     }
+    if (!editTarget) {
+      const miss = managerMissing(isOwner, newManagerId);
+      if (miss) {
+        setFormError(miss);
+        return;
+      }
+    }
 
     setSubmitting(true);
     setFormError(null);
@@ -401,7 +418,7 @@ export default function CustomerManagementPage() {
             'Content-Type': 'application/json',
             Authorization: `Bearer ${token}`,
           },
-          body: JSON.stringify(body),
+          body: JSON.stringify(isOwner ? { ...body, manager_id: newManagerId } : body),
         });
       }
 
@@ -622,6 +639,7 @@ export default function CustomerManagementPage() {
             if (!token) return;
             const fd = new FormData();
             fd.append('file', file);
+            if (isOwner && excelManagerId) fd.append('manager_id', excelManagerId);
             try {
               const res = await fetch(`${API_URL}/api/v1/clients/upload-excel`, {
                 method: 'POST',
@@ -629,6 +647,12 @@ export default function CustomerManagementPage() {
                 body: fd,
               });
               const data = await res.json();
+              if (!res.ok) {
+                alert(typeof data?.detail === 'string' ? data.detail : '엑셀 업로드에 실패했습니다.');
+                e.target.value = '';
+                return;
+              }
+              setExcelPick(false);
               alert(`업로드 완료\n- 등록: ${data.created ?? 0}명\n- 중복 스킵: ${data.skipped ?? 0}명${data.skipped_names?.length ? `\n  ${data.skipped_names.join('\n  ')}` : ''}${data.errors?.length ? `\n- 오류:\n  ${data.errors.join('\n  ')}` : ''}`);
               fetchCustomers();
             } catch {
@@ -639,7 +663,14 @@ export default function CustomerManagementPage() {
         />
         <button
           data-tooltip="엑셀 파일로 고객 대량 등록"
-          onClick={() => document.getElementById('excel-upload-input')?.click()}
+          onClick={() => {
+            if (isOwner) {
+              setExcelManagerId('');
+              setExcelPick(true); // 대표: 담당자를 먼저 고른 뒤 파일 선택
+            } else {
+              document.getElementById('excel-upload-input')?.click();
+            }
+          }}
           style={{
             display: 'flex', alignItems: 'center', justifyContent: 'center',
             width: 38, height: 38, borderRadius: '8px',
@@ -653,6 +684,32 @@ export default function CustomerManagementPage() {
             <line x1="12" y1="3" x2="12" y2="15" />
           </svg>
         </button>
+
+        {excelPick && (
+          <div
+            onClick={() => setExcelPick(false)}
+            style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.45)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}
+          >
+            <div
+              onClick={(ev) => ev.stopPropagation()}
+              style={{ background: 'var(--bg-card)', borderRadius: 14, padding: 24, width: '100%', maxWidth: 420, boxShadow: '0 20px 60px rgba(0,0,0,0.18)' }}
+            >
+              <h2 style={{ margin: '0 0 6px', fontSize: 18, fontWeight: 700, color: 'var(--text-primary)' }}>엑셀로 고객 대량 등록</h2>
+              <p style={{ margin: '0 0 16px', fontSize: 13, color: 'var(--text-muted)' }}>파일 안의 고객을 모두 아래 담당자로 등록합니다.</p>
+              <ManagerSelectField value={excelManagerId} onChange={setExcelManagerId} labelStyle={labelStyle} inputStyle={inputStyle} />
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
+                <button className="wh-btn wh-btn-ghost wh-btn-sm" onClick={() => setExcelPick(false)}>취소</button>
+                <button
+                  className="wh-btn wh-btn-primary wh-btn-sm"
+                  disabled={!excelManagerId}
+                  onClick={() => document.getElementById('excel-upload-input')?.click()}
+                >
+                  파일 선택
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* 엑셀 다운로드 */}
         <button
@@ -876,6 +933,11 @@ export default function CustomerManagementPage() {
                 </svg>
               </button>
             </div>
+
+            {/* ── 담당자 (맨 위 고정: Notion 가져오기·직접 입력 모두 이 담당자로 등록) ── */}
+            {!editTarget && (
+              <ManagerSelectField value={newManagerId} onChange={setNewManagerId} labelStyle={labelStyle} inputStyle={inputStyle} />
+            )}
 
             {/* ── Notion에서 가져오기 ── */}
             {!editTarget && (

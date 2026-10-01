@@ -96,7 +96,9 @@ async def test_24_owner_regression(env):  # noqa: F811
     """대표 단독 사용 흐름 무회귀: 고객 등록·수정·계좌 추가·삭제."""
     c, d, hdr = env["c"], env["d"], env["hdr"]
     H = hdr(d["owner"])
-    r = await c.post("/clients", headers=H, json={"name": "대표신규고객"})
+    # 대표가 고객을 추가할 때는 담당자를 반드시 고른다 (docs/login_logic P10)
+    assert (await c.post("/clients", headers=H, json={"name": "담당자없음"})).status_code == 422
+    r = await c.post("/clients", headers=H, json={"name": "대표신규고객", "manager_id": d["owner"]})
     assert r.status_code == 201, r.text
     cid = r.json()["id"]
     assert r.json()["manager"]["id"] == d["owner"]

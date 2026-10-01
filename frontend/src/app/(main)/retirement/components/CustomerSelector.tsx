@@ -4,6 +4,7 @@ import { useState, useEffect, useMemo, useCallback } from 'react';
 import { useRetirementStore, type RetirementCustomer } from '../hooks/useRetirementStore';
 import { API_URL } from '@/lib/api-url';
 import { authLib } from '@/lib/auth';
+import { ManagerSelectField, managerMissing, useIsOwner } from '@/components/customer/ManagerSelectField';
 
 interface Client {
   id: string;
@@ -39,6 +40,9 @@ export function CustomerSelector() {
   const [newClientEmail, setNewClientEmail] = useState('');
   const [isAdding, setIsAdding] = useState(false);
   const [addError, setAddError] = useState<string | null>(null);
+  // 고객 추가 담당자 (docs/login_logic P10)
+  const isOwner = useIsOwner();
+  const [newManagerId, setNewManagerId] = useState('');
 
   function closeAddModal() {
     setShowAddModal(false);
@@ -46,6 +50,7 @@ export function CustomerSelector() {
     setNewClientBirthDate('');
     setNewClientPhone('');
     setNewClientEmail('');
+    setNewManagerId('');
     setAddError(null);
   }
 
@@ -56,6 +61,11 @@ export function CustomerSelector() {
     }
     if (!newClientBirthDate) {
       setAddError('생년월일은 필수입니다.');
+      return;
+    }
+    const miss = managerMissing(isOwner, newManagerId);
+    if (miss) {
+      setAddError(miss);
       return;
     }
     setIsAdding(true);
@@ -69,6 +79,7 @@ export function CustomerSelector() {
           birth_date: newClientBirthDate || null,
           phone: newClientPhone.trim() || null,
           email: newClientEmail.trim() || null,
+          ...(isOwner ? { manager_id: newManagerId } : {}),
         }),
       });
       if (res.ok) {
@@ -393,6 +404,9 @@ export function CustomerSelector() {
               </svg>
             </button>
           </div>
+
+          {/* 담당자 (대표는 선택, 매니저는 본인 고정) */}
+          <ManagerSelectField value={newManagerId} onChange={setNewManagerId} labelStyle={modalLabelStyle} inputStyle={modalInputStyle} />
 
           {/* 고객명 */}
           <div style={{ marginBottom: '16px' }}>

@@ -6,7 +6,7 @@ from datetime import date, datetime
 
 import openpyxl
 from typing import Optional
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Query
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form, Query
 from fastapi.responses import StreamingResponse
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -65,6 +65,7 @@ def _parse_birth_date(value) -> date | None:
 @router.post("/upload-excel")
 async def upload_excel(
     file: UploadFile = File(...),
+    manager_id: Optional[str] = Form(None),
     current_user=Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
@@ -73,7 +74,9 @@ async def upload_excel(
     템플릿 컬럼: [No., 고객명, 고유번호, 생년월일, 전화번호, 이메일]
     No.와 고유번호는 무시합니다 (자동 생성).
     1행은 헤더로 무시합니다.
+    담당자(docs/login_logic P10): 대표는 manager_id 로 골라야 하고, 매니저는 본인으로 고정.
     """
+    owner_id = await client_service.resolve_new_client_manager(db, current_user, manager_id)
     contents = await file.read()
     try:
         wb = openpyxl.load_workbook(filename=io.BytesIO(contents), data_only=True)
@@ -111,7 +114,7 @@ async def upload_excel(
 
         # 중복 체크 (이름 + 전화번호)
         dup_query = select(Client).where(
-            Client.user_id == current_user.id,
+            Client.user_id == owner_id,
             Client.name == name,
         )
         if phone_str:
@@ -125,7 +128,7 @@ async def upload_excel(
 
         client = Client(
             id=str(uuid.uuid4()),
-            user_id=current_user.id,
+            user_id=owner_id,
             name=name,
             unique_code=await _gen_unique_code(db),
             birth_date=birth_date,
@@ -258,8 +261,9 @@ async def create_client(
     current_user = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
+    owner_id = await client_service.resolve_new_client_manager(db, current_user, body.manager_id)
     return await client_service.create_client(
-        db, current_user.id, body.name, body.memo, body.ssn,
+        db, owner_id, body.name, body.memo, body.ssn,
         birth_date=body.birth_date,
         phone=body.phone,
         email=body.email,

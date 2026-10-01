@@ -41,6 +41,8 @@ class ClientCreate(ClientBase):
     phone: Optional[str] = None
     email: Optional[str] = None
     ssn: Optional[str] = None  # 평문 주민번호 (저장 시 암호화, 응답에는 포함 안 됨)
+    # 담당자 (docs/login_logic P10): 대표만 지정할 수 있다. 매니저가 보내면 무시하고 본인으로 고정
+    manager_id: Optional[str] = None
 
 
 class ClientUpdate(BaseModel):

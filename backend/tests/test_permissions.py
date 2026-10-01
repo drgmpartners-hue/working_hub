@@ -401,3 +401,49 @@ async def test_04_delete_other_managers_snapshot_is_404(env):
     # 담당 매니저B·대표는 조회 가능
     assert (await c.get(f"/snapshots/{sid}", headers=hdr(d["B"]))).status_code == 200
     assert (await c.get(f"/snapshots/{sid}", headers=hdr(d["owner"]))).status_code == 200
+
+
+async def test_new_client_manager_assignment(env):
+    """고객 추가 시 담당자 (docs/login_logic P10): 대표는 골라야 하고, 매니저는 본인으로 고정."""
+    c, d, hdr = env["c"], env["d"], env["hdr"]
+    ho, ha = hdr(d["owner"]), hdr(d["A"])
+    assert (await c.post("/clients", headers=ho, json={"name": "선택없음"})).status_code == 422
+    assert (await c.post("/clients", headers=ho, json={"name": "없는계정", "manager_id": "nope"})).status_code == 422
+    r = await c.post("/clients", headers=ho, json={"name": "A에게", "manager_id": d["A"]})
+    assert r.status_code == 201 and r.json()["manager"]["id"] == d["A"], r.text
+    cid = r.json()["id"]
+    assert any(x["id"] == cid for x in (await c.get("/clients", headers=ha)).json())
+    assert (await c.get(f"/clients/{cid}", headers=hdr(d["B"]))).status_code == 404
+    # 매니저가 다른 담당자를 보내도 본인으로 고정
+    r = await c.post("/clients", headers=ha, json={"name": "A본인", "manager_id": d["B"]})
+    assert r.status_code == 201 and r.json()["manager"]["id"] == d["A"]
+    # 대행 중(대표 → 매니저A)에도 매니저A로 고정
+    r = await c.post(f"/auth/impersonate/{d['A']}", headers=ho)
+    hi = {"Authorization": f"Bearer {r.json()['access_token']}"}
+    r = await c.post("/clients", headers=hi, json={"name": "대행추가", "manager_id": d["owner"]})
+    assert r.status_code == 201 and r.json()["manager"]["id"] == d["A"]
+
+
+async def test_excel_upload_manager_assignment(env):
+    """엑셀 대량 등록도 같은 규칙 (docs/login_logic P10)."""
+    import io
+
+    import openpyxl
+
+    c, d, hdr = env["c"], env["d"], env["hdr"]
+
+    def xlsx(name):
+        wb = openpyxl.Workbook()
+        wb.active.append(["고객명", "생년월일", "전화번호", "이메일"])
+        wb.active.append([name, "1980-01-01", None, None])
+        buf = io.BytesIO()
+        wb.save(buf)
+        return {"file": ("c.xlsx", buf.getvalue(), "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")}
+
+    ho, ha = hdr(d["owner"]), hdr(d["A"])
+    assert (await c.post("/clients/upload-excel", headers=ho, files=xlsx("엑셀X"))).status_code == 422
+    r = await c.post("/clients/upload-excel", headers=ho, files=xlsx("엑셀A"), data={"manager_id": d["A"]})
+    assert r.status_code == 200 and r.json()["created"] == 1, r.text
+    assert any(x["name"] == "엑셀A" for x in (await c.get("/clients", headers=ha)).json())
+    r = await c.post("/clients/upload-excel", headers=ha, files=xlsx("엑셀A본인"), data={"manager_id": d["B"]})
+    assert r.status_code == 200 and any(x["name"] == "엑셀A본인" for x in (await c.get("/clients", headers=ha)).json())

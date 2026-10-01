@@ -70,6 +70,28 @@ async def get_client(db: AsyncSession, actor: User, client_id: str) -> Optional[
     return client
 
 
+async def resolve_new_client_manager(db: AsyncSession, actor: User, manager_id: Optional[str]) -> str:
+    """새 고객의 담당자(docs/login_logic P10).
+
+    - 매니저(대행 중 포함): 언제나 본인. 다른 값을 보내도 무시한다.
+    - 대표: 반드시 담당자를 고른다(활성 대표·매니저 계정). 고르지 않으면 422.
+    """
+    from fastapi import HTTPException
+
+    from app.core.permissions import ROLES, is_owner
+
+    if not is_owner(actor):
+        return actor.id
+    if not manager_id:
+        raise HTTPException(status_code=422, detail="담당자를 선택하세요.")
+    if manager_id == actor.id:
+        return actor.id
+    target = await db.get(User, manager_id)
+    if target is None or not target.is_active or target.role not in ROLES:
+        raise HTTPException(status_code=422, detail="선택한 담당자를 찾을 수 없거나 비활성 계정입니다.")
+    return target.id
+
+
 async def create_client(
     db: AsyncSession,
     user_id: str,
