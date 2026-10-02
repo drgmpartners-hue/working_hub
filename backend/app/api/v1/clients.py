@@ -76,8 +76,14 @@ async def upload_excel(
     1행은 헤더로 무시합니다.
     담당자(docs/login_logic P10): 대표는 manager_id 로 골라야 하고, 매니저는 본인으로 고정.
     """
+    from app.core.uploads import EXCEL_MAX, read_limited
+
     owner_id = await client_service.resolve_new_client_manager(db, current_user, manager_id)
-    contents = await file.read()
+    fname = (file.filename or "").lower()
+    if fname and not fname.endswith((".xlsx", ".xlsm")):
+        # 예전 .xls(엑셀 97-2003)는 읽을 수 없다 — 'undefined'·알 수 없는 오류 대신 바로 안내(수정_tasks P2-13)
+        raise HTTPException(status_code=400, detail="엑셀 .xlsx 파일만 올릴 수 있습니다. (.xls 는 엑셀에서 '.xlsx 로 저장' 후 올려 주세요)")
+    contents = await read_limited(file, EXCEL_MAX, "엑셀 파일")
     try:
         wb = openpyxl.load_workbook(filename=io.BytesIO(contents), data_only=True)
     except Exception:

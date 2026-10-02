@@ -6,6 +6,7 @@ import { useRetirementStore } from '../../hooks/useRetirementStore';
 import { Section } from '../common/Section';
 import { API_URL } from '@/lib/api-url';
 import { notifyError } from '@/lib/notify';
+import { apiFetch, isAbort } from '@/lib/apiFetch';
 import { authLib } from '@/lib/auth';
 import { loadClientContact, setPdfContact } from '@/lib/reportContact';
 
@@ -522,10 +523,11 @@ export function DesiredPlanTab() {
 
     if (!cid) return;
 
-    // 2) 해당 고객의 저장분만 채운다
+    // 2) 해당 고객의 저장분만 채운다 — 고객을 바꾸면 지난 요청은 취소(공용 apiFetch, 수정_tasks P2-3)
+    const ctrl = new AbortController();
     (async () => {
       try {
-        const r = await fetch(`${API_URL}/api/v1/retirement/desired-plans/${cid}`, { headers: authLib.getAuthHeader() });
+        const r = await apiFetch(`/api/v1/retirement/desired-plans/${cid}`, { signal: ctrl.signal });
         if (!r.ok) {
           // 404 = 설계 이력 없음 → 초기화 상태 유지. 그 밖의 실패는 알린다(빈 화면에서 저장하면 기존 플랜을 덮어쓸 수 있음)
           if (r.status !== 404 && !stale) notifyError(`저장된 은퇴 플랜을 불러오지 못했습니다(${r.status}). 저장하기 전에 새로고침해 주세요.`);
@@ -564,11 +566,11 @@ export function DesiredPlanTab() {
         const saved = d.simulation_data ?? p.modified_plan;
         if (saved?.length) { setTblData(saved); setShowTbl(true); }
       } catch (e) {
-        if (!stale) notifyError('저장된 은퇴 플랜을 불러오지 못했습니다. 저장하기 전에 새로고침해 주세요.', e);
+        if (!stale && !isAbort(e)) notifyError('저장된 은퇴 플랜을 불러오지 못했습니다. 저장하기 전에 새로고침해 주세요.', e);
       }
     })();
 
-    return () => { stale = true; };
+    return () => { stale = true; ctrl.abort(); };
   }, [cid, thisYear]);
 
   /* ---------- 계산 버튼 (추천플랜 기준 편집 테이블) ---------- */

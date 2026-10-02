@@ -171,12 +171,36 @@ async def update_client(
     return _build_client_response(client)
 
 
+async def _stored_images(db: AsyncSession, *, client_id: Optional[str] = None,
+                         account_id: Optional[str] = None) -> list[str]:
+    """지울 고객/계좌에 딸린 업로드 이미지 경로(스냅샷 캡처, 고객이면 문자 이미지까지)."""
+    from app.models.message_log import MessageLog
+    from app.models.snapshot import PortfolioSnapshot
+
+    q = select(PortfolioSnapshot.image_path).join(ClientAccount, ClientAccount.id == PortfolioSnapshot.client_account_id)
+    q = q.where(ClientAccount.id == account_id) if account_id else q.where(ClientAccount.client_id == client_id)
+    paths = [p for (p,) in (await db.execute(q)).all() if p]
+    if client_id and not account_id:
+        paths += [p for (p,) in (await db.execute(
+            select(MessageLog.image_path).where(MessageLog.client_id == client_id))).all() if p]
+    return paths
+
+
+def _remove_files(paths: list[str]) -> None:
+    from app.core.uploads import remove_quietly
+
+    for p in paths:
+        remove_quietly(p)
+
+
 async def delete_client(db: AsyncSession, actor: User, client_id: str) -> bool:
     client = await get_client(db, actor, client_id)
     if not client:
         return False
+    images = await _stored_images(db, client_id=client_id)
     await db.delete(client)
     await db.commit()
+    _remove_files(images)  # DB 삭제가 끝난 뒤에만 파일 정리(고아 파일 방지, 수정_tasks P2-13)
     return True
 
 
@@ -244,6 +268,8 @@ async def delete_account(
     account = await get_account(db, account_id, client_id)
     if not account:
         return False
+    images = await _stored_images(db, account_id=account_id)
     await db.delete(account)
     await db.commit()
+    _remove_files(images)
     return True

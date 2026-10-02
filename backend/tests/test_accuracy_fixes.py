@@ -69,3 +69,33 @@ async def test_product_master_conflicts_clear_and_delete_usage(env):  # noqa: F8
     async with env["Session"]() as db:
         await db.delete(await db.get(RecommendedPortfolioItem, item_id))
         await db.commit()
+
+
+@pytest.mark.skipif(not PG, reason="PERM_PG_URL 없음(실제 PostgreSQL 필요)")
+async def test_dashboard_summary_real_data_scoped(env):  # noqa: F811
+    """수정_tasks P2-8: 대시보드가 실제 데이터를 담당 범위로 계산."""
+    import uuid
+    from datetime import date, timedelta
+
+    from app.models.snapshot import PortfolioSnapshot
+
+    c, d, hdr = env["c"], env["d"], env["hdr"]
+    today = date.today()
+    async with env["Session"]() as db:
+        db.add_all([
+            PortfolioSnapshot(id=str(uuid.uuid4()), client_account_id=d["account_A"], snapshot_date=today - timedelta(days=200),
+                              total_assets=1_000_000, total_purchase=1_000_000, total_evaluation=1_000_000),
+            PortfolioSnapshot(id=str(uuid.uuid4()), client_account_id=d["account_A"], snapshot_date=today - timedelta(days=120),
+                              total_assets=900_000, total_purchase=1_000_000, total_evaluation=900_000, total_return_rate=-10.0),
+        ])
+        await db.commit()
+    a = (await c.get("/dashboard/summary", headers=hdr(d["A"]))).json()
+    assert a["kpi"]["clients"] == 1 and a["kpi"]["aum"] == 900_000 and a["kpi"]["avg_return_rate"] == -10.0
+    assert a["aum_trend"][-1]["aum"] == 900_000 and len(a["aum_trend"]) == 12
+    badges = {x["badge"] for x in a["alerts"]}
+    assert "위험" in badges and "연락 필요" in badges  # -10% · 120일 전 분석
+    assert a["account_types"][0]["type"] == "irp"
+    b = (await c.get("/dashboard/summary", headers=hdr(d["B"]))).json()
+    assert b["kpi"]["aum"] == 0 and b["kpi"]["clients"] == 1
+    o = (await c.get("/dashboard/summary", headers=hdr(d["owner"]))).json()
+    assert o["kpi"]["clients"] >= 2 and o["kpi"]["aum"] >= 900_000

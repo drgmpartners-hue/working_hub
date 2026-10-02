@@ -46,6 +46,7 @@ export function EnvBadge() {
 
   return (
     <div
+      className="no-print"
       title={title}
       aria-label={title}
       style={{

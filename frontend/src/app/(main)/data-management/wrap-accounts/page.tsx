@@ -6,6 +6,7 @@ import Link from 'next/link';
 import { Modal } from '@/components/common/Modal';
 import { authLib } from '@/lib/auth';
 import { API_URL } from '@/lib/api-url';
+import { isNotionConfig, loadJSON, notionDbGone, removeKey, saveJSON } from '@/lib/storage';
 import { toPercent } from '@/lib/percent';
 import { useAuthStore } from '@/stores/auth';
 import { ReadOnlyNotice } from '@/components/common/ReadOnlyNotice';
@@ -548,14 +549,15 @@ export default function WrapAccountsPage() {
   const [nSelectedDbTitle, setNSelectedDbTitle] = useState('');
 
   /* Notion config persistence */
+  // 사용자·서버별로 따로 저장, 깨진 값은 자동 초기화(수정_tasks P2-6)
   function saveNotionConfig(dbId: string, dbTitle: string, mapping: Record<string, string>) {
-    try { localStorage.setItem(NOTION_KEY, JSON.stringify({ dbId, dbTitle, mapping })); } catch { /* ignore */ }
+    saveJSON(NOTION_KEY, { dbId, dbTitle, mapping });
   }
   function loadNotionConfig(): { dbId: string; dbTitle: string; mapping: Record<string, string> } | null {
-    try { const r = localStorage.getItem(NOTION_KEY); return r ? JSON.parse(r) : null; } catch { return null; }
+    return loadJSON(NOTION_KEY, isNotionConfig, NOTION_KEY);
   }
   function clearNotionConfig() {
-    try { localStorage.removeItem(NOTION_KEY); } catch { /* ignore */ }
+    removeKey(NOTION_KEY);
   }
 
   /* ---- Derived option lists ---- */
@@ -844,13 +846,18 @@ export default function WrapAccountsPage() {
       setNSelectedDbId(saved.dbId);
       setNSelectedDbTitle(saved.dbTitle);
       setNMap(saved.mapping);
-      await nLoadRows(saved.dbId, saved.mapping);
+      if ((await nLoadRows(saved.dbId, saved.mapping)) === 'stale') {
+        // 저장해 둔 DB 를 더는 열 수 없음 → 설정을 지우고 DB 고르기부터
+        clearNotionConfig();
+        setNError(null);
+        await nFetchDbList();
+      }
     } else {
       await nFetchDbList();
     }
   }
 
-  async function nLoadRows(dbId: string, savedMapping?: Record<string, string>) {
+  async function nLoadRows(dbId: string, savedMapping?: Record<string, string>): Promise<'ok' | 'error' | 'stale'> {
     setNLoading(true); setNError(null);
     setNSelectedDbId(dbId);
     try {
@@ -859,6 +866,7 @@ export default function WrapAccountsPage() {
         fetch(`${API_URL}/api/v1/notion/databases/${dbId}/properties`, { headers: { Authorization: `Bearer ${t}` } }),
         fetch(`${API_URL}/api/v1/notion/databases/${dbId}/rows`, { headers: { Authorization: `Bearer ${t}` } }),
       ]);
+      if (savedMapping && ((await notionDbGone(pR)) || (await notionDbGone(rR)))) return 'stale';
       if (!pR.ok || !rR.ok) throw new Error('데이터 조회 실패');
       const props: { name: string; type?: string; format?: string | null }[] = await pR.json();
       const rows: { id: string; properties: Record<string, string> }[] = await rR.json();
@@ -905,7 +913,8 @@ export default function WrapAccountsPage() {
         if (savedMapping && JSON.stringify(m) !== JSON.stringify(savedMapping)) saveNotionConfig(dbId, loadNotionConfig()?.dbTitle ?? nSelectedDbTitle, m);
       }
       setNStep('mapping');
-    } catch (e: unknown) { setNError(e instanceof Error ? e.message : '오류'); }
+      return 'ok';
+    } catch (e: unknown) { setNError(e instanceof Error ? e.message : '오류'); return 'error'; }
     finally { setNLoading(false); }
   }
 
@@ -1037,6 +1046,11 @@ export default function WrapAccountsPage() {
       const rowsRes = await fetch(`${API_URL}/api/v1/notion/databases/${saved.dbId}/rows`, {
         headers: { Authorization: `Bearer ${token}` },
       });
+      if (await notionDbGone(rowsRes)) {
+        // 연결해 둔 DB 를 더는 열 수 없음(삭제·권한 해제) → 저장 설정 초기화(수정_tasks P2-6)
+        clearNotionConfig();
+        throw new Error('연결해 둔 Notion DB 를 열 수 없어 연결 설정을 초기화했습니다. Notion 버튼으로 DB 를 다시 연결해 주세요.');
+      }
       if (!rowsRes.ok) throw new Error('Notion 데이터 조회 실패');
       const notionRows: { id: string; properties: Record<string, string> }[] = await rowsRes.json();
 

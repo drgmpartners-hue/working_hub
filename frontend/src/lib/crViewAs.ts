@@ -9,15 +9,13 @@
 
 import { useSyncExternalStore } from 'react';
 
+import { loadString, removeKey, saveString } from '@/lib/storage';
+
 const KEY = 'cr_view_as';
 const listeners = new Set<() => void>();
 
 function read(): string {
-  try {
-    return (typeof window !== 'undefined' && window.localStorage.getItem(KEY)) || '';
-  } catch {
-    return '';
-  }
+  return loadString(KEY, KEY) || ''; // 사용자·서버별(수정_tasks P2-6)
 }
 
 let current = read();
@@ -28,12 +26,8 @@ export function getViewAs(): string {
 
 export function setViewAs(v: string) {
   current = v || '';
-  try {
-    if (current) window.localStorage.setItem(KEY, current);
-    else window.localStorage.removeItem(KEY);
-  } catch {
-    /* 저장 실패는 무시(이번 화면에서만 유지) */
-  }
+  if (current) saveString(KEY, current);
+  else removeKey(KEY);
   listeners.forEach((l) => l());
 }
 

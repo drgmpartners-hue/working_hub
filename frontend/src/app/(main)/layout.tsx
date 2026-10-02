@@ -27,9 +27,9 @@ export default function MainLayout({ children }: MainLayoutProps) {
   return (
     <ProtectedRoute>
       <AuthFetchGuard />
-      <div style={{ minHeight: '100vh', backgroundColor: '#0B1220' }}>
+      <div className="wh-print-shell" style={{ minHeight: '100vh', backgroundColor: '#0B1220' }}>
         {/* Sticky top: 대행 배너(대행 중일 때만) + 상단 네비 — 스크롤해도 사라지지 않음 */}
-        <div style={{ position: 'sticky', top: 0, zIndex: 45 }}>
+        <div className="no-print" style={{ position: 'sticky', top: 0, zIndex: 45 }}>
           <ImpersonationBanner />
           <TopNav />
         </div>

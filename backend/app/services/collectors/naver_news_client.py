@@ -67,7 +67,7 @@ class NaverNewsClient:
 
 
 # ------------------------------------------------------------ 기업 리포트용 보강
-from datetime import datetime as _dt
+from datetime import datetime as _dt  # noqa: F401 (search_since 의 타입 표기에 씀)
 from email.utils import parsedate_to_datetime as _parse_rfc2822
 from urllib.parse import urlparse as _urlparse
 

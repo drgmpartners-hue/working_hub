@@ -28,6 +28,7 @@ export function ErrorToaster() {
   if (!items.length) return null;
   return (
     <div
+      className="no-print"
       role="alert"
       aria-live="assertive"
       style={{ position: 'fixed', top: 76, right: 16, zIndex: 9999, display: 'flex', flexDirection: 'column', gap: 8, maxWidth: 420 }}

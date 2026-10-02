@@ -38,6 +38,7 @@ from app.api.v1 import notion as notion_router
 from app.api.v1 import company_report as company_report_router
 from app.api.v1 import managers as managers_router
 from app.api.v1 import admin as admin_router
+from app.api.v1 import dashboard as dashboard_router
 
 app = FastAPI(title="API", version="0.1.0")
 
@@ -130,6 +131,7 @@ app.include_router(notion_router.router, prefix="/api/v1")
 app.include_router(company_report_router.router, prefix="/api/v1")
 app.include_router(managers_router.router, prefix="/api/v1")
 app.include_router(admin_router.router, prefix="/api/v1")
+app.include_router(dashboard_router.router, prefix="/api/v1")
 
 
 @app.middleware("http")

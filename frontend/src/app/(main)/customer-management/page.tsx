@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { API_URL } from '@/lib/api-url';
+import { isNotionConfig, loadJSON, notionDbGone, removeKey, saveJSON } from '@/lib/storage';
 import { authLib } from '@/lib/auth';
 import { useAuthStore } from '@/stores/auth';
 import { OwnerClientActions } from '@/components/customer/OwnerClientActions';
@@ -73,15 +74,16 @@ export default function CustomerManagementPage() {
   const [excelManagerId, setExcelManagerId] = useState('');
 
   /* Notion import */
+  // 사용자·서버별로 따로 저장, 깨진 값은 자동 초기화(수정_tasks P2-6)
   const NOTION_CUSTOMER_KEY = 'notion_customer_config';
   function saveNotionCustomerConfig(dbId: string, dbTitle: string, mapping: Record<string, string>) {
-    try { localStorage.setItem(NOTION_CUSTOMER_KEY, JSON.stringify({ dbId, dbTitle, mapping })); } catch { /* ignore */ }
+    saveJSON(NOTION_CUSTOMER_KEY, { dbId, dbTitle, mapping });
   }
   function loadNotionCustomerConfig(): { dbId: string; dbTitle: string; mapping: Record<string, string> } | null {
-    try { const r = localStorage.getItem(NOTION_CUSTOMER_KEY); return r ? JSON.parse(r) : null; } catch { return null; }
+    return loadJSON(NOTION_CUSTOMER_KEY, isNotionConfig, NOTION_CUSTOMER_KEY);
   }
   function clearNotionCustomerConfig() {
-    try { localStorage.removeItem(NOTION_CUSTOMER_KEY); } catch { /* ignore */ }
+    removeKey(NOTION_CUSTOMER_KEY);
   }
 
   const [notionStep, setNotionStep] = useState<'idle' | 'selectDb' | 'mapping'>('idle');
@@ -204,8 +206,9 @@ export default function CustomerManagementPage() {
       setNotionSelectedDb(saved.dbId);
       setNotionSelectedDbTitle(saved.dbTitle);
       setNotionMapping(saved.mapping);
-      await loadNotionRows(saved.dbId, saved.mapping);
-      return;
+      if ((await loadNotionRows(saved.dbId, saved.mapping)) !== 'stale') return;
+      // 저장된 DB 를 더는 열 수 없거나 칸 이름이 바뀜 → 저장 설정을 지우고 처음부터 자동 선택
+      clearNotionCustomerConfig();
     }
     // '고객 DB' 자동 선택 (제목에 '고객 DB' 포함 우선, 없으면 '고객' 포함·상품가입정보 제외)
     setNotionLoading(true);
@@ -233,7 +236,8 @@ export default function CustomerManagementPage() {
     }
   }
 
-  async function loadNotionRows(dbId: string, savedMapping?: Record<string, string>) {
+  /** 'stale' = 저장해 둔 설정이 맞지 않음(DB 접근 불가·칸 없음) — 호출한 쪽이 설정을 초기화한다 */
+  async function loadNotionRows(dbId: string, savedMapping?: Record<string, string>): Promise<'ok' | 'error' | 'stale'> {
     setNotionLoading(true);
     setNotionError(null);
     setNotionSelectedDb(dbId);
@@ -242,9 +246,13 @@ export default function CustomerManagementPage() {
       if (!assigneeName) throw new Error('담당자를 먼저 선택하세요.');
       // 속성 목록 → '담당자(main)' 칸을 찾고, 그 담당자 이름의 행만 조회(서버가 한 번 더 확인)
       const propsRes = await fetch(`${API_URL}/api/v1/notion/databases/${dbId}/properties`, { headers: { Authorization: `Bearer ${token}` } });
-      if (!propsRes.ok) throw new Error('데이터 조회 실패');
+      if (!propsRes.ok) {
+        if (savedMapping && (await notionDbGone(propsRes))) return 'stale';
+        throw new Error('데이터 조회 실패');
+      }
       const props: { name: string; type: string }[] = await propsRes.json();
       const cols = props.map(p => p.name);
+      if (savedMapping && Object.values(savedMapping).some(c => c && !cols.includes(c))) return 'stale';
       const assigneeCol = cols.find(c => c.replace(/\s/g, '') === '담당자(main)')
         ?? cols.find(c => c.includes('담당자') && c.toLowerCase().includes('main'))
         ?? cols.find(c => c.includes('담당자'));
@@ -285,8 +293,10 @@ export default function CustomerManagementPage() {
       }
       setNotionMapping(finalMapping);
       setNotionStep('mapping');
+      return 'ok';
     } catch (e: unknown) {
       setNotionError(e instanceof Error ? e.message : '오류 발생');
+      return 'error';
     } finally {
       setNotionLoading(false);
     }
@@ -665,7 +675,7 @@ export default function CustomerManagementPage() {
         <input
           id="excel-upload-input"
           type="file"
-          accept=".xlsx,.xls"
+          accept=".xlsx"
           style={{ display: 'none' }}
           onChange={async (e) => {
             const file = e.target.files?.[0];
@@ -681,9 +691,9 @@ export default function CustomerManagementPage() {
                 headers: { Authorization: `Bearer ${token}` },
                 body: fd,
               });
-              const data = await res.json();
+              const data = await res.json().catch(() => ({}));
               if (!res.ok) {
-                alert(typeof data?.detail === 'string' ? data.detail : '엑셀 업로드에 실패했습니다.');
+                alert(typeof data?.detail === 'string' ? data.detail : `엑셀 업로드에 실패했습니다. (${res.status})`);
                 e.target.value = '';
                 return;
               }

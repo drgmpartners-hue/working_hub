@@ -56,10 +56,10 @@ class InvestmentRecord(Base):
 
     product_name: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
 
-    # 만원 단위
+    # 원 단위 (화면·Notion 가져오기 모두 원 — 수정_tasks P2-14 주석 정정)
     investment_amount: Mapped[int] = mapped_column(BigInteger, nullable=False)
 
-    # exit 시 평가금액
+    # 종결(exit) 시 평가금액, 원 단위
     evaluation_amount: Mapped[Optional[int]] = mapped_column(
         BigInteger, nullable=True
     )

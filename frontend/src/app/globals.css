@@ -188,6 +188,7 @@ body {
   .no-print { display: none !important; }
   body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
 }
+/* 인쇄용 밝은 색 (수정_tasks P2-5) — 아래 '인쇄 색 보정' 블록은 :root 토큰 정의 뒤(파일 끝)에 있다 */
 
 /* ============================================================
    WORKING HUB — DARK DESIGN SYSTEM (from handoff)
@@ -576,3 +577,24 @@ body {
 .wh .barchart .bw:hover .bar{filter:brightness(1.18) saturate(1.1);box-shadow:0 0 22px rgba(56,189,248,.5);}
 .wh .barchart .bl{font-size:11px;color:var(--text-muted);}
 .wh .barchart .bw:hover .bl{color:var(--cyan-400);}
+
+/* ============================================================
+   인쇄 색 보정 (수정_tasks P2-5)
+   화면은 어두운 테마(.wh)라 글자가 흰색 계열이다. 인쇄할 때 '배경 그래픽'이 꺼져 있으면(크롬 기본값) 배경은 빠지고
+   글자만 흰색으로 남아 종이에 아무것도 안 보였다. 인쇄할 때는 색 토큰을 밝은 배경·진한 글자로 바꾼다.
+   ============================================================ */
+@media print {
+  :root, .wh {
+    --bg-base:#FFFFFF; --bg-surface:#F5F7FA; --bg-card:#FFFFFF; --bg-card-2:#F8FAFC;
+    --border:#D6DCE5; --border-soft:#E5E9F0; --border-strong:#C3CBD8;
+    --text-primary:#111827; --text-secondary:#374151; --text-muted:#6B7280; --text-on-accent:#FFFFFF;
+    --cyan-400:#0369A1; --blue-400:#1D4ED8;
+    --success-bg:#ECFDF5; --danger-bg:#FEF2F2; --warning-bg:#FFFBEB;
+    --shadow-sm:none; --shadow-md:none; --shadow-lg:none; --glow-blue:none; --glow-cyan:none;
+  }
+  html, body, .wh, .wh-print-shell { background:#FFFFFF !important; color:#111827 !important; }
+  .wh .wh-ambient { display:none !important; }
+  .wh .dcard, .wh .kpi { box-shadow:none !important; }
+  .wh table, .wh th, .wh td { color:#111827; }
+  .wh input, .wh select, .wh textarea { background:#FFFFFF !important; color:#111827 !important; }
+}

@@ -1,7 +1,6 @@
 """AI service using Google Gemini API for text generation, analysis, and image creation."""
 from __future__ import annotations
 
-import base64
 import logging
 import os
 import uuid
@@ -220,64 +219,3 @@ def generate_design(
 
     assets["status"] = "completed"
     return assets
-
-
-# ---------------------------------------------------------------------------
-# Portfolio AI analysis
-# ---------------------------------------------------------------------------
-
-def analyze_portfolio(raw_data: dict) -> dict:
-    """Analyze portfolio data and generate rebalancing suggestions."""
-    prompt = (
-        "당신은 IRP/연금 포트폴리오 전문 자산관리사입니다.\n\n"
-        f"포트폴리오 데이터:\n{raw_data}\n\n"
-        "위 포트폴리오를 분석하고 다음 항목을 작성해주세요:\n"
-        "1. 전체 포트폴리오 요약 (2~3줄)\n"
-        "2. 위험도 평가 (낮음/중간/높음)\n"
-        "3. 강점 (2~3개)\n"
-        "4. 약점 (2~3개)\n"
-        "5. 리밸런싱 제안 (3~5개, 각각 구체적 비중 변경 포함)\n"
-        "한국어로 작성해주세요."
-    )
-    text = _call_gemini(prompt)
-    return {"ai_analysis_text": text, "source": "gemini"}
-
-
-# ---------------------------------------------------------------------------
-# Stock theme analysis
-# ---------------------------------------------------------------------------
-
-def analyze_stock_themes(theme_names: list[str]) -> dict[str, dict]:
-    """Analyze stock themes and return AI scores + summaries per theme."""
-    themes_str = ", ".join(theme_names)
-    prompt = (
-        "당신은 주식/ETF 테마 분석 전문가입니다.\n\n"
-        f"분석할 테마: {themes_str}\n\n"
-        "각 테마에 대해 다음을 분석해주세요:\n"
-        "1. AI 투자 매력도 점수 (0~100)\n"
-        "2. 최근 뉴스/시장 동향 요약 (2~3줄)\n"
-        "3. 관련 대표 종목 2~3개\n\n"
-        "각 테마별로 구분하여 작성해주세요. 한국어로 답변."
-    )
-    text = _call_gemini(prompt)
-    return {"analysis_text": text, "source": "gemini"}
-
-
-# ---------------------------------------------------------------------------
-# Stock individual analysis
-# ---------------------------------------------------------------------------
-
-def analyze_stock(stock_name: str, stock_code: str, theme: str) -> str:
-    """Generate AI analysis report for an individual stock."""
-    prompt = (
-        "당신은 증권 리서치 애널리스트입니다.\n\n"
-        f"종목: {stock_name} ({stock_code})\n"
-        f"테마: {theme}\n\n"
-        "이 종목에 대한 간략한 투자 분석 리포트를 작성해주세요:\n"
-        "- 기업 개요 (1~2줄)\n"
-        "- 투자 포인트 (3개)\n"
-        "- 리스크 요인 (2개)\n"
-        "- 투자 의견 (매수/중립/매도 + 근거 1줄)\n"
-        "한국어로 작성, 전문적인 톤."
-    )
-    return _call_gemini(prompt)

@@ -16,6 +16,12 @@ export function notifyError(message: string, err?: unknown): void {
   window.dispatchEvent(new CustomEvent<NotifyDetail>(NOTIFY_EVENT, { detail: { message, kind: 'error' } }));
 }
 
+/** 오류는 아니지만 꼭 알아야 할 안내(예: 캡처 날짜로 저장일이 바뀜). */
+export function notifyInfo(message: string): void {
+  if (typeof window === 'undefined') return;
+  window.dispatchEvent(new CustomEvent<NotifyDetail>(NOTIFY_EVENT, { detail: { message, kind: 'info' } }));
+}
+
 /** fetch 응답이 실패면 서버 메시지(detail)를 붙여 알림. 성공이면 true. */
 export async function okOrNotify(res: Response, what: string): Promise<boolean> {
   if (res.ok) return true;

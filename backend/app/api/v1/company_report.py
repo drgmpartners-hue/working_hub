@@ -1519,7 +1519,9 @@ async def db_upload(background: BackgroundTasks, file: UploadFile = File(...), c
 
     if company_id:
         await assert_company(db, current_user, company_id, write=True)
-    data = await file.read()
+    from app.core.uploads import read_limited
+
+    data = await read_limited(file, company_db.MAX_UPLOAD, "파일")  # 한도 넘으면 다 읽기 전에 413(수정_tasks P2-13)
     try:
         f = await company_db.upload_file(db, company_id=company_id or None, folder=folder, filename=file.filename or "file",
                                          data=data, user_id=current_user.id, doc_kind=(doc_kind or None), memo=memo)

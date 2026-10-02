@@ -177,24 +177,3 @@ async def _send_resend(to: str, subject: str, body_html: str) -> bool:
         return True
     logger.error("Resend 발송 실패 (status=%s): %s", res.status_code, res.text[:200])
     return False
-
-
-async def send_stock_report(to: str, body_html: str, report_date: str) -> bool:
-    """주식·ETF 일일 분석 리포트 이메일 발송.
-
-    우선순위: Resend(RESEND_API_KEY) → SMTP(SMTP_HOST) → mock 로그.
-    """
-    subject = f"[Working Hub] 주식·ETF 일일 분석 리포트 ({report_date})"
-    try:
-        if not to:
-            logger.info("[MOCK EMAIL] 일일 리포트 — 수신자 없음, 발송 생략")
-            return False
-        if settings.RESEND_API_KEY:
-            return await _send_resend(to, subject, body_html)
-        if settings.SMTP_HOST:
-            return _send_smtp(to, subject, body_html)
-        logger.info("[MOCK EMAIL] 일일 리포트 → %s (%s) — 메일 미설정으로 발송 생략", to, report_date)
-        return False
-    except Exception as exc:
-        logger.error("Email send failed (stock report): %s", exc)
-        return False

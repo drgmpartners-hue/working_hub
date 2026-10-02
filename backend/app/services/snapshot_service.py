@@ -12,8 +12,29 @@ from app.models.product_master import ProductMaster
 from app.models.product_name_change import ProductNameChange
 from app.services.vision_service import extract_portfolio_from_image
 from app.schemas.snapshot import HoldingUpdateRequest
+from app.core.uploads import remove_quietly
 
 UPLOAD_DIR = "uploads/snapshots"
+
+
+def resolve_snapshot_date(entered: date, detected) -> tuple[date, Optional[dict]]:
+    """(쓸 날짜, 알림). 캡처에서 읽은 날짜가 올바르고 미래가 아니면 그것을, 아니면 입력한 날짜를 쓴다.
+    둘이 다르면 알림 {"entered", "detected", "used", "message"}."""
+    from datetime import datetime as dt
+
+    if not detected or not isinstance(detected, str):
+        return entered, None
+    try:
+        d = dt.strptime(detected.strip(), "%Y-%m-%d").date()
+    except (ValueError, TypeError):
+        return entered, None
+    if d > date.today() + timedelta(days=1) or d.year < 2000:
+        return entered, {"entered": entered.isoformat(), "detected": d.isoformat(), "used": entered.isoformat(),
+                         "message": f"캡처에서 읽은 날짜({d.isoformat()})가 이상해 입력한 날짜({entered.isoformat()})로 저장했습니다."}
+    if d == entered:
+        return d, None
+    return d, {"entered": entered.isoformat(), "detected": d.isoformat(), "used": d.isoformat(),
+               "message": f"입력한 날짜({entered.isoformat()}) 대신 캡처에 적힌 날짜({d.isoformat()})로 저장했습니다. 다르면 날짜를 고쳐 주세요."}
 
 
 async def create_snapshot(
@@ -32,6 +53,28 @@ async def create_snapshot(
     image_path = os.path.join(UPLOAD_DIR, image_filename)
     with open(image_path, "wb") as f:
         f.write(image_bytes)
+    try:
+        snapshot = await _create_snapshot_from_file(db, client_account_id, image_bytes, mime_type, snapshot_date, image_path)
+    except BaseException:
+        # 인식 실패(422)·DB 오류 등 어떤 이유로든 스냅샷이 저장되지 않으면 이미지도 지운다(고아 파일, 수정_tasks P2-13)
+        try:
+            await db.rollback()
+        finally:
+            remove_quietly(image_path)
+        raise
+
+    # 자동으로 상품 마스터 적용 (종목코드, 위험도, 지역)
+    try:
+        await apply_master_to_snapshot(db, snapshot.id)
+    except (ImportError, Exception):
+        pass  # 마스터 테이블 없어도 무시
+
+    await db.refresh(snapshot)
+    return snapshot
+
+
+async def _create_snapshot_from_file(db: AsyncSession, client_account_id: str, image_bytes: bytes, mime_type: str,
+                                     snapshot_date: date, image_path: str) -> PortfolioSnapshot:
 
     # Load known product names filtered by account type for better OCR accuracy
     account = await db.get(ClientAccount, client_account_id)
@@ -75,10 +118,6 @@ async def create_snapshot(
     has_amount = any(_num(extracted.get(k)) > 0 for k in _amount_keys)
 
     if extracted.get("error") or (not extracted.get("holdings") and not has_amount):
-        try:
-            os.remove(image_path)  # 고아 이미지 파일 정리
-        except OSError:
-            pass
         from fastapi import HTTPException  # noqa: PLC0415
         raise HTTPException(
             status_code=422,
@@ -100,15 +139,11 @@ async def create_snapshot(
                     pname = pname.replace(old_kw, new_kw)
             holding["product_name"] = pname
 
-    # Use AI-extracted date if available, otherwise use the provided date
-    ai_date_str = extracted.get("snapshot_date")
-    actual_date = snapshot_date
-    if ai_date_str and isinstance(ai_date_str, str):
-        try:
-            from datetime import datetime as dt
-            actual_date = dt.strptime(ai_date_str, "%Y-%m-%d").date()
-        except (ValueError, TypeError):
-            pass
+    # 화면 캡처에서 읽은 날짜가 있으면 그 날짜를 쓴다(캡처 시점이 실제 기준일).
+    # 입력한 날짜와 다르면 조용히 바꾸지 않고 parsed_data["date_notice"] 에 남겨 화면이 알린다(수정_tasks P2-13).
+    actual_date, notice = resolve_snapshot_date(snapshot_date, extracted.get("snapshot_date"))
+    if notice:
+        extracted = {**extracted, "date_notice": notice}
 
     # Create snapshot record
     snapshot = PortfolioSnapshot(
@@ -154,14 +189,6 @@ async def create_snapshot(
         db.add(holding)
 
     await db.commit()
-
-    # 자동으로 상품 마스터 적용 (종목코드, 위험도, 지역)
-    try:
-        await apply_master_to_snapshot(db, snapshot.id)
-    except (ImportError, Exception):
-        pass  # 마스터 테이블 없어도 무시
-
-    await db.refresh(snapshot)
     return snapshot
 
 
@@ -581,6 +608,13 @@ async def delete_snapshot(db: AsyncSession, snapshot_id: str) -> bool:
     for holding in holdings_result.scalars().all():
         await db.delete(holding)
 
+    image_path = snapshot.image_path
     await db.delete(snapshot)
     await db.commit()
+    # 스냅샷을 지우면 캡처 이미지도 지운다(예전엔 디스크에 계속 남음, 수정_tasks P2-13).
+    # 같은 이미지를 쓰는 다른 스냅샷이 있으면 남긴다.
+    if image_path:
+        other = (await db.execute(select(PortfolioSnapshot.id).where(PortfolioSnapshot.image_path == image_path).limit(1))).first()
+        if other is None:
+            remove_quietly(image_path)
     return True

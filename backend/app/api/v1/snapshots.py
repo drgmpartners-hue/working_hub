@@ -48,8 +48,10 @@ async def create_snapshot(
     db: AsyncSession = Depends(get_db),
 ):
     """Upload image, extract with Gemini Vision, save snapshot."""
+    from app.core.uploads import IMAGE_MAX, read_limited
+
     await _verify_account_owner(db, client_account_id, current_user)
-    image_bytes = await image.read()
+    image_bytes = await read_limited(image, IMAGE_MAX, "이미지")
     mime_type = image.content_type or "image/png"
     snapshot = await snapshot_service.create_snapshot(
         db, client_account_id, image_bytes, mime_type, snapshot_date

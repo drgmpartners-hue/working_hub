@@ -5,8 +5,7 @@ import dynamic from 'next/dynamic';
 import { useRetirementStore } from '../../hooks/useRetirementStore';
 import { Section } from '../common/Section';
 // PDF export는 pensionPlanPdf.ts 사용
-import { API_URL } from '@/lib/api-url';
-import { authLib } from '@/lib/auth';
+import { apiFetch, isAbort } from '@/lib/apiFetch';
 import { loadClientContact, setPdfContact } from '@/lib/reportContact';
 
 const PensionOptionChart = dynamic(() => import('./PensionOptionChart'), { ssr: false });
@@ -311,15 +310,27 @@ export function PensionPlanTab() {
     setToast({ message: msg, type: t }); setTimeout(() => setToast(null), 3000);
   };
 
-  const loadTab1 = useCallback(async (cid: string) => {
+  // 고객을 빠르게 바꾸면 이전 고객의 늦은 응답이 화면(그리고 자동 저장)에 섞이지 않도록 지난 요청을 취소한다
+  // (공용 apiFetch + AbortController, 수정_tasks P2-3)
+  const loadTab1 = useCallback(async (cid: string, signal: AbortSignal) => {
     setLoading(true);
     try {
-      const res = await fetch(`${API_URL}/api/v1/retirement/desired-plans/${cid}`, { headers: authLib.getAuthHeader() });
-      if (res.ok) setTab1(await res.json()); else setTab1(null);
-    } catch { setTab1(null); } finally { setLoading(false); }
+      const res = await apiFetch(`/api/v1/retirement/desired-plans/${cid}`, { signal });
+      const d = res.ok ? await res.json() : null;
+      if (!signal.aborted) setTab1(d);
+    } catch (e) {
+      if (!isAbort(e)) setTab1(null);
+    } finally {
+      if (!signal.aborted) setLoading(false);
+    }
   }, []);
 
-  useEffect(() => { if (customerId) loadTab1(customerId); else setTab1(null); }, [customerId, loadTab1]);
+  useEffect(() => {
+    if (!customerId) { setTab1(null); return; }
+    const ctrl = new AbortController();
+    loadTab1(customerId, ctrl.signal);
+    return () => ctrl.abort();
+  }, [customerId, loadTab1]);
 
   // tab1 로드 시 은퇴연금 수익률로 초기화 (추천 연금수익률 우선, 없으면 기존 연금수익률)
   // 조건부 대입 금지 — 새 고객에게 플랜이 없으면 이전 고객 수익률이 그대로 남는다
@@ -358,10 +369,9 @@ export function PensionPlanTab() {
     setSaveState('saving');
     const t = setTimeout(async () => {
       try {
-        const res = await fetch(`${API_URL}/api/v1/retirement/desired-plans/${customerId}/params`, {
+        const res = await apiFetch(`/api/v1/retirement/desired-plans/${customerId}/params`, {
           method: 'PATCH',
-          headers: { 'Content-Type': 'application/json', ...authLib.getAuthHeader() },
-          body: JSON.stringify({ calculation_params: { pension_inputs: inputs } }),
+          json: { calculation_params: { pension_inputs: inputs } },
         });
         setSaveState(res.ok ? 'saved' : 'error');
         if (res.ok) setInputsDirty(false);

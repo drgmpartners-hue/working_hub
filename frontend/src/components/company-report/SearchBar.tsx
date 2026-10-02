@@ -4,24 +4,19 @@
 import { useEffect, useRef, useState } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
 import { crGet } from '@/lib/companyReportApi';
+import { loadJSON, saveJSON } from '@/lib/storage';
 
 const RECENT_KEY = 'cr_recent_searches';
 
+// 사용자·서버별 저장, 깨진 값은 비움(수정_tasks P2-6)
+const isStrList = (v: unknown) => Array.isArray(v) && v.every((x) => typeof x === 'string');
+
 function readRecent(): string[] {
-  try {
-    return JSON.parse(localStorage.getItem(RECENT_KEY) || '[]');
-  } catch {
-    return [];
-  }
+  return loadJSON<string[]>(RECENT_KEY, isStrList, RECENT_KEY) ?? [];
 }
 
 export function saveRecent(q: string) {
-  try {
-    const list = [q, ...readRecent().filter((x) => x !== q)].slice(0, 8);
-    localStorage.setItem(RECENT_KEY, JSON.stringify(list));
-  } catch {
-    /* 저장 불가 환경 무시 */
-  }
+  saveJSON(RECENT_KEY, [q, ...readRecent().filter((x) => x !== q)].slice(0, 8));
 }
 
 export function SearchBar() {

@@ -187,7 +187,9 @@ async def create_message_log(
         ext = os.path.splitext(image.filename)[1] or ".png"
         filename = f"{uuid.uuid4()}{ext}"
         full_path = os.path.join(sub_dir, filename)
-        content = await image.read()
+        from app.core.uploads import IMAGE_MAX, read_limited
+
+        content = await read_limited(image, IMAGE_MAX, "이미지")
         with open(full_path, "wb") as f:
             f.write(content)
         image_path = full_path
@@ -213,7 +215,17 @@ async def create_message_log(
         sent_at=parsed_sent_at,
     )
     db.add(log)
-    await db.commit()
+    try:
+        await db.commit()
+    except BaseException:
+        # 기록이 저장되지 않으면 방금 쓴 이미지도 지운다(고아 파일, 수정_tasks P2-13)
+        from app.core.uploads import remove_quietly
+
+        try:
+            await db.rollback()
+        finally:
+            remove_quietly(image_path)
+        raise
     await db.refresh(log)
 
     # Account info

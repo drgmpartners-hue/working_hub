@@ -13,7 +13,7 @@ import { SuggestionEditor } from '@/components/portfolio/SuggestionEditor';
 import { authLib } from '@/lib/auth';
 import type { PeriodKey, HistoryPoint, DistributionItem } from '@/components/portfolio/PortfolioCharts';
 import { API_URL } from '@/lib/api-url';
-import { notifyError, okOrNotify } from '@/lib/notify';
+import { notifyError, notifyInfo, okOrNotify } from '@/lib/notify';
 import type { ProductMaster } from '@/components/portfolio/ProductMasterTable';
 import { contactLine, type ReportManager } from '@/lib/reportContact';
 
@@ -3719,6 +3719,9 @@ export default function IRPPage() {
 
         const snap: Snapshot = await snapRes.json();
         newSnapshots.push(snap);
+        // 캡처에 적힌 날짜가 입력한 날짜와 다르면 서버가 알려준다(수정_tasks P2-13 — 예전엔 조용히 바뀜)
+        const dateNotice = (snap as unknown as { parsed_data?: { date_notice?: { message?: string } } }).parsed_data?.date_notice;
+        if (dateNotice?.message) notifyInfo(`${row.clientName}: ${dateNotice.message}`);
 
         /* Build extraction result for inline display — seq 순서 유지 */
         const sortedHoldings = [...snap.holdings].sort((a, b) => (a.seq ?? 0) - (b.seq ?? 0));
