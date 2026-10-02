@@ -2,22 +2,22 @@
 
 Handles:
 - Token lookup / name masking
-- Verification with brute-force lockout (in-memory, no Redis required)
+- Verification with brute-force lockout (DB 기록, 서버 여러 대여도 공유)
 - Portal-specific JWT generation
 - Snapshot listing per client
 - Report data retrieval
 - Suggestion lookup
 - Call reservation creation
 """
+import hmac
 import uuid
 from datetime import datetime, timedelta, date
 from typing import Optional
-from collections import defaultdict
 from app.core.encryption import encrypt_ssn
 
 from jose import jwt
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, and_
+from sqlalchemy import and_, select, update
 
 from app.core.config import settings
 from app.core.security import ALGORITHM
@@ -36,15 +36,8 @@ LOCKOUT_MINUTES = 30
 PORTAL_SCOPE = "client_portal"
 
 # ---------------------------------------------------------------------------
-# In-memory brute-force tracker
-# {token: {"failures": int, "locked_until": datetime | None}}
-# ---------------------------------------------------------------------------
-
-_lockout_store: dict[str, dict] = defaultdict(lambda: {"failures": 0, "locked_until": None})
-
-
-# ---------------------------------------------------------------------------
-# Helpers
+# Brute-force lockout — DB 기록(clients.portal_failures·portal_locked_until), 수정_tasks P1-20
+# 있는 고객만 기록하므로 없는 링크로 아무리 요청해도 쌓이지 않고, 서버가 여러 대여도 같은 값을 본다.
 # ---------------------------------------------------------------------------
 
 def mask_name(name: str) -> str:
@@ -62,28 +55,34 @@ def mask_name(name: str) -> str:
     return name[0] + "*" * (len(name) - 2) + name[-1]
 
 
-def _is_locked(token: str) -> bool:
-    state = _lockout_store[token]
-    if state["locked_until"] and datetime.utcnow() < state["locked_until"]:
-        return True
-    # Auto-clear if lock expired
-    if state["locked_until"] and datetime.utcnow() >= state["locked_until"]:
-        state["failures"] = 0
-        state["locked_until"] = None
-    return False
+def _now() -> datetime:
+    return datetime.utcnow()
 
 
-def _record_failure(token: str) -> int:
-    """Increment failure counter. Returns remaining attempts before lock."""
-    state = _lockout_store[token]
-    state["failures"] += 1
-    if state["failures"] >= MAX_FAILURES:
-        state["locked_until"] = datetime.utcnow() + timedelta(minutes=LOCKOUT_MINUTES)
-    return MAX_FAILURES - state["failures"]
+def is_locked(client: Client) -> bool:
+    return bool(client.portal_locked_until and _now() < client.portal_locked_until)
 
 
-def _reset_failures(token: str) -> None:
-    _lockout_store[token] = {"failures": 0, "locked_until": None}
+async def record_failure(db: AsyncSession, client_id: str) -> int:
+    """실패 1회 기록(원자적 +1). 3회가 되면 30분 잠그고 횟수는 0으로. 남은 시도 횟수를 돌려준다(잠기면 0)."""
+    n = (await db.execute(
+        update(Client).where(Client.id == client_id)
+        .values(portal_failures=Client.portal_failures + 1)
+        .returning(Client.portal_failures)
+    )).scalar_one()
+    if n >= MAX_FAILURES:
+        await db.execute(update(Client).where(Client.id == client_id).values(
+            portal_failures=0, portal_locked_until=_now() + timedelta(minutes=LOCKOUT_MINUTES)))
+        await db.commit()
+        return 0
+    await db.commit()
+    return MAX_FAILURES - n
+
+
+async def reset_failures(db: AsyncSession, client: Client) -> None:
+    if client.portal_failures or client.portal_locked_until:
+        await db.execute(update(Client).where(Client.id == client.id).values(portal_failures=0, portal_locked_until=None))
+        await db.commit()
 
 
 def create_portal_jwt(client_id: str, token: str) -> str:
@@ -123,6 +122,11 @@ async def get_client_by_portal_token(
     return result.scalar_one_or_none()
 
 
+async def current_portal_token(db: AsyncSession, client_id: str) -> Optional[str]:
+    """고객의 지금 포털 링크 열쇠(링크를 새로 만들면 예전 JWT 는 무효가 된다)."""
+    return (await db.execute(select(Client.portal_token).where(Client.id == client_id))).scalar_one_or_none()
+
+
 async def check_portal_token(
     db: AsyncSession, portal_token: str
 ) -> dict:
@@ -143,33 +147,32 @@ async def verify_client(
     """Verify client identity. Returns (jwt_token, error_message).
 
     Error messages:
-    - "locked": account temporarily locked
+    - "locked": account temporarily locked (3회 실패 → 30분)
+    - "no_code": 고객에게 고유번호가 없음(담당자 문의)
     - "not_found": no client with that token
     - "invalid": birth_date or phone or unique_code mismatch
     - "": success (jwt_token is set)
     """
-    if _is_locked(portal_token):
-        return None, "locked"
-
     client = await get_client_by_portal_token(db, portal_token)
     if not client:
         return None, "not_found"
+    if is_locked(client):
+        return None, "locked"
+    # 고유번호가 없는 고객은 빈 값끼리 일치해 버리므로 들어올 수 없게 한다(수정_tasks P2-9) — 담당자가 번호를 만들어야 함
+    if not (client.unique_code or "").strip():
+        return None, "no_code"
 
-    # Verify unique_code (필수)
-    code_match = (client.unique_code or "") == (unique_code or "")
-
-    # Verify birth_date and phone
-    birth_match = client.birth_date == birth_date
-    # Normalize phone for comparison
-    phone_norm = phone.replace("-", "").replace(" ", "")
-    stored_phone = (client.phone or "").replace("-", "").replace(" ", "")
-    phone_match = stored_phone == phone_norm
+    code_match = hmac.compare_digest((client.unique_code or "").strip(), (unique_code or "").strip())
+    birth_match = client.birth_date is not None and client.birth_date == birth_date
+    phone_norm = "".join(ch for ch in (phone or "") if ch.isdigit())
+    stored_phone = "".join(ch for ch in (client.phone or "") if ch.isdigit())
+    phone_match = bool(stored_phone) and hmac.compare_digest(stored_phone, phone_norm)
 
     if not (birth_match and phone_match and code_match):
-        _record_failure(portal_token)
-        return None, "invalid"
+        left = await record_failure(db, client.id)
+        return None, ("locked" if left == 0 else "invalid")
 
-    _reset_failures(portal_token)
+    await reset_failures(db, client)
     token = create_portal_jwt(client.id, portal_token)
     return token, ""
 

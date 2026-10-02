@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { CallReservationForm } from './CallReservationForm';
-import { API_URL } from '@/lib/api-url';
+import { portalFetch } from '@/lib/portalFetch';
 import { sanitizeHtml } from '@/lib/sanitize';
 
 interface SuggestionHolding {
@@ -126,9 +126,9 @@ export function SuggestionPanel({ token, suggestId, portalJwt, selectedAccountId
     if (!autoLoad || !portalJwt) return;
     const loadSuggestionList = async () => {
       try {
-        const res = await fetch(
-          `${API_URL}/api/v1/client-portal/${token}/suggestions`,
-          { headers: { Authorization: `Bearer ${portalJwt}` } }
+        const res = await portalFetch(
+          `/${token}/suggestions`,
+          portalJwt
         );
         if (res.ok) {
           const data: AccountSuggestionInfo[] = await res.json();
@@ -169,9 +169,9 @@ export function SuggestionPanel({ token, suggestId, portalJwt, selectedAccountId
       setLoading(true);
       setError('');
       try {
-        const res = await fetch(
-          `${API_URL}/api/v1/client-portal/${token}/suggestion/${idToLoad}`,
-          { headers: { Authorization: `Bearer ${portalJwt}` } }
+        const res = await portalFetch(
+          `/${token}/suggestion/${idToLoad}`,
+          portalJwt
         );
         if (res.ok) setSuggestion(await res.json());
         else setError('');

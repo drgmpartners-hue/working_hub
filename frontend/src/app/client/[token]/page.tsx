@@ -5,6 +5,7 @@ import { PortalAuthForm } from '@/components/client-portal/PortalAuthForm';
 import { PortalReportView } from '@/components/client-portal/PortalReportView';
 import { SuggestionPanel } from '@/components/client-portal/SuggestionPanel';
 import { API_URL } from '@/lib/api-url';
+import { PORTAL_AUTH_EXPIRED } from '@/lib/portalFetch';
 
 /* ------------------------------------------------------------------ */
 /*  Types                                                               */
@@ -42,6 +43,42 @@ export default function ClientPortalPage({
   const [uniqueCode, setUniqueCode] = useState('');
   const [initError, setInitError] = useState('');
   const [selectedAccountId, setSelectedAccountId] = useState('');
+  const [reauth, setReauth] = useState(false);
+
+  // 확인 시간(24시간)이 지나거나 링크가 바뀌어 401 이 오면 본인 확인으로 돌아간다(수정_tasks P2-9).
+  // 주소(?suggest=)와 고른 계좌는 그대로라, 다시 확인하면 보던 화면으로 돌아온다.
+  useEffect(() => {
+    const onExpired = () => {
+      sessionStorage.removeItem(`portal_jwt_${token}`);
+      setPortalJwt('');
+      setReauth(true);
+      setPageState('auth');
+      fetch(`${API_URL}/api/v1/client-portal/${token}`)
+        .then((r) => (r.ok ? r.json() : null))
+        .then((d) => d?.masked_name && setMaskedName(d.masked_name))
+        .catch(() => undefined);
+    };
+    window.addEventListener(PORTAL_AUTH_EXPIRED, onExpired);
+    return () => window.removeEventListener(PORTAL_AUTH_EXPIRED, onExpired);
+  }, [token]);
+
+  const tryLoadSnapshots = async (jwt: string): Promise<boolean> => {
+    try {
+      const res = await fetch(`${API_URL}/api/v1/client-portal/${token}/snapshots`, {
+        headers: { Authorization: `Bearer ${jwt}` },
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setSnapshots(data.accounts ?? []);
+        if (data.client_name) setClientName(data.client_name);
+        if (data.unique_code) setUniqueCode(data.unique_code);
+        return true;
+      }
+      return false;
+    } catch {
+      return false;
+    }
+  };
 
   // 초기: 토큰 유효성 + 이름 마스킹 조회
   useEffect(() => {
@@ -81,26 +118,9 @@ export default function ClientPortalPage({
     init();
   }, [token]);
 
-  const tryLoadSnapshots = async (jwt: string): Promise<boolean> => {
-    try {
-      const res = await fetch(`${API_URL}/api/v1/client-portal/${token}/snapshots`, {
-        headers: { Authorization: `Bearer ${jwt}` },
-      });
-      if (res.ok) {
-        const data = await res.json();
-        setSnapshots(data.accounts ?? []);
-        if (data.client_name) setClientName(data.client_name);
-        if (data.unique_code) setUniqueCode(data.unique_code);
-        return true;
-      }
-      return false;
-    } catch {
-      return false;
-    }
-  };
-
   const handleAuthSuccess = async (jwt: string) => {
     sessionStorage.setItem(`portal_jwt_${token}`, jwt);
+    setReauth(false);
     setPortalJwt(jwt);
     await tryLoadSnapshots(jwt);
     setPageState('report');
@@ -238,6 +258,22 @@ export default function ClientPortalPage({
           )}
 
           {/* 인증 화면 */}
+          {pageState === 'auth' && reauth && (
+            <div
+              role="status"
+              style={{
+                marginBottom: 16,
+                padding: '10px 14px',
+                borderRadius: 10,
+                backgroundColor: '#FEF3C7',
+                color: '#92400E',
+                fontSize: 13,
+                lineHeight: 1.6,
+              }}
+            >
+              확인 시간이 지나 다시 본인 확인이 필요합니다. 확인하면 보시던 화면으로 돌아갑니다.
+            </div>
+          )}
           {pageState === 'auth' && (
             <PortalAuthForm
               token={token}

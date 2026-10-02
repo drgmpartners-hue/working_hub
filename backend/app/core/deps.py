@@ -63,7 +63,8 @@ async def get_auth_context(
         raise _credentials_exception()
 
     effective_id = payload.get("sub")
-    if not effective_id:
+    # 고객 포털 토큰(scope=client_portal)처럼 용도가 정해진 토큰은 직원 API 에 쓸 수 없다 (수정_tasks P2-9)
+    if not effective_id or payload.get("scope"):
         raise _credentials_exception()
     actor_id = payload.get("act") or effective_id  # act 없으면 본인
 

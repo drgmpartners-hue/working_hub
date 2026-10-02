@@ -191,7 +191,7 @@ async def download_excel(
     try:
         payload = jwt.decode(token, settings.SECRET_KEY, algorithms=["HS256"])
         user_id = payload.get("sub")
-        if not user_id:
+        if not user_id or payload.get("scope"):  # 고객 포털 토큰 등은 거부 (수정_tasks P2-9)
             raise HTTPException(status_code=401, detail="Invalid token")
     except JWTError:
         raise HTTPException(status_code=401, detail="Invalid token")

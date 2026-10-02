@@ -5,29 +5,25 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, and_
-from cryptography.fernet import Fernet
-import base64
 import hashlib
 import httpx
 
 from app.db.session import get_db
-from app.core.config import settings
+from app.core import encryption
 from app.core.deps import NotImpersonating, get_current_user
 from app.models.user_api_key import UserApiKey
 
 router = APIRouter(prefix="/user-api-keys", tags=["user-api-keys"])
 
-# Derive a Fernet key from SECRET_KEY (deterministic, 32-byte base64)
-_raw = hashlib.sha256(settings.SECRET_KEY.encode()).digest()
-_fernet = Fernet(base64.urlsafe_b64encode(_raw))
+# 암호화는 app.core.encryption 하나로 통일(수정_tasks P2-1: ENCRYPTION_KEY, 예전 키로 저장된 값도 읽음)
 
 
 def _encrypt(value: str) -> str:
-    return _fernet.encrypt(value.encode()).decode()
+    return encryption.encrypt(value)
 
 
 def _decrypt(value: str) -> str:
-    return _fernet.decrypt(value.encode()).decode()
+    return encryption.decrypt(value)
 
 
 def _mask(value: str) -> str:

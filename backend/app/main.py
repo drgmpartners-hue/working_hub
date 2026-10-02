@@ -43,6 +43,28 @@ app = FastAPI(title="API", version="0.1.0")
 
 
 @app.on_event("startup")
+async def _check_security_settings() -> None:
+    """수정_tasks P2-1: 운영에서 SECRET_KEY·ENCRYPTION_KEY 가 약하면 기동 중단(fail-fast).
+    ENCRYPTION_KEY 가 새로 정해졌거나 바뀌었으면 저장된 주민번호·API 키를 새 키로 다시 암호화(백그라운드)."""
+    import asyncio
+
+    from app.core import encryption
+
+    encryption.check_startup()
+
+    async def _rotate() -> None:
+        try:
+            from app.db.session import AsyncSessionLocal
+
+            async with AsyncSessionLocal() as db:
+                await encryption.rotate_if_needed(db)
+        except Exception:
+            logger.exception("[보안 설정] 저장 데이터 다시 암호화 실패(다음 기동 때 다시 시도)")
+
+    app.state.encryption_rotation = asyncio.create_task(_rotate())
+
+
+@app.on_event("startup")
 async def _start_company_db_worker() -> None:
     """기업 리포트: Volume이 붙은 웹 서비스에서 기업DB 자동 파일을 만든다(Cron 컨테이너는 파일을 쓰지 않음)."""
     import asyncio

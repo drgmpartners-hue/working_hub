@@ -62,6 +62,17 @@ export function PortalAuthForm({ token, maskedName, onSuccess }: PortalAuthFormP
       if (res.ok) {
         const data = await res.json();
         onSuccess(data.access_token);
+      } else if (res.status === 429) {
+        // 서버 기준 잠금(3회 실패 → 30분, 다른 기기에서 시도한 것도 합산)
+        setLocked(true);
+        setError('여러 번 일치하지 않아 30분 동안 확인이 잠겼습니다. 잠시 후 다시 시도해 주세요.');
+      } else if (res.status === 403 || res.status === 404) {
+        const body = await res.json().catch(() => ({}));
+        setError(
+          res.status === 403
+            ? body?.detail || '고유번호가 등록되지 않았습니다. 담당자에게 문의해 주세요.'
+            : '유효하지 않은 링크입니다. 담당자에게 새 링크를 요청해 주세요.',
+        );
       } else {
         const newCount = failCount + 1;
         setFailCount(newCount);

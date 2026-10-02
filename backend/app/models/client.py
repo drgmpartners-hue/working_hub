@@ -34,6 +34,9 @@ class Client(Base):
     unique_code: Mapped[Optional[str]] = mapped_column(
         String(6), nullable=True, unique=True, index=True
     )
+    # 고객 포털 본인 확인 실패 횟수·잠금 해제 시각(UTC) — 수정_tasks P1-20 (서버 여러 대여도 공유)
+    portal_failures: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
+    portal_locked_until: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
     # 주민번호 (AES 암호화 저장)
     ssn_encrypted: Mapped[Optional[str]] = mapped_column(
         String(500), nullable=True

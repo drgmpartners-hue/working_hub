@@ -1,9 +1,6 @@
 """Security utilities for authentication and encryption."""
-import base64
-import hashlib
 from datetime import datetime, timedelta
 from typing import Any
-from cryptography.fernet import Fernet
 from jose import jwt
 from passlib.context import CryptContext
 from app.core.config import settings
@@ -17,29 +14,17 @@ ACCESS_TOKEN_EXPIRE_MINUTES = 60 * 24 * 7  # 7 days
 IMPERSONATION_TOKEN_EXPIRE_MINUTES = ACCESS_TOKEN_EXPIRE_MINUTES
 
 
-def _get_fernet() -> Fernet:
-    """Derive a Fernet instance from SECRET_KEY.
-
-    Fernet requires a 32-byte URL-safe base64-encoded key. We derive one
-    deterministically from SECRET_KEY using SHA-256 so that no extra
-    environment variable is needed.
-    """
-    raw = settings.SECRET_KEY.encode("utf-8")
-    key_bytes = hashlib.sha256(raw).digest()  # always 32 bytes
-    fernet_key = base64.urlsafe_b64encode(key_bytes)
-    return Fernet(fernet_key)
-
-
 def encrypt_api_key(plain_text: str) -> str:
-    """Encrypt an API key and return a URL-safe base64 string."""
-    fernet = _get_fernet()
-    return fernet.encrypt(plain_text.encode("utf-8")).decode("utf-8")
+    """API 키 암호화 — app.core.encryption 하나로 통일(수정_tasks P2-1)."""
+    from app.core import encryption
+
+    return encryption.encrypt(plain_text)
 
 
 def decrypt_api_key(encrypted: str) -> str:
-    """Decrypt an API key encrypted with :func:`encrypt_api_key`."""
-    fernet = _get_fernet()
-    return fernet.decrypt(encrypted.encode("utf-8")).decode("utf-8")
+    from app.core import encryption
+
+    return encryption.decrypt(encrypted)
 
 
 def mask_api_key(plain_text: str) -> str:

@@ -3,7 +3,12 @@ from pydantic import computed_field
 
 class Settings(BaseSettings):
     DATABASE_URL: str = "postgresql+asyncpg://postgres:postgres@localhost:5432/app"
-    SECRET_KEY: str = "changeme"
+    SECRET_KEY: str = "changeme"          # 로그인(JWT)·링크 서명 전용
+    # 저장 데이터(주민번호·API 키) 암호화 전용 키 (수정_tasks P2-1). 비어 있으면 예전처럼 SECRET_KEY 로 암호화.
+    # 한 번 정하면 바꾸지 말 것 — 바꿀 때는 이전 값을 OLD_ENCRYPTION_KEYS 에 넣어 두면 기동 때 새 키로 다시 암호화한다.
+    ENCRYPTION_KEY: str = ""
+    OLD_ENCRYPTION_KEYS: str = ""          # 쉼표로 구분한 이전 암호화 키(읽기 전용)
+    APP_ENV: str = ""                      # production 이면 약한 키로 기동 금지(Railway 는 자동으로 운영 판단)
     GEMINI_API_KEY: str = ""
 
     # Email (SMTP) settings — optional; leave empty to use mock logging

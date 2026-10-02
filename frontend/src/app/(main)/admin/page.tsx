@@ -7,6 +7,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
 import { adminApi, cell, fmtDateTime, headCell, type Overview } from './_lib/api';
+import { SecurityStatusCard } from './_lib/SecurityStatusCard';
 import { SwitchButton } from './_lib/SwitchButton';
 
 const KPIS: { key: keyof Overview['totals']; label: string }[] = [
@@ -68,6 +69,8 @@ export default function AdminOverviewPage() {
       {error && (
         <div style={{ padding: 16, borderRadius: 10, background: 'var(--danger-bg)', color: 'var(--danger)' }}>{error}</div>
       )}
+
+      <SecurityStatusCard />
 
       {!data && !error && (
         <div style={{ padding: '60px 20px', textAlign: 'center', color: 'var(--text-muted)' }}>불러오는 중...</div>

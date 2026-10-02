@@ -24,8 +24,8 @@ router = APIRouter(prefix="/client-portal", tags=["client-portal"])
 # Dependency: validate portal JWT from Authorization header
 # ---------------------------------------------------------------------------
 
-async def get_portal_client_id(authorization: Optional[str] = Header(None)) -> str:
-    """Extract and validate portal JWT, returning client_id."""
+async def _portal_payload(authorization: Optional[str], db: AsyncSession) -> dict:
+    """포털 JWT 확인: 서명·만료·용도(scope) + 고객의 지금 링크 열쇠와 같은지(링크를 새로 만들면 예전 JWT 무효)."""
     if not authorization or not authorization.startswith("Bearer "):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
@@ -33,12 +33,36 @@ async def get_portal_client_id(authorization: Optional[str] = Header(None)) -> s
         )
     token_str = authorization.removeprefix("Bearer ").strip()
     payload = client_portal_service.decode_portal_jwt(token_str)
-    if not payload:
+    if not payload or not payload.get("sub") or not payload.get("portal_token"):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid or expired portal token",
         )
+    current = await client_portal_service.current_portal_token(db, payload["sub"])
+    if not current or current != payload["portal_token"]:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid or expired portal token")
+    return payload
+
+
+async def get_portal_client_id(
+    token: str,
+    authorization: Optional[str] = Header(None),
+    db: AsyncSession = Depends(get_db),
+) -> str:
+    """/client-portal/{token}/... 용: JWT 의 링크 열쇠가 주소의 {token} 과 같아야 한다(수정_tasks P2-9).
+    다른 고객의 링크 주소에 내 JWT 를 붙여 부르는 것을 막는다."""
+    payload = await _portal_payload(authorization, db)
+    if payload["portal_token"] != token:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid or expired portal token")
     return payload["sub"]
+
+
+async def get_portal_client_id_any(
+    authorization: Optional[str] = Header(None),
+    db: AsyncSession = Depends(get_db),
+) -> str:
+    """주소에 {token} 이 없는 포털 API(통화 예약) 용."""
+    return (await _portal_payload(authorization, db))["sub"]
 
 
 async def _verify_suggestion_owner(db: AsyncSession, suggestion, client_id: str) -> None:
@@ -93,6 +117,11 @@ async def verify_client(
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Invalid portal link",
+        )
+    if error == "no_code":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="고유번호가 등록되지 않은 고객입니다. 담당자에게 문의해 주세요.",
         )
     if error == "invalid":
         raise HTTPException(
@@ -431,7 +460,7 @@ async def get_recommended_portfolio_for_portal(
 async def create_call_reservation(
     suggest_id: str,
     body: CallReserveRequest,
-    client_id: str = Depends(get_portal_client_id),   # 무인증 공개였음 → 포털 JWT 필수 (스팸·SMS 폭탄·ID 오라클 차단)
+    client_id: str = Depends(get_portal_client_id_any),   # 무인증 공개였음 → 포털 JWT 필수 (스팸·SMS 폭탄·ID 오라클 차단)
     db: AsyncSession = Depends(get_db),
 ):
     """Create a call reservation for a given suggestion."""
@@ -467,7 +496,7 @@ async def create_call_reservation(
                     f"희망일시: {reservation.preferred_date} {reservation.preferred_time}\n"
                     f"고객연락처: {body.phone or '없음'}"
                 )
-                await send_sms(to=staff.phone, text=sms_text)
+                await send_sms(db, staff.phone, sms_text)  # db 인자가 빠져 늘 실패하던 것 수정
     except Exception:
         pass  # 알림 실패가 예약 응답을 방해하지 않음
 

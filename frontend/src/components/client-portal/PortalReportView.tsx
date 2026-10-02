@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react';
 import dynamic from 'next/dynamic';
 import type { DistributionItem, HistoryPoint, PeriodKey } from '@/components/portfolio/PortfolioCharts';
-import { API_URL } from '@/lib/api-url';
+import { portalFetch } from '@/lib/portalFetch';
 import { sanitizeHtml } from '@/lib/sanitize';
 
 const PortfolioCharts = dynamic(
@@ -126,9 +126,9 @@ export function PortalReportView({ token, portalJwt, snapshots, onAccountChange,
       setReportLoading(true);
       setReportError('');
       try {
-        const res = await fetch(
-          `${API_URL}/api/v1/client-portal/${token}/report?account_id=${selectedAccountId}&date=${selectedDate}`,
-          { headers: { Authorization: `Bearer ${portalJwt}` } }
+        const res = await portalFetch(
+          `/${token}/report?account_id=${selectedAccountId}&date=${selectedDate}`,
+          portalJwt
         );
         if (res.ok) setReport(await res.json());
         else setReportError('');
@@ -143,9 +143,9 @@ export function PortalReportView({ token, portalJwt, snapshots, onAccountChange,
     const fetchHistory = async () => {
       setHistoryLoading(true);
       try {
-        const res = await fetch(
-          `${API_URL}/api/v1/client-portal/${token}/history?account_id=${selectedAccountId}&period=${activePeriod}`,
-          { headers: { Authorization: `Bearer ${portalJwt}` } }
+        const res = await portalFetch(
+          `/${token}/history?account_id=${selectedAccountId}&period=${activePeriod}`,
+          portalJwt
         );
         if (res.ok) {
           const data = await res.json();
@@ -166,9 +166,9 @@ export function PortalReportView({ token, portalJwt, snapshots, onAccountChange,
     const fetchNetAsset = async () => {
       setNetAssetLoading(true);
       try {
-        const res = await fetch(
-          `${API_URL}/api/v1/client-portal/${token}/history?account_id=${selectedAccountId}&period=${netAssetPeriod}`,
-          { headers: { Authorization: `Bearer ${portalJwt}` } }
+        const res = await portalFetch(
+          `/${token}/history?account_id=${selectedAccountId}&period=${netAssetPeriod}`,
+          portalJwt
         );
         if (res.ok) {
           const data = await res.json();

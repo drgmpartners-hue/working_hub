@@ -7,12 +7,10 @@ import uuid
 import hmac
 import hashlib
 import logging
-import base64
 from datetime import datetime
 from typing import Optional
 
 import httpx
-from cryptography.fernet import Fernet
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -21,15 +19,6 @@ from app.core.config import settings
 logger = logging.getLogger(__name__)
 
 SOLAPI_BASE = "https://api.solapi.com"
-
-# Fernet key (settings.SECRET_KEY 기반 — user_api_keys 암호화와 동일)
-_raw = hashlib.sha256(settings.SECRET_KEY.encode()).digest()
-_fernet = Fernet(base64.urlsafe_b64encode(_raw))
-
-
-def _decrypt(value: str) -> str:
-    return _fernet.decrypt(value.encode()).decode()
-
 
 async def _get_solapi_keys(db: AsyncSession) -> tuple[str, str, str]:
     """환경변수에서 솔라피 API 키를 가져옵니다."""

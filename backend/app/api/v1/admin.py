@@ -49,3 +49,30 @@ async def list_audit_logs(
         limit=limit,
         offset=offset,
     )
+
+
+@router.get("/security-status")
+async def security_status(ctx: Auth, db: AsyncSession = Depends(get_db)):
+    """보안 설정 점검(수정_tasks P2-1): 암호화 전용 키·다시 암호화 결과. 키 값 자체는 절대 내보내지 않는다."""
+    import json
+
+    from app.core import encryption
+    from app.core.config import settings
+    from app.services import settings_store
+
+    require_owner(ctx.effective)
+    fatal, warn = encryption.startup_problems()
+    raw = await settings_store.get(db, encryption.ROTATION_KEY)
+    try:
+        rotation = json.loads(raw) if raw else None
+    except ValueError:
+        rotation = None
+    done = bool(settings.ENCRYPTION_KEY) and (await settings_store.get(db, encryption.FP_KEY)) == encryption.fingerprint()
+    return {
+        "encryption_key_set": bool(settings.ENCRYPTION_KEY),
+        "rotation_done": done,
+        "rotation": rotation,
+        "problems": fatal + warn,
+        "ok": bool(settings.ENCRYPTION_KEY) and done and not fatal and not warn
+              and not (rotation or {}).get("unreadable"),
+    }

@@ -21,6 +21,13 @@ from app.services import client_portal_service
 # Helpers
 # ---------------------------------------------------------------------------
 
+@pytest.fixture(autouse=True)
+def _current_link_is_test_token():
+    """포털 JWT 확인 때 고객의 지금 링크 열쇠를 DB 에서 읽는다(수정_tasks P2-9). 가짜 DB 테스트에서는 'test-token'."""
+    with patch.object(client_portal_service, "current_portal_token", new=AsyncMock(return_value="test-token")):
+        yield
+
+
 def make_test_app(mock_db: AsyncSession, mock_user: User = None) -> FastAPI:
     app = FastAPI()
     app.include_router(router, prefix="/api/v1")
@@ -230,34 +237,41 @@ class TestVerifyClient:
 # Test: lockout logic (unit-level)
 # ---------------------------------------------------------------------------
 
-class TestLockoutLogic:
-    """Unit tests for in-memory brute-force lockout."""
+class TestPortalJwtChecks:
+    """수정_tasks P2-9: 주소의 링크 열쇠·지금 링크·용도(scope)가 맞아야 한다."""
 
-    def setup_method(self):
-        """Reset lockout store before each test."""
-        client_portal_service._lockout_store.clear()
+    def _get(self, path: str, jwt_token: str):
+        mock_db = MagicMock(spec=AsyncSession)
+        mock_db.execute = AsyncMock(return_value=_empty_exec_result())
+        app = make_test_app(mock_db)
+        with patch.object(client_portal_service, "get_client_snapshots", new=AsyncMock(return_value=[])):
+            with TestClient(app) as tc:
+                return tc.get(path, headers={"Authorization": f"Bearer {jwt_token}"})
 
-    def test_no_lockout_after_two_failures(self):
-        """Should not be locked after 2 failures."""
-        token = "test-lockout-token"
-        client_portal_service._record_failure(token)
-        client_portal_service._record_failure(token)
-        assert not client_portal_service._is_locked(token)
+    def test_other_clients_link_path_rejected(self):
+        jwt_token = client_portal_service.create_portal_jwt("client-uuid-001", "test-token")
+        assert self._get("/api/v1/client-portal/other-token/snapshots", jwt_token).status_code == 401
+        assert self._get("/api/v1/client-portal/test-token/snapshots", jwt_token).status_code == 200
 
-    def test_locked_after_three_failures(self):
-        """Should be locked after 3 failures."""
-        token = "test-lockout-token"
-        for _ in range(3):
-            client_portal_service._record_failure(token)
-        assert client_portal_service._is_locked(token)
+    def test_regenerated_link_invalidates_old_jwt(self):
+        jwt_token = client_portal_service.create_portal_jwt("client-uuid-001", "test-token")
+        with patch.object(client_portal_service, "current_portal_token", new=AsyncMock(return_value="new-token")):
+            assert self._get("/api/v1/client-portal/test-token/snapshots", jwt_token).status_code == 401
 
-    def test_reset_clears_failures(self):
-        """_reset_failures should clear lock state."""
-        token = "test-lockout-token"
-        for _ in range(3):
-            client_portal_service._record_failure(token)
-        client_portal_service._reset_failures(token)
-        assert not client_portal_service._is_locked(token)
+    def test_staff_token_rejected_on_portal(self):
+        from app.core.security import create_access_token
+
+        staff = create_access_token("test-user-id")
+        assert self._get("/api/v1/client-portal/test-token/snapshots", staff).status_code == 401
+
+    def test_portal_token_rejected_on_staff_api(self):
+        from app.core.deps import get_auth_context
+        import asyncio
+
+        jwt_token = client_portal_service.create_portal_jwt("client-uuid-001", "test-token")
+        with pytest.raises(Exception) as ei:
+            asyncio.run(get_auth_context(MagicMock(), MagicMock(spec=AsyncSession), jwt_token))
+        assert getattr(ei.value, "status_code", None) == 401
 
 
 # ---------------------------------------------------------------------------
