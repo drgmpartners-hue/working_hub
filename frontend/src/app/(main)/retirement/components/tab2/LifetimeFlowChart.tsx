@@ -36,19 +36,21 @@ interface LifetimeFlowChartProps {
 /*  포맷 유틸                                                           */
 /* ------------------------------------------------------------------ */
 
+// 값은 만원 단위: 1억 = 10,000만원. (예전엔 100,000으로 나눠 10억이 '1.0억'으로 보였다 — 수정_tasks P1-21 점검 중 발견)
+const MAN_PER_EOK = 10000;
+
 function formatAmount(value: number): string {
-  if (value >= 100000) return `${(value / 100000).toFixed(1)}억`;    // 10만 만원 = 10억
-  if (value >= 10000) return `${(value / 10000).toFixed(0)}천만`;    // 1만 만원 = 1억 (과도)
-  if (value >= 1000) return `${(value / 1000).toFixed(0)}천`;
-  return `${value.toLocaleString()}`;
+  if (Math.abs(value) >= MAN_PER_EOK) return `${(value / MAN_PER_EOK).toFixed(1)}억`;
+  if (Math.abs(value) >= 1000) return `${(value / 1000).toFixed(0)}천만`;
+  return `${value.toLocaleString()}만`;
 }
 
 function tooltipFormatter(value: unknown, name: unknown): [string, string] {
   const v = Number(value);
   const n = String(name);
   const formatted =
-    v >= 100000
-      ? `${(v / 100000).toFixed(1)}억원`
+    Math.abs(v) >= MAN_PER_EOK
+      ? `${(v / MAN_PER_EOK).toFixed(1)}억원`
       : `${Math.round(v).toLocaleString('ko-KR')}만원`;
   return [formatted, n];
 }
@@ -80,8 +82,8 @@ function CustomTooltip({ active, payload, label }: {
       {payload.map((p) => {
         const v = p.value;
         const formatted =
-          v >= 100000
-            ? `${(v / 100000).toFixed(2)}억원`
+          Math.abs(v) >= MAN_PER_EOK
+            ? `${(v / MAN_PER_EOK).toFixed(2)}억원`
             : `${Math.round(v).toLocaleString('ko-KR')}만원`;
         return (
           <div key={p.name} style={{ display: 'flex', justifyContent: 'space-between', gap: 16, color: p.color, marginBottom: 2 }}>

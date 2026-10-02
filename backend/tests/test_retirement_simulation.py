@@ -199,3 +199,14 @@ class TestRetirementSimulationService:
         # Subsequent years should have lump_sum = 0
         for entry in result[1:]:
             assert entry["lump_sum"] == 0
+
+
+def test_lump_sum_counts_when_no_saving_period():
+    """수정_tasks P1-23: 적립 기간 0년이어도 거치금이 첫해에 들어간다."""
+    rows = RetirementSimulationService.calculate(
+        current_age=60, annual_return_rate=5.0, lump_sum_amount=10000, saving_period_years=0, target_pension_amount=0)
+    assert rows[0]["lump_sum"] == 10000 and rows[0]["total_contribution"] == 10000
+    assert rows[0]["evaluation"] == 10500.0 and rows[0]["annual_return"] == 500.0
+    rows2 = RetirementSimulationService.calculate(
+        current_age=60, annual_return_rate=0, lump_sum_amount=1200, saving_period_years=0, target_pension_amount=50)
+    assert rows2[0]["evaluation"] == 600.0 and rows2[1]["evaluation"] == 0.0

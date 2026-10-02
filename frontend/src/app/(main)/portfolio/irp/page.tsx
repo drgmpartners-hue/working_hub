@@ -355,6 +355,7 @@ interface RebalRow {
   productType: string; /* 상품유형 (ETF, 펀드 등) */
   isRow1: boolean; /* 예수금/자동운용상품 row */
   fullSell: boolean; /* 전액매도 체크 */
+  amtInput?: boolean; /* 재조정 잔액을 금액으로 직접 입력함(비율 반올림으로 금액이 바뀌지 않게) */
 }
 
 interface Tab2SectionProps {
@@ -1595,22 +1596,32 @@ function Tab2Section({
         const shares = r.quantity > 0 ? -r.quantity : calcShares(sellBuy, r.currentPrice, r.productType);
         return { ...r, rebalRatio: 0, rebalAmount: 0, sellBuy, shares };
       }
-      const rebalAmt = r.rebalRatio > 0
-        ? Math.round(r.rebalRatio / 100 * totalEval)
-        : r.rebalAmount;
+      /* 수정_tasks P1-17: 비중 0%도 그대로 반영(예전엔 0%면 이전 금액이 남아 '전량 매도'가 안 됐다).
+         금액을 직접 넣은 행은 그 금액 그대로. */
+      let rebalAmt = r.amtInput
+        ? r.rebalAmount
+        : Math.round((isNaN(r.rebalRatio) ? 0 : r.rebalRatio) / 100 * totalEval);
       let sellBuy = rebalAmt - r.evaluationAmount;
-      /* 소액 Sell/Buy 제거: |sellBuy| ≤ 10,000원이면 0으로 */
+      /* 소액 Sell/Buy 제거: |sellBuy| ≤ 10,000원이면 매매하지 않는다.
+         금액도 지금 평가금액으로 맞춰야 합계가 깨지지 않는다(예전엔 sellBuy 만 0으로 해 매수·매도 합이 0이 아니었다) */
+      let rebalRatio = r.rebalRatio;
       if (Math.abs(sellBuy) <= 10000 && sellBuy !== 0) {
         sellBuy = 0;
+        rebalAmt = r.evaluationAmount;
+        /* 저장되는 비중(합계 100%)도 '그대로 보유'에 맞춘다 */
+        if (totalEval > 0) rebalRatio = parseFloat((rebalAmt / totalEval * 100).toFixed(2));
       }
       const shares = calcShares(sellBuy, r.currentPrice, r.productType);
-      return { ...r, rebalAmount: rebalAmt, sellBuy, shares };
+      return { ...r, rebalRatio, rebalAmount: rebalAmt, sellBuy, shares };
     });
 
     /* For row1: rebalAmount = totalEval - sum(other rebalAmounts) → ensures sum(rebalAmt) = totalEval → sum(sellBuy) = 0 */
     const otherRebalAmtSum = updatedOtherRows.reduce((s, r) => s + r.rebalAmount, 0);
-    const row1RebalRatio = parseFloat((100 - otherRebalRatioSum).toFixed(2));
     const row1RebalAmt = totalEval - otherRebalAmtSum;
+    /* 비율도 금액 기준으로(소액 매매를 건너뛴 만큼 예수금 비율이 맞춰지도록). 평가액이 0이면 입력 비율 기준 */
+    const row1RebalRatio = totalEval > 0
+      ? parseFloat((row1RebalAmt / totalEval * 100).toFixed(2))
+      : parseFloat((100 - otherRebalRatioSum).toFixed(2));
     const row1SellBuy = row1RebalAmt - row1.evaluationAmount;
     const row1Shares = calcShares(row1SellBuy, row1.currentPrice, row1.productType);
 
@@ -1633,7 +1644,7 @@ function Tab2Section({
     const num = parseFloat(val);
     setT2RebalRows((prev) => {
       const updated = prev.map((r) =>
-        r.id !== id ? r : { ...r, rebalRatio: isNaN(num) ? 0 : num }
+        r.id !== id ? r : { ...r, rebalRatio: isNaN(num) ? 0 : num, amtInput: false }
       );
       return recalcRebalRows(updated);
     });
@@ -1644,7 +1655,7 @@ function Tab2Section({
     setT2MatchEvalChecked(checked);
     if (!checked) return;
     setT2RebalRows((prev) => {
-      const updated = prev.map((r) => (r.isRow1 ? r : { ...r, rebalRatio: r.evalRatio }));
+      const updated = prev.map((r) => (r.isRow1 ? r : { ...r, rebalRatio: r.evalRatio, amtInput: false }));
       return recalcRebalRows(updated);
     });
   }
@@ -1667,7 +1678,7 @@ function Tab2Section({
         if (r.id !== id) return r;
         const rebalAmt = isNaN(num) ? 0 : num;
         const newRatio = totalEval > 0 ? parseFloat((rebalAmt / totalEval * 100).toFixed(2)) : 0;
-        return { ...r, rebalAmount: rebalAmt, rebalRatio: newRatio };
+        return { ...r, rebalAmount: rebalAmt, rebalRatio: newRatio, amtInput: true };
       });
       return recalcRebalRows(updated);
     });

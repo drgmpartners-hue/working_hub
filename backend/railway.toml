@@ -3,5 +3,8 @@ builder = "DOCKERFILE"
 dockerfilePath = "Dockerfile"
 
 [deploy]
+# 새 배포가 /health 에 답할 때까지 예전 배포를 계속 쓴다 — 새 버전이 뜨지 못하면(예: 보안 설정 점검 실패) 서비스가 끊기지 않음
+healthcheckPath = "/health"
+healthcheckTimeout = 300
 restartPolicyType = "ON_FAILURE"
 restartPolicyMaxRetries = 10

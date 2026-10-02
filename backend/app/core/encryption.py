@@ -11,7 +11,7 @@ SECRET_KEY 를 바꾸면 저장된 주민번호·API 키를 모두 못 읽게 �
   - 읽을 때는 ENCRYPTION_KEY → OLD_ENCRYPTION_KEYS(쉼표 구분, 키 교체 때) → 예전 방식 A·B 순으로 시도(MultiFernet).
   - 서버가 뜰 때 ENCRYPTION_KEY 가 처음이거나 바뀌었으면 저장된 값을 모두 새 키로 다시 암호화한다(rotate_all).
     끝나면 app_settings 'encryption_primary_fp' 에 키 지문을 남겨 다음 기동 때는 건너뛴다.
-  - 운영(Railway)에서 SECRET_KEY 가 기본값·너무 짧으면 서버가 뜨지 않는다(check_startup).
+  - 운영(Railway)에서 SECRET_KEY·ENCRYPTION_KEY 가 기본값이거나 16자 미만이면 서버가 뜨지 않는다(check_startup). 32자 미만은 경고.
 """
 from __future__ import annotations
 
@@ -29,7 +29,8 @@ from app.core.config import settings
 logger = logging.getLogger(__name__)
 
 WEAK_SECRETS = {"", "changeme", "change-me", "change_me", "secret", "secret_key", "your-secret-key", "dev", "test"}
-MIN_SECRET_LEN = 32
+MIN_SECRET_LEN = 32   # 권장(이보다 짧으면 경고)
+MIN_FATAL_LEN = 16    # 운영에서 이보다 짧으면 기동 중단
 FP_KEY = "encryption_primary_fp"
 ROTATION_KEY = "encryption_rotation_result"
 
@@ -134,19 +135,25 @@ def is_production() -> bool:
 
 
 def startup_problems() -> tuple[list[str], list[str]]:
-    """(서버를 멈출 문제, 경고)."""
+    """(서버를 멈출 문제, 경고).
+    운영에서 멈추는 것: 알려진 기본값이거나 16자 미만(추측 가능). 16~31자는 경고만 — 이미 돌고 있는 운영 서버가
+    배포 직후 갑자기 멈추지 않도록(SECRET_KEY 를 바꾸면 모든 로그인이 풀리므로 바꾸는 것은 사람이 정할 일)."""
     fatal, warn = [], []
+    prod = is_production()
+
+    def judge(name: str, val: str) -> None:
+        if val.strip().lower() in WEAK_SECRETS or len(val) < MIN_FATAL_LEN:
+            (fatal if prod else warn).append(f"{name} 가 기본값이거나 너무 짧습니다({len(val)}자, {MIN_SECRET_LEN}자 이상 권장).")
+        elif len(val) < MIN_SECRET_LEN:
+            warn.append(f"{name} 가 짧습니다({len(val)}자, {MIN_SECRET_LEN}자 이상 권장).")
+
     sk = settings.SECRET_KEY or ""
-    weak = sk.strip().lower() in WEAK_SECRETS or len(sk) < MIN_SECRET_LEN
-    if weak:
-        (fatal if is_production() else warn).append(
-            f"SECRET_KEY 가 기본값이거나 너무 짧습니다({len(sk)}자, {MIN_SECRET_LEN}자 이상 필요).")
+    judge("SECRET_KEY", sk)
     ek = settings.ENCRYPTION_KEY or ""
     if not ek:
         warn.append("ENCRYPTION_KEY 가 없습니다. 저장 데이터가 아직 SECRET_KEY 로 암호화됩니다(SECRET_KEY 를 바꾸면 못 읽음).")
     else:
-        if len(ek) < MIN_SECRET_LEN or ek.strip().lower() in WEAK_SECRETS:
-            (fatal if is_production() else warn).append(f"ENCRYPTION_KEY 가 너무 짧습니다({len(ek)}자, {MIN_SECRET_LEN}자 이상 필요).")
+        judge("ENCRYPTION_KEY", ek)
         if ek == sk:
             warn.append("ENCRYPTION_KEY 가 SECRET_KEY 와 같습니다. 서로 다른 값을 쓰세요.")
     return fatal, warn

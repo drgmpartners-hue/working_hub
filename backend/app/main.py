@@ -168,3 +168,18 @@ async def global_exception_handler(request: Request, exc: Exception):
 @app.get("/health")
 async def health_check():
     return {"status": "healthy"}
+
+
+@app.get("/api/v1/version")
+async def version_info():
+    """배포 버전 확인(수정_tasks P1-4): 화면 구석의 환경 배지가 서버 쪽 커밋을 보여 준다(Railway 가 넣는 값)."""
+    import os
+
+    from app.core import encryption
+
+    sha = os.environ.get("RAILWAY_GIT_COMMIT_SHA") or os.environ.get("GIT_COMMIT_SHA") or ""
+    return {
+        "env": "production" if encryption.is_production() else "local",
+        "commit": sha[:7] or None,
+        "branch": os.environ.get("RAILWAY_GIT_BRANCH") or None,
+    }

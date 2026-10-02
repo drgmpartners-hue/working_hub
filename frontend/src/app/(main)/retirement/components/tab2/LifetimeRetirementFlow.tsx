@@ -290,6 +290,9 @@ function BasicInfoCard({
 /*  100세 플로우 계산 함수                                              */
 /* ------------------------------------------------------------------ */
 
+/** 원 → 만원 (연간투자흐름표 [적용] 값은 늘 원 단위). */
+const wonToMan = (v: unknown): number => (Number(v) || 0) / 10000;
+
 function calcLifetimeRows(
   currentAge: number,
   data: DesiredPlanAPI,
@@ -352,12 +355,14 @@ function calcLifetimeRows(
 
     if (appliedKey !== undefined) {
       const d = appliedYears[appliedKey];
-      // 연간투자흐름표에서 전달된 값 적용 (원 단위 → 만원 변환)
-      if (d.lump_sum !== undefined) appliedLumpSum = d.lump_sum >= 100000 ? d.lump_sum / 10000 : d.lump_sum;
-      if (d.annual_savings !== undefined) appliedSavings = d.annual_savings >= 100000 ? d.annual_savings / 10000 : d.annual_savings;
+      // 연간투자흐름표에서 전달된 값 적용 (원 단위 → 만원 변환).
+      // 수정_tasks P1-21: 예전엔 '10만 이상이면 원, 아니면 만원'으로 추측해 10만원 미만 금액이 1만 배로 커졌다.
+      // [적용] 버튼이 넘기는 값은 언제나 원 단위(InvestmentFlowTab 의 연간투자흐름표 행)이므로 늘 ÷10,000.
+      if (d.lump_sum !== undefined) appliedLumpSum = wonToMan(d.lump_sum);
+      if (d.annual_savings !== undefined) appliedSavings = wonToMan(d.annual_savings);
       if (d.annual_return_rate !== undefined) appliedReturnRate = d.annual_return_rate / 100; // % → 소수
       if (d.annual_evaluation !== undefined) {
-        adjustedEvaluation = d.annual_evaluation >= 100000 ? d.annual_evaluation / 10000 : d.annual_evaluation;
+        adjustedEvaluation = wonToMan(d.annual_evaluation);
       }
       if (d.net_asset_return_rate !== undefined) appliedNetAssetReturnRate = d.net_asset_return_rate;
       const netAssetVal = (d.net_asset ?? 0);
@@ -373,10 +378,10 @@ function calcLifetimeRows(
       // 보정 행: 연간투자흐름표에서 적용된 값 그대로 사용
       const d = appliedYears[appliedKey!];
       const netAssetVal = (d.net_asset ?? 0);
-      adjustedNetAsset = netAssetVal >= 100000 ? netAssetVal / 10000 : netAssetVal;
+      adjustedNetAsset = wonToMan(netAssetVal);
       // 입금액: 연간투자흐름표의 deposit_in_amount
       const appliedDepIn = (d.deposit_in_amount as number) ?? 0;
-      currentDepositIn = appliedDepIn >= 100000 ? appliedDepIn / 10000 : appliedDepIn;
+      currentDepositIn = wonToMan(appliedDepIn);
     } else if (needsRecalc && i > 0) {
       // 보정 이후: FV(예상수익률/12, 12, -월적립, -(일시납 + 직전보정후순자산))
       const monthlyRate = appliedReturnRate / 12;

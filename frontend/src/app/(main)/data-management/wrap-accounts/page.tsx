@@ -6,6 +6,7 @@ import Link from 'next/link';
 import { Modal } from '@/components/common/Modal';
 import { authLib } from '@/lib/auth';
 import { API_URL } from '@/lib/api-url';
+import { toPercent } from '@/lib/percent';
 import { useAuthStore } from '@/stores/auth';
 import { ReadOnlyNotice } from '@/components/common/ReadOnlyNotice';
 // xlsx는 동적 import로 로딩 (번들 사이즈 최적화 + Vercel 호환)
@@ -537,6 +538,8 @@ export default function WrapAccountsPage() {
   const [nBulkLoading, setNBulkLoading] = useState(false);
   const [nCols, setNCols] = useState<string[]>([]);
   const [nMap, setNMap] = useState<Record<string, string>>({});
+  // Notion 숫자 속성 중 '퍼센트' 형식인 컬럼(값이 0.12 = 12% 로 옴) — 수정_tasks P1-18
+  const [nPctCols, setNPctCols] = useState<Set<string>>(new Set());
   const [nLoading, setNLoading] = useState(false);
   const [nError, setNError] = useState<string | null>(null);
   const [nDbSearch, setNDbSearch] = useState('');
@@ -857,8 +860,9 @@ export default function WrapAccountsPage() {
         fetch(`${API_URL}/api/v1/notion/databases/${dbId}/rows`, { headers: { Authorization: `Bearer ${t}` } }),
       ]);
       if (!pR.ok || !rR.ok) throw new Error('데이터 조회 실패');
-      const props: { name: string; type?: string }[] = await pR.json();
+      const props: { name: string; type?: string; format?: string | null }[] = await pR.json();
       const rows: { id: string; properties: Record<string, string> }[] = await rR.json();
+      setNPctCols(new Set(props.filter(p => p.format === 'percent').map(p => p.name)));
       // 관계형(relation) 컬럼은 다른 DB 페이지 ID만 담겨 있어 매핑 대상에서 제외, 목록은 가나다순(숫자는 크기순)
       const cols = props
         .filter(p => p.type !== 'relation')
@@ -945,15 +949,20 @@ export default function WrapAccountsPage() {
     }
   }
 
-  function nMapRow(row: { properties: Record<string, string> }): Record<string, unknown> {
+  function nMapRow(
+    row: { properties: Record<string, string> },
+    mapping: Record<string, string> = nMap,
+    pctCols: Set<string> = nPctCols,
+  ): Record<string, unknown> {
     const body: Record<string, unknown> = { product_name: '' };
     for (const f of NOTION_MAP_FIELDS) {
-      const col = nMap[f.k];
+      const col = mapping[f.k];
       if (col && row.properties[col]) {
         const val = row.properties[col];
         if (f.k === 'total_expected_return' || f.k === 'annual_expected_return' || f.k === 'target_return_rate') {
-          const num = parseFloat(val.replace(/[^0-9.\-]/g, ''));
-          if (!isNaN(num)) body[f.k] = Math.round(num * 10000) / 100;
+          // 예전: 무조건 ×100 → 글자 '12%'·일반 숫자 12 가 1200% 로 들어갔다. 퍼센트 형식 속성일 때만 ×100
+          const pct = toPercent(val, { fraction: pctCols.has(col) });
+          if (pct != null) body[f.k] = pct;
         } else {
           body[f.k] = val;
         }
@@ -1019,7 +1028,12 @@ export default function WrapAccountsPage() {
     setSyncResult(null);
 
     try {
-      // 1. Notion 데이터 가져오기
+      // 1. Notion 데이터 가져오기 (+ 퍼센트 형식 컬럼 확인 — 수정_tasks P1-18)
+      const propsRes = await fetch(`${API_URL}/api/v1/notion/databases/${saved.dbId}/properties`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const syncProps: { name: string; format?: string | null }[] = propsRes.ok ? await propsRes.json() : [];
+      const syncPct = new Set(syncProps.filter(p => p.format === 'percent').map(p => p.name));
       const rowsRes = await fetch(`${API_URL}/api/v1/notion/databases/${saved.dbId}/rows`, {
         headers: { Authorization: `Bearer ${token}` },
       });
@@ -1042,7 +1056,7 @@ export default function WrapAccountsPage() {
         const productName = row.properties[nameCol]?.trim();
         if (!productName) { skipped++; continue; } // 상품명 없으면 스킵
 
-        const body = nMapRow(row);
+        const body = nMapRow(row, saved.mapping, syncPct);
         body.product_name = productName;
 
         const existing = existingMap.get(productName);
@@ -1150,6 +1164,8 @@ export default function WrapAccountsPage() {
       const wb = XLSX.read(ab, { type: 'array' });
       const ws = wb.Sheets[wb.SheetNames[0]];
       const raw: string[][] = XLSX.utils.sheet_to_json(ws, { header: 1 });
+      // 화면에 보이는 글자(% 서식 셀은 '12.00%') — 수익률만 이것으로 읽는다(수정_tasks P1-18: % 서식 셀이 0.12 로 들어가던 것)
+      const shown: string[][] = XLSX.utils.sheet_to_json(ws, { header: 1, raw: false });
 
       if (raw.length < 2) { alert('데이터가 없습니다.'); return; }
 
@@ -1170,8 +1186,8 @@ export default function WrapAccountsPage() {
           const val = row[ci];
           if (val == null || val === '') return;
           if (key === 'total_expected_return' || key === 'annual_expected_return') {
-            const num = parseFloat(String(val).replace(/[^0-9.\-]/g, ''));
-            if (!isNaN(num)) body[key] = num;
+            const pct = toPercent(shown[i]?.[ci] ?? val);
+            if (pct != null) body[key] = pct;
           } else {
             body[key] = String(val).trim();
           }

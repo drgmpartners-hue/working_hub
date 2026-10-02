@@ -13,6 +13,7 @@ import { AuthFetchGuard } from '@/components/AuthFetchGuard';
 import { TopNav } from '@/components/common/TopNav';
 import { ImpersonationBanner } from '@/components/common/ImpersonationBanner';
 import { ProgramGuard } from '@/components/common/ProgramGuard';
+import { EnvBadge } from '@/components/common/EnvBadge';
 
 interface MainLayoutProps {
   children: React.ReactNode;
@@ -40,6 +41,8 @@ export default function MainLayout({ children }: MainLayoutProps) {
             <ProgramGuard>{children}</ProgramGuard>
           </main>
         )}
+        {/* 환경(운영·미리보기·로컬)과 화면·서버 배포 커밋 — 수정_tasks P1-4 */}
+        <EnvBadge />
       </div>
     </ProtectedRoute>
   );

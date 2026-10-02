@@ -115,6 +115,10 @@ async def update_retirement_plan(
         raise not_found()
 
     update_data = payload.model_dump(exclude_unset=True)
+    # 수정_tasks P1-23: 비울 수 없는 칸(나이·수익률·상속 고려)에 null 이 오면 무시(예전엔 DB 오류·float(None) 500)
+    for f in ("current_age", "annual_return_rate", "inheritance_consideration"):
+        if f in update_data and update_data[f] is None:
+            update_data.pop(f)
     for field, value in update_data.items():
         setattr(plan, field, value)
 

@@ -12,6 +12,7 @@ Saving period (year_num <= saving_period_years):
 
 Retirement period (year_num > saving_period_years):
     evaluation = max(0, prev_evaluation * (1 + annual_return_rate) - target_pension_amount * 12)
+    (적립 기간이 0년이면 거치금은 첫해 prev_evaluation 에 더해진다 — 수정_tasks P1-23)
 """
 from __future__ import annotations
 
@@ -69,21 +70,22 @@ class RetirementSimulationService:
             year = current_year + year_num - 1
 
             in_saving_period = saving_period_years > 0 and year_num <= saving_period_years
+            # 수정_tasks P1-23: 거치금은 적립 기간이 0년이어도 첫해에 들어간다(예전엔 적립 기간 0이면 거치금이 사라짐)
+            lump = lump_sum_amount if year_num == 1 else 0
 
             if in_saving_period:
-                lump = lump_sum_amount if year_num == 1 else 0
                 savings = annual_savings
                 # lump_sum + annual_savings added at beginning of year, then compounded
                 evaluation = (prev_evaluation + lump + savings) * (1 + rate)
                 annual_return = evaluation - (prev_evaluation + lump + savings)
                 total_contribution = lump + savings
             else:
-                lump = 0
                 savings = 0
+                base = prev_evaluation + lump
                 # withdraw pension annually (monthly * 12), floor at 0
-                evaluation = max(0.0, prev_evaluation * (1 + rate) - target_pension_amount * 12)
-                annual_return = prev_evaluation * rate if prev_evaluation > 0 else 0.0
-                total_contribution = 0
+                evaluation = max(0.0, base * (1 + rate) - target_pension_amount * 12)
+                annual_return = base * rate if base > 0 else 0.0
+                total_contribution = lump
 
             projections.append(
                 {

@@ -138,6 +138,8 @@ async def list_databases(
 class NotionProperty(BaseModel):
     name: str
     type: str
+    # 숫자 속성의 표시 형식(예: 'percent' → 값 0.12 가 12% 라는 뜻). 수정_tasks P1-18
+    format: Optional[str] = None
 
 
 @router.get("/databases/{database_id}/properties", response_model=list[NotionProperty])
@@ -153,7 +155,9 @@ async def get_database_properties(
         _handle_error(res)
 
     props = res.json().get("properties", {})
-    return [NotionProperty(name=name, type=p["type"]) for name, p in props.items()]
+    return [NotionProperty(name=name, type=p["type"],
+                           format=(p.get("number") or {}).get("format") if p.get("type") == "number" else None)
+            for name, p in props.items()]
 
 
 # ── 3. 데이터베이스 행(페이지) 조회 ──────────────────────────────
