@@ -49,8 +49,8 @@ class NaverNewsClient:
             for it in items
         ]
 
-    async def count(self, query: str) -> int:
-        """검색 총 건수(테마-종목 공출현 강도 정량화용)."""
+    async def count(self, query: str) -> "int | None":
+        """검색 총 건수(테마-종목 공출현 강도 정량화용). 실패하면 None — 예전엔 0 을 돌려줘 '기사 없음'과 구분이 안 됐다(P2-12)."""
         async with httpx.AsyncClient(timeout=10) as client:
             res = await client.get(
                 _BASE,
@@ -61,7 +61,8 @@ class NaverNewsClient:
                 },
             )
         if res.status_code != 200:
-            return 0
+            logger.warning("네이버 뉴스 건수 조회 실패 (status=%s)", res.status_code)
+            return None
         return int(res.json().get("total", 0))
 
 
@@ -101,11 +102,14 @@ async def search_page(client_id: str, client_secret: str, query: str, *, start: 
 
     네이버 API는 start 최대 1000, display 최대 100이다(검색어당 최근 1,000건까지).
     """
+    from app.services.collectors.http_retry import get_with_retry
+
     async with httpx.AsyncClient(timeout=10) as client:
-        res = await client.get(
-            _BASE,
+        res = await get_with_retry(
+            client, _BASE,
             params={"query": query, "display": min(display, 100), "start": min(max(start, 1), 1000), "sort": sort},
             headers={"X-Naver-Client-Id": client_id, "X-Naver-Client-Secret": client_secret},
+            label="네이버 뉴스",
         )
     if res.status_code != 200:
         raise RuntimeError(f"네이버 뉴스 검색 실패 (status={res.status_code}): {res.text[:120]}")

@@ -13,6 +13,7 @@ import { SuggestionEditor } from '@/components/portfolio/SuggestionEditor';
 import { authLib } from '@/lib/auth';
 import type { PeriodKey, HistoryPoint, DistributionItem } from '@/components/portfolio/PortfolioCharts';
 import { API_URL } from '@/lib/api-url';
+import { notifyError, okOrNotify } from '@/lib/notify';
 import type { ProductMaster } from '@/components/portfolio/ProductMasterTable';
 import { contactLine, type ReportManager } from '@/lib/reportContact';
 
@@ -3418,7 +3419,7 @@ export default function IRPPage() {
       ]);
       if (snapRes.ok) setClientLatestDates(await snapRes.json());
       if (suggRes.ok) setSuggestionLatestDates(await suggRes.json());
-    } catch { /* ignore */ }
+    } catch (e) { notifyError('고객별 최근 분석일을 불러오지 못했습니다.', e); }
   }, []);
 
   /* ---------- client management modal ---------- */
@@ -3440,8 +3441,8 @@ export default function IRPPage() {
     setNcLoading(true);
     try {
       const res = await fetch(`${API_URL}/api/v1/product-name-changes`, { headers: { Authorization: `Bearer ${authLib.getToken()}` } });
-      if (res.ok) setNameChanges(await res.json());
-    } catch { /* ignore */ }
+      if (await okOrNotify(res, '상품명 변경 메모 불러오기')) setNameChanges(await res.json());
+    } catch (e) { notifyError('상품명 변경 메모를 불러오지 못했습니다.', e); }
     setNcLoading(false);
   }, []);
 
@@ -3452,28 +3453,30 @@ export default function IRPPage() {
         method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${authLib.getToken()}` },
         body: JSON.stringify({ old_keyword: ncNewOld.trim(), new_keyword: ncNewNew.trim(), memo: ncNewMemo.trim() || null }),
       });
-      if (res.ok) { setNcNewOld(''); setNcNewNew(''); setNcNewMemo(''); loadNameChanges(); }
-    } catch { /* ignore */ }
+      if (await okOrNotify(res, '상품명 변경 메모 추가')) { setNcNewOld(''); setNcNewNew(''); setNcNewMemo(''); loadNameChanges(); }
+    } catch (e) { notifyError('상품명 변경 메모를 추가하지 못했습니다.', e); }
   };
 
   const updateNameChange = async (id: string) => {
     try {
-      await fetch(`${API_URL}/api/v1/product-name-changes/${id}`, {
+      const res = await fetch(`${API_URL}/api/v1/product-name-changes/${id}`, {
         method: 'PUT', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${authLib.getToken()}` },
         body: JSON.stringify({ old_keyword: ncEditOld.trim(), new_keyword: ncEditNew.trim(), memo: ncEditMemo.trim() || null }),
       });
+      if (!(await okOrNotify(res, '상품명 변경 메모 수정'))) return;  // 실패하면 편집 칸을 그대로 둔다
       setNcEditId(null); loadNameChanges();
-    } catch { /* ignore */ }
+    } catch (e) { notifyError('상품명 변경 메모를 수정하지 못했습니다.', e); }
   };
 
   const deleteNameChange = async (id: string) => {
     if (!confirm('삭제하시겠습니까?')) return;
     try {
-      await fetch(`${API_URL}/api/v1/product-name-changes/${id}`, {
+      const res = await fetch(`${API_URL}/api/v1/product-name-changes/${id}`, {
         method: 'DELETE', headers: { Authorization: `Bearer ${authLib.getToken()}` },
       });
+      await okOrNotify(res, '상품명 변경 메모 삭제');
       loadNameChanges();
-    } catch { /* ignore */ }
+    } catch (e) { notifyError('상품명 변경 메모를 삭제하지 못했습니다.', e); }
   };
 
   /* ---------- tab1 state ---------- */
@@ -4856,8 +4859,8 @@ export default function IRPPage() {
         const data = await res.json();
         setTab4Logs(data.items ?? []);
         setTab4LogsTotal(data.total ?? 0);
-      }
-    } catch { /* silent */ } finally {
+      } else await okOrNotify(res, '발송 기록 불러오기');
+    } catch (e) { notifyError('발송 기록을 불러오지 못했습니다.', e); } finally {
       setTab4LogsLoading(false);
     }
   }
@@ -5305,27 +5308,27 @@ export default function IRPPage() {
       if (res.ok) {
         const data = await res.json();
         setSmsTemplates(data.map((t: { id: string; name: string; text: string }) => ({ id: t.id, name: t.name, text: t.text })));
-      }
-    } catch { /* silent */ }
+      } else await okOrNotify(res, '문자 템플릿 불러오기');
+    } catch (e) { notifyError('문자 템플릿을 불러오지 못했습니다.', e); }
   }
 
   async function saveSmsTemplate() {
     if (!smsTemplateName.trim()) { alert('템플릿 이름을 입력하세요.'); return; }
     try {
       const existing = smsTemplates.find((t) => t.name === smsTemplateName.trim());
-      if (existing) {
-        await fetch(`${API_URL}/api/v1/sms-templates/${existing.id}`, {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json', ...authLib.getAuthHeader() },
-          body: JSON.stringify({ text: smsMessage }),
-        });
-      } else {
-        await fetch(`${API_URL}/api/v1/sms-templates`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', ...authLib.getAuthHeader() },
-          body: JSON.stringify({ name: smsTemplateName.trim(), text: smsMessage }),
-        });
-      }
+      const saveRes = existing
+        ? await fetch(`${API_URL}/api/v1/sms-templates/${existing.id}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json', ...authLib.getAuthHeader() },
+            body: JSON.stringify({ text: smsMessage }),
+          })
+        : await fetch(`${API_URL}/api/v1/sms-templates`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', ...authLib.getAuthHeader() },
+            body: JSON.stringify({ name: smsTemplateName.trim(), text: smsMessage }),
+          });
+      // 예전엔 서버가 거부해도 '저장되었습니다'가 떴다
+      if (!(await okOrNotify(saveRes, '문자 템플릿 저장'))) return;
       // 다시 로드
       const res = await fetch(`${API_URL}/api/v1/sms-templates`, { headers: { ...authLib.getAuthHeader() } });
       if (res.ok) setSmsTemplates(await res.json());
@@ -5336,12 +5339,13 @@ export default function IRPPage() {
 
   async function deleteSmsTemplate(id: string) {
     try {
-      await fetch(`${API_URL}/api/v1/sms-templates/${id}`, {
+      const res = await fetch(`${API_URL}/api/v1/sms-templates/${id}`, {
         method: 'DELETE',
         headers: { ...authLib.getAuthHeader() },
       });
-      setSmsTemplates((prev) => prev.filter((t) => t.id !== id));
-    } catch { /* silent */ }
+      // 실패했는데 목록에서만 사라지던 것 수정
+      if (await okOrNotify(res, '문자 템플릿 삭제')) setSmsTemplates((prev) => prev.filter((t) => t.id !== id));
+    } catch (e) { notifyError('문자 템플릿을 삭제하지 못했습니다.', e); }
   }
 
   async function handleSendSmsConfirm() {

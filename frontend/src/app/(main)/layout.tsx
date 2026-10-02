@@ -14,6 +14,7 @@ import { TopNav } from '@/components/common/TopNav';
 import { ImpersonationBanner } from '@/components/common/ImpersonationBanner';
 import { ProgramGuard } from '@/components/common/ProgramGuard';
 import { EnvBadge } from '@/components/common/EnvBadge';
+import { ErrorToaster } from '@/components/common/ErrorToaster';
 
 interface MainLayoutProps {
   children: React.ReactNode;
@@ -43,6 +44,8 @@ export default function MainLayout({ children }: MainLayoutProps) {
         )}
         {/* 환경(운영·미리보기·로컬)과 화면·서버 배포 커밋 — 수정_tasks P1-4 */}
         <EnvBadge />
+        {/* 저장·삭제·불러오기 실패 알림 — 수정_tasks P2-2 */}
+        <ErrorToaster />
       </div>
     </ProtectedRoute>
   );

@@ -291,13 +291,14 @@ class PensionCalcService:
         balance = retirement_fund
 
         for age in range(retirement_age, end_age + 1):
-            monthly_amount = annual_withdrawal / 12
+            # 수정_tasks P2-11: 잔액보다 많이 줄 수 없다(종신형 마지막 해 100세에 잔액 0인데 연금을 주던 것)
+            paid = min(annual_withdrawal, max(balance, 0.0))
             plan.append({
                 "age": age,
-                "monthly_amount": round(monthly_amount, 4),
-                "annual_withdrawal": round(annual_withdrawal, 4),
+                "monthly_amount": round(paid / 12, 4),
+                "annual_withdrawal": round(paid, 4),
                 "balance": round(max(balance, 0.0), 4),
             })
-            balance = max(balance - annual_withdrawal, 0.0)
+            balance = max(balance - paid, 0.0)
 
         return plan

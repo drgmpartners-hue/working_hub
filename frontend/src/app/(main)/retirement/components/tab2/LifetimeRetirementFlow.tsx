@@ -313,6 +313,8 @@ function calcLifetimeRows(
   let needsRecalc = false; // override나 보정이 발생하면 이후 행 전체 재계산
   let currentDepositIn = 0; // 해당 연도 입금액
   let cumulativeDepositIn = 0; // 누적 입금액
+  let prevOrigPrincipal = 0;   // 직전 행 플랜 누적원금(그해 납입분 = 차이)
+  let anyAdjusted = false;     // 한 번이라도 실적을 적용했나
   let runningPension = 0;  // override 반영된 누적 중도인출
   const appliedYearKeys = Object.keys(appliedYears).map(Number).sort((a, b) => a - b);
 
@@ -401,14 +403,18 @@ function calcLifetimeRows(
       ? (appliedNetAssetReturnRate || 0)
       : (prevNetAsset > 0 ? ((adjustedNetAsset - prevNetAsset) / prevNetAsset * 100) : 0);
 
-    // 누적 입금액 계산
+    // 누적 입금액 계산 (수정_tasks P2-11 '누적입금 리셋')
+    // 예전: 적용 행 다음의 미적용 행에서 누적을 플랜 누적원금으로 되돌려, 실제 입금 실적이 사라졌다.
+    // 지금: 첫 적용 전까지는 플랜 누적원금, 적용 행은 실제 입금액을 더하고, 그 뒤 미적용 행은 플랜상 그해 납입분만 더한다.
     if (isAdjusted) {
-      // 적용된 행: 해당 연도 입금액을 누적에 더함
       cumulativeDepositIn += currentDepositIn;
+      anyAdjusted = true;
+    } else if (anyAdjusted) {
+      cumulativeDepositIn += Math.max(0, origPrincipal - prevOrigPrincipal);
     } else {
-      // 미적용: 누적원금을 그대로 사용
       cumulativeDepositIn = origPrincipal;
     }
+    prevOrigPrincipal = origPrincipal;
 
     rows.push({
       year,

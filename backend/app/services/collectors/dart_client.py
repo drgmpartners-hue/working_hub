@@ -12,6 +12,7 @@ import json
 import zipfile
 import logging
 import xml.etree.ElementTree as ET
+from datetime import datetime
 from pathlib import Path
 from typing import Optional
 
@@ -23,6 +24,7 @@ _BASE = "https://opendart.fss.or.kr/api"
 _CACHE_DIR = Path(__file__).resolve().parents[3] / ".cache"
 _CACHE_DIR.mkdir(exist_ok=True)
 _CORP_MAP_FILE = _CACHE_DIR / "dart_corpmap.json"
+CORP_CACHE_TTL = 7 * 86400  # 회사 목록 캐시 7일
 
 
 def _num(v) -> Optional[float]:
@@ -38,16 +40,31 @@ class DARTClient:
 
     # ----------------------------------------------------------- corp map
     async def _load_corp_map(self) -> dict[str, str]:
-        """stock_code(6자리) → corp_code(8자리). 캐시 우선."""
+        """stock_code(6자리) → corp_code(8자리). 파일 캐시 7일(수정_tasks P2-12: 예전엔 기한이 없어 새로 상장한 회사를 못 찾음).
+        새로 받기에 실패하면 오래된 캐시라도 쓴다."""
+        import time
+
+        stale: Optional[dict] = None
         if _CORP_MAP_FILE.exists():
             try:
-                return json.loads(_CORP_MAP_FILE.read_text(encoding="utf-8"))
+                cached = json.loads(_CORP_MAP_FILE.read_text(encoding="utf-8"))
+                if time.time() - _CORP_MAP_FILE.stat().st_mtime < CORP_CACHE_TTL:
+                    return cached
+                stale = cached
             except Exception:
                 pass
-        async with httpx.AsyncClient(timeout=30) as client:
-            res = await client.get(f"{_BASE}/corpCode.xml", params={"crtfc_key": self.api_key})
-        if res.status_code != 200:
-            raise RuntimeError(f"DART corpCode 다운로드 실패 (status={res.status_code})")
+        try:
+            from app.services.collectors.http_retry import get_with_retry
+
+            async with httpx.AsyncClient(timeout=30) as client:
+                res = await get_with_retry(client, f"{_BASE}/corpCode.xml", params={"crtfc_key": self.api_key}, label="DART corpCode")
+            if res.status_code != 200:
+                raise RuntimeError(f"DART corpCode 다운로드 실패 (status={res.status_code})")
+        except Exception:
+            if stale is not None:
+                logger.warning("DART corpCode 새로 받기 실패 — 예전 캐시 사용")
+                return stale
+            raise
         with zipfile.ZipFile(io.BytesIO(res.content)) as zf:
             xml_bytes = zf.read(zf.namelist()[0])
         root = ET.fromstring(xml_bytes)
@@ -74,7 +91,9 @@ class DARTClient:
         if not corp_code:
             return {}
 
-        years = [year] if year else [2025, 2024]
+        # 수정_tasks P2-12: 연도를 코드에 박아 두지 않는다 — 작년 사업보고서(3월 말 제출)가 없으면 재작년
+        this_year = datetime.now().year
+        years = [year] if year else [this_year - 1, this_year - 2]
         data = None
         for y in years:
             async with httpx.AsyncClient(timeout=15) as client:
@@ -88,7 +107,7 @@ class DARTClient:
                         "fs_div": "CFS",         # 연결재무제표
                     },
                 )
-            if res.status_code == 200 and res.json().get("status") == "000":
+            if res.status_code == 200 and res.json().get("status") == "000":  # 013 = 해당 연도 보고서 없음
                 data = res.json()
                 break
         if not data:
@@ -192,20 +211,34 @@ class DARTClient:
 
     async def list_disclosures(self, corp_code: str, bgn_de: str, end_de: str, max_pages: int = 10) -> list[dict]:
         """기간 공시 목록(YYYYMMDD). 페이지를 끝까지 넘긴다."""
+        from app.services.collectors.http_retry import get_with_retry
+
         out: list[dict] = []
         async with httpx.AsyncClient(timeout=15) as client:
             for page in range(1, max_pages + 1):
-                res = await client.get(
-                    f"{_BASE}/list.json",
+                res = await get_with_retry(
+                    client, f"{_BASE}/list.json",
                     params={
                         "crtfc_key": self.api_key, "corp_code": corp_code,
                         "bgn_de": bgn_de, "end_de": end_de, "page_no": page, "page_count": 100,
                     },
+                    label="DART 공시",
                 )
+                # 수정_tasks P2-12: 실패를 '공시 없음'으로 삼키지 않는다. 첫 쪽부터 실패면 예외, 중간 실패면 받은 데까지 + 경고
                 if res.status_code != 200:
+                    if page == 1:
+                        raise RuntimeError(f"DART 공시 조회 실패 (status={res.status_code})")
+                    logger.warning("DART 공시 %d쪽 조회 실패 (status=%s) — 앞 쪽까지만 사용", page, res.status_code)
                     break
                 d = res.json()
-                if d.get("status") != "000":
+                status = d.get("status")
+                if status == "013":  # 조회된 데이터 없음
+                    break
+                if status != "000":
+                    msg = f"DART 공시 조회 오류 (status={status}, {d.get('message', '')})"
+                    if page == 1:
+                        raise RuntimeError(msg)
+                    logger.warning(msg)
                     break
                 out.extend(d.get("list") or [])
                 if page >= int(d.get("total_page") or 1):

@@ -334,8 +334,14 @@ class TestDeleteProductMaster:
         mock_db.commit = AsyncMock()
 
         app = make_test_app(mock_db, make_mock_user())
-        with TestClient(app) as client:
-            response = client.delete("/api/v1/product-master/prod-uuid-001")
+        # 수정_tasks P2-10: 삭제 전 사용처 확인 — 쓰는 곳 없음
+        from unittest.mock import patch
+        from app.services import product_master_service
+
+        with patch.object(product_master_service, "usage",
+                          new=AsyncMock(return_value={"holdings": 0, "recommended_items": 0, "total": 0})):
+            with TestClient(app) as client:
+                response = client.delete("/api/v1/product-master/prod-uuid-001")
 
         assert response.status_code == 204
         mock_db.delete.assert_awaited_once_with(product)

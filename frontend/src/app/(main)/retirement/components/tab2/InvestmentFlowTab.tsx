@@ -8,6 +8,7 @@ import { useRetirementStore } from '../../hooks/useRetirementStore';
 import { Section } from '../common/Section';
 import { formatCurrency, formatInputCurrency, parseCurrency } from '../../utils/formatCurrency';
 import { API_URL } from '@/lib/api-url';
+import { notifyError, okOrNotify } from '@/lib/notify';
 import { authLib } from '@/lib/auth';
 import { loadClientContact, setPdfContact } from '@/lib/reportContact';
 
@@ -761,7 +762,7 @@ export function InvestmentFlowTab() {
             setAppliedYears(restored);
           }
         }
-      } catch { /* ignore */ }
+      } catch (e) { notifyError('100세 플로우 적용 내역을 불러오지 못했습니다.', e); }
     };
     load();
   }, [selectedCustomerId]);
@@ -771,16 +772,15 @@ export function InvestmentFlowTab() {
     if (!selectedCustomerId) return;
     try {
       const token = authLib.getToken();
-      // 기존 calculation_params 가져와서 applied_years만 업데이트
-      const params = desiredPlanData?.calculation_params || {};
-      const updated = { ...params, applied_years: newApplied };
-      await fetch(`${API_URL}/api/v1/retirement/desired-plans/${selectedCustomerId}/params`, {
+      const res = await fetch(`${API_URL}/api/v1/retirement/desired-plans/${selectedCustomerId}/params`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ calculation_params: updated }),
+        // 서버가 calculation_params 의 키 단위로 합치므로 이 키만 보낸다(다른 탭이 바꾼 값을 예전 사본으로 덮지 않게)
+        body: JSON.stringify({ calculation_params: { applied_years: newApplied } }),
       });
-    } catch { /* ignore */ }
-  }, [selectedCustomerId, desiredPlanData]);
+      await okOrNotify(res, '100세 플로우 적용 내역 저장');
+    } catch (e) { notifyError('100세 플로우 적용 내역을 저장하지 못했습니다.', e); }
+  }, [selectedCustomerId]);
 
   /* ---- 연결상품 클릭 → 스크롤 + 하이라이트 ---- */
   const handleLinkClick = (targetId: number) => {
@@ -2472,11 +2472,12 @@ export function InvestmentFlowTab() {
                                 e.stopPropagation();
                                 if (!confirm(`"${account.nickname || account.securities_company}" 계좌를 숨기시겠습니까?`)) return;
                                 try {
-                                  await fetch(`${API_URL}/api/v1/retirement/deposit-accounts/${account.id}`, {
+                                  const res = await fetch(`${API_URL}/api/v1/retirement/deposit-accounts/${account.id}`, {
                                     method: 'DELETE', headers: authLib.getAuthHeader(),
                                   });
+                                  await okOrNotify(res, '계좌 숨기기');
                                   fetchDepositAccounts();
-                                } catch { /* silent */ }
+                                } catch (err) { notifyError('계좌를 숨기지 못했습니다.', err); }
                               }}
                               style={{ padding: '4px 10px', fontSize: 12, fontWeight: 500, borderRadius: 6, border: '1px solid var(--border)', backgroundColor: 'var(--bg-card)', color: 'var(--danger)', cursor: 'pointer' }}
                             >
@@ -2491,9 +2492,9 @@ export function InvestmentFlowTab() {
                                     method: 'PUT',
                                     headers: { 'Content-Type': 'application/json', ...authLib.getAuthHeader() },
                                     body: JSON.stringify({ is_active: true }),
-                                  });
+                                  }).then((res) => okOrNotify(res, '계좌 활성화'));
                                   fetchDepositAccounts();
-                                } catch { /* silent */ }
+                                } catch (err) { notifyError('계좌를 활성화하지 못했습니다.', err); }
                               }}
                               style={{ padding: '4px 10px', fontSize: 12, fontWeight: 600, borderRadius: 6, border: '1px solid var(--success)', backgroundColor: 'var(--success-bg)', color: 'var(--success)', cursor: 'pointer' }}
                             >
@@ -2835,13 +2836,14 @@ export function InvestmentFlowTab() {
                                           onClick={async () => {
                                             if (!confirm('이 거래내역을 삭제하시겠습니까?')) return;
                                             try {
-                                              await fetch(`${API_URL}/api/v1/retirement/deposit-transactions/${tx.id}`, {
+                                              const res = await fetch(`${API_URL}/api/v1/retirement/deposit-transactions/${tx.id}`, {
                                                 method: 'DELETE', headers: authLib.getAuthHeader(),
                                               });
+                                              await okOrNotify(res, '거래내역 삭제');
                                               fetchTransactions(account.id);
                                               fetchDepositAccounts();
                                               fetchAnnualFlow();  // 삭제로 잔액이 바뀌므로 흐름표도 재조회
-                                            } catch { /* silent */ }
+                                            } catch (err) { notifyError('거래내역을 삭제하지 못했습니다.', err); }
                                           }}
                                           style={{ padding: '2px 6px', fontSize: 11, borderRadius: 4, border: '1px solid rgba(239,68,68,0.35)', backgroundColor: 'var(--danger-bg)', color: 'var(--danger)', cursor: 'pointer' }}
                                         >삭제</button>
@@ -3477,14 +3479,15 @@ export function InvestmentFlowTab() {
                           onClick={async () => {
                             if (!confirm('이 투자기록을 삭제하시겠습니까?')) return;
                             try {
-                              await fetch(`${API_URL}/api/v1/retirement/investment-records/${record.id}`, {
+                              const res = await fetch(`${API_URL}/api/v1/retirement/investment-records/${record.id}`, {
                                 method: 'DELETE', headers: authLib.getAuthHeader(),
                               });
+                              await okOrNotify(res, '투자기록 삭제');
                               fetchRecords();
                               fetchDepositAccounts();
                               expandedAccountIds.forEach(aid => fetchTransactions(aid));
                               fetchAnnualFlow();  // 투자기록 삭제는 순자산에 직접 반영
-                            } catch { /* silent */ }
+                            } catch (err) { notifyError('투자기록을 삭제하지 못했습니다.', err); }
                           }}
                           style={{ padding: '3px 8px', fontSize: 11, fontWeight: 500, borderRadius: 4, border: '1px solid rgba(239,68,68,0.35)', backgroundColor: 'var(--danger-bg)', color: 'var(--danger)', cursor: 'pointer' }}
                         >

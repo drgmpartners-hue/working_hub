@@ -425,3 +425,12 @@ class TestPensionPlanSchemas:
         # All fields should be optional (allow partial update)
         update = PensionPlanUpdate()
         assert update is not None
+
+
+def test_lifetime_last_year_pays_nothing_when_fund_exhausted():
+    """수정_tasks P2-11: 잔액이 0인 해(100세)에는 연금이 0 — 재원보다 많이 지급하지 않는다."""
+    from app.services.pension_calc import PensionCalcService
+
+    plan = PensionCalcService.calculate_lifetime(retirement_fund=120_000, retirement_age=60)["distribution_plan"]
+    assert plan[-1]["age"] == 100 and plan[-1]["balance"] == 0 and plan[-1]["annual_withdrawal"] == 0
+    assert abs(sum(p["annual_withdrawal"] for p in plan) - 120_000) < 1

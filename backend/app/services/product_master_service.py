@@ -78,13 +78,37 @@ async def create(
     return product
 
 
+def clean(values: dict) -> dict:
+    """앞뒤 공백 제거, 빈 문자열은 None(칸 비우기). 수정_tasks P2-10."""
+    out = {}
+    for k, v in values.items():
+        if isinstance(v, str):
+            v = v.strip() or None
+        out[k] = v
+    return out
+
+
+async def usage(db: AsyncSession, name: str) -> dict:
+    """이 상품명을 쓰는 곳(이름으로 연결됨): 보유 종목(스냅샷), 추천 포트폴리오 항목."""
+    from sqlalchemy import func
+
+    from app.models.recommended_portfolio import RecommendedPortfolioItem
+    from app.models.snapshot import PortfolioHolding
+
+    holdings = (await db.execute(select(func.count()).select_from(PortfolioHolding)
+                                 .where(PortfolioHolding.product_name == name))).scalar_one()
+    rec = (await db.execute(select(func.count()).select_from(RecommendedPortfolioItem)
+                            .where(RecommendedPortfolioItem.product_name == name))).scalar_one()
+    return {"holdings": int(holdings), "recommended_items": int(rec), "total": int(holdings) + int(rec)}
+
+
 async def update(
     db: AsyncSession,
     product: ProductMaster,
     data: ProductMasterUpdate,
 ) -> ProductMaster:
-    """제공된 필드만 업데이트 (exclude_unset)."""
-    for field, value in data.model_dump(exclude_unset=True).items():
+    """제공된 필드만 업데이트 (exclude_unset). 빈 문자열·null 이면 그 칸을 비운다."""
+    for field, value in clean(data.model_dump(exclude_unset=True)).items():
         setattr(product, field, value)
     await db.commit()
     await db.refresh(product)

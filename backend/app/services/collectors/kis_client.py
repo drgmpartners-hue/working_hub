@@ -189,9 +189,7 @@ class KISClient:
                 headers=await self._headers("FHKST01010100"),
                 params={"FID_COND_MRKT_DIV_CODE": "J", "FID_INPUT_ISCD": code},
             )
-        if res.status_code != 200:
-            raise RuntimeError(f"KIS 현재가 조회 실패 (status={res.status_code}): {res.text[:120]}")
-        o = res.json().get("output") or {}
+        o = _output_or_raise(res, "KIS 현재가 조회")
 
         def _f(v):
             try:
@@ -219,9 +217,7 @@ class KISClient:
                 headers=await self._headers("FHKST01010900"),
                 params={"FID_COND_MRKT_DIV_CODE": "J", "FID_INPUT_ISCD": code},
             )
-        if res.status_code != 200:
-            return {}
-        rows = res.json().get("output") or []
+        rows = _output_or_raise(res, "KIS 투자자 동향") or []
 
         def _i(v):
             try:
@@ -252,8 +248,7 @@ class KISClient:
                 headers=await self._headers("FHKST01010900"),
                 params={"FID_COND_MRKT_DIV_CODE": "J", "FID_INPUT_ISCD": code},
             )
-        if res.status_code != 200:
-            return []
+        rows_out = _output_or_raise(res, "KIS 투자자 금액") or []
 
         def _i(v):
             try:
@@ -262,7 +257,7 @@ class KISClient:
                 return 0
 
         out = []
-        for r in (res.json().get("output") or [])[:20]:
+        for r in rows_out[:20]:
             out.append({
                 "date": r.get("stck_bsop_date"),
                 "foreign": _i(r.get("frgn_ntby_tr_pbmn")),       # 외국인 순매수 금액(원)
@@ -285,9 +280,7 @@ class KISClient:
                     "fid_input_iscd": code,
                 },
             )
-        if res.status_code != 200:
-            return {}
-        rows = res.json().get("output") or []
+        rows = _output_or_raise(res, "KIS 재무비율") or []
         if not rows:
             return {}
         latest = rows[0]
@@ -304,3 +297,14 @@ class KISClient:
             "bps": _f(latest.get("bps")),
             "sales_growth": _f(latest.get("grs")),  # 매출액증가율
         }
+
+
+def _output_or_raise(res: httpx.Response, what: str):
+    """KIS 응답의 output. 실패면 예외(수정_tasks P2-12) — KIS 는 오류여도 200 에 rt_cd≠'0' 으로 답하는데,
+    예전엔 이를 걸러내지 않아 빈 값(가격 None·순매수 0)이 '성공'으로 저장됐다."""
+    if res.status_code != 200:
+        raise RuntimeError(f"{what} 실패 (status={res.status_code}): {res.text[:120]}")
+    body = res.json()
+    if str(body.get("rt_cd", "0")) != "0":
+        raise RuntimeError(f"{what} 실패 ({body.get('msg_cd', '')} {body.get('msg1', '')})".strip())
+    return body.get("output")

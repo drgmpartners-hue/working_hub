@@ -177,16 +177,24 @@ export function ProductMasterTable({ items, onUpdate, onDelete, readOnly = false
   }
 
   async function handleSave(id: string) {
+    if (!editState.product_name.trim()) {
+      window.alert('상품명은 비울 수 없습니다.');
+      return;
+    }
     setSavingId(id);
     try {
+      // 수정_tasks P2-10: 빈 칸은 null 로 보내야 지워진다(예전엔 undefined 라 칸을 비울 수 없었다)
       await onUpdate(id, {
-        product_name: editState.product_name.trim() || undefined,
-        risk_level: editState.risk_level || undefined,
-        region: editState.region || undefined,
-        product_type: editState.product_type || undefined,
-        product_code: editState.product_code.trim() || undefined,
-      });
+        product_name: editState.product_name.trim(),
+        risk_level: editState.risk_level || null,
+        region: editState.region || null,
+        product_type: editState.product_type || null,
+        product_code: editState.product_code.trim() || null,
+      } as unknown as Partial<ProductMaster>); // null = 칸 비우기(서버가 그 칸을 지움)
       setEditingId(null);
+    } catch (e) {
+      // 예전엔 실패해도 아무 표시가 없었다 — 편집 상태를 유지하고 이유를 알린다
+      window.alert(`저장하지 못했습니다: ${e instanceof Error ? e.message : '알 수 없는 오류'}`);
     } finally {
       setSavingId(null);
     }
@@ -197,6 +205,8 @@ export function ProductMasterTable({ items, onUpdate, onDelete, readOnly = false
     setDeletingId(id);
     try {
       await onDelete(id);
+    } catch (e) {
+      window.alert(`삭제하지 못했습니다: ${e instanceof Error ? e.message : '알 수 없는 오류'}`);
     } finally {
       setDeletingId(null);
     }

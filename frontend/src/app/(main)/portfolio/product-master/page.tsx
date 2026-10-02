@@ -155,7 +155,10 @@ export default function ProductMasterPage() {
     });
     if (!res.ok) {
       const err = await res.json().catch(() => ({}));
-      throw new Error(err.detail ?? `수정 실패 (${res.status})`);
+      const detail = Array.isArray(err.detail)
+        ? err.detail.map((e: { msg: string }) => e.msg).join(', ')
+        : err.detail;
+      throw new Error(detail ?? `수정 실패 (${res.status})`);
     }
     const updated: ProductMaster = await res.json();
     setItems((prev) => prev.map((item) => (item.id === id ? { ...item, ...updated } : item)));
@@ -166,13 +169,28 @@ export default function ProductMasterPage() {
   /* ---------------------------------------------------------------- */
 
   async function handleDelete(id: string) {
-    const res = await fetch(`${API_URL}/api/v1/product-master/${id}`, {
-      method: 'DELETE',
-      headers: authLib.getAuthHeader(),
-    });
+    const del = (force: boolean) =>
+      fetch(`${API_URL}/api/v1/product-master/${id}${force ? '?force=true' : ''}`, {
+        method: 'DELETE',
+        headers: authLib.getAuthHeader(),
+      });
+    let res = await del(false);
+    if (res.status === 409) {
+      // 수정_tasks P2-10: 이 상품명을 쓰는 보유 종목·추천 포트폴리오가 있으면 한 번 더 확인
+      const err = await res.json().catch(() => ({}));
+      const msg = typeof err.detail === 'object' ? err.detail?.message : err.detail;
+      if (
+        !window.confirm(
+          `${msg ?? '이 상품을 쓰는 곳이 있습니다.'}\n\n삭제해도 보유 종목은 남지만, 위험도·지역 자동 매핑이 사라집니다. 그래도 삭제할까요?`,
+        )
+      )
+        return;
+      res = await del(true);
+    }
     if (!res.ok) {
       const err = await res.json().catch(() => ({}));
-      throw new Error(err.detail ?? `삭제 실패 (${res.status})`);
+      const detail = typeof err.detail === 'object' ? err.detail?.message : err.detail;
+      throw new Error(detail ?? `삭제 실패 (${res.status})`);
     }
     setItems((prev) => prev.filter((item) => item.id !== id));
   }

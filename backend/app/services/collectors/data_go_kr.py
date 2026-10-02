@@ -27,7 +27,9 @@ REGIONS = {
 SKY = {"1": "맑음", "3": "구름많음", "4": "흐림"}
 PTY = {"0": "", "1": "비", "2": "비/눈", "3": "눈", "4": "소나기"}
 
-_holiday_cache: dict[tuple[int, int], dict[date, str]] = {}
+# (연, 월) → (받은 시각, {날짜: 이름}). 12시간 지나면 다시 받는다 — 임시공휴일이 며칠 전에 지정되기도 해서(수정_tasks P2-12)
+_holiday_cache: dict[tuple[int, int], tuple[float, dict[date, str]]] = {}
+HOLIDAY_TTL = 12 * 3600
 
 
 def _items(payload: dict) -> list[dict]:
@@ -39,11 +41,14 @@ def _items(payload: dict) -> list[dict]:
 
 async def get_holidays(service_key: Optional[str], year: int, month: int) -> dict[date, str]:
     """해당 월 공휴일 {날짜: 이름}. 키가 없거나 실패하면 빈 dict(주말만 휴일로 본다)."""
+    import time
+
     k = (year, month)
-    if k in _holiday_cache:
-        return _holiday_cache[k]
+    cached = _holiday_cache.get(k)
+    if cached and time.time() - cached[0] < HOLIDAY_TTL:
+        return cached[1]
     if not service_key:
-        return {}
+        return cached[1] if cached else {}
     try:
         async with httpx.AsyncClient(timeout=10) as client:
             res = await client.get(HOLIDAY_URL, params={
@@ -58,11 +63,11 @@ async def get_holidays(service_key: Optional[str], year: int, month: int) -> dic
             s = str(it.get("locdate", ""))
             if len(s) == 8:
                 out[date(int(s[:4]), int(s[4:6]), int(s[6:]))] = it.get("dateName") or "공휴일"
-        _holiday_cache[k] = out
+        _holiday_cache[k] = (time.time(), out)
         return out
     except Exception as e:
         logger.warning("특일 정보 조회 실패(%s-%s): %s", year, month, e)
-        return {}
+        return cached[1] if cached else {}  # 새로 못 받으면 예전에 받은 것이라도
 
 
 async def holiday_name(service_key: Optional[str], d: date) -> Optional[str]:

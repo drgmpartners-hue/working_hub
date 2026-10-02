@@ -120,13 +120,31 @@ interface InfiniteResult {
   depletedAge: number | null;  // 잔액 소진 나이 (없으면 null)
 }
 
+type PensionInputKey = 'lifetimeRate' | 'fixedRate' | 'fixedPeriod' | 'infiniteRate' | 'infinitePeriod' | 'infinitePension';
+
 interface GoalRow {
   lumpSum: number; annualSavings: number;
   monthlyPension: number; pensionRate: number; inheritance100: number;
 }
 
 /* ------------------------------------------------------------------ */
+/*  입력값 읽기 (수정_tasks P2-11: 0 을 기본값으로 바꾸지 않는다)       */
+/* ------------------------------------------------------------------ */
+
+/** 입력 칸 숫자. 비었거나 숫자가 아니면 fallback, 0 은 0 그대로(예전 `|| 기본값` 은 0% 를 5% 등으로 바꿨다). */
+function num(v: string | number | null | undefined, fallback: number): number {
+  if (v == null) return fallback;
+  const n = typeof v === 'number' ? v : parseFloat(String(v).replace(/,/g, ''));
+  return Number.isFinite(n) ? n : fallback;
+}
+/** 기간(년): 1년 이상 정수. */
+function years(v: string, fallback: number): number {
+  return Math.max(1, Math.round(num(v, fallback)));
+}
+
+/* ------------------------------------------------------------------ */
 /*  계산 함수                                                           */
+/*  나이 표기: 1년차 = 은퇴 나이(그해부터 수령). 120세까지면 은퇴~120세 포함 (예전엔 121세까지 그려졌다)  */
 /* ------------------------------------------------------------------ */
 
 function calcLifetime(pv: number, rate: number, retireAge: number, maxAge = 120): LifetimeResult {
@@ -142,14 +160,16 @@ function calcLifetime(pv: number, rate: number, retireAge: number, maxAge = 120)
   const yearlyData: LifetimeYearData[] = [];
   const chartData: ChartPoint[] = [];
   let balance = pv, cumPrincipal = 0, cumInterest = 0;
-  const yr100 = 100 - retireAge; // 100세 = 은퇴 후 몇 년차
+  // 100세 '시점' = 은퇴 후 (100 - 은퇴나이)년을 받은 뒤(10년차 카드가 '은퇴+10세 시점'인 것과 같은 기준)
+  const yr100 = 100 - retireAge;
   let m10yr: MilestoneData = emptyMs, m100age: MilestoneData = emptyMs;
 
   for (let yr = 1; yr <= years; yr++) {
     let yrPrincipal = 0, yrInterest = 0;
     for (let m = 1; m <= 12; m++) {
       if ((yr - 1) * 12 + m > nper) break;
-      const interest = balance * monthlyRate;
+      // 월초 수령(PMT type=1): 받고 남은 돈에 이자가 붙는다. 예전엔 월말 기준으로 나눠 120세에도 잔액이 남았다
+      const interest = (balance - monthlyPmt) * monthlyRate;
       const principal = monthlyPmt - interest;
       yrPrincipal += principal;
       yrInterest += interest;
@@ -160,10 +180,10 @@ function calcLifetime(pv: number, rate: number, retireAge: number, maxAge = 120)
     const bal = Math.max(0, balance);
 
     yearlyData.push({
-      age: retireAge + yr, yearPrincipal: yrPrincipal, yearInterest: yrInterest,
+      age: retireAge + yr - 1, yearPrincipal: yrPrincipal, yearInterest: yrInterest,
       cumPrincipal, cumInterest, totalReceived: cumPrincipal + cumInterest, balance: bal,
     });
-    chartData.push({ age: retireAge + yr, balance: Math.round(bal), pension: Math.round(annualPmt) });
+    chartData.push({ age: retireAge + yr - 1, balance: Math.round(bal), pension: Math.round(annualPmt) });
 
     if (yr === 10) m10yr = { cumPrincipal, cumInterest, totalReceived: cumPrincipal + cumInterest, balance: bal };
     if (yr === yr100) m100age = { cumPrincipal, cumInterest, totalReceived: cumPrincipal + cumInterest, balance: bal };
@@ -183,10 +203,10 @@ function calcFixed(pv: number, rate: number, periodYears: number, retireAge: num
   let balance = pv;
   for (let yr = 1; yr <= periodYears; yr++) {
     for (let m = 1; m <= 12; m++) {
-      const interest = balance * monthlyRate;
+      const interest = (balance - monthlyPmt) * monthlyRate; // 월초 수령(type=1)
       balance -= (monthlyPmt - interest);
     }
-    chartData.push({ age: retireAge + yr, balance: Math.max(0, Math.round(balance)), pension: Math.round(annualPmt) });
+    chartData.push({ age: retireAge + yr - 1, balance: Math.max(0, Math.round(balance)), pension: Math.round(annualPmt) });
   }
   return { annualPension: annualPmt, monthlyPension: monthlyPmt, totalReceived, totalInterest: totalReceived - pv, chartData };
 }
@@ -197,14 +217,14 @@ function calcFixed(pv: number, rate: number, periodYears: number, retireAge: num
 function calcInfinite(pv: number, rate: number, periodYears: number, retireAge: number, annualPensionInput?: number): InfiniteResult {
   const interestAnnual = pv * rate;
   const annual = annualPensionInput && annualPensionInput > 0 ? annualPensionInput : interestAnnual;
-  const chartYears = Math.max(0, 120 - retireAge); // 120세까지 차트 데이터 생성
+  const chartYears = Math.max(0, 120 - retireAge + 1); // 은퇴 나이 ~ 120세(포함)
   const chartData: ChartPoint[] = [];
   let balance = pv;
   let totalPaid = 0;
   let depletedAge: number | null = null;
 
   for (let yr = 1; yr <= chartYears; yr++) {
-    const age = retireAge + yr;
+    const age = retireAge + yr - 1;
     if (balance <= 0) {
       chartData.push({ age, balance: 0, pension: 0 });
       continue;
@@ -284,6 +304,8 @@ export function PensionPlanTab() {
   const [infinitePeriod, setInfinitePeriod] = useState('40');
   // 무한지급형 월 연금액 (만원). 빈 값이면 이자액(재원×수익률) 자동 적용 → 원금 보존
   const [infinitePension, setInfinitePension] = useState('');
+  const [inputsDirty, setInputsDirty] = useState(false);
+  const [saveState, setSaveState] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
 
   const showToast = (msg: string, t: 'success' | 'error') => {
     setToast({ message: msg, type: t }); setTimeout(() => setToast(null), 3000);
@@ -303,19 +325,69 @@ export function PensionPlanTab() {
   // 조건부 대입 금지 — 새 고객에게 플랜이 없으면 이전 고객 수익률이 그대로 남는다
   useEffect(() => {
     const cp = tab1?.calculation_params || {};
+    // 직접 입력해 저장해 둔 값이 있으면 그대로 복원(수정_tasks P2-11 '입력값 미저장')
+    const savedIn = cp.pension_inputs as Partial<Record<PensionInputKey, string>> | undefined;
+    if (savedIn && typeof savedIn === 'object') {
+      setLifetimeRate(savedIn.lifetimeRate ?? '');
+      setFixedRate(savedIn.fixedRate ?? '2');
+      setFixedPeriod(savedIn.fixedPeriod ?? '30');
+      setInfiniteRate(savedIn.infiniteRate ?? '5');
+      setInfinitePeriod(savedIn.infinitePeriod ?? '40');
+      setInfinitePension(savedIn.infinitePension ?? '');
+      setInputsDirty(false);
+      return;
+    }
     const recRate = cp.recommended_pension_rate as number | undefined;
     const baseRate = tab1?.retirement_pension_rate;
     const rateToUse = recRate ?? baseRate;
-    const rateStr = rateToUse ? String(rateToUse * 100) : '';
+    const rateStr = rateToUse != null ? String(Math.round(rateToUse * 10000) / 100) : '';
     setLifetimeRate(rateStr);
     setFixedRate(rateStr || '2');
     setInfiniteRate(rateStr || '5');
+    setFixedPeriod('30'); setInfinitePeriod('40'); setInfinitePension('');
+    setInputsDirty(false);
   }, [tab1]);
 
-  // 고객 전환 시 직접 입력값 초기화 — 연금 설정도 고객별로 독립이다
+  // 직접 입력값 자동 저장: 고친 뒤 1초 동안 더 고치지 않으면 1번탭 플랜의 calculation_params.pension_inputs 에 저장
+  // (서버가 calculation_params 의 다른 키는 그대로 두고 이 키만 바꾼다). 고객 전환·새로고침 후에도 유지된다.
   useEffect(() => {
-    setFixedPeriod('30'); setInfinitePeriod('40'); setInfinitePension('');
-  }, [customerId]);
+    if (!inputsDirty || !customerId || !tab1) return;
+    const inputs: Record<PensionInputKey, string> = {
+      lifetimeRate, fixedRate, fixedPeriod, infiniteRate, infinitePeriod, infinitePension,
+    };
+    setSaveState('saving');
+    const t = setTimeout(async () => {
+      try {
+        const res = await fetch(`${API_URL}/api/v1/retirement/desired-plans/${customerId}/params`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json', ...authLib.getAuthHeader() },
+          body: JSON.stringify({ calculation_params: { pension_inputs: inputs } }),
+        });
+        setSaveState(res.ok ? 'saved' : 'error');
+        if (res.ok) setInputsDirty(false);
+      } catch {
+        setSaveState('error');
+      }
+    }, 1000);
+    return () => clearTimeout(t);
+  }, [inputsDirty, customerId, tab1, lifetimeRate, fixedRate, fixedPeriod, infiniteRate, infinitePeriod, infinitePension]);
+
+  // 저장 전에 화면을 떠나면 경고
+  useEffect(() => {
+    if (!inputsDirty) return;
+    const onBefore = (e: BeforeUnloadEvent) => {
+      e.preventDefault();
+      e.returnValue = '';
+    };
+    window.addEventListener('beforeunload', onBefore);
+    return () => window.removeEventListener('beforeunload', onBefore);
+  }, [inputsDirty]);
+
+  /** 사용자가 직접 고친 값만 저장 대상으로 표시 */
+  const edited = (setter: (v: string) => void) => (v: string) => {
+    setter(v);
+    setInputsDirty(true);
+  };
 
   // 1번탭 calculation_params에서 추천/기존 수익률 추출
   // plan_v2(현재플랜/추천플랜 분리 저장)가 있으면 우선 사용 — A는 현재플랜, B는 추천플랜 값
@@ -356,7 +428,7 @@ export function PensionPlanTab() {
   // 확정형: A의 은퇴기간(100세까지)이 30년 이상이면 30년, 미만이면 그 기간에 맞춤
   const fixedCompareYears = Math.max(1, Math.min(30, 100 - retireAgeA));
   const fixedCompareYearsB = Math.max(1, Math.min(30, 100 - retireAgeB));
-  const infiniteCompareRate = parseFloat(infiniteRate) / 100 || 0.05;
+  const infiniteCompareRate = num(infiniteRate, 5) / 100;
 
   // A고객 (현재플랜 연금수익률 + A연금재원) 월연금
   const compareLifetimeMonthlyA = useMemo(() => {
@@ -386,12 +458,12 @@ export function PensionPlanTab() {
   const compareInfiniteMonthly = pensionFund * infiniteCompareRate / 12;
 
   // 상세 탭용 계산
-  const lifetimeResult = useMemo(() => calcLifetime(pensionFund, parseFloat(lifetimeRate) / 100 || pensionRate, retireAge, 120), [pensionFund, lifetimeRate, retireAge, pensionRate]);
-  const fixedResult = useMemo(() => calcFixed(pensionFund, parseFloat(fixedRate) / 100 || pensionRate, parseInt(fixedPeriod) || 30, retireAge), [pensionFund, fixedRate, fixedPeriod, retireAge, pensionRate]);
+  const lifetimeResult = useMemo(() => calcLifetime(pensionFund, num(lifetimeRate, pensionRate * 100) / 100, retireAge, 120), [pensionFund, lifetimeRate, retireAge, pensionRate]);
+  const fixedResult = useMemo(() => calcFixed(pensionFund, num(fixedRate, pensionRate * 100) / 100, years(fixedPeriod, 30), retireAge), [pensionFund, fixedRate, fixedPeriod, retireAge, pensionRate]);
   const infiniteResult = useMemo(() => {
     const monthlyManwon = parseInt(infinitePension.replace(/\D/g, ''), 10) || 0;
     const annualInput = monthlyManwon > 0 ? monthlyManwon * 1e4 * 12 : undefined;
-    return calcInfinite(pensionFund, parseFloat(infiniteRate) / 100 || 0.06, parseInt(infinitePeriod) || 40, retireAge, annualInput);
+    return calcInfinite(pensionFund, num(infiniteRate, 5) / 100, years(infinitePeriod, 40), retireAge, annualInput);
   }, [pensionFund, infiniteRate, infinitePeriod, retireAge, infinitePension]);
 
   // 1번탭 은퇴당시 수령액 (월, 원단위)
@@ -408,8 +480,20 @@ export function PensionPlanTab() {
     // 폭 제한 없이 화면 컨테이너(1600px)를 그대로 사용 — 은퇴플랜 설계 탭과 동일
     <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
 
-      {/* PDF 다운로드 버튼 */}
-      <div className="no-print" style={{ display: 'flex', justifyContent: 'flex-end' }}>
+      {/* PDF 다운로드 버튼 + 직접 입력값 저장 상태 */}
+      <div className="no-print" style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: 10 }}>
+        {saveState !== 'idle' && (
+          <span
+            role="status"
+            style={{ fontSize: 12, color: saveState === 'error' ? 'var(--danger)' : 'var(--text-muted)' }}
+          >
+            {saveState === 'saving'
+              ? '입력값 저장 중…'
+              : saveState === 'saved'
+                ? '입력값 저장됨'
+                : '입력값을 저장하지 못했습니다(1번탭 플랜이 있는지 확인). 다시 고치면 다시 저장합니다.'}
+          </span>
+        )}
         <button
           onClick={async () => {
             try {
@@ -433,8 +517,8 @@ export function PensionPlanTab() {
               compRows.push({ type: '종신형', customer: 'A고객', rate: rateA, period: `평생 (120세, ${lifetimeYearsA}년)`, monthly: `${fmt(Math.round(compareLifetimeMonthlyA / 1e4))}만원`, inheritance: '잔존연금' });
               if (recPenRate) compRows.push({ type: '', customer: 'B고객', rate: rateB, period: `평생 (120세, ${lifetimeYearsB}년)`, monthly: `${fmt(Math.round(compareLifetimeMonthlyB / 1e4))}만원`, inheritance: '' });
               // 확정형
-              compRows.push({ type: '확정형', customer: 'A고객', rate: rateA, period: `확정 ${fixedCompareYears}년 (${retireAgeA}→${retireAgeA + fixedCompareYears}세)`, monthly: `${fmt(Math.round(compareFixedMonthlyA / 1e4))}만원`, inheritance: '잔존연금 또는 없음' });
-              if (recPenRate) compRows.push({ type: '', customer: 'B고객', rate: rateB, period: `확정 ${fixedCompareYearsB}년 (${retireAgeB}→${retireAgeB + fixedCompareYearsB}세)`, monthly: `${fmt(Math.round(compareFixedMonthlyB / 1e4))}만원`, inheritance: '' });
+              compRows.push({ type: '확정형', customer: 'A고객', rate: rateA, period: `확정 ${fixedCompareYears}년 (${retireAgeA}~${retireAgeA + fixedCompareYears - 1}세)`, monthly: `${fmt(Math.round(compareFixedMonthlyA / 1e4))}만원`, inheritance: '잔존연금 또는 없음' });
+              if (recPenRate) compRows.push({ type: '', customer: 'B고객', rate: rateB, period: `확정 ${fixedCompareYearsB}년 (${retireAgeB}~${retireAgeB + fixedCompareYearsB - 1}세)`, monthly: `${fmt(Math.round(compareFixedMonthlyB / 1e4))}만원`, inheritance: '' });
               // 무한지급형
               compRows.push({ type: '무한지급형', customer: 'A고객', rate: rateA, period: '평생', monthly: `${fmt(Math.round(compareInfiniteMonthlyA / 1e4))}만원`, inheritance: '연금재원 상당' });
               if (recPenRate) compRows.push({ type: '', customer: 'B고객', rate: rateB, period: '평생', monthly: `${fmt(Math.round(compareInfiniteMonthlyB / 1e4))}만원`, inheritance: '' });
@@ -460,7 +544,7 @@ export function PensionPlanTab() {
               })();
               const infiniteChart: PChart[] = infiniteResult.chartData.map(p => ({ age: p.age, balance: p.balance, pension: p.pension }));
               // 그래프 아래 첨언 (화면 Note와 동일 문구)
-              const fixedP = parseInt(fixedPeriod) || 30;
+              const fixedP = years(fixedPeriod, 30);
               const infDiff = infiniteResult.interestAnnual - infiniteResult.annualPension;
               const infStatus: 'keep' | 'grow' | 'drain' =
                 Math.abs(infDiff) < infiniteResult.interestAnnual * 0.005 ? 'keep' : infDiff > 0 ? 'grow' : 'drain';
@@ -503,7 +587,7 @@ export function PensionPlanTab() {
                 fixedCards: [
                   { label: '연금재원', value: fmtW(pensionFund) },
                   { label: '연금수익률', value: `${fixedRate}%` },
-                  { label: '연금수령기간', value: `${fixedPeriod}년 (${retireAge}세~${retireAge + (parseInt(fixedPeriod) || 30)}세)` },
+                  { label: '연금수령기간', value: `${years(fixedPeriod, 30)}년 (${retireAge}세~${retireAge + years(fixedPeriod, 30) - 1}세)` },
                   { label: '연금액 (월/연)', value: `${fmt(Math.round(fr.monthlyPension / 1e4))}만원 / ${fmtW(fr.annualPension)}` },
                   { label: '총 수령연금', value: fmtW(fr.totalReceived) },
                   { label: '총 수령이자', value: fmtW(fr.totalInterest) },
@@ -584,7 +668,7 @@ export function PensionPlanTab() {
               <td rowSpan={recPenRate ? 2 : 1} style={{ padding: '12px', fontWeight: 700, color: '#7CC0FF', verticalAlign: 'middle' }}>확정형</td>
               <td style={{ padding: '10px 12px', textAlign: 'center', fontSize: '12px', color: 'var(--text-muted)' }}>A고객</td>
               <td style={{ padding: '10px 12px', textAlign: 'center', color: 'var(--text-muted)', fontSize: '12px' }}>연금수익률 ({(basePenRate * 100).toFixed(1)}%)</td>
-              <td style={{ padding: '10px 12px', textAlign: 'center', color: 'var(--text-primary)' }}>확정 {fixedCompareYears}년<br /><span style={{ fontSize: '10px', color: 'var(--text-muted)' }}>({retireAgeA}→{retireAgeA + fixedCompareYears}세)</span></td>
+              <td style={{ padding: '10px 12px', textAlign: 'center', color: 'var(--text-primary)' }}>확정 {fixedCompareYears}년<br /><span style={{ fontSize: '10px', color: 'var(--text-muted)' }}>({retireAgeA}~{retireAgeA + fixedCompareYears - 1}세)</span></td>
               <td style={{ padding: '10px 12px', textAlign: 'right', fontWeight: 700, fontVariantNumeric: 'tabular-nums', color: 'var(--text-primary)' }}>{fmtW(compareFixedMonthlyA)}</td>
               <td rowSpan={recPenRate ? 2 : 1} style={{ padding: '10px 12px', textAlign: 'center', color: 'var(--text-muted)', borderBottom: `1px solid var(--bg-surface)`, verticalAlign: 'middle' }}>잔존연금 또는 없음</td>
             </tr>
@@ -592,7 +676,7 @@ export function PensionPlanTab() {
               <tr style={{ borderBottom: `1px solid var(--bg-surface)`, backgroundColor: 'rgba(234,88,12,0.08)' }}>
                 <td style={{ padding: '10px 12px', textAlign: 'center', fontSize: '12px', fontWeight: 600, color: '#FB923C' }}>B고객</td>
                 <td style={{ padding: '10px 12px', textAlign: 'center', color: '#FB923C', fontSize: '12px', fontWeight: 500 }}>추천수익률 ({(recPenRate * 100).toFixed(1)}%)</td>
-                <td style={{ padding: '10px 12px', textAlign: 'center', color: '#FB923C' }}>확정 {fixedCompareYearsB}년<br /><span style={{ fontSize: '10px', color: 'var(--text-muted)' }}>({retireAgeB}→{retireAgeB + fixedCompareYearsB}세)</span></td>
+                <td style={{ padding: '10px 12px', textAlign: 'center', color: '#FB923C' }}>확정 {fixedCompareYearsB}년<br /><span style={{ fontSize: '10px', color: 'var(--text-muted)' }}>({retireAgeB}~{retireAgeB + fixedCompareYearsB - 1}세)</span></td>
                 <td style={{ padding: '10px 12px', textAlign: 'right', fontWeight: 700, fontVariantNumeric: 'tabular-nums', color: '#FB923C' }}>{fmtW(compareFixedMonthlyB)}</td>
               </tr>
             )}
@@ -630,7 +714,7 @@ export function PensionPlanTab() {
             <span style={{ width: 4, height: 16, backgroundColor: tabColors[0], borderRadius: 2 }} />
             <span style={{ fontSize: '15px', fontWeight: 700, color: '#7CC0FF' }}>{tabs[0]}</span>
           </div>
-          <LifetimeSection pv={pensionFund} rate={lifetimeRate} setRate={setLifetimeRate} retireAge={retireAge} result={lifetimeResult} pensionRateFromTab1={pensionRate} />
+          <LifetimeSection pv={pensionFund} rate={lifetimeRate} setRate={edited(setLifetimeRate)} retireAge={retireAge} result={lifetimeResult} pensionRateFromTab1={pensionRate} />
         </div>
 
         {/* 확정형 */}
@@ -639,7 +723,7 @@ export function PensionPlanTab() {
             <span style={{ width: 4, height: 16, backgroundColor: tabColors[1], borderRadius: 2 }} />
             <span style={{ fontSize: '15px', fontWeight: 700, color: '#93C5FD' }}>{tabs[1]}</span>
           </div>
-          <FixedSection pv={pensionFund} rate={fixedRate} setRate={setFixedRate} period={fixedPeriod} setPeriod={setFixedPeriod} retireAge={retireAge} result={fixedResult} />
+          <FixedSection pv={pensionFund} rate={fixedRate} setRate={edited(setFixedRate)} period={fixedPeriod} setPeriod={edited(setFixedPeriod)} retireAge={retireAge} result={fixedResult} />
         </div>
 
         {/* 무한지급형 */}
@@ -648,7 +732,7 @@ export function PensionPlanTab() {
             <span style={{ width: 4, height: 16, backgroundColor: tabColors[2], borderRadius: 2 }} />
             <span style={{ fontSize: '15px', fontWeight: 700, color: '#4ADE80' }}>{tabs[2]}</span>
           </div>
-          <InfiniteSection pv={pensionFund} rate={infiniteRate} setRate={setInfiniteRate} period={infinitePeriod} setPeriod={setInfinitePeriod} retireAge={retireAge} result={infiniteResult} pension={infinitePension} setPension={setInfinitePension} />
+          <InfiniteSection pv={pensionFund} rate={infiniteRate} setRate={edited(setInfiniteRate)} period={infinitePeriod} setPeriod={edited(setInfinitePeriod)} retireAge={retireAge} result={infiniteResult} pension={infinitePension} setPension={edited(setInfinitePension)} />
         </div>
       </Section>
 
@@ -737,7 +821,7 @@ function LifetimeSection({ pv, rate, setRate, retireAge, result, pensionRateFrom
 function FixedSection({ pv, rate, setRate, period, setPeriod, retireAge, result }: {
   pv: number; rate: string; setRate: (v: string) => void; period: string; setPeriod: (v: string) => void; retireAge: number; result: FixedResult;
 }) {
-  const p = parseInt(period) || 30;
+  const p = years(period, 30);
   const rateDisplay = rate || '4.5';
   const maxAge = 120;
   const totalYears = maxAge - retireAge + 1;
@@ -745,7 +829,7 @@ function FixedSection({ pv, rate, setRate, period, setPeriod, retireAge, result 
   // 그래프: 수령기간은 연금 바, 이후는 0으로 120세까지
   const fullChartData: ChartPoint[] = [];
   for (let yr = 1; yr <= totalYears; yr++) {
-    const age = retireAge + yr;
+    const age = retireAge + yr - 1;
     const matched = result.chartData.find(d => d.age === age);
     fullChartData.push({
       age,

@@ -32,3 +32,40 @@ async def test_version_endpoint(monkeypatch):
     async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://t") as c:
         r = await c.get("/api/v1/version")
     assert r.status_code == 200 and r.json()["commit"] == "abcdef1" and r.json()["env"] == "production"
+
+
+@pytest.mark.skipif(not PG, reason="PERM_PG_URL 없음(실제 PostgreSQL 필요)")
+async def test_product_master_conflicts_clear_and_delete_usage(env):  # noqa: F811
+    """수정_tasks P2-10: 중복 이름 409(500 아님), 칸 비우기, 쓰는 곳이 있으면 삭제 전 확인."""
+    import uuid
+
+    from app.models.recommended_portfolio import RecommendedPortfolioItem
+
+    c, d, hdr = env["c"], env["d"], env["hdr"]
+    h = hdr(d["owner"])
+    n1, n2 = f"상품-{uuid.uuid4().hex[:6]}", f"상품-{uuid.uuid4().hex[:6]}"
+    a = (await c.post("/product-master", headers=h, json={"product_name": n1, "region": "국내", "risk_level": "중위험"})).json()
+    b = (await c.post("/product-master", headers=h, json={"product_name": f"  {n2}  "})).json()
+    assert b["product_name"] == n2
+    assert (await c.post("/product-master", headers=h, json={"product_name": n1})).status_code == 409
+    assert (await c.post("/product-master", headers=h, json={"product_name": "   "})).status_code == 422
+    r = await c.put(f"/product-master/{b['id']}", headers=h, json={"product_name": n1})
+    assert r.status_code == 409  # 예전 500
+    r = await c.put(f"/product-master/{a['id']}", headers=h, json={"region": None, "risk_level": ""})
+    assert r.status_code == 200 and r.json()["region"] is None and r.json()["risk_level"] is None
+    assert (await c.put(f"/product-master/{a['id']}", headers=h, json={"product_name": ""})).status_code == 422
+    # 쓰는 곳이 있으면 409 + 사용처, force 로 삭제
+    async with env["Session"]() as db:
+        item = RecommendedPortfolioItem(product_name=n1)
+        db.add(item)
+        await db.commit()
+        item_id = item.id
+    u = (await c.get(f"/product-master/{a['id']}/usage", headers=h)).json()
+    assert u["recommended_items"] == 1 and u["total"] == 1
+    r = await c.delete(f"/product-master/{a['id']}", headers=h)
+    assert r.status_code == 409 and r.json()["detail"]["usage"]["recommended_items"] == 1
+    assert (await c.delete(f"/product-master/{a['id']}?force=true", headers=h)).status_code == 204
+    assert (await c.delete(f"/product-master/{b['id']}", headers=h)).status_code == 204
+    async with env["Session"]() as db:
+        await db.delete(await db.get(RecommendedPortfolioItem, item_id))
+        await db.commit()
