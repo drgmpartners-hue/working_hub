@@ -1,12 +1,13 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { Fragment, useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { API_URL } from '@/lib/api-url';
 import { isNotionConfig, loadJSON, notionDbGone, removeKey, saveJSON } from '@/lib/storage';
 import { authLib } from '@/lib/auth';
 import { useAuthStore } from '@/stores/auth';
 import { OwnerClientActions } from '@/components/customer/OwnerClientActions';
+import { ClientAccountsPanel } from '@/components/customer/ClientAccountsPanel';
 import { ManagerSelectField, managerMissing } from '@/components/customer/ManagerSelectField';
 
 /* ------------------------------------------------------------------ */
@@ -71,6 +72,8 @@ export default function CustomerManagementPage() {
   const [newManagerId, setNewManagerId] = useState('');
   // 엑셀 대량 등록: 대표는 먼저 담당자를 고른다
   const [excelPick, setExcelPick] = useState(false);
+  // 증권계좌를 펼친 고객(한 번에 한 명)
+  const [openAccountsId, setOpenAccountsId] = useState<string | null>(null);
   const [excelManagerId, setExcelManagerId] = useState('');
 
   /* Notion import */
@@ -843,10 +846,10 @@ export default function CustomerManagementPage() {
                   </tr>
                 ) : (
                   filtered.map((c, idx) => (
+                    <Fragment key={c.id}>
                     <tr
-                      key={c.id}
                       style={{
-                        borderBottom: '1px solid var(--border)',
+                        borderBottom: openAccountsId === c.id ? 'none' : '1px solid var(--border)',
                         transition: 'background 0.12s',
                       }}
                       onMouseEnter={(e) => (e.currentTarget.style.background = 'var(--bg-surface)')}
@@ -877,6 +880,24 @@ export default function CustomerManagementPage() {
                       </td>
                       <td style={{ padding: '12px 14px', textAlign: 'center' }}>
                         <div style={{ display: 'flex', gap: '6px', justifyContent: 'center' }}>
+                          {/* 증권계좌: 주식, 펀드 관리의 계좌정보와 같은 데이터를 고객 줄 바로 아래에 펼친다 */}
+                          <button
+                            onClick={() => setOpenAccountsId((v) => (v === c.id ? null : c.id))}
+                            aria-expanded={openAccountsId === c.id}
+                            style={{
+                              padding: '5px 12px',
+                              borderRadius: '7px',
+                              border: `1px solid ${openAccountsId === c.id ? 'var(--blue-400)' : 'var(--border-strong)'}`,
+                              background: openAccountsId === c.id ? 'var(--bg-card-2)' : 'var(--bg-card)',
+                              color: openAccountsId === c.id ? 'var(--blue-400)' : 'var(--text-secondary)',
+                              fontSize: '0.75rem',
+                              fontWeight: 500,
+                              cursor: 'pointer',
+                              whiteSpace: 'nowrap',
+                            }}
+                          >
+                            증권계좌 {openAccountsId === c.id ? '▲' : '▼'}
+                          </button>
                           {isOwner && <OwnerClientActions client={c} managers={managers} onChanged={fetchCustomers} />}
                           <button
                             onClick={() => openEditModal(c)}
@@ -911,6 +932,14 @@ export default function CustomerManagementPage() {
                         </div>
                       </td>
                     </tr>
+                    {openAccountsId === c.id && (
+                      <tr style={{ borderBottom: '1px solid var(--border)' }}>
+                        <td colSpan={isOwner ? 9 : 8} style={{ padding: 0 }}>
+                          <ClientAccountsPanel clientId={c.id} clientName={c.name} />
+                        </td>
+                      </tr>
+                    )}
+                    </Fragment>
                   ))
                 )}
               </tbody>

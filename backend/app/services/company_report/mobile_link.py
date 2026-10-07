@@ -35,9 +35,14 @@ class LinkError(ValueError):
     pass
 
 
-def _sig(kind: str, key: str, subject: str, exp: str) -> str:
-    mac = hmac.new(settings.SECRET_KEY.encode(), f"cr-mobile|{kind}|{key}|{subject}|{exp}".encode(), hashlib.sha256).digest()
+def _sig(kind: str, key: str, subject: str, exp: str, secret: Optional[str] = None) -> str:
+    mac = hmac.new((secret or settings.SECRET_KEY).encode(), f"cr-mobile|{kind}|{key}|{subject}|{exp}".encode(), hashlib.sha256).digest()
     return base64.urlsafe_b64encode(mac).decode().rstrip("=")[:SIG_LEN]
+
+
+def _sig_ok(sig: str, *parts: str) -> bool:
+    """지금 SECRET_KEY 또는 예전 값(OLD_SECRET_KEYS)으로 만든 서명이면 통과 — 키를 바꿔도 이미 보낸 링크가 열린다."""
+    return any(hmac.compare_digest(sig, _sig(*parts, secret=s)) for s in settings.link_secrets())
 
 
 def subject_for(recipient_id: Optional[str], user_id: Optional[str]) -> str:
@@ -65,7 +70,7 @@ def parse(kind: str, token: str, today: Optional[date] = None) -> tuple[str, str
     key, subject, exp, sig = parts
     if kind not in _KEY_RE or not _KEY_RE[kind].match(key) or not _SUBJ_RE.match(subject) or not re.match(r"^\d{8}$", exp):
         raise LinkError("링크 형식이 올바르지 않습니다.")
-    if not hmac.compare_digest(sig, _sig(kind, key, subject, exp)):
+    if not _sig_ok(sig, kind, key, subject, exp):
         raise LinkError("링크가 올바르지 않습니다.")
     if (today or today_kst()).strftime("%Y%m%d") > exp:
         raise LinkError("링크 사용 기간(45일)이 지났습니다. Working Hub에 로그인해서 확인해 주세요.")

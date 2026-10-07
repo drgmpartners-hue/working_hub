@@ -29,9 +29,14 @@ class ShareError(ValueError):
     pass
 
 
-def _sig(report_id: str, client_id: str, exp: str) -> str:
-    mac = hmac.new(settings.SECRET_KEY.encode(), f"cr-report|{report_id}|{client_id}|{exp}".encode(), hashlib.sha256).digest()
+def _sig(report_id: str, client_id: str, exp: str, secret: Optional[str] = None) -> str:
+    mac = hmac.new((secret or settings.SECRET_KEY).encode(), f"cr-report|{report_id}|{client_id}|{exp}".encode(), hashlib.sha256).digest()
     return base64.urlsafe_b64encode(mac).decode().rstrip("=")[:SIG_LEN]
+
+
+def _sig_ok(sig: str, *parts: str) -> bool:
+    """지금 SECRET_KEY 또는 예전 값(OLD_SECRET_KEYS)으로 만든 서명이면 통과 — 키를 바꿔도 이미 보낸 링크가 열린다."""
+    return any(hmac.compare_digest(sig, _sig(*parts, secret=s)) for s in settings.link_secrets())
 
 
 def make(report_id: str, client_id: str, today: Optional[date] = None) -> str:
@@ -48,7 +53,7 @@ def parse(token: str, today: Optional[date] = None) -> tuple[str, str]:
     rid, cid, exp, sig = parts
     if not _UUID.match(rid) or not _UUID.match(cid) or not re.match(r"^\d{8}$", exp):
         raise ShareError("링크 형식이 올바르지 않습니다.")
-    if not hmac.compare_digest(sig, _sig(rid, cid, exp)):
+    if not _sig_ok(sig, rid, cid, exp):
         raise ShareError("링크가 올바르지 않습니다.")
     if (today or today_kst()).strftime("%Y%m%d") > exp:
         raise ShareError("링크 사용 기간이 지났습니다. 담당자에게 다시 요청해 주세요.")

@@ -129,3 +129,44 @@ test('매니저 API 관리: 회사 공용 키는 상태만, Notion 만 본인 �
   await expect(page.getByRole('heading', { name: 'Notion API' })).toBeVisible();
   await expect(page.getByRole('heading', { name: 'Claude API (Anthropic)' })).toHaveCount(0);
 });
+
+test('고객 정보 관리: 증권계좌를 고객 줄 아래에 펼쳐 수정·등록', async ({ page }) => {
+  await signIn(page);
+  const accounts = [
+    { id: 'a1', client_id: 'c1', account_type: 'irp', account_number: '123-45-678', securities_company: '미래에셋증권', representative: '백서연', created_at: '2026-01-01T00:00:00' },
+  ];
+  const calls: { method: string; body: unknown }[] = [];
+  await mockApi(page, {
+    'GET /api/v1/clients': [{ id: 'c1', name: '신선형', unique_code: '625841', birth_date: '1980-11-04', ssn_masked: null, phone: '010-8846-7268', email: null, manager: { id: 'm1', nickname: '백서연' } }],
+    'GET /api/v1/managers': [{ id: 'm1', nickname: '백서연' }],
+    'GET /api/v1/clients/c1/accounts': accounts,
+    'GET /api/v1/field-options/securities': [{ id: 's1', value: 'mirae', label: '미래에셋증권', sort_order: 1 }, { id: 's2', value: 'kb', label: 'KB증권', sort_order: 2 }],
+    'GET /api/v1/field-options/representative': [{ id: 'r1', value: 'baek', label: '백서연', sort_order: 1 }],
+    'POST /api/v1/clients/c1/accounts': (r: Route) => {
+      calls.push({ method: 'POST', body: r.request().postDataJSON() });
+      return json(r, { id: 'a2', client_id: 'c1', ...r.request().postDataJSON(), created_at: '2026-10-07T00:00:00' }, 201);
+    },
+    'PUT /api/v1/clients/c1/accounts/a1': (r: Route) => {
+      calls.push({ method: 'PUT', body: r.request().postDataJSON() });
+      return json(r, { ...accounts[0], ...r.request().postDataJSON() });
+    },
+  });
+  await page.goto('/customer-management');
+  await page.getByRole('button', { name: /증권계좌/ }).click();
+  await expect(page.getByText('신선형 님의 증권계좌')).toBeVisible();
+  await expect(page.getByText('123-45-678')).toBeVisible();
+
+  // 수정
+  await page.getByRole('row', { name: /123-45-678/ }).getByRole('button', { name: '수정' }).click();
+  await page.fill('input[placeholder="계좌번호"]', '999-00-111');
+  await page.getByRole('button', { name: '저장' }).click();
+  await expect.poll(() => calls.find((c) => c.method === 'PUT')?.body).toMatchObject({ account_number: '999-00-111', account_type: 'irp' });
+
+  // 등록
+  await page.getByRole('button', { name: '+ 계좌 등록' }).click();
+  await page.locator('select').filter({ hasText: 'KB증권' }).last().selectOption({ label: 'KB증권' });
+  await page.fill('input[placeholder="계좌번호"]', '555-66-777');
+  await page.getByRole('button', { name: '저장' }).click();
+  await expect.poll(() => calls.find((c) => c.method === 'POST')?.body).toMatchObject({ account_number: '555-66-777', securities_company: 'KB증권' });
+  await page.screenshot({ path: 'test-results/customer-accounts.png', fullPage: false });
+});
