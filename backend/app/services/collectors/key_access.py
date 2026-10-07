@@ -17,6 +17,13 @@ from app.api.v1.user_api_keys import _decrypt
 from app.models.user_api_key import UserApiKey
 
 PERSONAL_PROVIDERS = frozenset({"notion"})
+# 키 하나만 쓰는 서비스 — 두 번째 칸(api_secret)은 쓰지 않는다. 예전에 잘못 들어간 값이 남아 있으면
+# 그 값이 안 열려도 키 전체를 못 쓰게 되던 문제가 있어(대표 Gemini 키, 2026-10-07) 아예 읽지 않는다.
+SINGLE_FIELD_PROVIDERS = frozenset({"claude", "gemini", "notion", "dart", "data_go_kr", "kipris"})
+
+
+def uses_secret(provider: str) -> bool:
+    return provider not in SINGLE_FIELD_PROVIDERS
 
 
 def is_personal(provider: str) -> bool:
@@ -46,7 +53,7 @@ async def get_user_key(
         return None
     try:
         api_key = _decrypt(key.api_key)
-        api_secret = _decrypt(key.api_secret) if key.api_secret else ""
+        api_secret = _decrypt(key.api_secret) if (key.api_secret and uses_secret(provider)) else ""
     except Exception:
         return None
     return api_key, api_secret

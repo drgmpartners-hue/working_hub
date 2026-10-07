@@ -91,3 +91,30 @@ async def test_security_status_lists_unreadable_live(env):  # noqa: F811
     items = (await c.get("/admin/security-status", headers=hdr(d["owner"]))).json()["unreadable_items"]
     assert not [x for x in items if "매니저B" in x["message"]]
     await _clear(Session, [d["owner"], d["A"], d["B"]])
+
+
+@pytest.mark.skipif(not PG, reason="PERM_PG_URL 없음(실제 PostgreSQL 필요)")
+async def test_single_field_key_ignores_stale_second_field(env):  # noqa: F811
+    """대표 Gemini 키에 예전 두 번째 칸 값(못 여는 값)이 남아 키 전체를 못 쓰던 문제(2026-10-07)."""
+    from sqlalchemy import select, update
+
+    from app.models.user_api_key import UserApiKey
+    from app.services.collectors.key_access import resolve_key
+
+    c, d, hdr, Session = env["c"], env["d"], env["hdr"], env["Session"]
+    await _clear(Session, [d["owner"], d["A"], d["B"]])
+    assert (await c.post("/user-api-keys", headers=hdr(d["owner"]), json={"provider": "gemini", "api_key": "AIza-owner"})).status_code == 201
+    async with Session() as db:
+        await db.execute(update(UserApiKey).where(UserApiKey.user_id == d["owner"], UserApiKey.provider == "gemini")
+                         .values(api_secret="gAAAAA-stale-secret"))
+        await db.commit()
+    async with Session() as db:
+        assert (await resolve_key(db, "gemini", d["A"]))[0] == "AIza-owner"   # 두 번째 칸 무시 → 키 사용 가능
+    items = (await c.get("/admin/security-status", headers=hdr(d["owner"]))).json()["unreadable_items"]
+    assert not [x for x in items if x.get("provider") == "gemini" and "대표" in x["message"]]
+    # 수정 저장하면 쓰지 않는 두 번째 칸은 지워진다
+    assert (await c.put("/user-api-keys/gemini", headers=hdr(d["owner"]), json={"api_key": "AIza-owner-2"})).status_code == 200
+    async with Session() as db:
+        row = (await db.execute(select(UserApiKey).where(UserApiKey.user_id == d["owner"], UserApiKey.provider == "gemini"))).scalar_one()
+        assert row.api_secret is None
+    await _clear(Session, [d["owner"], d["A"], d["B"]])

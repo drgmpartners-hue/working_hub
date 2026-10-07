@@ -263,7 +263,9 @@ async def scan_unreadable(db) -> list[dict]:
     out: list[dict] = []
     rows = (await db.execute(select(UserApiKey, User.nickname, User.email).join(User, User.id == UserApiKey.user_id))).all()
     for k, nick, email in rows:
-        if bad(k.api_key) or bad(k.api_secret):
+        from app.services.collectors.key_access import uses_secret
+
+        if bad(k.api_key) or (uses_secret(k.provider) and bad(k.api_secret)):
             out.append({"kind": "api_key", "provider": k.provider, "user": nick or (email or "").split("@")[0],
                         "message": f"{nick or email} 계정의 {k.provider} API 키 — 그 계정의 설정 > API 관리에서 다시 등록"})
     for s in (await db.execute(select(AIAPISetting))).scalars().all():

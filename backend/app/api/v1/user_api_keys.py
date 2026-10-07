@@ -78,6 +78,12 @@ class ApiKeyResponse(BaseModel):
     updated_at: str
 
 
+def _uses_secret(provider: str) -> bool:
+    from app.services.collectors.key_access import uses_secret
+
+    return uses_secret(provider)
+
+
 def _is_owner(user) -> bool:
     return getattr(user, "role", None) == "owner"
 
@@ -115,7 +121,7 @@ async def list_api_keys(
             id=k.id,
             provider=k.provider,
             api_key_masked=_safe_mask(k.api_key) or "",
-            api_secret_masked=_safe_mask(k.api_secret),
+            api_secret_masked=_safe_mask(k.api_secret) if _uses_secret(k.provider) else None,
             is_active=k.is_active,
             last_verified_at=k.last_verified_at.isoformat() if k.last_verified_at else None,
             created_at=k.created_at.isoformat(),
@@ -166,14 +172,14 @@ async def create_api_key(
     key = existing.scalar_one_or_none()
     if key:
         key.api_key = _encrypt(body.api_key)
-        key.api_secret = _encrypt(body.api_secret) if body.api_secret else None
+        key.api_secret = _encrypt(body.api_secret) if (body.api_secret and _uses_secret(body.provider)) else None
         key.is_active = True
     else:
         key = UserApiKey(
             user_id=current_user.id,
             provider=body.provider,
             api_key=_encrypt(body.api_key),
-            api_secret=_encrypt(body.api_secret) if body.api_secret else None,
+            api_secret=_encrypt(body.api_secret) if (body.api_secret and _uses_secret(body.provider)) else None,
         )
         db.add(key)
     await db.commit()
@@ -183,7 +189,7 @@ async def create_api_key(
         id=key.id,
         provider=key.provider,
         api_key_masked=_mask(body.api_key),
-        api_secret_masked=_mask(body.api_secret) if body.api_secret else None,
+        api_secret_masked=_mask(body.api_secret) if (body.api_secret and _uses_secret(body.provider)) else None,
         is_active=key.is_active,
         last_verified_at=None,
         created_at=key.created_at.isoformat(),
@@ -262,7 +268,7 @@ async def test_saved_api_key(
 
     try:
         api_key = _decrypt(key.api_key)
-        api_secret = _decrypt(key.api_secret) if key.api_secret else ""
+        api_secret = _decrypt(key.api_secret) if (key.api_secret and _uses_secret(provider)) else ""
     except Exception:
         # SECRET_KEY 변경 등으로 저장 키 복호화 불가 (InvalidToken은 str()이 빈 문자열 → 500 원인이었음)
         raise HTTPException(
@@ -321,7 +327,9 @@ async def update_api_key(
 
     if body.api_key is not None:
         key.api_key = _encrypt(body.api_key)
-    if body.api_secret is not None:
+    if not _uses_secret(provider):
+        key.api_secret = None  # 키 하나짜리 서비스: 예전에 남은 두 번째 칸 값은 지움(쓰지 않는 값)
+    if body.api_secret is not None and _uses_secret(provider):
         key.api_secret = _encrypt(body.api_secret) if body.api_secret else None
     if body.is_active is not None:
         key.is_active = body.is_active
@@ -333,7 +341,7 @@ async def update_api_key(
         id=key.id,
         provider=key.provider,
         api_key_masked=_safe_mask(key.api_key) or "",
-        api_secret_masked=_safe_mask(key.api_secret),
+        api_secret_masked=_safe_mask(key.api_secret) if _uses_secret(provider) else None,
         is_active=key.is_active,
         last_verified_at=key.last_verified_at.isoformat() if key.last_verified_at else None,
         created_at=key.created_at.isoformat(),
