@@ -23,8 +23,8 @@ from app.services import client_portal_service
 
 @pytest.fixture(autouse=True)
 def _current_link_is_test_token():
-    """포털 JWT 확인 때 고객의 지금 링크 열쇠를 DB 에서 읽는다(수정_tasks P2-9). 가짜 DB 테스트에서는 'test-token'."""
-    with patch.object(client_portal_service, "current_portal_token", new=AsyncMock(return_value="test-token")):
+    """포털 JWT 확인 때 고객의 지금 링크 열쇠를 DB 에서 읽는다(수정_tasks P2-9). 가짜 DB 테스트에서는 'test-token'(중복 합치기로 남긴 예전 링크도 함께 허용 — current_portal_tokens)."""
+    with patch.object(client_portal_service, "current_portal_tokens", new=AsyncMock(return_value={"test-token"})):
         yield
 
 
@@ -255,7 +255,7 @@ class TestPortalJwtChecks:
 
     def test_regenerated_link_invalidates_old_jwt(self):
         jwt_token = client_portal_service.create_portal_jwt("client-uuid-001", "test-token")
-        with patch.object(client_portal_service, "current_portal_token", new=AsyncMock(return_value="new-token")):
+        with patch.object(client_portal_service, "current_portal_tokens", new=AsyncMock(return_value={"new-token"})):
             assert self._get("/api/v1/client-portal/test-token/snapshots", jwt_token).status_code == 401
 
     def test_staff_token_rejected_on_portal(self):

@@ -77,3 +77,45 @@ async def security_status(ctx: Auth, db: AsyncSession = Depends(get_db)):
         "problems": fatal + warn,
         "ok": bool(settings.ENCRYPTION_KEY) and done and not fatal and not warn and not unreadable,
     }
+
+
+# --------------------------------------------------------------------------- 중복 고객 합치기 (2026-10-07)
+
+@router.get("/duplicate-clients")
+async def duplicate_clients(ctx: Auth, db: AsyncSession = Depends(get_db)):
+    """이름·생년월일·담당자가 같은 고객 묶음과, 기록마다 딸린 자료 수. 대표 전용."""
+    from app.services import client_merge
+
+    require_owner(ctx.effective)
+    return {"groups": await client_merge.find_duplicates(db)}
+
+
+@router.post("/duplicate-clients/merge")
+async def merge_duplicate_clients(body: dict, ctx: Auth, db: AsyncSession = Depends(get_db)):
+    """body: {"groups": [{"keep_id": ..., "remove_ids": [...]}]} — 묶음마다 따로 처리(하나가 실패해도 나머지는 진행).
+    되돌릴 수 없으므로 화면에서 한 번 더 확인받은 뒤 부른다."""
+    from fastapi import HTTPException
+
+    from app.services import audit_service, client_merge
+
+    require_owner(ctx.effective)
+    groups = body.get("groups") if isinstance(body, dict) else None
+    if not isinstance(groups, list) or not groups:
+        raise HTTPException(422, "합칠 묶음이 없습니다.")
+    done, failed = [], []
+    for g in groups:
+        keep_id, remove_ids = (g or {}).get("keep_id"), (g or {}).get("remove_ids") or []
+        try:
+            res = await client_merge.merge_group(db, keep_id, list(remove_ids))
+            await db.commit()
+            done.append(res)
+            await audit_service.record(  # 누가 언제 무엇을 합쳤는지(실패해도 합치기 결과에는 영향 없음)
+                db, actor_id=ctx.actor.id, effective_id=ctx.effective.id, action="client.merge",
+                resource_type="client", resource_id=keep_id, client_id=keep_id,
+                payload_summary={"removed": res["removed"], "removed_codes": res["removed_codes"],
+                                 "unique_code": res["unique_code"], "moved": res["moved"]},
+            )
+        except ValueError as e:
+            await db.rollback()
+            failed.append({"keep_id": keep_id, "reason": str(e)})
+    return {"merged": done, "failed": failed}

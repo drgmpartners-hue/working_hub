@@ -115,16 +115,24 @@ def decode_portal_jwt(token_str: str) -> Optional[dict]:
 async def get_client_by_portal_token(
     db: AsyncSession, portal_token: str
 ) -> Optional[Client]:
-    """Fetch a client by their portal_token."""
+    """링크 열쇠로 고객 찾기. 중복 고객을 합친 경우 지운 쪽 링크(portal_token_alt)로도 찾는다."""
+    from sqlalchemy import or_
+
     result = await db.execute(
-        select(Client).where(Client.portal_token == portal_token)
+        select(Client).where(or_(Client.portal_token == portal_token, Client.portal_token_alt == portal_token))
     )
-    return result.scalar_one_or_none()
+    return result.scalars().first()
 
 
 async def current_portal_token(db: AsyncSession, client_id: str) -> Optional[str]:
     """고객의 지금 포털 링크 열쇠(링크를 새로 만들면 예전 JWT 는 무효가 된다)."""
     return (await db.execute(select(Client.portal_token).where(Client.id == client_id))).scalar_one_or_none()
+
+
+async def current_portal_tokens(db: AsyncSession, client_id: str) -> set[str]:
+    """지금 유효한 링크 열쇠들(본 링크 + 중복 합치기로 남긴 예전 링크)."""
+    row = (await db.execute(select(Client.portal_token, Client.portal_token_alt).where(Client.id == client_id))).first()
+    return {t for t in (row or ()) if t}
 
 
 async def check_portal_token(

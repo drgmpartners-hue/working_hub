@@ -30,6 +30,9 @@ interface Client {
   id: string;
   name: string;
   phone?: string;
+  unique_code?: string | null;
+  birth_date?: string | null;
+  user_id?: string;
   accounts: ClientAccount[];
 }
 
@@ -658,8 +661,46 @@ export function ClientManagementModal({ isOpen, onClose, onClientAdded }: Client
       alert(`${miss} (표 아래 담당자)`);
       return;
     }
+    // 같은 이름의 고객이 이미 있으면 새로 만들지 않고 그 고객에 계좌를 붙인다(2026-10-07 — 예전엔 고객 정보 관리의
+    // 고객과 별개의 고객이 생겨 계좌가 고객 정보 관리 쪽에 보이지 않았다)
+    const name = newRow.clientName.trim();
+    const same = clients.filter((c) => c.name.trim() === name && (!isOwner || !newManagerId || c.user_id === newManagerId));
+    let targetId: string | null = null;
+    if (same.length > 0) {
+      const desc = same.map((c) => `${c.name}${c.birth_date ? ` (${c.birth_date})` : ''}${c.unique_code ? ` 고유번호 ${c.unique_code}` : ''}`).join(', ');
+      if (same.length === 1 && window.confirm(`이미 등록된 고객이 있습니다: ${desc}\n\n이 고객에 계좌를 추가할까요?\n(취소를 누르면 동명이인으로 새 고객을 만들지 묻습니다)`)) {
+        targetId = same[0].id;
+      } else if (same.length > 1) {
+        alert(`같은 이름의 고객이 ${same.length}명 있습니다: ${desc}\n목록에서 해당 고객 줄의 [계좌 추가]로 등록해 주세요.`);
+        return;
+      } else if (!window.confirm(`'${name}'은(는) 이미 있는 고객과 다른 사람(동명이인)인가요?\n확인을 누르면 새 고객으로 등록합니다.`)) {
+        return;
+      }
+    }
     setNewSaving(true);
     try {
+      if (targetId) {
+        const accRes0 = await fetch(`${API_URL}/api/v1/clients/${targetId}/accounts`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', ...authLib.getAuthHeader() },
+          body: JSON.stringify({
+            account_type: newRow.accountType,
+            account_number: newRow.accountNumber || undefined,
+            securities_company: newRow.securitiesCompany || undefined,
+            representative: newRow.representative || undefined,
+          }),
+        });
+        if (!accRes0.ok) {
+          const err = await accRes0.json().catch(() => ({}));
+          alert(err?.detail || '계좌 생성 실패');
+          return;
+        }
+        setNewRow({ clientName: '', accountType: 'irp', accountNumber: '', securitiesCompany: '', representative: '' });
+        setAddingNew(false);
+        await loadClients();
+        onClientAdded?.();
+        return;
+      }
       const clientRes = await fetch(`${API_URL}/api/v1/clients`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', ...authLib.getAuthHeader() },

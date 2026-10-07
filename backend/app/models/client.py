@@ -30,6 +30,8 @@ class Client(Base):
     portal_token: Mapped[Optional[str]] = mapped_column(
         String(36), nullable=True, unique=True, default=lambda: str(uuid.uuid4())
     )
+    # 중복 고객을 합칠 때 지운 쪽의 포털 링크 — 이미 보낸 그 링크도 계속 열리게 한다(2026-10-07)
+    portal_token_alt: Mapped[Optional[str]] = mapped_column(String(36), nullable=True, unique=True)
     # 고유번호 (6자리 숫자, 중복 불가)
     unique_code: Mapped[Optional[str]] = mapped_column(
         String(6), nullable=True, unique=True, index=True

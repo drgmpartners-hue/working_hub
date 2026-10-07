@@ -38,8 +38,8 @@ async def _portal_payload(authorization: Optional[str], db: AsyncSession) -> dic
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid or expired portal token",
         )
-    current = await client_portal_service.current_portal_token(db, payload["sub"])
-    if not current or current != payload["portal_token"]:
+    current = await client_portal_service.current_portal_tokens(db, payload["sub"])
+    if payload["portal_token"] not in current:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid or expired portal token")
     return payload
 
