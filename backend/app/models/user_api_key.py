@@ -19,9 +19,9 @@ class UserApiKey(Base):
     )
     provider: Mapped[str] = mapped_column(
         String(50), nullable=False
-    )  # 'kiwoom', 'claude', 'gemini'
+    )  # 'claude', 'gemini', 'notion' … (키움은 2026-10-07 제거)
     api_key: Mapped[str] = mapped_column(Text, nullable=False)  # encrypted value
-    api_secret: Mapped[Optional[str]] = mapped_column(Text, nullable=True)  # encrypted, optional (kiwoom uses key+secret)
+    api_secret: Mapped[Optional[str]] = mapped_column(Text, nullable=True)  # encrypted, optional (KIS·네이버 등 key+secret)
     is_active: Mapped[bool] = mapped_column(default=True)
     last_verified_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
     created_at: Mapped[datetime] = mapped_column(

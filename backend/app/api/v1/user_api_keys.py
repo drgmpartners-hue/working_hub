@@ -1,4 +1,10 @@
-"""User API Keys — each user manages their own external API keys."""
+"""API 키 관리.
+
+2026-10-07: 회사 공용 키 / 본인 키로 나눔(`services/collectors/key_access.py`).
+- 회사 공용 키(Notion 외 전부): 대표만 등록·수정·삭제. 매니저는 대표가 등록한 키를 함께 쓴다.
+- 본인 키(Notion): 각자 자기 것을 등록한다.
+키움증권은 화면에서 빠져 쓰지 않으므로 제공자 목록에서 뺐다(저장돼 있던 키는 마이그레이션이 지움).
+"""
 from typing import Optional
 from datetime import datetime
 from fastapi import APIRouter, Depends, HTTPException
@@ -46,11 +52,11 @@ def _safe_mask(enc: Optional[str]) -> Optional[str]:
 
 # --- Schemas ---
 
-VALID_PROVIDERS = ["kiwoom", "claude", "gemini", "solapi", "notion", "kis", "dart", "naver_search", "data_go_kr", "kipris"]
+VALID_PROVIDERS = ["claude", "gemini", "solapi", "notion", "kis", "dart", "naver_search", "data_go_kr", "kipris"]
 
 
 class ApiKeyCreate(BaseModel):
-    provider: str  # 'kiwoom', 'claude', 'gemini'
+    provider: str  # 'claude', 'gemini', 'notion' …
     api_key: str
     api_secret: Optional[str] = None
 
@@ -70,6 +76,24 @@ class ApiKeyResponse(BaseModel):
     last_verified_at: Optional[str]
     created_at: str
     updated_at: str
+
+
+def _is_owner(user) -> bool:
+    return getattr(user, "role", None) == "owner"
+
+
+def _guard_shared(user, provider: str) -> None:
+    """회사 공용 키는 대표만 바꾼다. 매니저는 본인 키(Notion)만."""
+    from app.services.collectors.key_access import is_personal
+
+    if not is_personal(provider) and not _is_owner(user):
+        raise HTTPException(403, "회사 공용 키입니다. 대표가 등록한 키를 함께 사용하므로 따로 넣지 않아도 됩니다.")
+
+
+class CompanyKeyStatus(BaseModel):
+    provider: str
+    personal: bool       # 본인 키(각자 등록)
+    registered: bool     # 공용 키: 대표가 등록해 쓸 수 있음 / 본인 키: 내가 등록함
 
 
 # --- Endpoints ---
@@ -101,6 +125,24 @@ async def list_api_keys(
     ]
 
 
+@router.get("/company", response_model=list[CompanyKeyStatus])
+async def company_key_status(
+    current_user=Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """제공자별로 쓸 수 있는 키가 있는지(값은 내보내지 않음). 매니저 화면이 '회사 공용 키 사용 중'을 보여 줄 때 쓴다."""
+    from app.services.collectors.key_access import get_company_key, get_user_key, is_personal
+
+    out = []
+    for p in VALID_PROVIDERS:
+        if is_personal(p):
+            ok = await get_user_key(db, current_user.id, p) is not None
+        else:
+            ok = await get_company_key(db, p) is not None
+        out.append(CompanyKeyStatus(provider=p, personal=is_personal(p), registered=ok))
+    return out
+
+
 @router.post("", response_model=ApiKeyResponse, status_code=201, dependencies=[NotImpersonating])
 async def create_api_key(
     body: ApiKeyCreate,
@@ -110,6 +152,7 @@ async def create_api_key(
     """Register an API key for a provider."""
     if body.provider not in VALID_PROVIDERS:
         raise HTTPException(400, f"Invalid provider. Must be one of: {VALID_PROVIDERS}")
+    _guard_shared(current_user, body.provider)
 
     # Upsert: 이미 존재하면 덮어쓰기 (복호화 불능 키 재등록 시 409 데드락 방지)
     existing = await db.execute(
@@ -168,8 +211,6 @@ async def test_api_key(
             return await _test_claude(body.api_key)
         elif provider == "gemini":
             return await _test_gemini(body.api_key)
-        elif provider == "kiwoom":
-            return await _test_kiwoom(body.api_key, body.api_secret or "")
         elif provider == "solapi":
             return await _test_solapi(body.api_key, body.api_secret or "")
         elif provider == "notion":
@@ -195,9 +236,17 @@ async def test_saved_api_key(
     current_user=Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """Test a previously saved API key by decrypting it from DB."""
+    """Test a previously saved API key by decrypting it from DB.
+    매니저가 회사 공용 키를 시험하면 대표가 등록한 키로 시험한다."""
     if provider not in VALID_PROVIDERS:
         raise HTTPException(400, f"Invalid provider: {provider}")
+    from app.services.collectors.key_access import get_company_key, is_personal
+
+    if not is_personal(provider) and not _is_owner(current_user):
+        found = await get_company_key(db, provider)
+        if not found:
+            raise HTTPException(404, "대표가 아직 이 회사 공용 키를 등록하지 않았습니다.")
+        return await _run_test(provider, *found)
 
     result = await db.execute(
         select(UserApiKey).where(
@@ -221,13 +270,15 @@ async def test_saved_api_key(
             f"저장된 '{provider}' 키를 복호화할 수 없습니다(서버 암호화 키 불일치). 키를 다시 등록해주세요.",
         )
 
+    return await _run_test(provider, api_key, api_secret)
+
+
+async def _run_test(provider: str, api_key: str, api_secret: str) -> TestResult:
     try:
         if provider == "claude":
             return await _test_claude(api_key)
         elif provider == "gemini":
             return await _test_gemini(api_key)
-        elif provider == "kiwoom":
-            return await _test_kiwoom(api_key, api_secret)
         elif provider == "solapi":
             return await _test_solapi(api_key, api_secret)
         elif provider == "notion":
@@ -255,6 +306,7 @@ async def update_api_key(
     db: AsyncSession = Depends(get_db),
 ):
     """Update an API key for a provider."""
+    _guard_shared(current_user, provider)
     result = await db.execute(
         select(UserApiKey).where(
             and_(
@@ -296,6 +348,7 @@ async def delete_api_key(
     db: AsyncSession = Depends(get_db),
 ):
     """Delete an API key for a provider."""
+    _guard_shared(current_user, provider)
     result = await db.execute(
         select(UserApiKey).where(
             and_(
@@ -344,30 +397,6 @@ async def _test_gemini(api_key: str) -> TestResult:
         return TestResult(success=True, message=f"연결 성공! {model_count}개 모델 사용 가능")
     elif res.status_code == 400 or res.status_code == 403:
         return TestResult(success=False, message="인증 실패: API 키가 올바르지 않습니다.")
-    else:
-        return TestResult(success=False, message=f"API 응답 오류 (status={res.status_code})")
-
-
-async def _test_kiwoom(app_key: str, app_secret: str) -> TestResult:
-    """Test Kiwoom REST API by requesting an access token."""
-    if not app_secret:
-        return TestResult(success=False, message="APP Secret이 필요합니다.")
-    async with httpx.AsyncClient(timeout=10) as client:
-        res = await client.post(
-            "https://rest.kiwoom.com/oauth2/token",
-            json={
-                "grant_type": "client_credentials",
-                "appkey": app_key,
-                "appsecret": app_secret,
-            },
-        )
-    if res.status_code == 200:
-        data = res.json()
-        if data.get("access_token") or data.get("token"):
-            return TestResult(success=True, message="연결 성공! 액세스 토큰 발급 확인됨")
-        return TestResult(success=False, message=f"토큰 발급 실패: {data.get('msg', data.get('message', '알 수 없는 오류'))}")
-    elif res.status_code == 401 or res.status_code == 403:
-        return TestResult(success=False, message="인증 실패: APP Key 또는 APP Secret이 올바르지 않습니다.")
     else:
         return TestResult(success=False, message=f"API 응답 오류 (status={res.status_code})")
 

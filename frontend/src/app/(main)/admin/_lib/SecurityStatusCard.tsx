@@ -16,6 +16,8 @@ interface SecurityStatus {
     unreadable: number;
     at?: string;
   } | null;
+  /** 지금 키로 열 수 없는 값(화면을 열 때마다 다시 셈) — 누구 계정의 어떤 키인지 */
+  unreadable_items?: { kind: string; message: string }[];
   problems: string[];
   ok: boolean;
 }
@@ -58,9 +60,9 @@ export function SecurityStatusCard() {
           <li key={p}>{p}</li>
         ))}
         {s.encryption_key_set && !s.rotation_done && <li>새 암호화 키로 다시 암호화하는 중이거나 실패했습니다. 서버를 한 번 다시 시작해 보세요.</li>}
-        {!!s.rotation?.unreadable && (
-          <li>예전 키를 잃어 읽을 수 없는 값이 {s.rotation.unreadable}개 있습니다. 해당 API 키는 설정에서 다시 등록하세요.</li>
-        )}
+        {(s.unreadable_items ?? []).map((u) => (
+          <li key={u.message}>예전 키를 잃어 읽을 수 없는 값: {u.message}</li>
+        ))}
       </ul>
       {!s.encryption_key_set && (
         <div style={{ marginTop: 6, color: 'var(--text-secondary)' }}>

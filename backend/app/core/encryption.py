@@ -239,3 +239,40 @@ async def rotate_if_needed(db) -> Optional[dict]:
     await settings_store.set_value(db, FP_KEY, fp)
     logger.warning("[보안 설정] 저장 데이터를 새 암호화 키로 다시 암호화했습니다: %s", res)
     return res
+
+
+async def scan_unreadable(db) -> list[dict]:
+    """지금 키로 열 수 없는 저장값 목록(값 자체는 내보내지 않음). 관리자 '보안 설정' 점검이 화면을 열 때마다 센다
+    — 다시 등록하면 바로 사라진다(예전엔 기동 때 한 번 센 숫자가 다음 키 교체까지 남았다)."""
+    from sqlalchemy import select
+
+    from app.models.ai_setting import AIAPISetting
+    from app.models.client import Client
+    from app.models.user import User
+    from app.models.user_api_key import UserApiKey
+
+    def bad(v) -> bool:
+        if not v:
+            return False
+        try:
+            decrypt(v)
+            return False
+        except InvalidToken:
+            return True
+
+    out: list[dict] = []
+    rows = (await db.execute(select(UserApiKey, User.nickname, User.email).join(User, User.id == UserApiKey.user_id))).all()
+    for k, nick, email in rows:
+        if bad(k.api_key) or bad(k.api_secret):
+            out.append({"kind": "api_key", "provider": k.provider, "user": nick or (email or "").split("@")[0],
+                        "message": f"{nick or email} 계정의 {k.provider} API 키 — 그 계정의 설정 > API 관리에서 다시 등록"})
+    for s in (await db.execute(select(AIAPISetting))).scalars().all():
+        if bad(getattr(s, "api_key_encrypted", None)):
+            out.append({"kind": "ai_setting", "provider": s.provider,
+                        "message": f"AI 설정의 {s.provider} 키 — 설정에서 다시 등록"})
+    for cid, name, enc in (await db.execute(select(Client.id, Client.name, Client.ssn_encrypted)
+                                             .where(Client.ssn_encrypted.isnot(None), Client.ssn_encrypted != ""))).all():
+        if bad(enc):
+            out.append({"kind": "client_ssn", "client_id": cid,
+                        "message": f"고객 {name} 의 주민번호 — 고객 정보에서 다시 입력"})
+    return out

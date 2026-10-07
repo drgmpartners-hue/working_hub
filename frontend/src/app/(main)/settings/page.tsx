@@ -237,6 +237,15 @@ interface ApiKeyData {
 
 type Tab = 'profile' | 'api';
 
+/** 본인 키(각자 등록) — 나머지는 대표가 등록한 회사 공용 키를 매니저도 함께 쓴다(2026-10-07, 서버 key_access.py 와 같음) */
+const PERSONAL_PROVIDERS = new Set(['notion']);
+
+interface CompanyKeyStatus {
+  provider: string;
+  personal: boolean;
+  registered: boolean;
+}
+
 /* ------------------------------------------------------------------ */
 /*  Page Component                                                      */
 /* ------------------------------------------------------------------ */
@@ -269,6 +278,8 @@ export default function SettingsPage() {
   const [apiTesting, setApiTesting] = useState<string | null>(null); /* provider key being tested */
   const [testResult, setTestResult] = useState<{ provider: string; success: boolean; message: string } | null>(null);
   const [expandedGuide, setExpandedGuide] = useState<string | null>(null);
+  const [companyKeys, setCompanyKeys] = useState<CompanyKeyStatus[]>([]);
+  const isOwner = user?.role === 'owner';
 
   /* ---- Profile handlers ---- */
 
@@ -309,6 +320,8 @@ export default function SettingsPage() {
       if (res.ok) {
         setApiKeys(await res.json());
       }
+      const cr = await fetch(`${API_URL}/api/v1/user-api-keys/company`, { headers: { ...authLib.getAuthHeader() } });
+      if (cr.ok) setCompanyKeys(await cr.json());
     } catch {
       /* silent */
     } finally {
@@ -625,9 +638,41 @@ export default function SettingsPage() {
       {activeTab === 'api' && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
           <p style={{ margin: 0, fontSize: '0.8125rem', color: 'var(--text-muted)' }}>
-            외부 서비스 API 키를 등록하면 기준가 자동 조회, AI 분석 등의 기능을 사용할 수 있습니다.
+            {isOwner
+              ? '여기 등록한 키 중 Notion을 뺀 나머지는 회사 공용 키로, 매니저들도 함께 씁니다. Notion은 각자 자기 키를 등록합니다.'
+              : 'Notion을 뺀 나머지 키는 대표가 등록한 회사 공용 키를 함께 쓰므로 따로 넣지 않아도 됩니다. Notion만 본인 키를 등록하세요.'}{' '}
             API 키는 암호화되어 안전하게 저장됩니다.
           </p>
+
+          {/* 매니저: 회사 공용 키 상태(읽기 전용) */}
+          {!isOwner && !apiLoading && (
+            <Card>
+              <h3 style={{ margin: '0 0 8px', fontSize: '0.9375rem', fontWeight: 700, color: 'var(--text-primary)' }}>회사 공용 키 (대표가 관리)</h3>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+                {API_PROVIDERS.filter((p) => !PERSONAL_PROVIDERS.has(p.key)).map((p) => {
+                  const st = companyKeys.find((c) => c.provider === p.key);
+                  const ok = !!st?.registered;
+                  return (
+                    <span
+                      key={p.key}
+                      style={{
+                        fontSize: '0.75rem',
+                        fontWeight: 600,
+                        padding: '4px 10px',
+                        borderRadius: 12,
+                        backgroundColor: ok ? '#F0FDF4' : 'var(--bg-surface)',
+                        color: ok ? '#15803D' : 'var(--text-muted)',
+                        border: `1px solid ${ok ? '#BBF7D0' : 'var(--border)'}`,
+                      }}
+                      title={ok ? '사용 가능' : '대표가 아직 등록하지 않음'}
+                    >
+                      {p.icon} {p.label} · {ok ? '사용 가능' : '미등록'}
+                    </span>
+                  );
+                })}
+              </div>
+            </Card>
+          )}
 
           {apiMsg && (
             <div
@@ -647,7 +692,7 @@ export default function SettingsPage() {
           {apiLoading ? (
             <div style={{ textAlign: 'center', padding: 40, color: 'var(--text-muted)' }}>로딩 중...</div>
           ) : (
-            API_PROVIDERS.map((provider) => {
+            API_PROVIDERS.filter((p) => isOwner || PERSONAL_PROVIDERS.has(p.key)).map((provider) => {
               const saved = apiKeys.find((k) => k.provider === provider.key);
               const isEditing = editingProvider === provider.key;
 

@@ -36,9 +36,9 @@ async def _verify_client_owner(db: AsyncSession, client_id: str, actor, account_
 async def _get_claude_key(db: AsyncSession, user_id: str) -> str | None:
     """보고서 AI 코멘트용 Claude API 키 조회 (미등록/오류 시 None → Gemini 폴백)."""
     try:
-        from app.services.collectors.key_access import get_user_key
+        from app.services.collectors.key_access import resolve_key
 
-        claude_key = await get_user_key(db, user_id, "claude")
+        claude_key = await resolve_key(db, "claude", user_id)  # 회사 공용 키(매니저도 사용)
         return claude_key[0] if claude_key else None
     except Exception:
         return None

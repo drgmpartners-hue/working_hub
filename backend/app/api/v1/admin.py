@@ -68,11 +68,12 @@ async def security_status(ctx: Auth, db: AsyncSession = Depends(get_db)):
     except ValueError:
         rotation = None
     done = bool(settings.ENCRYPTION_KEY) and (await settings_store.get(db, encryption.FP_KEY)) == encryption.fingerprint()
+    unreadable = await encryption.scan_unreadable(db)  # 지금 기준으로 다시 셈(다시 등록하면 바로 사라짐)
     return {
         "encryption_key_set": bool(settings.ENCRYPTION_KEY),
         "rotation_done": done,
         "rotation": rotation,
+        "unreadable_items": unreadable,
         "problems": fatal + warn,
-        "ok": bool(settings.ENCRYPTION_KEY) and done and not fatal and not warn
-              and not (rotation or {}).get("unreadable"),
+        "ok": bool(settings.ENCRYPTION_KEY) and done and not fatal and not warn and not unreadable,
     }

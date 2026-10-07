@@ -27,7 +27,7 @@ test('로그인 → 대시보드에 실제 요약이 보인다', async ({ page }
   await page.fill('input[name="email"]', OWNER.email);
   await page.fill('input[name="password"]', 'pw-for-test');
   await page.click('button[type="submit"]');
-  await expect(page).toHaveURL(/\/(dashboard|home)/);
+  await expect(page).toHaveURL(/\/(dashboard|home)/, { timeout: 30_000 }); // 첫 실행은 화면 컴파일이 느림
   await page.goto('/dashboard');
   await expect(page.getByText('박위험').first()).toBeVisible();
   await expect(page.getByText('12', { exact: true }).first()).toBeVisible();
@@ -108,4 +108,24 @@ test('은퇴설계 투자 흐름 탭이 오류 없이 열린다(파일 분할 �
   await page.waitForLoadState('networkidle');
   await expect(page.getByText('Application error')).toHaveCount(0);
   expect(errors).toEqual([]);
+});
+
+test('매니저 API 관리: 회사 공용 키는 상태만, Notion 만 본인 등록', async ({ page }) => {
+  const MANAGER = { ...OWNER, id: 'u-mgr-1', email: 'mgr@test.local', nickname: '이매니저', role: 'manager' };
+  await signIn(page, MANAGER);
+  await mockApi(page, {
+    'GET /api/v1/user-api-keys': [],
+    'GET /api/v1/user-api-keys/company': [
+      { provider: 'claude', personal: false, registered: true },
+      { provider: 'dart', personal: false, registered: false },
+      { provider: 'notion', personal: true, registered: false },
+    ],
+  }, MANAGER);
+  await page.goto('/settings');
+  await page.getByRole('button', { name: 'API 관리' }).click();
+  await expect(page.getByText('회사 공용 키 (대표가 관리)')).toBeVisible();
+  await expect(page.getByText(/Claude API \(Anthropic\) · 사용 가능/)).toBeVisible();
+  await expect(page.getByText(/DART OpenAPI \(금융감독원\) · 미등록/)).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Notion API' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Claude API (Anthropic)' })).toHaveCount(0);
 });
