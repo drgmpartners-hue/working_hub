@@ -2,8 +2,8 @@
 
 /**
  * 고객 정보 관리 — 고객별 증권계좌 펼침 패널 (2026-10-07).
- * '자산관리 > 주식, 펀드 관리'의 계좌정보 관리와 같은 데이터(clients/{id}/accounts)를 보여 주고, 여기서 수정·등록도 한다.
- * 계좌 삭제는 그 계좌의 분석 기록(스냅샷)까지 함께 지워지므로 이 화면에서는 하지 않는다(주식, 펀드 관리의 계좌정보 관리에서).
+ * 상단 [계좌정보 관리]와 같은 데이터(clients/{id}/accounts)를 고객 줄 아래에 보여 주고, 여기서 수정·등록도 한다.
+ * 계좌 삭제는 그 계좌의 분석 기록(스냅샷)까지 함께 지워지므로 여기서는 하지 않는다(상단 [계좌정보 관리]에서).
  */
 import { useCallback, useEffect, useState } from 'react';
 
@@ -232,7 +232,7 @@ export function ClientAccountsPanel({ clientId, clientName }: { clientId: string
         </table>
       )}
       <div style={{ marginTop: 8, fontSize: '0.75rem', color: 'var(--text-muted)' }}>
-        여기서 고친 내용은 자산관리 &gt; 주식, 펀드 관리의 계좌정보 관리에도 그대로 반영됩니다. 계좌 삭제는 분석 기록이 함께 지워지므로 그 화면에서 하세요.
+        여기서 고친 내용은 위쪽 [계좌정보 관리]와 주식, 펀드 관리에 그대로 반영됩니다. 계좌 삭제는 분석 기록이 함께 지워지므로 [계좌정보 관리]에서 하세요.
       </div>
     </div>
   );

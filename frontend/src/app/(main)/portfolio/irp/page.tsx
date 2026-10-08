@@ -7,7 +7,6 @@ import { Tab, type TabItem } from '@/components/common/Tab';
 import { Button } from '@/components/common/Button';
 import { Card } from '@/components/common/Card';
 import { ClientRow } from '@/components/portfolio/ClientRow';
-import { ClientManagementModal } from '@/components/portfolio/ClientManagementModal';
 import { SnapshotDataTable } from '@/components/portfolio/SnapshotDataTable';
 import { SuggestionEditor } from '@/components/portfolio/SuggestionEditor';
 import { authLib } from '@/lib/auth';
@@ -252,7 +251,7 @@ async function getClientAccountId(row: ClientRowData): Promise<string> {
       if (match) return match.id;
     }
   }
-  throw new Error('계좌 정보가 없습니다. 계좌정보 관리에서 계좌를 먼저 등록하세요.');
+  throw new Error('계좌 정보가 없습니다. 데이터 관리 > 고객 정보 관리의 [계좌정보 관리]에서 계좌를 먼저 등록하세요.');
 }
 
 /* ------------------------------------------------------------------ */
@@ -3423,7 +3422,6 @@ export default function IRPPage() {
   }, []);
 
   /* ---------- client management modal ---------- */
-  const [clientMgmtOpen, setClientMgmtOpen] = useState(false);
 
   /* ---------- product name change memo ---------- */
   const [nameChangeMemoOpen, setNameChangeMemoOpen] = useState(false);
@@ -3676,7 +3674,7 @@ export default function IRPPage() {
     // 고객 선택 여부 체크
     for (const row of validRows) {
       if (!row.clientId) {
-        alert('고객을 먼저 선택하세요. "계좌정보 관리" 버튼에서 고객을 등록하거나 드롭다운에서 선택해 주세요.');
+        alert('고객을 먼저 선택하세요. 고객·계좌 등록은 데이터 관리 > 고객 정보 관리에서 합니다.');
         return;
       }
     }
@@ -5811,30 +5809,6 @@ export default function IRPPage() {
             <div style={{ display: 'flex', alignItems: 'center', gap: 16, flexWrap: 'wrap' }}>
               <div style={{ marginLeft: 'auto', display: 'flex', gap: 8 }}>
                 <button
-                  onClick={() => setClientMgmtOpen(true)}
-                  style={{
-                    display: 'inline-flex',
-                    alignItems: 'center',
-                    gap: 5,
-                    padding: '6px 14px',
-                    fontSize: '0.8125rem',
-                    fontWeight: 600,
-                    color: 'var(--blue-400)',
-                    backgroundColor: 'var(--bg-card)',
-                    border: '1px solid var(--blue-500)',
-                    borderRadius: 7,
-                    cursor: 'pointer',
-                  }}
-                >
-                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                    <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
-                    <circle cx="9" cy="7" r="4" />
-                    <path d="M23 21v-2a4 4 0 0 0-3-3.87" />
-                    <path d="M16 3.13a4 4 0 0 1 0 7.75" />
-                  </svg>
-                  계좌정보 관리
-                </button>
-                <button
                   onClick={() => { setNameChangeMemoOpen(true); loadNameChanges(); }}
                   style={{
                     display: 'inline-flex',
@@ -5856,7 +5830,7 @@ export default function IRPPage() {
                   </svg>
                   상품명 변경 메모
                 </button>
-                {/* 고객 추가 버튼은 계좌정보 관리 팝업에서 처리 */}
+                {/* 고객·계좌 등록은 데이터 관리 > 고객 정보 관리에서(2026-10-08 일원화) */}
               </div>
             </div>
           </Card>
@@ -5891,7 +5865,7 @@ export default function IRPPage() {
                 borderRadius: 12,
               }}
             >
-              "계좌정보 관리"에서 고객을 등록한 후, 고객을 선택하고 이미지를 붙여넣으세요.
+              데이터 관리 &gt; 고객 정보 관리에서 고객·계좌를 등록한 후, 고객을 선택하고 이미지를 붙여넣으세요.
             </div>
           )}
 
@@ -7849,13 +7823,6 @@ export default function IRPPage() {
           </div>
         </div>
       )}
-
-      {/* Client Management Modal */}
-      <ClientManagementModal
-        isOpen={clientMgmtOpen}
-        onClose={() => setClientMgmtOpen(false)}
-        onClientAdded={loadClients}
-      />
 
       {/* 상품 마스터 불러오기 모달 */}
       {loadMasterTarget && (() => {

@@ -8,6 +8,7 @@ import { authLib } from '@/lib/auth';
 import { useAuthStore } from '@/stores/auth';
 import { OwnerClientActions } from '@/components/customer/OwnerClientActions';
 import { ClientAccountsPanel } from '@/components/customer/ClientAccountsPanel';
+import { ClientManagementModal } from '@/components/portfolio/ClientManagementModal';
 import { ManagerSelectField, managerMissing } from '@/components/customer/ManagerSelectField';
 
 /* ------------------------------------------------------------------ */
@@ -74,6 +75,11 @@ export default function CustomerManagementPage() {
   const [excelPick, setExcelPick] = useState(false);
   // 증권계좌를 펼친 고객(한 번에 한 명)
   const [openAccountsId, setOpenAccountsId] = useState<string | null>(null);
+  // 계좌정보 관리(전체 고객 계좌를 한 표에서) — 주식, 펀드 관리에서 옮겨 옴(2026-10-08). ?accounts=1 로 바로 열 수 있다
+  const [accountsModalOpen, setAccountsModalOpen] = useState<boolean>(() => {
+    if (typeof window === 'undefined') return false;
+    return new URLSearchParams(window.location.search).get('accounts') === '1';
+  });
   const [excelManagerId, setExcelManagerId] = useState('');
 
   /* Notion import */
@@ -654,6 +660,18 @@ export default function CustomerManagementPage() {
           고객 추가
         </button>
 
+        <button
+          onClick={() => setAccountsModalOpen(true)}
+          style={{
+            display: 'flex', alignItems: 'center', gap: '6px',
+            padding: '9px 16px', borderRadius: '8px',
+            border: '1px solid var(--border-strong)', background: 'var(--bg-card)',
+            color: 'var(--text-primary)', fontSize: '0.8125rem', fontWeight: 600, cursor: 'pointer',
+          }}
+        >
+          계좌정보 관리
+        </button>
+
         {/* 템플릿 다운로드 */}
         <a
           href="/customer_template.xlsx"
@@ -880,7 +898,7 @@ export default function CustomerManagementPage() {
                       </td>
                       <td style={{ padding: '12px 14px', textAlign: 'center' }}>
                         <div style={{ display: 'flex', gap: '6px', justifyContent: 'center' }}>
-                          {/* 증권계좌: 주식, 펀드 관리의 계좌정보와 같은 데이터를 고객 줄 바로 아래에 펼친다 */}
+                          {/* 증권계좌: [계좌정보 관리]와 같은 데이터를 고객 줄 바로 아래에 펼친다 */}
                           <button
                             onClick={() => setOpenAccountsId((v) => (v === c.id ? null : c.id))}
                             aria-expanded={openAccountsId === c.id}
@@ -1385,6 +1403,15 @@ export default function CustomerManagementPage() {
           </div>
         </div>
       )}
+
+      <ClientManagementModal
+        isOpen={accountsModalOpen}
+        onClose={() => {
+          setAccountsModalOpen(false);
+          setOpenAccountsId(null); // 펼쳐 둔 증권계좌는 다시 열 때 새로 불러온다
+        }}
+        onClientAdded={fetchCustomers}
+      />
     </div>
   );
 }

@@ -3,7 +3,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { API_URL } from '@/lib/api-url';
 import { authLib } from '@/lib/auth';
-import { ManagerSelectField, managerMissing, useIsOwner } from '@/components/customer/ManagerSelectField';
 
 /* ------------------------------------------------------------------ */
 /*  Types                                                               */
@@ -45,14 +44,6 @@ interface FlatRow {
   securitiesCompany: string;
   representative: string;
   isFirstForClient: boolean;
-}
-
-interface NewRow {
-  clientName: string;
-  accountType: string;
-  accountNumber: string;
-  securitiesCompany: string;
-  representative: string;
 }
 
 interface EditState {
@@ -311,20 +302,6 @@ export function ClientManagementModal({ isOpen, onClose, onClientAdded }: Client
   /* Inline edit state */
   const [editState, setEditState] = useState<EditState | null>(null);
   const [saving, setSaving] = useState(false);
-
-  /* New row state */
-  const [addingNew, setAddingNew] = useState(false);
-  // 신규 등록 담당자 (docs/login_logic P10): 대표는 고르고, 매니저는 본인 고정
-  const isOwner = useIsOwner();
-  const [newManagerId, setNewManagerId] = useState('');
-  const [newRow, setNewRow] = useState<NewRow>({
-    clientName: '',
-    accountType: 'irp',
-    accountNumber: '',
-    securitiesCompany: '',
-    representative: '',
-  });
-  const [newSaving, setNewSaving] = useState(false);
 
   /* Add account to existing client */
   const [addAccountClientId, setAddAccountClientId] = useState<string | null>(null);
@@ -650,96 +627,6 @@ export function ClientManagementModal({ isOpen, onClose, onClientAdded }: Client
     }
   }
 
-  /* ---- new row handler ---- */
-  async function handleSaveNewRow() {
-    if (!newRow.clientName.trim()) {
-      alert('고객명을 입력하세요.');
-      return;
-    }
-    const miss = managerMissing(isOwner, newManagerId);
-    if (miss) {
-      alert(`${miss} (표 아래 담당자)`);
-      return;
-    }
-    // 같은 이름의 고객이 이미 있으면 새로 만들지 않고 그 고객에 계좌를 붙인다(2026-10-07 — 예전엔 고객 정보 관리의
-    // 고객과 별개의 고객이 생겨 계좌가 고객 정보 관리 쪽에 보이지 않았다)
-    const name = newRow.clientName.trim();
-    const same = clients.filter((c) => c.name.trim() === name && (!isOwner || !newManagerId || c.user_id === newManagerId));
-    let targetId: string | null = null;
-    if (same.length > 0) {
-      const desc = same.map((c) => `${c.name}${c.birth_date ? ` (${c.birth_date})` : ''}${c.unique_code ? ` 고유번호 ${c.unique_code}` : ''}`).join(', ');
-      if (same.length === 1 && window.confirm(`이미 등록된 고객이 있습니다: ${desc}\n\n이 고객에 계좌를 추가할까요?\n(취소를 누르면 동명이인으로 새 고객을 만들지 묻습니다)`)) {
-        targetId = same[0].id;
-      } else if (same.length > 1) {
-        alert(`같은 이름의 고객이 ${same.length}명 있습니다: ${desc}\n목록에서 해당 고객 줄의 [계좌 추가]로 등록해 주세요.`);
-        return;
-      } else if (!window.confirm(`'${name}'은(는) 이미 있는 고객과 다른 사람(동명이인)인가요?\n확인을 누르면 새 고객으로 등록합니다.`)) {
-        return;
-      }
-    }
-    setNewSaving(true);
-    try {
-      if (targetId) {
-        const accRes0 = await fetch(`${API_URL}/api/v1/clients/${targetId}/accounts`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', ...authLib.getAuthHeader() },
-          body: JSON.stringify({
-            account_type: newRow.accountType,
-            account_number: newRow.accountNumber || undefined,
-            securities_company: newRow.securitiesCompany || undefined,
-            representative: newRow.representative || undefined,
-          }),
-        });
-        if (!accRes0.ok) {
-          const err = await accRes0.json().catch(() => ({}));
-          alert(err?.detail || '계좌 생성 실패');
-          return;
-        }
-        setNewRow({ clientName: '', accountType: 'irp', accountNumber: '', securitiesCompany: '', representative: '' });
-        setAddingNew(false);
-        await loadClients();
-        onClientAdded?.();
-        return;
-      }
-      const clientRes = await fetch(`${API_URL}/api/v1/clients`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', ...authLib.getAuthHeader() },
-        body: JSON.stringify({ name: newRow.clientName.trim(), ...(isOwner ? { manager_id: newManagerId } : {}) }),
-      });
-      if (!clientRes.ok) {
-        const err = await clientRes.json().catch(() => ({}));
-        alert(err?.detail || '고객 생성 실패');
-        return;
-      }
-      const createdClient: Client = await clientRes.json();
-
-      const accRes = await fetch(`${API_URL}/api/v1/clients/${createdClient.id}/accounts`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', ...authLib.getAuthHeader() },
-        body: JSON.stringify({
-          account_type: newRow.accountType,
-          account_number: newRow.accountNumber || undefined,
-          securities_company: newRow.securitiesCompany || undefined,
-          representative: newRow.representative || undefined,
-        }),
-      });
-      if (!accRes.ok) {
-        const err = await accRes.json().catch(() => ({}));
-        alert(err?.detail || '계좌 생성 실패');
-        return;
-      }
-
-      setNewRow({ clientName: '', accountType: 'irp', accountNumber: '', securitiesCompany: '', representative: '' });
-      setAddingNew(false);
-      await loadClients();
-      onClientAdded?.();
-    } catch {
-      alert('저장 중 오류가 발생했습니다.');
-    } finally {
-      setNewSaving(false);
-    }
-  }
-
   /* ---- clickable header style ---- */
   const clickableThStyle: React.CSSProperties = {
     ...thStyle,
@@ -914,12 +801,12 @@ export function ClientManagementModal({ isOpen, onClose, onClientAdded }: Client
                 </tr>
               </thead>
               <tbody>
-                {filteredRows.length === 0 && !addingNew && (
+                {filteredRows.length === 0 && (
                   <tr>
                     <td colSpan={7} style={{ ...tdStyle, textAlign: 'center', color: 'var(--text-muted)', padding: '32px 0' }}>
                       {searchKeyword || filterAccountType || filterSecurities
                         ? '검색 결과가 없습니다.'
-                        : '등록된 고객이 없습니다. 신규 등록 버튼을 눌러 추가하세요.'}
+                        : '등록된 고객이 없습니다. 고객은 데이터 관리 > 고객 정보 관리에서 등록하세요.'}
                     </td>
                   </tr>
                 )}
@@ -1143,86 +1030,10 @@ export function ClientManagementModal({ isOpen, onClose, onClientAdded }: Client
                   );
                 })}
 
-                {/* New row (inline) */}
-                {addingNew && (
-                  <tr style={{ backgroundColor: 'var(--success-bg)' }}>
-                    <td style={{ ...tdStyle, textAlign: 'center', color: 'var(--text-muted)', fontSize: '0.75rem' }}>*</td>
-                    <td style={tdStyle}>
-                      <input type="text" placeholder="고객명 입력" value={newRow.clientName}
-                        onChange={(e) => setNewRow((prev) => ({ ...prev, clientName: e.target.value }))}
-                        style={inputStyle} autoFocus />
-                    </td>
-                    <td style={tdStyle}>
-                      <select
-                        value={securitiesOptions.find((o) => newRow.securitiesCompany === o.label)?.value ?? ''}
-                        onChange={(e) => {
-                          const label = securitiesOptions.find((o) => o.value === e.target.value)?.label ?? '';
-                          setNewRow((prev) => ({ ...prev, securitiesCompany: label }));
-                        }}
-                        style={selectStyle}
-                      >
-                        <option value="">선택</option>
-                        {securitiesOptions.map((o) => <option key={o.id} value={o.value}>{o.label}</option>)}
-                      </select>
-                    </td>
-                    <td style={tdStyle}>
-                      <select value={newRow.accountType}
-                        onChange={(e) => setNewRow((prev) => ({ ...prev, accountType: e.target.value }))}
-                        style={selectStyle}
-                      >
-                        {accountTypeOptions.map((o) => <option key={o.id} value={o.value}>{o.label}</option>)}
-                      </select>
-                    </td>
-                    <td style={tdStyle}>
-                      <input type="text" placeholder="계좌번호 입력" value={newRow.accountNumber}
-                        onChange={(e) => setNewRow((prev) => ({ ...prev, accountNumber: e.target.value }))}
-                        style={inputStyle} />
-                    </td>
-                    <td style={tdStyle}>
-                      <select value={newRow.representative}
-                        onChange={(e) => setNewRow((prev) => ({ ...prev, representative: e.target.value }))}
-                        style={selectStyle}
-                      >
-                        <option value="">선택</option>
-                        {representativeOptions.map((o) => <option key={o.id} value={o.label}>{o.label}</option>)}
-                      </select>
-                    </td>
-                    <td style={{ ...tdStyle, textAlign: 'center' }}>
-                      <div style={{ display: 'flex', gap: 4, justifyContent: 'center' }}>
-                        <button onClick={handleSaveNewRow} disabled={newSaving}
-                          style={{
-                            padding: '4px 10px', fontSize: '0.75rem', fontWeight: 700, color: '#fff',
-                            backgroundColor: newSaving ? '#9CA3AF' : '#059669', border: 'none', borderRadius: 6,
-                            cursor: newSaving ? 'not-allowed' : 'pointer',
-                          }}>
-                          {newSaving ? '...' : '저장'}
-                        </button>
-                        <button
-                          onClick={() => {
-                            setAddingNew(false);
-                            setNewRow({ clientName: '', accountType: 'irp', accountNumber: '', securitiesCompany: '', representative: '' });
-                          }}
-                          style={{
-                            padding: '4px 10px', fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-secondary)',
-                            backgroundColor: 'var(--bg-surface)', border: '1px solid var(--border)', borderRadius: 6, cursor: 'pointer',
-                          }}>
-                          취소
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                )}
               </tbody>
             </table>
           )}
         </div>
-
-        {/* 신규 등록 담당자 */}
-        {addingNew && (
-          <div style={{ padding: '12px 24px 0', borderTop: '1px solid var(--border)', maxWidth: 360 }}>
-            <ManagerSelectField value={newManagerId} onChange={setNewManagerId} style={{ marginBottom: 12 }} />
-          </div>
-        )}
 
         {/* Footer */}
         <div
@@ -1240,20 +1051,6 @@ export function ClientManagementModal({ isOpen, onClose, onClientAdded }: Client
             총 {filteredRows.length}개 행 표시 중
           </span>
           <div style={{ display: 'flex', gap: 8 }}>
-            <button
-              onClick={() => { setAddingNew(true); setEditState(null); setNewManagerId(''); }}
-              style={{
-                display: 'inline-flex', alignItems: 'center', gap: 5,
-                padding: '8px 16px', fontSize: '0.875rem', fontWeight: 700, color: '#fff',
-                backgroundColor: 'var(--blue-600)', border: 'none', borderRadius: 8, cursor: 'pointer',
-              }}
-            >
-              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-                <line x1="12" y1="5" x2="12" y2="19" />
-                <line x1="5" y1="12" x2="19" y2="12" />
-              </svg>
-              신규 등록
-            </button>
             <button onClick={onClose}
               style={{
                 padding: '8px 18px', fontSize: '0.875rem', fontWeight: 600, color: 'var(--text-secondary)',
