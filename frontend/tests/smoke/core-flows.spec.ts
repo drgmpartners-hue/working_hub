@@ -170,3 +170,28 @@ test('고객 정보 관리: 증권계좌를 고객 줄 아래에 펼쳐 수정·
   await expect.poll(() => calls.find((c) => c.method === 'POST')?.body).toMatchObject({ account_number: '555-66-777', securities_company: 'KB증권' });
   await page.screenshot({ path: 'test-results/customer-accounts.png', fullPage: false });
 });
+
+test('중복 고객 합치기: 화면 안에서 확인 후 합치기 요청', async ({ page }) => {
+  await signIn(page);
+  let posted: unknown = null;
+  await mockApi(page, {
+    'GET /api/v1/admin/overview': (r: Route) => json(r, { detail: 'skip' }, 500), // 이 시험은 카드만 본다
+    'GET /api/v1/admin/security-status': { encryption_key_set: true, rotation_done: true, rotation: null, unreadable_items: [], problems: [], ok: true },
+    'GET /api/v1/admin/duplicate-clients': { groups: [{
+      name: '전혜림', birth_date: '1984-09-11', keep_id: 'k1', code_after: '777834', blocked: null, note: null,
+      records: [
+        { id: 'r1', unique_code: '777834', created_at: '2026-03-24T00:00:00', keep: false, linked: { '담당 이력': 1 } },
+        { id: 'k1', unique_code: '482477', created_at: '2026-03-25T00:00:00', keep: true, linked: { '계좌': 2 } },
+      ] }] },
+    'POST /api/v1/admin/duplicate-clients/merge': (r: Route) => {
+      posted = r.request().postDataJSON();
+      return json(r, { merged: [{ name: '전혜림' }], failed: [] });
+    },
+  });
+  await page.goto('/admin');
+  await page.getByRole('button', { name: '1명 합치기' }).click();
+  await expect(page.getByText('1명의 중복 고객을 하나로 합칩니다.')).toBeVisible();
+  await page.getByRole('button', { name: '합치기 진행' }).click();
+  await expect.poll(() => posted).toEqual({ groups: [{ keep_id: 'k1', remove_ids: ['r1'] }] });
+  await expect(page.getByText('1명 합쳤습니다.')).toBeVisible();
+});

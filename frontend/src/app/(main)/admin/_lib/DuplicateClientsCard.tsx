@@ -21,6 +21,8 @@ interface Group {
   keep_id: string;
   code_after: string | null;
   blocked: string | null;
+  /** 양쪽 모두 은퇴설계가 있을 때 어떻게 정리하는지 */
+  note?: string | null;
   records: Rec[];
 }
 interface MergeResult {
@@ -38,6 +40,8 @@ export function DuplicateClientsCard() {
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
+  // 브라우저 확인창(window.confirm)은 일부 화면(앱 안 브라우저 등)에서 뜨지 않고 바로 '취소'가 된다 → 화면 안에서 한 번 더 확인
+  const [confirming, setConfirming] = useState(false);
 
   const load = useCallback(() => {
     adminApi<{ groups: Group[] }>('/admin/duplicate-clients')
@@ -61,14 +65,7 @@ export function DuplicateClientsCard() {
 
   async function mergeAll() {
     if (!ready.length) return;
-    const ok = window.confirm(
-      `${ready.length}명의 중복 고객을 하나로 합칩니다.\n\n` +
-        '· 계좌가 있는 기록을 남기고, 다른 기록의 문자 기록·은퇴설계 등은 남길 기록으로 옮깁니다.\n' +
-        '· 고유번호는 먼저 등록된(고객 정보 관리) 쪽 번호로 맞춥니다.\n' +
-        '· 이미 보낸 두 포털 링크는 모두 계속 열립니다.\n' +
-        '· 비어 있게 된 기록은 지워지며 되돌릴 수 없습니다.\n\n진행할까요?',
-    );
-    if (!ok) return;
+    setConfirming(false);
     setBusy(true);
     setMsg(null);
     try {
@@ -108,12 +105,27 @@ export function DuplicateClientsCard() {
             <button className="wh-btn wh-btn-ghost wh-btn-sm" onClick={() => setOpen((v) => !v)}>
               {open ? '목록 닫기' : '목록 보기'}
             </button>
-            <button className="wh-btn wh-btn-primary wh-btn-sm" disabled={busy || !ready.length} onClick={mergeAll}>
+            <button className="wh-btn wh-btn-primary wh-btn-sm" disabled={busy || !ready.length} onClick={() => setConfirming(true)}>
               {busy ? '합치는 중…' : `${ready.length}명 합치기`}
             </button>
           </div>
         )}
       </div>
+      {confirming && (
+        <div style={{ marginTop: 8, padding: '10px 12px', borderRadius: 8, background: 'var(--bg-card)', border: '1px solid var(--border)' }}>
+          <div style={{ fontWeight: 700, color: 'var(--text-primary)', marginBottom: 4 }}>{ready.length}명의 중복 고객을 하나로 합칩니다.</div>
+          <ul style={{ margin: '0 0 8px', paddingLeft: 18, color: 'var(--text-secondary)' }}>
+            <li>계좌가 있는 기록을 남기고, 다른 기록의 문자 기록·담당 이력 등은 남길 기록으로 옮깁니다.</li>
+            <li>양쪽 모두 은퇴설계가 있으면 더 최근에 고친 쪽을 남기고, 다른 쪽은 보관본으로 남긴 뒤 정리합니다.</li>
+            <li>고유번호는 먼저 등록된(고객 정보 관리) 쪽 번호로 맞추고, 이미 보낸 두 포털 링크는 모두 계속 열립니다.</li>
+            <li>비어 있게 된 기록은 지워지며 되돌릴 수 없습니다.</li>
+          </ul>
+          <div style={{ display: 'flex', gap: 6 }}>
+            <button className="wh-btn wh-btn-primary wh-btn-sm" onClick={mergeAll}>합치기 진행</button>
+            <button className="wh-btn wh-btn-ghost wh-btn-sm" onClick={() => setConfirming(false)}>취소</button>
+          </div>
+        </div>
+      )}
       {msg && <div style={{ marginTop: 6, color: 'var(--text-primary)' }}>{msg}</div>}
       {open && groups.length > 0 && (
         <div style={{ marginTop: 8, maxHeight: 360, overflowY: 'auto' }}>
@@ -138,6 +150,7 @@ export function DuplicateClientsCard() {
                         {r.keep ? '남길 기록' : '지울 기록(자료는 옮김)'} · {(r.created_at || '').slice(0, 10)} · {r.unique_code || '-'} · {linkedText(r.linked)}
                       </div>
                     ))}
+                    {g.note && <div style={{ color: 'var(--warning)' }}>{g.note}</div>}
                     {g.blocked && <div style={{ color: 'var(--danger)' }}>{g.blocked}</div>}
                   </td>
                   <td style={{ padding: '6px', fontFamily: 'monospace' }}>{g.blocked ? '-' : g.code_after}</td>

@@ -24,6 +24,7 @@ from app.models.stock import StockRecommendation, RecommendedStock
 
 # Depends on users (client management)
 from app.models.client import Client, ClientAccount
+from app.models.merge_archive import MergeArchive
 
 # Depends on users + brand_settings
 from app.models.content import ContentProject, ContentVersion
@@ -167,4 +168,5 @@ __all__ = [
     "ShortLink",
     "AuditLog",
     "ClientTransfer",
+    "MergeArchive",
 ]

@@ -106,14 +106,15 @@ async def merge_duplicate_clients(body: dict, ctx: Auth, db: AsyncSession = Depe
     for g in groups:
         keep_id, remove_ids = (g or {}).get("keep_id"), (g or {}).get("remove_ids") or []
         try:
-            res = await client_merge.merge_group(db, keep_id, list(remove_ids))
+            res = await client_merge.merge_group(db, keep_id, list(remove_ids), actor_id=ctx.actor.id)
             await db.commit()
             done.append(res)
             await audit_service.record(  # 누가 언제 무엇을 합쳤는지(실패해도 합치기 결과에는 영향 없음)
                 db, actor_id=ctx.actor.id, effective_id=ctx.effective.id, action="client.merge",
                 resource_type="client", resource_id=keep_id, client_id=keep_id,
                 payload_summary={"removed": res["removed"], "removed_codes": res["removed_codes"],
-                                 "unique_code": res["unique_code"], "moved": res["moved"]},
+                                 "unique_code": res["unique_code"], "moved": res["moved"],
+                                 "archived_profiles": res["archived_profiles"]},
             )
         except ValueError as e:
             await db.rollback()

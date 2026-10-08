@@ -11,7 +11,8 @@
   - 고유번호는 먼저 등록된 기록(= 고객 정보 관리 쪽) 번호를 쓴다(대표 결정 2026-10-07).
   - 고객 포털 링크는 두 기록의 링크가 모두 열리도록 지운 쪽 링크를 portal_token_alt 에 남긴다.
   - 빈 칸(이메일·전화·주민번호·메모)은 다른 기록 값으로 채운다.
-  - 은퇴설계 프로필이 양쪽에 다 있으면 어느 쪽이 맞는지 기계가 정할 수 없으므로 합치지 않고 건너뛴다(화면에 이유 표시).
+  - 은퇴설계 프로필이 양쪽에 다 있으면 더 최근에 고친 쪽(프로필·플랜·투자기록 중 가장 늦은 수정 시각)을 남기고,
+    다른 쪽은 통째로 merge_archives 에 보관(JSON)한 뒤 정리한다(대표 결정 2026-10-08).
 """
 from __future__ import annotations
 
@@ -61,6 +62,71 @@ async def _counts(db: AsyncSession, ids: list[str]) -> dict[str, dict[str, int]]
     return out
 
 
+def _profile_children():
+    from app.models.desired_plan import DesiredPlan
+    from app.models.interactive_calculation import InteractiveCalculation
+    from app.models.investment_record import InvestmentRecord
+    from app.models.pension_plan import PensionPlan
+    from app.models.retirement_plan import RetirementPlan
+
+    return [RetirementPlan, DesiredPlan, PensionPlan, InteractiveCalculation, InvestmentRecord]
+
+
+async def _profile_recency(db: AsyncSession, profile: CustomerRetirementProfile):
+    """프로필과 딸린 플랜·투자기록 중 가장 늦은 수정 시각."""
+    times = [profile.updated_at or profile.created_at]
+    for m in _profile_children():
+        t = (await db.execute(select(func.max(m.updated_at)).where(m.profile_id == profile.id))).scalar()
+        if t:
+            times.append(t)
+    return max(t for t in times if t)
+
+
+async def _latest_profile(db: AsyncSession, client_ids: list[str]):
+    """(가장 최근 수정 시각, 그 프로필의 고객 id) — 프로필이 없으면 None."""
+    profs = (await db.execute(select(CustomerRetirementProfile).where(CustomerRetirementProfile.customer_id.in_(client_ids)))).scalars().all()
+    best = None
+    for p in profs:
+        t = await _profile_recency(db, p)
+        if best is None or t > best[0]:
+            best = (t, p.customer_id)
+    return best
+
+
+def _row(obj) -> dict:
+    return {c.name: getattr(obj, c.key, None) for c in obj.__table__.columns}
+
+
+async def _resolve_profiles(db: AsyncSession, client_ids: list[str], keep_id: str, actor_id: Optional[str]) -> int:
+    """은퇴설계가 여럿이면 가장 최근 것만 남긴다. 나머지는 프로필·플랜·투자기록을 보관본으로 남기고 지운다."""
+    import json
+
+    from app.models.deposit_account import DepositAccount
+    from app.models.merge_archive import MergeArchive
+
+    profs = (await db.execute(select(CustomerRetirementProfile).where(CustomerRetirementProfile.customer_id.in_(client_ids)))).scalars().all()
+    ranked = sorted([(await _profile_recency(db, p), p) for p in profs], key=lambda x: x[0], reverse=True)
+    winner = ranked[0][1]
+    n = 0
+    for _t, loser in ranked[1:]:
+        payload = {"profile": _row(loser), "children": {}}
+        for m in _profile_children():
+            rows = (await db.execute(select(m).where(m.profile_id == loser.id))).scalars().all()
+            payload["children"][m.__tablename__] = [_row(r) for r in rows]
+        payload = json.loads(json.dumps(payload, default=str, ensure_ascii=False))
+        db.add(MergeArchive(kind="retirement_profile", client_id=keep_id, removed_client_id=loser.customer_id,
+                            payload=payload, created_by=actor_id))
+        # 예수금 계좌는 프로필 id 를 들고 있다 — 남는 프로필로 돌린다
+        await db.execute(update(DepositAccount).where(DepositAccount.profile_id == loser.id).values(profile_id=winner.id))
+        for m in _profile_children():
+            await db.execute(delete(m).where(m.profile_id == loser.id))
+        db.expunge(loser)
+        await db.execute(delete(CustomerRetirementProfile).where(CustomerRetirementProfile.id == loser.id))
+        n += 1
+    await db.flush()
+    return n
+
+
 def _score(c: Client, cnt: dict[str, int]) -> tuple:
     return (cnt.get("계좌", 0), sum(cnt.values()), c.created_at)
 
@@ -78,12 +144,20 @@ async def find_duplicates(db: AsyncSession) -> list[dict]:
         keep = max(members, key=lambda c: _score(c, counts[c.id]))
         first = min(members, key=lambda c: c.created_at)
         both_profiles = sum(1 for c in members if counts[c.id].get("은퇴설계")) > 1
+        note = None
+        if both_profiles:
+            latest = await _latest_profile(db, [c.id for c in members])
+            owner = next((c for c in members if c.id == latest[1]), None) if latest else None
+            if owner is not None:
+                note = (f"양쪽 모두 은퇴설계가 있어 더 최근 것({(owner.created_at.date().isoformat() if owner.created_at else '')} 등록 기록 쪽, "
+                        f"마지막 수정 {latest[0].strftime('%Y-%m-%d')})을 남기고 다른 쪽은 보관 후 정리합니다.")
         out.append({
             "name": name,
             "birth_date": birth.isoformat() if birth else None,
             "keep_id": keep.id,
             "code_after": first.unique_code or keep.unique_code,
-            "blocked": "양쪽 모두 은퇴설계가 있어 자동으로 합칠 수 없습니다(어느 쪽이 맞는지 확인 필요)." if both_profiles else None,
+            "blocked": None,
+            "note": note,
             "records": [
                 {
                     "id": c.id,
@@ -100,7 +174,7 @@ async def find_duplicates(db: AsyncSession) -> list[dict]:
     return out
 
 
-async def merge_group(db: AsyncSession, keep_id: str, remove_ids: list[str]) -> dict:
+async def merge_group(db: AsyncSession, keep_id: str, remove_ids: list[str], actor_id: Optional[str] = None) -> dict:
     """remove_ids 의 기록을 keep_id 로 합치고 지운다. 한 트랜잭션(호출한 쪽에서 commit)."""
     keep = await db.get(Client, keep_id)
     removes = [await db.get(Client, i) for i in remove_ids]
@@ -111,8 +185,9 @@ async def merge_group(db: AsyncSession, keep_id: str, remove_ids: list[str]) -> 
             raise ValueError(f"{r.name}: 이름·생년월일·담당자가 같은 고객만 합칠 수 있습니다.")
     members = [keep, *removes]
     counts = await _counts(db, [c.id for c in members])
+    archived = 0
     if sum(1 for c in members if counts[c.id].get("은퇴설계")) > 1:
-        raise ValueError(f"{keep.name}: 양쪽 모두 은퇴설계가 있어 자동으로 합칠 수 없습니다.")
+        archived = await _resolve_profiles(db, [c.id for c in members], keep.id, actor_id)
 
     first = min(members, key=lambda c: c.created_at)
     code_after = first.unique_code or keep.unique_code
@@ -142,4 +217,5 @@ async def merge_group(db: AsyncSession, keep_id: str, remove_ids: list[str]) -> 
         keep.portal_token_alt = alt_token
     await db.flush()
     return {"name": keep.name, "keep_id": keep.id, "unique_code": code_after,
-            "removed": [r for r in remove_ids], "removed_codes": removed_codes, "moved": dict(moved)}
+            "removed": [r for r in remove_ids], "removed_codes": removed_codes, "moved": dict(moved),
+            "archived_profiles": archived}

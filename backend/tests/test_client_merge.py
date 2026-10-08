@@ -85,18 +85,42 @@ async def test_find_and_merge_duplicate_clients(env):  # noqa: F811
 
 
 @pytest.mark.skipif(not PG, reason="PERM_PG_URL 없음(실제 PostgreSQL 필요)")
-async def test_merge_blocked_when_both_have_retirement_plan(env):  # noqa: F811
+async def test_both_retirement_plans_keep_most_recent_and_archive(env):  # noqa: F811
+    """양쪽 모두 은퇴설계 → 더 최근에 고친 쪽을 남기고 다른 쪽은 보관본(merge_archives)으로 남긴 뒤 정리(2026-10-08)."""
+    from sqlalchemy import select, update
+
     from app.models.client import Client
+    from app.models.customer_retirement_profile import CustomerRetirementProfile
+    from app.models.merge_archive import MergeArchive
+    from app.models.retirement_plan import RetirementPlan
 
     c, d, hdr, Session = env["c"], env["d"], env["hdr"], env["Session"]
     name = "충돌" + uuid.uuid4().hex[:6]
     birth = date(1975, 1, 1)
+    # 3/24 쪽(계좌 없음) 은퇴설계가 더 최근에 고쳐짐, 3/25 쪽(계좌 있음) 은퇴설계는 오래됨
     x_id, _ = await _mk(Session, d["A"], name, birth, datetime(2026, 3, 24), _code(), profile=True)
     y_id, _ = await _mk(Session, d["A"], name, birth, datetime(2026, 3, 25), _code(), with_account=True, profile=True)
+    async with Session() as db:
+        px = (await db.execute(select(CustomerRetirementProfile).where(CustomerRetirementProfile.customer_id == x_id))).scalar_one()
+        py = (await db.execute(select(CustomerRetirementProfile).where(CustomerRetirementProfile.customer_id == y_id))).scalar_one()
+        px_id, py_id = px.id, py.id
+        db.add(RetirementPlan(profile_id=py_id, current_age=45, annual_return_rate=5))
+        await db.flush()
+        await db.execute(update(CustomerRetirementProfile).where(CustomerRetirementProfile.id == px_id).values(updated_at=datetime(2026, 9, 30)))
+        await db.execute(update(CustomerRetirementProfile).where(CustomerRetirementProfile.id == py_id).values(updated_at=datetime(2026, 4, 1)))
+        await db.execute(update(RetirementPlan).where(RetirementPlan.profile_id == py_id).values(updated_at=datetime(2026, 4, 2)))
+        await db.commit()
+
     g = next(x for x in (await c.get("/admin/duplicate-clients", headers=hdr(d["owner"]))).json()["groups"] if x["name"] == name)
-    assert g["blocked"]
+    assert not g["blocked"] and g["note"] and g["keep_id"] == y_id
     body = (await c.post("/admin/duplicate-clients/merge", headers=hdr(d["owner"]),
                          json={"groups": [{"keep_id": y_id, "remove_ids": [x_id]}]})).json()
-    assert body["failed"] and not body["merged"]
-    async with Session() as db:  # 아무것도 지워지지 않음
-        assert await db.get(Client, x_id) is not None and await db.get(Client, y_id) is not None
+    assert not body["failed"] and body["merged"][0]["archived_profiles"] == 1
+    async with Session() as db:
+        assert await db.get(Client, x_id) is None
+        profs = (await db.execute(select(CustomerRetirementProfile).where(CustomerRetirementProfile.customer_id == y_id))).scalars().all()
+        assert [p.id for p in profs] == [px_id]   # 더 최근 것(3/24 쪽)이 남은 고객에 붙음
+        assert await db.get(CustomerRetirementProfile, py_id) is None
+        arch = (await db.execute(select(MergeArchive).where(MergeArchive.client_id == y_id))).scalars().all()
+        assert len(arch) == 1 and arch[0].payload["profile"]["id"] == py_id
+        assert len(arch[0].payload["children"]["retirement_plans"]) == 1  # 지운 쪽 플랜도 보관본에 있음
