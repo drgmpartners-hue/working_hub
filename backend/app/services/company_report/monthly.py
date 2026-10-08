@@ -609,3 +609,34 @@ async def digests_for(db: AsyncSession, company_id: str, limit: int = 24) -> lis
     return [{"month": d.month, "summary": d.summary, "content": d.content, "article_count": d.article_count,
              "positive_count": d.positive_count, "caution_count": d.caution_count,
              "updated_at": d.updated_at.isoformat() if d.updated_at else None} for d in rows]
+
+
+async def build_company_digests(db: AsyncSession, company: PortfolioCompany, months: list[str]) -> dict:
+    """한 기업의 월간 요약만 만든다(2026-10-08, 반기 보고서 전 보완용).
+
+    기업을 늦게 등록했거나 과거 데이터를 나중에 모으면, 그 달의 월간 배치가 이미 지나 요약이 없다.
+    전사 월간 브리핑은 건드리지 않고 이 기업의 CompanyMonthlyDigest 만 채운다(교차 검토 없이 작성 모델 1회).
+    """
+    claude = await get_service_key(db, "claude")
+    models = await config.get_models(db)
+    built, written = 0, 0
+    for month in months:
+        stats = await portfolio_stats(db, month, [company])
+        st = next((r for r in stats["companies"] if r["company_id"] == company.id), {})
+        per_company, table = await gather_sources(db, month, [company])
+        srcs = per_company.get(company.id) or []
+        content, model = None, None
+        if srcs and claude:
+            prev = (await db.execute(select(CompanyMonthlyDigest.summary).where(
+                CompanyMonthlyDigest.company_id == company.id, CompanyMonthlyDigest.month == prev_month(month)))).scalar()
+            await release(db)
+            res, _prompt, err = await _digest_ai(claude[0], models["writer"], company, month, srcs, prev)
+            if res is not None and isinstance(res.data, dict):
+                content, model = rebuild_company(digest_sentences(1, company.id, res.data)), models["writer"]
+                written += 1
+            elif err:
+                logger.info("월간 요약 보완 실패(%s %s): %s", company.name, month, err)
+        await _save_digest(db, company.id, month, st, content, table, model)
+        await db.commit()
+        built += 1
+    return {"built": built, "written": written}

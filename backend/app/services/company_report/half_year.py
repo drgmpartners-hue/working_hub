@@ -142,6 +142,49 @@ def _ref_url(refs) -> Optional[str]:
     return None
 
 
+def _won_to_eok(v) -> str:
+    if v is None:
+        return "-"
+    x = v / 1e8
+    return f"{x:,.1f}억 원"
+
+
+def statement_text(st: dict) -> str:
+    """DART 재무제표 → AI 에게 줄 한 줄(순수)."""
+    per = st.get("periods") or ["당기", "전기", "전전기"]
+    parts = []
+    for acc, vals in (st.get("accounts") or {}).items():
+        cells = [f"{per[i] if i < len(per) and per[i] else ('당기', '전기', '전전기')[i]} {_won_to_eok(v)}"
+                 for i, v in enumerate(vals[:3]) if v is not None]
+        if cells:
+            parts.append(f"{acc}: " + ", ".join(cells))
+    return f"DART 사업보고서 재무제표({st.get('fs', '')}, {st.get('year')}사업연도, 원 단위를 억 원으로 환산): " + " / ".join(parts)
+
+
+async def add_dart_statement(db: AsyncSession, b: "Bundle") -> bool:
+    """DART 에 고유번호가 있는 기업이면 주요 계정 3개년을 S 출처로 넣는다. 못 가져와도 보고서는 계속."""
+    from app.services.collectors.dart_client import DARTClient, dart_disclosure_url
+
+    c = b.company
+    if not c.corp_code:
+        return False
+    key = await get_service_key(db, "dart")
+    if not key:
+        return False
+    try:
+        await release(db)
+        st = await DARTClient(key[0]).get_statements(c.corp_code, [b.year - 1, b.year - 2])
+    except Exception as e:
+        logger.info("DART 재무제표 실패(%s): %s", c.name, e)
+        return False
+    if not st:
+        return False
+    b.add("S", statement_text(st), {"type": "dart", "title": f"{c.name} {st['year']} 사업보고서 재무제표({st['fs']})",
+                                    "url": dart_disclosure_url(st["rcept_no"]) if st.get("rcept_no") else None,
+                                    "date": f"{st['year']}-12-31", "press": "DART"})
+    return True
+
+
 def doc_effective_date(d) -> date:
     """자료함 문서가 어느 시점 자료인가: 자료 날짜(AI 가 찾거나 담당자가 고친 값), 없으면 올린 날."""
     if getattr(d, "doc_date", None):
@@ -177,6 +220,9 @@ async def gather(db: AsyncSession, company: PortfolioCompany, year: int, half: i
         seen_src.add(r.source)
         b.add("G", f"{labels.get(r.source, r.source)} {r.as_of.isoformat()} 기준: {json.dumps(r.data, ensure_ascii=False)[:800]}",
               {"type": "public", "title": f"{labels.get(r.source, r.source)}({r.as_of.isoformat()})", "url": None, "date": r.as_of.isoformat()})
+
+    # S DART 재무제표(2026-10-08): DART 에 사업보고서를 내는 기업(상장사 등)은 공식 결산 숫자를 직접 쓴다
+    await add_dart_statement(db, b)
 
     # F 원장 사실(등록 이후 전 기간, 확정 우선)
     facts = (await db.execute(select(CompanyFact).where(
@@ -370,7 +416,7 @@ DRAFT_PROMPT = """'{name}'의 {label} 보고서를 쓴다. 대상 기간은 {per
 6 최근 1년 주요성과: table 열 ["날짜","성과","수치"] — 이번 반기 먼저, 직전 반기는 요약. 계약·수주, 인증·허가, 수상, 파트너십
 7 성장전략: para kind=fact '회사가 밝힌 전략' + para kind=analysis '분석'
 8 최신동향: timeline — 이번 반기 6개월 월별 한 줄씩(date 는 YYYY-MM). 6번과 겹치지 않게 활동 중심
-9 최근 결산정보 요약: table 열 ["항목","{fy}년","전년","증감률"] — 매출액, 영업이익, 당기순이익, 자산총계, 부채총계, 자본총계, 부채비율. 숫자는 원문 그대로, 계산한 비율은 note 에 계산식 + para 3~5문장 해석. 재무 자료가 없으면 표 없이 '공개 재무 자료 없음' 한 문장
+9 최근 결산정보 요약: S 출처(DART 재무제표)가 있으면 그 숫자를 먼저 쓴다. table 열 ["항목","{fy}년","전년","증감률"] — 매출액, 영업이익, 당기순이익, 자산총계, 부채총계, 자본총계, 부채비율. 숫자는 원문 그대로, 계산한 비율은 note 에 계산식 + para 3~5문장 해석. 재무 자료가 없으면 표 없이 '공개 재무 자료 없음' 한 문장
 10 결론: para kind=analysis 3~5문장 — 이번 반기의 진전, 핵심 강점, 주요 리스크와 회사의 대응, 다음 반기에 지켜볼 점
 11 기간 이후 주요 사항: N 출처가 있을 때만 para 2~3문장 — 대상 기간이 끝난 뒤 작성일까지 확인된 큰 일(투자유치·수주·인증·주의 이슈)만, 날짜를 밝혀서. N 출처가 없으면 blocks 를 비운다
 
@@ -869,8 +915,9 @@ async def _step(db: AsyncSession, r: CompanyReport, step: str, pct: int) -> None
     await db.commit()
 
 
-async def run_report(db: AsyncSession, report_id: str) -> CompanyReport:
-    """보고서 한 건 작성(백그라운드). 실패하면 status=failed 와 이유를 남긴다."""
+async def run_report(db: AsyncSession, report_id: str, prepare: bool = False) -> CompanyReport:
+    """보고서 한 건 작성(백그라운드). 실패하면 status=failed 와 이유를 남긴다.
+    prepare=True: 먼저 대상 기간의 빈 구간을 모으고 빠진 월간 요약을 만든다(report_prep, 2026-10-08)."""
     r = await db.get(CompanyReport, report_id)
     if r is None:
         raise ValueError("보고서를 찾을 수 없습니다.")
@@ -886,6 +933,21 @@ async def run_report(db: AsyncSession, report_id: str) -> CompanyReport:
         await usage.flush(db)  # 앞서 쌓인 사용량은 먼저 비용 기록으로 넘기고, 이 보고서 사용량만 따로 센다
         as_of = today_kst()
         r.as_of_date, r.main_model, r.review_model, r.error = as_of, models["writer"], models["review"], None
+
+        from app.services.company_report import report_prep
+
+        prep = None
+        if prepare:
+            await _step(db, r, "빠진 기간 자료 모으는 중(10~30분)", 2)
+            prep = await report_prep.fill(db, company, r.period_year, r.period_half, r.created_by)
+            r = await db.get(CompanyReport, report_id)
+        try:
+            cov = await report_prep.coverage(db, company, r.period_year, r.period_half)
+        except Exception as e:  # 점검이 실패해도 보고서는 쓴다
+            logger.warning("자료 점검 실패(%s): %s", company.name, e)
+            await db.rollback()
+            r = await db.get(CompanyReport, report_id)
+            cov = {"missing_months": [], "missing_digests": []}
 
         await _step(db, r, "자료 모으는 중", 5)
         b = await gather(db, company, r.period_year, r.period_half)
@@ -912,7 +974,10 @@ async def run_report(db: AsyncSession, report_id: str) -> CompanyReport:
         content["cover"] = {"company": company.name, "company_en": company.name_en, "period": half_label(r.period_year, r.period_half),
                             "period_range": period_text(r.period_year, r.period_half),  # 대상 기간(2026-10-08)
                             "as_of": as_of.isoformat(), "brand": "Dr.GM Family Office"}
-        content["stats"] = {"web_facts": web_n, "documents": len(b.documents), "articles": len(b.articles),
+        content["stats"] = {"coverage": {"missing_months": cov["missing_months"], "missing_digests": cov["missing_digests"],
+                                         "prepared": bool(prep), "errors": (prep or {}).get("errors") or []},
+                            "dart_statement": "S1" in b.table,
+                            "web_facts": web_n, "documents": len(b.documents), "articles": len(b.articles),
                             "images_selected": len([i for i in images if i.selected]), "image_candidates": len(images)}
         r.content, r.sources, r.sales_note = content, sources, note
         r.review = {"summary": rv["summary"], "disputed": rv["disputed"], "removed": rv["removed"]}
@@ -934,11 +999,11 @@ async def run_report(db: AsyncSession, report_id: str) -> CompanyReport:
         return r
 
 
-async def run_in_background(report_id: str) -> None:
+async def run_in_background(report_id: str, prepare: bool = False) -> None:
     from app.db.session import AsyncSessionLocal
 
     async with AsyncSessionLocal() as db:
-        await run_report(db, report_id)
+        await run_report(db, report_id, prepare=prepare)
 
 
 async def _index(db: AsyncSession, r: CompanyReport, company: PortfolioCompany) -> None:

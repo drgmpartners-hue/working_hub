@@ -323,7 +323,8 @@ async def test_overview_batch_content_docreq_jobs(env, monkeypatch, tmp_path):  
     # 자동 작업: 예약 → 웹 작업자가 집어 감(작성 함수는 가짜)
     ran = []
 
-    async def fake_run(db, rid):
+    async def fake_run(db, rid, prepare=False):
+        assert prepare  # 자동 작성은 빈 구간 보완부터(2026-10-08)
         r = await db.get(CompanyReport, rid)
         r.status, r.progress = "draft", 100
         r.content = _content()

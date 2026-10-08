@@ -1832,6 +1832,7 @@ async def purge_company(company_id: str, body: PurgeBody, current_user=Depends(g
 class ReportCreate(BaseModel):
     year: Optional[int] = Field(None, ge=2000, le=2100)
     half: Optional[int] = Field(None, ge=1, le=2)
+    fill_gaps: bool = False  # 대상 기간 빈 구간을 먼저 모으고 빠진 월간 요약을 만든 뒤 작성(2026-10-08)
 
 
 def _report_brief(r, names: dict) -> dict:
@@ -1904,11 +1905,32 @@ async def create_half_year_report(company_id: str, body: ReportCreate, backgroun
         queued.progress_step, queued.created_by = "대기", current_user.id
         await db.commit()
         await db.refresh(queued)
-        background.add_task(half_year.run_in_background, queued.id)
+        if body.fill_gaps:
+            background.add_task(half_year.run_in_background, queued.id, prepare=True)
+        else:
+            background.add_task(half_year.run_in_background, queued.id)
         return _report_brief(queued, {})
     r = await half_year.create_report(db, company_id, year, half, current_user.id)
-    background.add_task(half_year.run_in_background, r.id)
+    if body.fill_gaps:
+        background.add_task(half_year.run_in_background, r.id, prepare=True)
+    else:
+        background.add_task(half_year.run_in_background, r.id)
     return _report_brief(r, {})
+
+
+@router.get("/companies/{company_id}/reports/coverage")
+async def report_coverage(company_id: str, year: Optional[int] = Query(None, ge=2000, le=2100),
+                          half: Optional[int] = Query(None, ge=1, le=2), current_user=Depends(get_current_user),
+                          db: AsyncSession = Depends(get_db)):
+    """[보고서 만들기] 전에: 대상 기간이 수집으로 다 덮였는지, 끝난 달마다 월간 요약이 있는지(2026-10-08)."""
+    from app.services.company_report import half_year, report_prep
+
+    await assert_company(db, current_user, company_id)
+    if (year is None) != (half is None):
+        raise HTTPException(422, "연도와 반기를 함께 고르세요.")
+    y, h = (year, half) if year else half_year.latest_closed_half()
+    company = await db.get(PortfolioCompany, company_id)
+    return {"year": y, "half": h, **await report_prep.coverage(db, company, y, h)}
 
 
 @router.get("/companies/{company_id}/reports")

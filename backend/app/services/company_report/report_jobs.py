@@ -23,7 +23,7 @@ logger = logging.getLogger(__name__)
 
 QUEUED = "예약"
 MAX_PER_TICK = 3
-STALE = timedelta(hours=2)
+STALE = timedelta(hours=4)  # 보고서 전 보완 수집(10~30분, 앞 작업 대기 포함)까지 감안
 
 
 async def queue_half_year(db: AsyncSession, year: Optional[int] = None, half: Optional[int] = None,
@@ -72,7 +72,7 @@ async def run_queued(db: AsyncSession, limit: int = MAX_PER_TICK) -> dict:
         r.progress_step = "대기"  # 집어 감 표시(다음 tick 이 또 집지 않게)
         await db.commit()
         try:
-            await half_year.run_report(db, rid)
+            await half_year.run_report(db, rid, prepare=True)  # 자동 작성은 항상 빈 구간 보완부터(2026-10-08)
             done += 1
         except Exception as e:
             await db.rollback()

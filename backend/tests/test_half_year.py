@@ -237,6 +237,19 @@ async def test_full_report_flow(env, monkeypatch, tmp_path):  # noqa: F811
     monkeypatch.setattr(llm_client, "claude_images_json", fake_images)
     monkeypatch.setattr(hy, "get_service_key", fake_key)
 
+    # DART 재무제표(2026-10-08): 고유번호가 있는 기업은 사업보고서 주요 계정을 S 출처로
+    from app.services.collectors import dart_client
+
+    async def fake_statements(self, corp_code, years):
+        assert corp_code == "00999999" and years == [2025, 2024]
+        return {"year": 2025, "fs": "연결", "rcept_no": "20260320000123", "periods": ["제 9 기", "제 8 기", "제 7 기"],
+                "accounts": {"매출액": [12_000_000_000.0, 9_000_000_000.0, 4_500_000_000.0], "영업이익": [1_500_000_000.0, None, -1_200_000_000.0]}}
+
+    monkeypatch.setattr(dart_client.DARTClient, "get_statements", fake_statements)
+    async with env["Session"]() as db:
+        (await db.get(PortfolioCompany, cid)).corp_code = "00999999"
+        await db.commit()
+
     # 목록에 없는 매니저는 못 만든다
     assert (await c.post(f"/company-report/companies/{cid}/reports", headers=hb, json={"year": 2026, "half": 1})).status_code == 404
     assert (await c.post(f"/company-report/companies/{cid}/reports", headers=ha, json={"year": 2026})).status_code == 422
@@ -255,6 +268,10 @@ async def test_full_report_flow(env, monkeypatch, tmp_path):  # noqa: F811
         assert "[D1] 자료함 문서 'IR자료.pdf'" in calls["draft"] and "[A3] DART 공시" in calls["draft"]
         # 기간 규칙: 대상 기간 표시, 반기 이후 일은 N 출처로만(본문 출처 F·R·D·A 에는 없음)
         assert "대상 기간은 2026.01.01 ~ 2026.06.30" in calls["draft"]
+        assert "[S1] DART 사업보고서 재무제표(연결, 2025사업연도" in calls["draft"] and "매출액: 제 9 기 120.0억 원" in calls["draft"]
+        assert out.content["stats"]["dart_statement"]  # (S1 은 초안이 인용하지 않아 부록 출처에는 없음)
+        # 오늘 등록한 기업이라 1~6월은 수집 기록이 없다 → 보고서에 남긴다(보완 없이 만든 경우)
+        assert out.content["stats"]["coverage"]["missing_months"] == hy.half_months(2026, 1)
         body_src = "\n".join(l for l in calls["draft"].splitlines() if l[:2] in ("[F", "[R", "[D", "[A"))
         assert "8월 미국 수출" not in body_src and "시리즈C" not in body_src and "9월IR" not in body_src
         assert "[N1] 기간 이후 원장 사실" in calls["draft"] and "기간 이후 투자유치(2026-09-01) 시리즈C" in calls["draft"]
@@ -314,3 +331,79 @@ async def test_report_fails_cleanly_without_key(env, monkeypatch, tmp_path):  # 
         r = await hy.create_report(db, co["id"], 2026, 1, d["A"])
         out = await hy.run_report(db, r.id)
         assert out.status == "failed" and "Claude 키" in out.error
+
+
+
+def test_dart_statement_parse_and_text():
+    from app.services.collectors.dart_client import parse_statement
+
+    rows = [{"account_nm": "매출액", "thstrm_amount": "12,000,000,000", "frmtrm_amount": "9000000000", "bfefrmtrm_amount": "",
+             "thstrm_nm": "제 9 기", "frmtrm_nm": "제 8 기", "bfefrmtrm_nm": "제 7 기", "rcept_no": "R1"},
+            {"account_nm": "영업 이익", "thstrm_amount": "-300000000", "frmtrm_amount": "100000000"},
+            {"account_nm": "기타", "thstrm_amount": "1"}]
+    st = parse_statement(rows)
+    assert st["rcept_no"] == "R1" and st["periods"][0] == "제 9 기"
+    assert st["accounts"]["매출액"] == [12e9, 9e9, None] and st["accounts"]["영업이익"][0] == -3e8 and "기타" not in st["accounts"]
+    txt = hy.statement_text({"year": 2025, "fs": "별도", **st})
+    assert "2025사업연도" in txt and "매출액: 제 9 기 120.0억 원, 제 8 기 90.0억 원" in txt and "영업이익: 제 9 기 -3.0억 원" in txt
+
+
+def test_uncovered_days():
+    from app.services.company_report.report_prep import uncovered_days
+
+    gaps = uncovered_days(date(2026, 1, 1), date(2026, 1, 10), [(date(2026, 1, 3), date(2026, 1, 5)), (date(2026, 1, 8), date(2026, 3, 1))])
+    assert gaps == [date(2026, 1, 1), date(2026, 1, 2), date(2026, 1, 6), date(2026, 1, 7)]
+
+
+@pytest.mark.skipif(not PG, reason="PERM_PG_URL 없음(실제 PostgreSQL 필요)")
+async def test_report_coverage_and_fill(env, monkeypatch):  # noqa: F811
+    """[보고서 만들기] 전 점검(2026-10-08): 등록 전 기간·월간 요약이 비면 알려 주고, 보완하면 채운다."""
+    from app.models.company_report import CompanyMonthlyDigest
+    from app.models.news_briefing import BackfillJob, PortfolioCompany
+    from app.services.company_report import backfill, half_year, monthly, report_prep
+
+    c, d, hdr = env["c"], env["d"], env["hdr"]
+    ha, hb = hdr(d["A"]), hdr(d["B"])
+    cid = (await c.post("/company-report/companies", headers=ha, json={"name": f"점검-{uuid.uuid4().hex[:6]}",
+                                                                       "backfill_months": 0})).json()["id"]
+    url = f"/company-report/companies/{cid}/reports/coverage"
+    assert (await c.get(url, headers=hb, params={"year": 2026, "half": 1})).status_code == 404
+    cov = (await c.get(url, headers=ha, params={"year": 2026, "half": 1})).json()
+    assert not cov["ok"] and cov["gap_from"] == "2026-01-01" and cov["gap_to"] == "2026-06-30"
+    assert cov["missing_months"] == half_year.half_months(2026, 1) and cov["missing_digests"] == half_year.half_months(2026, 1)
+
+    # 보완: 과거 데이터 구축(가짜 — 끝난 작업만 남김) → 빠진 달 월간 요약(Claude 키 없음 → 빈 요약으로 표시만)
+    called = {}
+
+    async def fake_backfill(db, company_id, *, date_from=None, date_to=None, trigger="manual", user_id=None, with_ai_checks=True, **kw):
+        called["range"] = (date_from, date_to, trigger, with_ai_checks)
+        db.add(BackfillJob(company_id=company_id, period_from=date_from, period_to=date_to, trigger=trigger, status="done", progress=100))
+        await db.commit()
+        return {"verdict": "sufficient"}
+
+    async def no_key(db, provider, user_id=None):
+        return None
+
+    monkeypatch.setattr(backfill, "run_backfill", fake_backfill)
+    monkeypatch.setattr(monthly, "get_service_key", no_key)
+    async with env["Session"]() as db:
+        co = await db.get(PortfolioCompany, cid)
+        out = await report_prep.fill(db, co, 2026, 1, d["A"])
+        assert called["range"] == (date(2026, 1, 1), date(2026, 6, 30), "report", False) and not out["errors"]
+        assert out["digests"]["built"] == 6
+        from sqlalchemy import select
+
+        n = (await db.execute(select(CompanyMonthlyDigest).where(CompanyMonthlyDigest.company_id == cid))).scalars().all()
+        assert len(n) == 6
+    cov = (await c.get(url, headers=ha, params={"year": 2026, "half": 1})).json()
+    assert cov["ok"] and all(m["collected"] and m["digest"] for m in cov["months"])
+
+    # [보완 수집 후 만들기] → 백그라운드 작성에 prepare=True
+    seen = {}
+
+    async def fake_bg(rid, prepare=False):
+        seen["prepare"] = prepare
+
+    monkeypatch.setattr(half_year, "run_in_background", fake_bg)
+    r = await c.post(f"/company-report/companies/{cid}/reports", headers=ha, json={"year": 2026, "half": 1, "fill_gaps": True})
+    assert r.status_code == 202 and seen["prepare"] is True

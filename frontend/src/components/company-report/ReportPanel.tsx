@@ -69,6 +69,16 @@ interface Img {
   selected: boolean;
   sort_order?: number;
 }
+interface Coverage {
+  ok: boolean;
+  period: string;
+  gap_from: string | null;
+  gap_to: string | null;
+  missing_months: string[];
+  missing_digests: string[];
+  backfill_running: boolean;
+  months: { month: string; collected: boolean; digest: boolean; month_ended: boolean; articles: number }[];
+}
 interface Brief {
   id: string;
   period_year: number;
@@ -95,6 +105,11 @@ interface Full extends Brief {
       stage_note: Sent | null;
     };
     sections: Section[];
+    /** 만들 때의 자료 상태(2026-10-08) */
+    stats?: {
+      coverage?: { missing_months: string[]; missing_digests: string[]; prepared: boolean; errors: string[] };
+      dart_statement?: boolean;
+    };
     appendix: {
       citations: {
         no: number;
@@ -487,6 +502,28 @@ function ReportView({ r, edit }: { r: Full; edit?: EditApi }) {
           {rs.review_ok === false ? ' · 2차 검토가 끝나지 않은 묶음이 있습니다' : ''}
         </div>
       )}
+      {(() => {
+        const cv = c.stats?.coverage;
+        const miss = cv?.missing_months || [];
+        const errs = cv?.errors || [];
+        if (!miss.length && !errs.length && !c.stats?.dart_statement) return null;
+        return (
+          <div style={{ fontSize: 12, color: 'var(--text-secondary)', lineHeight: 1.7 }}>
+            {miss.length > 0 && (
+              <div style={{ color: 'var(--warning)' }}>
+                이 보고서는 {miss.map((m) => `${Number(m.slice(5, 7))}월`).join('·')} 자료가 모이지 않은 상태로 만들어졌습니다. 다시 만들 때
+                [보완 수집 후 만들기]를 고르세요.
+              </div>
+            )}
+            {errs.map((e) => (
+              <div key={e} style={{ color: 'var(--danger)' }}>
+                {e}
+              </div>
+            ))}
+            {c.stats?.dart_statement && <div>결산 숫자는 DART 사업보고서 재무제표를 썼습니다.</div>}
+          </div>
+        );
+      })()}
 
       <Card padding={20}>
         <div style={{ ...mutedText, fontSize: 12 }}>{c.cover.brand}</div>
@@ -897,18 +934,17 @@ export function ReportPanel({ companyId }: { companyId: string }) {
   const download = (fmt: 'pdf' | 'docx') =>
     full && void run(() => crDownload(`/reports/${full.id}/export?format=${fmt}`, `보고서.${fmt}`));
 
-  const create = async () => {
+  /** 대상 기간 수집 상태(2026-10-08) — 빈 구간이 있으면 만들기 전에 보여 준다 */
+  const [cov, setCov] = useState<Coverage | null>(null);
+  const monthsText = (ms: string[]) => ms.map((m) => `${Number(m.slice(5, 7))}월`).join('·');
+
+  const doCreate = async (fill: boolean) => {
     const [year, half] = pick.split('-').map(Number);
-    if (
-      !window.confirm(
-        `${halfOption(year, half)} 보고서를 만들까요?\n대상 기간(${halfRange(year, half)}) 자료로 쓰고, 그 뒤 일은 '기간 이후 주요 사항'에 짧게 넣습니다.\n자료 수집·웹 확인·교차 검토까지 수 분 걸리고 AI 비용이 듭니다.`,
-      )
-    )
-      return;
     setBusy(true);
     setError(null);
+    setCov(null);
     try {
-      const r = await crPost<Brief>(`/companies/${companyId}/reports`, { year, half });
+      const r = await crPost<Brief>(`/companies/${companyId}/reports`, { year, half, fill_gaps: fill });
       setSelId(r.id);
       reload();
     } catch (e) {
@@ -916,6 +952,29 @@ export function ReportPanel({ companyId }: { companyId: string }) {
     } finally {
       setBusy(false);
     }
+  };
+
+  const create = async () => {
+    const [year, half] = pick.split('-').map(Number);
+    setError(null);
+    let c: Coverage;
+    try {
+      c = await crGet<Coverage>(`/companies/${companyId}/reports/coverage?year=${year}&half=${half}`);
+    } catch (e) {
+      setError((e as Error).message);
+      return;
+    }
+    if (!c.ok) {
+      setCov(c); // 빈 구간 안내 + [보완 수집 후 만들기]/[지금 자료로 만들기]
+      return;
+    }
+    if (
+      !window.confirm(
+        `${halfOption(year, half)} 보고서를 만들까요?\n대상 기간(${halfRange(year, half)}) 자료가 모두 모여 있습니다. 그 뒤 일은 '기간 이후 주요 사항'에 짧게 넣습니다.\n자료 수집·웹 확인·교차 검토까지 수 분 걸리고 AI 비용이 듭니다.`,
+      )
+    )
+      return;
+    await doCreate(false);
   };
 
   const ready = !!(full && full.id === selId && full.content && sel && sel.status !== 'generating');
@@ -958,6 +1017,36 @@ export function ReportPanel({ companyId }: { companyId: string }) {
           작성일까지의 큰 일은 &lsquo;기간 이후 주요 사항&rsquo;에 따로 짧게 넣습니다. 자료함 문서는 자료 날짜가 반기 끝 이전인 것만 씁니다.
         </div>
         <ErrorBox message={error} />
+        {cov && (
+          <div
+            role="alert"
+            style={{ marginTop: 10, padding: '10px 12px', borderRadius: 8, background: 'var(--warning-bg)', fontSize: 13, lineHeight: 1.7 }}
+          >
+            <b>대상 기간({cov.period}) 자료가 다 모여 있지 않습니다.</b>
+            {cov.missing_months.length > 0 && (
+              <div>
+                · 수집되지 않은 기간: {cov.gap_from} ~ {cov.gap_to} ({monthsText(cov.missing_months)}) — 기업을 등록하기 전이라
+                매일 수집이 없었고 과거 데이터 구축 범위에도 들지 않았습니다.
+              </div>
+            )}
+            {cov.missing_digests.length > 0 && <div>· 월간 요약이 없는 달: {monthsText(cov.missing_digests)}</div>}
+            {cov.backfill_running && <div>· 이 기업의 과거 데이터 구축이 지금 진행 중입니다. 끝난 뒤 다시 확인하면 빈 곳이 줄어듭니다.</div>}
+            <div style={{ marginTop: 4, color: 'var(--text-secondary)' }}>
+              [보완 수집 후 만들기]는 빠진 기간의 기사·공시를 먼저 모으고 월간 요약을 만든 뒤 보고서를 씁니다(10~30분 더, AI 비용 추가).
+            </div>
+            <div style={{ display: 'flex', gap: 6, marginTop: 8, flexWrap: 'wrap' }}>
+              <button type="button" className="wh-btn wh-btn-primary wh-btn-sm" disabled={busy} onClick={() => void doCreate(true)}>
+                보완 수집 후 만들기
+              </button>
+              <button type="button" className="wh-btn wh-btn-ghost wh-btn-sm" disabled={busy} onClick={() => void doCreate(false)}>
+                지금 있는 자료로 만들기
+              </button>
+              <button type="button" className="wh-btn wh-btn-ghost wh-btn-sm" onClick={() => setCov(null)}>
+                취소
+              </button>
+            </div>
+          </div>
+        )}
         {list && list.length > 0 && (
           <div
             style={{

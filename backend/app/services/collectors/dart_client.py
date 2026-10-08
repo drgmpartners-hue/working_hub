@@ -137,6 +137,25 @@ class DARTClient:
             "operating_profit_trend": _trend(op),
         }
 
+    async def get_statements(self, corp_code: str, years: list[int]) -> Optional[dict]:
+        """반기 보고서용 재무제표(2026-10-08): 사업보고서의 주요 계정 3개년(당기·전기·전전기).
+
+        years 를 차례로 시도(사업보고서는 다음 해 3월 말 제출). 연결재무제표가 없으면 별도재무제표.
+        반환: {year, fs, rcept_no, periods:[당기명,…], accounts:{계정: [당기, 전기, 전전기]}} 또는 None
+        """
+        for y in years:
+            for fs in ("CFS", "OFS"):
+                async with httpx.AsyncClient(timeout=15) as client:
+                    res = await client.get(f"{_BASE}/fnlttSinglAcntAll.json", params={
+                        "crtfc_key": self.api_key, "corp_code": corp_code, "bsns_year": str(y),
+                        "reprt_code": "11011", "fs_div": fs})
+                body = res.json() if res.status_code == 200 else {}
+                if body.get("status") == "000" and body.get("list"):
+                    parsed = parse_statement(body["list"])
+                    if parsed["accounts"]:
+                        return {"year": y, "fs": "연결" if fs == "CFS" else "별도", **parsed}
+        return None
+
     # --------------------------------------------------------------- 공시
     async def get_disclosures(self, stock_code: str, count: int = 5) -> list[dict]:
         """최근 공시 목록."""
@@ -307,6 +326,32 @@ def _match_rows(rows: list[dict], q: str, limit: int) -> list[dict]:
     key = lambda r: (0 if r.get("stock_code") else 1, len(r["corp_name"]))  # noqa: E731  상장사·짧은 이름 우선
     out = sorted(exact, key=key) + sorted(prefix, key=key) + sorted(contains, key=key)
     return [{k: v for k, v in r.items() if not k.startswith("_")} for r in out[:limit]]
+
+
+STATEMENT_ACCOUNTS = [
+    ("매출액", ("매출액", "영업수익", "수익(매출액)", "매출")),
+    ("영업이익", ("영업이익", "영업이익(손실)")),
+    ("당기순이익", ("당기순이익", "당기순이익(손실)", "연결당기순이익")),
+    ("자산총계", ("자산총계",)),
+    ("부채총계", ("부채총계",)),
+    ("자본총계", ("자본총계",)),
+]
+
+
+def parse_statement(rows: list[dict]) -> dict:
+    """fnlttSinglAcntAll 응답 행 → 주요 계정 3개년(원 단위, 당기·전기·전전기 순). 순수 함수."""
+    accounts: dict[str, list] = {}
+    rcept_no, periods = None, []
+    for label, names in STATEMENT_ACCOUNTS:
+        for r in rows:
+            nm = (r.get("account_nm") or "").replace(" ", "")
+            if nm in names:
+                accounts[label] = [_num(r.get(k)) for k in ("thstrm_amount", "frmtrm_amount", "bfefrmtrm_amount")]
+                rcept_no = rcept_no or r.get("rcept_no")
+                if not periods:
+                    periods = [r.get(k) or "" for k in ("thstrm_nm", "frmtrm_nm", "bfefrmtrm_nm")]
+                break
+    return {"rcept_no": rcept_no, "periods": periods, "accounts": accounts}
 
 
 def dart_disclosure_url(rcept_no: str) -> str:
