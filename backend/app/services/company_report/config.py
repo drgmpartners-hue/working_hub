@@ -20,10 +20,13 @@ SUMMARY_MODEL = "briefing_summary_model"
 LAST_RUN_AT = "news_briefing_last_run_at"
 TEMPLATE_DAILY = "briefing_template_daily"          # 솔라피 템플릿 B ID(심사 승인 후 입력). 없으면 LMS로 보냄
 TEMPLATE_MONTHLY = "briefing_template_monthly"      # 템플릿 C
+TEMPLATE_REPORT = "report_template_id"              # 템플릿 D(반기 보고서 고객 전달). 없으면 같은 내용을 문자(LMS)로
 LAST_SEND_AT = "news_briefing_last_send_at"
 MONTHLY_ENABLED = "monthly_briefing_enabled"         # "1"/"0", 기본 켜짐(데일리 발송이 켜져 있을 때만)
 
-WEB_BASE = "https://working-hub.vercel.app"
+WEB_BASE = "https://working-hub.vercel.app"  # 직원용 브리핑 링크 — 승인된 알림톡 v1 버튼 주소와 같아야 해서 그대로 둔다
+# 고객에게 가는 반기 보고서 링크(템플릿 D·문자)는 회사 도메인으로(2026-10-08). 같은 화면이 두 주소 모두에서 열린다
+REPORT_WEB_BASE = "https://hub.drgm.co.kr"
 APPROVAL_DAYS = 7                                   # 시작 후 승인 필요 영업일 수
 
 DEFAULT_REGION = "서울"

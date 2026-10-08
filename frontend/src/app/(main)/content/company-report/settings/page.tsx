@@ -41,6 +41,7 @@ interface Settings {
   approval_days_left: number | null;
   template_daily: string;
   template_monthly: string;
+  template_report: string;
   weather_region: string;
   models: { main: string; writer?: string; review: string; summary: string };
   last_run_at: string | null;
@@ -85,6 +86,7 @@ function normalize(raw: Partial<Settings> | null | undefined): Settings {
     models: { main: '', writer: '', review: '', summary: '', ...(r.models || {}) },
     template_daily: r.template_daily || '',
     template_monthly: r.template_monthly || '',
+    template_report: r.template_report || '',
   };
 }
 
@@ -104,7 +106,7 @@ export default function SettingsPage() {
   const admin = !!me?.is_admin;
   // 수신자 명단은 담당자별: 매니저는 자기 명단을 직접 관리 (docs/login_logic P9)
   const [s, setS] = useState<Settings | null>(null);
-  const [tpl, setTpl] = useState({ daily: '', monthly: '' });
+  const [tpl, setTpl] = useState({ daily: '', monthly: '', report: '' });
   const [models, setModels] = useState({ main: '', writer: '', review: '', summary: '' });
   const [region, setRegion] = useState('서울');
   const [error, setError] = useState<string | null>(null);
@@ -115,7 +117,7 @@ export default function SettingsPage() {
     try {
       const st = normalize(await crGet<Settings>('/settings'));
       setS(st);
-      setTpl({ daily: st.template_daily, monthly: st.template_monthly });
+      setTpl({ daily: st.template_daily, monthly: st.template_monthly, report: st.template_report });
       setModels({ ...st.models, writer: st.models.writer || '' });
       setRegion(st.weather_region || '서울');
     } catch (e) {
@@ -317,6 +319,7 @@ export default function SettingsPage() {
                     {
                       template_daily: tpl.daily,
                       template_monthly: tpl.monthly,
+                      template_report: tpl.report,
                       main_model: models.main,
                       writer_model: models.writer,
                       review_model: models.review,
@@ -370,6 +373,15 @@ export default function SettingsPage() {
               disabled={!admin}
               value={tpl.monthly}
               onChange={(e) => setTpl({ ...tpl, monthly: e.target.value })}
+              placeholder="KA01TP…"
+            />
+          </Field>
+          <Field label="반기 보고서 고객 전달 템플릿 ID (템플릿 D, 비우면 문자로)">
+            <input
+              style={inputStyle}
+              disabled={!admin}
+              value={tpl.report}
+              onChange={(e) => setTpl({ ...tpl, report: e.target.value })}
               placeholder="KA01TP…"
             />
           </Field>

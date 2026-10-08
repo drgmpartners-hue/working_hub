@@ -67,6 +67,7 @@ def test_share_token_and_public_content():
     v = report_share.variables("홍고객", "테스트바이오", "2026년 상반기", ["a", "b"], "담당 김매니저 010-1111-2222")
     txt = report_share.lms_text(v, "https://x/m/report?t=abc")
     assert "#{" not in txt and "https://x/m/report?t=abc" in txt and "- a\n- b" in txt
+    assert report_share.page_url("abc") == "https://hub.drgm.co.kr/m/report?t=abc"  # 고객 링크는 회사 도메인(2026-10-08)
 
 
 def test_doc_request_periods():

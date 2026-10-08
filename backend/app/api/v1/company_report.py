@@ -1061,6 +1061,7 @@ class SettingsBody(BaseModel):
     restart_approval: bool = False
     template_daily: Optional[str] = None
     template_monthly: Optional[str] = None
+    template_report: Optional[str] = None
     weather_region: Optional[str] = None
     main_model: Optional[str] = None
     writer_model: Optional[str] = None
@@ -1147,6 +1148,7 @@ async def _settings_out(db: AsyncSession, user=None) -> dict:
         "approval_days_left": max(0, (until - today).days + 1) if until else None,
         "template_daily": await settings_store.get(db, crcfg.TEMPLATE_DAILY) or "",
         "template_monthly": await settings_store.get(db, crcfg.TEMPLATE_MONTHLY) or "",
+        "template_report": await settings_store.get(db, crcfg.TEMPLATE_REPORT) or "",
         "weather_region": await settings_store.get(db, crcfg.WEATHER_REGION, crcfg.DEFAULT_REGION),
         "models": await crcfg.get_models(db),
         "last_run_at": await settings_store.get(db, crcfg.LAST_RUN_AT),
@@ -1199,6 +1201,7 @@ async def put_settings(body: SettingsBody, current_user=Depends(get_current_user
     elif body.review_until is not None:
         await settings_store.set_value(db, crcfg.REVIEW_UNTIL, body.review_until.isoformat())
     for field, key in (("template_daily", crcfg.TEMPLATE_DAILY), ("template_monthly", crcfg.TEMPLATE_MONTHLY),
+                       ("template_report", crcfg.TEMPLATE_REPORT),
                        ("weather_region", crcfg.WEATHER_REGION), ("main_model", crcfg.MAIN_MODEL), ("writer_model", crcfg.WRITER_MODEL),
                        ("review_model", crcfg.REVIEW_MODEL), ("summary_model", crcfg.SUMMARY_MODEL)):
         v = getattr(body, field)

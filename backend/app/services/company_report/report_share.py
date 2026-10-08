@@ -21,7 +21,7 @@ from app.services.company_report.timeutil import now_kst, today_kst
 
 VALID_DAYS = 180
 SIG_LEN = 16
-TEMPLATE_KEY = "report_template_id"
+TEMPLATE_KEY = config.TEMPLATE_REPORT  # "report_template_id" — 발송 설정 화면에서 입력
 _UUID = re.compile(r"^[0-9a-f-]{36}$")
 
 
@@ -61,7 +61,7 @@ def parse(token: str, today: Optional[date] = None) -> tuple[str, str]:
 
 
 def page_url(token: str) -> str:
-    return f"{config.WEB_BASE}/m/report?t={token}"
+    return f"{config.REPORT_WEB_BASE}/m/report?t={token}"
 
 
 def public_content(content: dict) -> dict:
