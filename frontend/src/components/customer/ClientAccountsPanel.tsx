@@ -231,9 +231,6 @@ export function ClientAccountsPanel({ clientId, clientName }: { clientId: string
           </tbody>
         </table>
       )}
-      <div style={{ marginTop: 8, fontSize: '0.75rem', color: 'var(--text-muted)' }}>
-        여기서 고친 내용은 위쪽 [계좌정보 관리]와 주식, 펀드 관리에 그대로 반영됩니다. 계좌 삭제는 분석 기록이 함께 지워지므로 [계좌정보 관리]에서 하세요.
-      </div>
     </div>
   );
 }
