@@ -90,6 +90,7 @@ class LLMResult:
     data: Any = None
     model: str = ""
     usage: dict = field(default_factory=dict)
+    stop_reason: str = ""  # max_tokens 면 답이 중간에 잘린 것
 
 
 _FENCE_RE = re.compile(r"^```(?:json)?\s*|\s*```$", re.MULTILINE)
@@ -113,7 +114,18 @@ def parse_json(text: str) -> Any:
     try:
         return json.loads(t[start : end + 1])
     except json.JSONDecodeError as e:
-        raise LLMError(f"JSON 파싱 실패: {e}") from e
+        err = e
+    # 2026-10-08: 문장 속 따옴표를 이스케이프하지 않거나 쉼표가 빠지는 등 사소한 형식 오류는 고쳐서 읽는다
+    try:
+        import json_repair
+
+        fixed = json_repair.loads(t[start:])
+        if isinstance(fixed, (dict, list)) and fixed:
+            logger.info("JSON 형식 오류를 고쳐 읽음: %s", err)
+            return fixed
+    except Exception:  # 고치기도 실패하면 원래 오류로
+        pass
+    raise LLMError(f"JSON 파싱 실패: {err}") from err
 
 
 async def claude_text(
@@ -158,7 +170,7 @@ async def claude_text(
             usage = data.get("usage", {}) or {}
             searches = int(((usage.get("server_tool_use") or {}).get("web_search_requests")) or 0)
             _record(data.get("model", model), usage, searches, stage)
-            return LLMResult(text=text, model=data.get("model", model), usage=usage)
+            return LLMResult(text=text, model=data.get("model", model), usage=usage, stop_reason=data.get("stop_reason") or "")
         except (LLMError, httpx.HTTPError) as e:
             last_err = e
             msg = str(e)
@@ -227,8 +239,13 @@ async def claude_json(api_key: str, prompt: str, **kwargs) -> LLMResult:
     system = kwargs.pop("system", None) or ""
     system = (system + "\n\n반드시 유효한 JSON만 출력하라. 설명문·코드펜스를 붙이지 마라.").strip()
     last: Exception | None = None
-    for _ in range(2):
+    for attempt in range(2):
         r = await claude_text(api_key, prompt, system=system, **kwargs)
+        if r.stop_reason == "max_tokens":  # 답이 길어 잘림 → 고쳐 읽으면 뒷부분이 빠지므로 한도를 늘려 다시
+            last = LLMError("답이 길어 중간에 잘렸습니다")
+            logger.warning("Claude 답이 max_tokens(%s)에서 잘림 — 한도를 늘려 다시 요청", kwargs.get("max_tokens"))
+            kwargs["max_tokens"] = min(int(kwargs.get("max_tokens") or 2048) * 2, 32000)
+            continue
         try:
             r.data = parse_json(r.text)
             return r
