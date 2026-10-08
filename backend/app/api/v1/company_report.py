@@ -1577,6 +1577,7 @@ class DocumentPatch(BaseModel):
     is_public: Optional[bool] = None
     doc_type: Optional[str] = None
     ai_memo: Optional[str] = Field(None, max_length=1500)
+    doc_date: Optional[date] = None  # 자료 날짜(담당자가 고침). null 이면 지움 → 올린 날 기준
 
 
 @router.patch("/documents/{doc_id}")
@@ -1590,6 +1591,10 @@ async def patch_document(doc_id: str, body: DocumentPatch, current_user=Depends(
     data = body.model_dump(exclude_unset=True)
     if "doc_type" in data and data["doc_type"] not in documents.DOC_TYPES:
         raise HTTPException(422, "자료 종류가 올바르지 않습니다.")
+    if "doc_date" in data:
+        if data["doc_date"] and data["doc_date"] > today_kst():
+            raise HTTPException(422, "자료 날짜는 오늘 이후로 정할 수 없습니다.")
+        d.doc_date_source = "manual" if data["doc_date"] else None
     for k, v in data.items():
         setattr(d, k, v)
     await db.commit()
@@ -2322,12 +2327,13 @@ async def mobile_report(t: str = Query(..., max_length=200), db: AsyncSession = 
     """카톡·문자 [보고서 보기] → 고객용 폰 화면. 내부 표시(확인 필요·영업 노트·검토 의견)는 뺀다."""
     from app.models.company_report import ReportImage
     from app.services.company_report import exporters, report_share
-    from app.services.company_report.half_year import half_label
+    from app.services.company_report.half_year import half_label, period_text
 
     r, cl, c = await _public_report(db, t)
     imgs = (await db.execute(select(ReportImage).where(ReportImage.report_id == r.id, ReportImage.selected == True)  # noqa: E712
                              .order_by(ReportImage.sort_order))).scalars().all()
     return {"client_name": cl.name, "company_name": c.name, "period_label": half_label(r.period_year, r.period_half),
+            "period_range": period_text(r.period_year, r.period_half),
             "as_of_date": r.as_of_date.isoformat() if r.as_of_date else None, "version": r.version,
             "contact": await exporters.contact_for(db, cl.user_id or r.owner_user_id),
             "content": report_share.public_content(r.content),

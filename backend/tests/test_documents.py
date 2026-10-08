@@ -10,6 +10,7 @@ import os
 import struct
 import uuid
 import zipfile
+from datetime import date
 from pathlib import Path
 
 import pytest
@@ -162,7 +163,7 @@ async def test_upload_registers_and_process(env, monkeypatch, tmp_path):  # noqa
     async def fake_memo(db, company, filename, text):
         calls.append((company, filename))
         return {"doc_type": "shareholders", "memo": "주주명부. 5번 투자유치에 쓸 만함", "facts": ["한빛벤처스 18%"],
-                "has_personal_investment": True, "is_public": False}
+                "has_personal_investment": True, "is_public": False, "doc_date": "2026-03-31"}
 
     monkeypatch.setattr(documents, "_memo", fake_memo)
     c, d, hdr = env["c"], env["d"], env["hdr"]
@@ -188,6 +189,7 @@ async def test_upload_registers_and_process(env, monkeypatch, tmp_path):  # noqa
         assert out.extract_status == "done" and "한빛벤처스 18%" in out.extracted_text
         assert out.doc_type == "shareholders" and out.has_personal_investment is True and out.ai_facts == ["한빛벤처스 18%"]
         assert len(out.extracted_images) == 1 and (tmp_path / out.extracted_images[0]["key"]).exists()
+        assert out.doc_date == date(2026, 3, 31) and out.doc_date_source == "ai"  # AI 가 문서 속 기준일을 찾음(2026-10-08)
         doc_id = out.id
     lst = (await c.get(f"/company-report/companies/{co['id']}/documents", headers=ha)).json()
     assert [x["doc_type_label"] for x in lst["items"]] == ["주주명부·지분"] and lst["can_edit"] is True
@@ -200,6 +202,17 @@ async def test_upload_registers_and_process(env, monkeypatch, tmp_path):  # noqa
     r = await c.patch(f"/company-report/documents/{doc_id}", headers=ha, json={"use_in_report": False, "doc_type": "ir"})
     assert r.status_code == 200 and r.json()["use_in_report"] is False and r.json()["doc_type"] == "ir"
     assert (await c.patch(f"/company-report/documents/{doc_id}", headers=ha, json={"doc_type": "nope"})).status_code == 422
+    # 자료 날짜: 담당자가 고치면 manual, 다시 읽어도 지킨다 / 미래 날짜는 안 됨 / 비우면 올린 날 기준
+    r = await c.patch(f"/company-report/documents/{doc_id}", headers=ha, json={"doc_date": "2025-12-31"})
+    assert r.json()["doc_date"] == "2025-12-31" and r.json()["doc_date_source"] == "manual"
+    async with env["Session"]() as db:
+        again = await documents.process(db, doc_id)
+        assert again.doc_date == date(2025, 12, 31) and again.doc_date_source == "manual"
+    assert (await c.patch(f"/company-report/documents/{doc_id}", headers=ha, json={"doc_date": "2099-01-01"})).status_code == 422
+    r = await c.patch(f"/company-report/documents/{doc_id}", headers=ha, json={"doc_date": None})
+    assert r.json()["doc_date"] is None and r.json()["doc_date_source"] is None
+    assert documents.parse_doc_date("2026-02-30") is None and documents.parse_doc_date("") is None
+    assert documents.parse_doc_date("2026-02-28 기준") == date(2026, 2, 28)
     # 검색: 본문 글자로 찾힌다
     res = (await c.get("/company-report/search", headers=ha, params={"q": "한빛벤처스"})).json()
     assert res["counts"].get("file", 0) >= 1, res["counts"]

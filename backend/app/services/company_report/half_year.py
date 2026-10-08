@@ -47,7 +47,10 @@ logger = logging.getLogger(__name__)
 SECTIONS: list[tuple[int, str]] = [
     (1, "기업정보"), (2, "대표자정보"), (3, "주요특징 및 사업영역"), (4, "제품라인업"), (5, "투자유치 현황"),
     (6, "최근 1년 주요성과"), (7, "성장전략"), (8, "최신동향"), (9, "최근 결산정보 요약"), (10, "결론"),
+    (11, "기간 이후 주요 사항"),  # 2026-10-08: 반기 끝 ~ 작성일 사이의 큰 일만 짧게(없으면 항목 자체를 뺀다)
 ]
+AFTER_SECTION = 11
+MAX_AFTER_ARTICLES = 5
 ANALYSIS_SECTIONS = {5, 7, 10}
 STAGES = ["개발", "출시", "매출 발생", "흑자", "상장 준비", "상장"]
 DISCLAIMER = (
@@ -61,7 +64,7 @@ DOC_TEXT_EACH = 6000
 DOC_TEXT_TOTAL = 40000
 MAX_IMAGES = 10
 MAX_DOC_IMAGE_CANDIDATES = 12
-REVIEW_GROUPS = [[0, 1, 2, 3, 4], [5, 6, 7], [8, 9, 10]]  # 0 = 한 장 요약
+REVIEW_GROUPS = [[0, 1, 2, 3, 4], [5, 6, 7], [8, 9, 10, 11]]  # 0 = 한 장 요약
 
 
 # --------------------------------------------------------------------------- 기간
@@ -73,6 +76,12 @@ def half_range(year: int, half: int) -> tuple[date, date]:
 
 def half_label(year: int, half: int) -> str:
     return f"{year}년 {'상반기' if half == 1 else '하반기'}"
+
+
+def period_text(year: int, half: int) -> str:
+    """대상 기간 표시 — 예: 2026.01.01 ~ 2026.06.30 (2026-10-08: 보고서가 어느 기간 자료인지 표지에 밝힌다)."""
+    s, e = half_range(year, half)
+    return f"{s:%Y.%m.%d} ~ {e:%Y.%m.%d}"
 
 
 def half_months(year: int, half: int) -> list[str]:
@@ -103,6 +112,7 @@ class Bundle:
     articles: list[NewsArticle] = field(default_factory=list)
     dart: list[NewsArticle] = field(default_factory=list)
     documents: list[CompanyDocument] = field(default_factory=list)
+    after_n: int = 0                                         # 기간 이후(반기 끝 다음 날 ~ 작성일) 출처 수 — N 출처
     prev_report: Optional[CompanyReport] = None
     counters: dict[str, int] = field(default_factory=lambda: defaultdict(int))
 
@@ -132,6 +142,13 @@ def _ref_url(refs) -> Optional[str]:
     return None
 
 
+def doc_effective_date(d) -> date:
+    """자료함 문서가 어느 시점 자료인가: 자료 날짜(AI 가 찾거나 담당자가 고친 값), 없으면 올린 날."""
+    if getattr(d, "doc_date", None):
+        return d.doc_date
+    return d.created_at.date() if d.created_at else today_kst()
+
+
 async def gather(db: AsyncSession, company: PortfolioCompany, year: int, half: int) -> Bundle:
     b = Bundle(company=company, year=year, half=half)
     start, end = half_range(year, half)
@@ -150,6 +167,8 @@ async def gather(db: AsyncSession, company: PortfolioCompany, year: int, half: i
     # G 공공데이터(최신 스냅샷)
     rows = (await db.execute(select(CompanyPublicData).where(CompanyPublicData.company_id == c.id, CompanyPublicData.error.is_(None))
                              .order_by(CompanyPublicData.as_of.desc()))).scalars().all()
+    # 반기 끝 이전 값이 있으면 그것을 먼저(기간 밖 최신 값이 섞이지 않게), 없으면 가장 최신 값
+    rows = sorted(rows, key=lambda r: (r.as_of > end, -r.as_of.toordinal()))
     seen_src = set()
     labels = {"nps": "국민연금 가입 사업장(임직원 수)", "kipris": "KIPRIS 특허·상표", "nts": "국세청 사업자 상태", "kis": "주가(KIS)"}
     for r in rows:
@@ -163,15 +182,21 @@ async def gather(db: AsyncSession, company: PortfolioCompany, year: int, half: i
     facts = (await db.execute(select(CompanyFact).where(
         CompanyFact.company_id == c.id, CompanyFact.status.in_(["confirmed", "candidate"]))
         .order_by(CompanyFact.fact_date.desc().nullslast()).limit(MAX_FACTS))).scalars().all()
+    after_facts = []
     for f in facts:
+        if f.fact_date and f.fact_date > end:  # 반기 끝 이후 사실은 본문(1~10)에서 빼고 '기간 이후' 출처로
+            after_facts.append(f)
+            continue
         st = "확정" if f.status == "confirmed" else "후보"
         b.add("F", f"원장 사실({st}, {f.fact_type}, {_d(f.fact_date)}) {f.title}",
               {"type": "fact", "title": f.title, "url": _ref_url(f.source_refs), "date": _d(f.fact_date), "status": f.status})
 
     # R 투자유치
-    b.rounds = list((await db.execute(select(CompanyFundingRound).where(
+    all_rounds = list((await db.execute(select(CompanyFundingRound).where(
         CompanyFundingRound.company_id == c.id, CompanyFundingRound.status != "rejected")
         .order_by(CompanyFundingRound.round_date.nullslast()))).scalars().all())
+    b.rounds = [r for r in all_rounds if not (r.round_date and r.round_date > end)]
+    after_rounds = [r for r in all_rounds if r.round_date and r.round_date > end]
     for r in b.rounds:
         inv = ", ".join(f"{i.get('name', '')}({i.get('type', '')}{', 리드' if i.get('lead') else ''})"
                         for i in (r.investors or []) if isinstance(i, dict))
@@ -213,9 +238,12 @@ async def gather(db: AsyncSession, company: PortfolioCompany, year: int, half: i
               {"type": "dart", "title": a.title, "url": a.url, "date": _d(a.published_at.date() if a.published_at else None), "press": "DART"})
 
     # D 자료함(보고서에 사용 + 읽기 완료)
-    b.documents = list((await db.execute(select(CompanyDocument).where(
+    all_docs = list((await db.execute(select(CompanyDocument).where(
         CompanyDocument.company_id == c.id, CompanyDocument.use_in_report == True,  # noqa: E712
         CompanyDocument.extract_status == "done").order_by(CompanyDocument.created_at))).scalars().all())
+    # 자료 날짜(없으면 올린 날) 가 반기 끝 이후인 문서는 이 반기 보고서에 쓰지 않는다(2026-10-08)
+    b.documents = [d for d in all_docs if doc_effective_date(d) <= end]
+    after_docs = [d for d in all_docs if doc_effective_date(d) > end]
     budget = DOC_TEXT_TOTAL
     for d in b.documents:
         excerpt = (d.extracted_text or "")[:min(DOC_TEXT_EACH, max(budget, 0))]
@@ -225,6 +253,29 @@ async def gather(db: AsyncSession, company: PortfolioCompany, year: int, half: i
                    f"본문 일부: {excerpt}",
               {"type": "document", "title": d.filename, "url": None, "date": d.created_at.date().isoformat() if d.created_at else "",
                "is_public": d.is_public, "document_id": d.id})
+
+    # N 기간 이후(반기 끝 다음 날 ~ 오늘): 11번 '기간 이후 주요 사항' 에만 쓰는 출처(2026-10-08)
+    for f in after_facts:
+        b.add("N", f"기간 이후 원장 사실({f.fact_type}, {_d(f.fact_date)}) {f.title}",
+              {"type": "fact", "title": f.title, "url": _ref_url(f.source_refs), "date": _d(f.fact_date), "status": f.status})
+    for r in after_rounds:
+        amt = _eok(r.amount) if r.amount and r.amount_disclosed else "비공개"
+        b.add("N", f"기간 이후 투자유치({_d(r.round_date)}) {r.round_name or '라운드 미상'} 금액 {amt}",
+              {"type": "funding", "title": f"{r.round_name or '투자유치'} {amt}", "url": _ref_url(r.source_refs),
+               "date": _d(r.round_date), "round_id": r.id})
+    later = (await db.execute(select(NewsArticle).where(
+        NewsArticle.company_id == c.id, NewsArticle.is_hidden == False, NewsArticle.is_representative == True,  # noqa: E712
+        NewsArticle.published_at >= e_dt, NewsArticle.tag.in_(["caution", "positive"])))).scalars().all()
+    later = sorted(later, key=lambda a: (tag_order.get(a.tag or "", 3), -(a.relevance_score or 0)))[:MAX_AFTER_ARTICLES]
+    for a in later:
+        b.add("N", f"기간 이후 기사({_d(a.published_at.date() if a.published_at else None)}, {a.press or '-'}, {a.tag}) {a.title} — {a.summary or a.description or ''}",
+              {"type": "dart" if a.source_type == "dart" else "article", "title": a.title, "url": a.url,
+               "date": _d(a.published_at.date() if a.published_at else None), "press": a.press})
+    for d in after_docs:
+        b.add("N", f"기간 이후 자료함 문서 '{d.filename}'({_d(doc_effective_date(d))}) 메모: {d.ai_memo or ''} 핵심: {'; '.join(d.ai_facts or [])}",
+              {"type": "document", "title": d.filename, "url": None, "date": _d(doc_effective_date(d)),
+               "is_public": d.is_public, "document_id": d.id})
+    b.after_n = b.counters.get("N", 0)
 
     # X 직전 반기 보고서(같은 기업, 자동 생성본 최신)
     py, ph = prev_half(year, half)
@@ -242,6 +293,7 @@ async def gather(db: AsyncSession, company: PortfolioCompany, year: int, half: i
 # --------------------------------------------------------------------------- 2) 웹 보강
 
 WEB_PROMPT = """'{name}'({industry}, 대표 {ceo}) 에 대해 웹 검색으로 아래 빈칸을 확인하라. 회사 홈페이지·공식 보도자료·신뢰할 만한 언론을 우선한다.
+이 보고서의 대상 기간은 {period} 이다. {end} 이후에 일어난 일·발표된 값은 넣지 마라(그 시점 기준 사실만).
 확인하지 못한 항목은 넣지 마라. 동명이인·동명 회사를 조심하라(업종·대표자 이름으로 확인).
 
 확인할 것:
@@ -262,7 +314,9 @@ def _gaps(b: Bundle) -> list[str]:
 
 async def web_enrich(db: AsyncSession, b: Bundle, claude_key: str, model: str) -> int:
     c = b.company
+    _, end = half_range(b.year, b.half)
     prompt = WEB_PROMPT.format(name=c.name, industry=c.industry or "업종 미상", ceo=c.ceo_name or "미상",
+                               period=period_text(b.year, b.half), end=end.isoformat(),
                                gaps="\n".join(f"- {g}" for g in _gaps(b)))
     await release(db)
     try:
@@ -276,6 +330,8 @@ async def web_enrich(db: AsyncSession, b: Bundle, claude_key: str, model: str) -
     for f in (data or {}).get("facts", [])[:25] if isinstance(data, dict) else []:
         if not isinstance(f, dict) or not f.get("text") or not str(f.get("url") or "").startswith("http"):
             continue  # 출처 주소 없는 웹 사실은 쓰지 않는다
+        if str(f.get("date") or "")[:10] > end.isoformat():
+            continue  # 대상 기간 이후 정보(날짜가 밝혀진 것)는 빼낸다
         b.add("W", f"웹 확인({f.get('topic', '기타')}) {f['text']}",
               {"type": "web", "title": f.get("title") or f["url"], "url": f["url"], "date": f.get("date") or ""})
         n += 1
@@ -288,7 +344,11 @@ DRAFT_SYSTEM = (
     "너는 Dr.GM Family Office 의 기업분석 담당자다. 비상장·상장 투자기업에 투자한 고객이 읽는 반기 보고서를 쓴다. "
     "목적: 고객이 사실로 안심하고, 영업 담당자가 자신 있게 설명할 근거를 준다."
 )
-DRAFT_PROMPT = """'{name}'의 {label} 보고서(기준일 {as_of})를 쓴다. 아래 [출처]만 근거로 쓴다.
+DRAFT_PROMPT = """'{name}'의 {label} 보고서를 쓴다. 대상 기간은 {period}, 작성일은 {as_of} 이다. 아래 [출처]만 근거로 쓴다.
+
+기간 규칙
+- 1~10번과 한 장 요약은 대상 기간 끝({end})까지의 사실만 쓴다. 기준 시점은 {end} 이다.
+- N 으로 시작하는 출처는 대상 기간 이후(작성일까지)의 일이다. 11번에만 쓰고 1~10번·한 장 요약에는 쓰지 않는다.
 
 문장 규칙
 - 두괄식: 각 항목의 첫 문장이 그 항목의 결론이다.
@@ -312,6 +372,7 @@ DRAFT_PROMPT = """'{name}'의 {label} 보고서(기준일 {as_of})를 쓴다. �
 8 최신동향: timeline — 이번 반기 6개월 월별 한 줄씩(date 는 YYYY-MM). 6번과 겹치지 않게 활동 중심
 9 최근 결산정보 요약: table 열 ["항목","{fy}년","전년","증감률"] — 매출액, 영업이익, 당기순이익, 자산총계, 부채총계, 자본총계, 부채비율. 숫자는 원문 그대로, 계산한 비율은 note 에 계산식 + para 3~5문장 해석. 재무 자료가 없으면 표 없이 '공개 재무 자료 없음' 한 문장
 10 결론: para kind=analysis 3~5문장 — 이번 반기의 진전, 핵심 강점, 주요 리스크와 회사의 대응, 다음 반기에 지켜볼 점
+11 기간 이후 주요 사항: N 출처가 있을 때만 para 2~3문장 — 대상 기간이 끝난 뒤 작성일까지 확인된 큰 일(투자유치·수주·인증·주의 이슈)만, 날짜를 밝혀서. N 출처가 없으면 blocks 를 비운다
 
 출력 JSON(이 형식 그대로):
 {{"summary": {{"three_lines": [{{"text": "...", "source_ids": ["F1"]}}],
@@ -322,7 +383,7 @@ DRAFT_PROMPT = """'{name}'의 {label} 보고서(기준일 {as_of})를 쓴다. �
      {{"type": "table", "columns": ["항목","내용"], "rows": [{{"cells": ["정식 기업명","..."], "source_ids": ["P1"], "note": ""}}]}},
      {{"type": "para", "items": [{{"text": "...", "source_ids": ["A3"], "kind": "fact"}}]}},
      {{"type": "timeline", "items": [{{"date": "2026-03", "text": "...", "source_ids": ["M3"]}}]}}
- ]}}, ... 1부터 10까지 모두],
+ ]}}, ... 1부터 11까지 모두(11은 N 출처가 없으면 "blocks": [])],
  "financials": {{"unit": "억 원", "years": [2023, 2024, 2025], "series": {{"매출액": [45, 90, 120], "영업이익": [-12, 5, 15]}}, "source_ids": ["D1"]}},
  "glossary": [{{"term": "영업이익", "desc": "본업으로 번 돈"}}]}}
 financials 는 출처에서 확인한 연도별 숫자만(모르면 null). 확인한 연도가 2개 미만이면 "financials": null.
@@ -345,8 +406,9 @@ def _src_text(sources: list[dict], limit: int = 160_000) -> str:
 
 async def draft(db: AsyncSession, b: Bundle, claude_key: str, model: str, as_of: date, report_id: str) -> dict:
     fy = b.year - 1  # 반기 보고서 시점(1월 말·7월 말)에 나와 있는 결산은 보통 직전 사업연도
+    _, end = half_range(b.year, b.half)
     prompt = DRAFT_PROMPT.format(name=b.company.name, label=half_label(b.year, b.half), as_of=as_of.isoformat(), fy=fy,
-                                 sources=_src_text(b.sources))
+                                 period=period_text(b.year, b.half), end=end.isoformat(), sources=_src_text(b.sources))
     await release(db)
     r = await llm_client.claude_json(claude_key, prompt, system=DRAFT_SYSTEM, model=model, max_tokens=16000, timeout=420,
                                      stage="report_draft")
@@ -422,6 +484,8 @@ def normalize(d: dict) -> dict:
                         items.append(dict(s, id=nid(), date=str((x or {}).get("date") or "")[:10]))
                 if items:
                     blocks.append({"type": "timeline", "items": items})
+        if no == AFTER_SECTION and not blocks:
+            continue  # 기간 이후 큰 일이 없으면 항목 자체를 넣지 않는다
         sections.append({"no": no, "title": title, "blocks": blocks})
     fin = d.get("financials") if isinstance(d.get("financials"), dict) else None
     gloss = [{"term": str(g.get("term"))[:40], "desc": str(g.get("desc") or "")[:200]}
@@ -846,6 +910,7 @@ async def run_report(db: AsyncSession, report_id: str) -> CompanyReport:
         appendix, sources = build_appendix(b, content, rv["summary"], as_of)
         content["appendix"] = appendix
         content["cover"] = {"company": company.name, "company_en": company.name_en, "period": half_label(r.period_year, r.period_half),
+                            "period_range": period_text(r.period_year, r.period_half),  # 대상 기간(2026-10-08)
                             "as_of": as_of.isoformat(), "brand": "Dr.GM Family Office"}
         content["stats"] = {"web_facts": web_n, "documents": len(b.documents), "articles": len(b.articles),
                             "images_selected": len([i for i in images if i.selected]), "image_candidates": len(images)}

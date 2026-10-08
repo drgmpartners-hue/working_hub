@@ -29,6 +29,8 @@ interface Data {
   client_name: string;
   company_name: string;
   period_label: string;
+  /** 대상 기간 — 예: 2026.01.01 ~ 2026.06.30 */
+  period_range?: string;
   as_of_date: string | null;
   contact: string;
   content: {
@@ -174,7 +176,10 @@ export function MobileReportPage({ token }: { token: string }) {
             {data.period_label} 기업 종합보고서
           </h1>
           <div style={{ fontSize: 13, opacity: 0.85 }}>
-            {data.client_name} 고객님 · 기준일 {data.as_of_date || '-'}
+            {data.client_name} 고객님
+          </div>
+          <div style={{ fontSize: 12, opacity: 0.85, marginTop: 2 }}>
+            대상 기간 {data.period_range || data.period_label} · 작성일 {data.as_of_date || '-'}
           </div>
         </div>
       </header>

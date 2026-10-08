@@ -9,6 +9,7 @@ from app.services.company_report import half_year as hy
 
 
 def test_period_helpers():
+    assert hy.period_text(2026, 1) == "2026.01.01 ~ 2026.06.30" and hy.period_text(2026, 2) == "2026.07.01 ~ 2026.12.31"
     assert hy.half_range(2026, 1) == (date(2026, 1, 1), date(2026, 6, 30))
     assert hy.half_range(2026, 2) == (date(2026, 7, 1), date(2026, 12, 31))
     assert hy.half_label(2026, 2) == "2026년 하반기"
@@ -41,6 +42,10 @@ RAW = {
 def test_normalize_flatten_apply():
     c = hy.normalize(RAW)
     assert [s["no"] for s in c["sections"]] == list(range(1, 11))
+    # 11번(기간 이후 주요 사항)은 내용이 있을 때만
+    c11 = hy.normalize({**RAW, "sections": RAW["sections"] + [{"no": 11, "blocks": [{"type": "para", "items": [
+        {"text": "2026년 9월 시리즈C 300억 원을 유치했다.", "source_ids": ["N1"]}]}]}]})
+    assert c11["sections"][-1]["no"] == 11 and c11["sections"][-1]["title"] == "기간 이후 주요 사항"
     assert len(c["summary"]["three_lines"]) == 2 and c["summary"]["three_lines"][1]["source_ids"] == []
     # 분석 표시는 5·7·10번에서만
     sec3 = c["sections"][2]["blocks"][0]["items"][0]
@@ -128,6 +133,11 @@ async def test_full_report_flow(env, monkeypatch, tmp_path):  # noqa: F811
                         source="dart", published_at=datetime(2026, 2, 1, 9)),
             NewsArticle(company_id=cid, url="https://news.example/old", url_hash=uuid.uuid4().hex, title="작년 기사",
                         published_at=datetime(2025, 9, 1, 9)),
+            # 반기(1/1~6/30) 이후 일 — 본문(1~10)에 섞이지 않고 'N' 출처(11번 기간 이후 주요 사항)로만(2026-10-08)
+            CompanyFact(company_id=cid, fact_type="contract", fact_date=date(2026, 8, 15), title="8월 미국 수출 계약", status="confirmed"),
+            CompanyFundingRound(company_id=cid, round_date=date(2026, 9, 1), round_name="시리즈C", amount=30_000_000_000, status="confirmed"),
+            NewsArticle(company_id=cid, url="https://news.example/later", url_hash=uuid.uuid4().hex, title="9월 시리즈C 300억",
+                        press="경제신문", published_at=datetime(2026, 9, 2, 9), relevance_score=80, tag="positive"),
         ])
         await db.flush()
         from app.models.company_report import CompanyFile
@@ -135,7 +145,13 @@ async def test_full_report_flow(env, monkeypatch, tmp_path):  # noqa: F811
         f = CompanyFile(company_id=cid, folder="docs", display_name="IR.pdf", storage_key="x", file_type="pdf", size=1)
         db.add(f)
         await db.flush()
+        f2 = CompanyFile(company_id=cid, folder="docs", display_name="9월IR.pdf", storage_key="y", file_type="pdf", size=1)
+        db.add(f2)
+        await db.flush()
+        db.add(CompanyDocument(company_id=cid, file_id=f2.id, filename="9월IR.pdf", file_type="pdf", extract_status="done",
+                               extracted_text="9월 기준 자료", doc_date=date(2026, 9, 10), doc_date_source="ai", ai_memo="9월 IR"))
         db.add(CompanyDocument(company_id=cid, file_id=f.id, filename="IR자료.pdf", file_type="pdf", extract_status="done",
+                               doc_date=date(2026, 5, 1), doc_date_source="ai",
                                extracted_text="2025년 매출 120억 원", doc_type="ir", ai_memo="IR 자료", ai_facts=["매출 120억"],
                                extracted_images=[{"key": img_key, "ext": "png", "page": 3, "width": 500, "height": 320}]))
         await db.commit()
@@ -237,6 +253,12 @@ async def test_full_report_flow(env, monkeypatch, tmp_path):  # noqa: F811
         assert "작년 기사" not in calls["draft"] and "주소 없는 사실" not in calls["draft"]
         assert "[W1] 웹 확인(대표자) 홍길동 대표는 서울대 출신이다." in calls["draft"]
         assert "[D1] 자료함 문서 'IR자료.pdf'" in calls["draft"] and "[A3] DART 공시" in calls["draft"]
+        # 기간 규칙: 대상 기간 표시, 반기 이후 일은 N 출처로만(본문 출처 F·R·D·A 에는 없음)
+        assert "대상 기간은 2026.01.01 ~ 2026.06.30" in calls["draft"]
+        body_src = "\n".join(l for l in calls["draft"].splitlines() if l[:2] in ("[F", "[R", "[D", "[A"))
+        assert "8월 미국 수출" not in body_src and "시리즈C" not in body_src and "9월IR" not in body_src
+        assert "[N1] 기간 이후 원장 사실" in calls["draft"] and "기간 이후 투자유치(2026-09-01) 시리즈C" in calls["draft"]
+        assert "기간 이후 기사(2026-09-02" in calls["draft"] and "기간 이후 자료함 문서 '9월IR.pdf'" in calls["draft"]
         cont = out.content
         # 2차 검토가 '곧 상장' 문장을 지움, 1차만 지우자고 한 문장은 불합의로 남김
         concl = [s["text"] for blk in cont["sections"][9]["blocks"] for s in blk["items"]]
@@ -250,6 +272,8 @@ async def test_full_report_flow(env, monkeypatch, tmp_path):  # noqa: F811
         assert out.sources["D1"]["url"] is None and out.sources["W1"]["url"] == "https://web.example/ceo"
         assert [a["title"] for a in cont["appendix"]["articles"]] == ["테스트바이오 시리즈B 150억", "신제품 TB-200 출시"]
         assert cont["appendix"]["dart"][0]["title"] == "주요사항보고서" and cont["appendix"]["disclaimer"]
+        assert cont["cover"]["period_range"] == "2026.01.01 ~ 2026.06.30"
+        assert [s["no"] for s in cont["sections"]][-1] == 10  # 초안에 11번 내용이 없으면 항목을 넣지 않는다
         assert cont["cover"]["period"] == "2026년 상반기" and out.sales_note["key_messages"][0] == "150억 유치"
         # 이미지: 차트 2(투자유치·재무) + 자료 그림 1(선택)
         imgs = (await db.execute(select(ReportImage).where(ReportImage.report_id == rid).order_by(ReportImage.sort_order))).scalars().all()

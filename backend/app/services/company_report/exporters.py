@@ -38,6 +38,13 @@ class ExportContext:
     contact_line: str = ""              # '담당 OOO · 010-… · email'
 
 
+
+def _period_range(r, cover: dict) -> str:
+    """표지의 대상 기간(예전 보고서에는 period_range 가 없어 반기에서 계산)."""
+    from app.services.company_report.half_year import period_text
+
+    return cover.get("period_range") or period_text(r.period_year, r.period_half)
+
 def _cite_nums(ids: list[str], sources: dict) -> list[int]:
     return [sources[i]["no"] for i in ids or [] if i in sources and sources[i].get("no")]
 
@@ -142,7 +149,7 @@ def build_pdf(ctx: ExportContext) -> bytes:
     story += [Spacer(1, 40 * mm), Paragraph(BRAND, st["brand"]), Spacer(1, 6 * mm),
               Paragraph(escape(cover.get("company") or ""), st["title"]),
               Paragraph(f"{escape(cover.get('period') or '')} 기업 종합보고서", st["sub"]), Spacer(1, 4 * mm),
-              Paragraph(f"기준일 {escape(cover.get('as_of') or '')} · v{r.version}", st["small"])]
+              Paragraph(f"대상 기간 {escape(_period_range(r, cover))} · 작성일 {escape(cover.get('as_of') or '')} · v{r.version}", st["small"])]
     if ctx.client_name:
         story += [Spacer(1, 30 * mm), Paragraph(f"{escape(ctx.client_name)} 고객님께 드리는 보고서입니다.", st["sub"])]
     if ctx.contact_line:
@@ -325,7 +332,7 @@ def build_docx(ctx: ExportContext) -> bytes:
     heading(BRAND, 11, gold)
     heading(cover.get("company") or "", 26)
     heading(f"{cover.get('period', '')} 기업 종합보고서", 14, RGBColor(0x1F, 0x29, 0x37))
-    d.add_paragraph(f"기준일 {cover.get('as_of', '')} · v{r.version}")
+    d.add_paragraph(f"대상 기간 {_period_range(r, cover)} · 작성일 {cover.get('as_of', '')} · v{r.version}")
     if ctx.client_name:
         d.add_paragraph()
         d.add_paragraph(f"{ctx.client_name} 고객님께 드리는 보고서입니다.")

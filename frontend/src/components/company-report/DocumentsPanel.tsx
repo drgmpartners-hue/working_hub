@@ -4,6 +4,8 @@
  * 자료함 — 반기 보고서 재료 (기획 6장 '자료 읽기', P4-2).
  * 기업DB 03_자료에 올린 문서를 시스템이 읽어 글·그림을 꺼내고 AI 가 종류·요약·핵심 사실을 적는다.
  * 담당자는 보고서에 쓸지, 공개 자료(부록에 링크)인지 정한다.
+ * 자료 날짜(2026-10-08): AI 가 문서 속 작성일·기준일을 찾아 채우고 담당자가 고친다. 반기 보고서는 자료 날짜
+ * (없으면 올린 날)가 그 반기 끝 이전인 자료만 쓴다.
  */
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Card } from '@/components/common/Card';
@@ -16,6 +18,7 @@ import {
   mutedText,
 } from '@/components/company-report/ui';
 import { crBlob, crGet, crPatch, crPost, crUpload } from '@/lib/companyReportApi';
+import { halfLabel, halfOf } from '@/lib/halfPeriod';
 
 interface Doc {
   id: string;
@@ -37,7 +40,17 @@ interface Doc {
   has_personal_investment: boolean;
   use_in_report: boolean;
   is_public: boolean;
+  /** 자료 날짜(YYYY-MM-DD) — AI 가 찾았거나(ai) 담당자가 고친 값(manual). 없으면 올린 날 기준 */
+  doc_date?: string | null;
+  doc_date_source?: 'ai' | 'manual' | null;
   created_at: string | null;
+}
+
+/** 이 자료가 어느 반기 자료로 쓰이는지(자료 날짜, 없으면 올린 날) */
+function docPeriod(d: Doc): { date: string; label: string; guessed: boolean } {
+  const date = d.doc_date || (d.created_at || '').slice(0, 10);
+  const h = halfOf(date);
+  return { date, label: h ? `${halfLabel(h.year, h.half)} 자료` : '', guessed: !d.doc_date };
 }
 
 const STATUS: Record<Doc['extract_status'], { label: string; cls: string }> = {
@@ -160,7 +173,7 @@ export function DocumentsPanel({ companyId }: { companyId: string }) {
 
   const patch = async (
     d: Doc,
-    body: Partial<Pick<Doc, 'use_in_report' | 'is_public' | 'doc_type'>>,
+    body: Partial<Pick<Doc, 'use_in_report' | 'is_public' | 'doc_type' | 'doc_date'>>,
   ) => {
     try {
       const u = await crPatch<Doc>(`/documents/${d.id}`, body);
@@ -233,6 +246,9 @@ export function DocumentsPanel({ companyId }: { companyId: string }) {
         위주로 읽으니, 표·그림이 중요하면 PDF 나 hwpx·pptx 로 올리는 편이 정확합니다.
         <br />
         고객 개인의 투자 금액·지분이 담긴 자료는 표시가 붙고, 보고서에는 그 내용을 쓰지 않습니다.
+        <br />
+        <b>자료 날짜</b>: 반기 보고서는 자료 날짜가 그 반기 끝 이전인 자료만 씁니다(예: 2026 상반기 보고서 → 6/30 이전 자료).
+        AI 가 문서 속 작성일·기준일을 찾아 채우고, 못 찾으면 올린 날로 보니 &lsquo;확인 필요&rsquo; 자료는 날짜를 넣어 주세요.
       </div>
       <ErrorBox message={error} />
       {notice && (
@@ -284,6 +300,36 @@ export function DocumentsPanel({ companyId }: { companyId: string }) {
                     {fmtDate(d.created_at)}
                   </span>
                 </div>
+                {d.extract_status !== 'pending' && (() => {
+                  const p = docPeriod(d);
+                  return (
+                    <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap', marginTop: 6, fontSize: 12 }}>
+                      <span style={{ color: 'var(--text-secondary)' }}>자료 날짜</span>
+                      {canEdit ? (
+                        <input
+                          type="date"
+                          aria-label={`${d.filename} 자료 날짜`}
+                          value={d.doc_date || ''}
+                          max={new Date().toISOString().slice(0, 10)}
+                          onChange={(e) => void patch(d, { doc_date: e.target.value || null })}
+                          style={{ ...inputStyle, width: 'auto', padding: '2px 6px', fontSize: 12 }}
+                        />
+                      ) : (
+                        <b>{d.doc_date || '-'}</b>
+                      )}
+                      {p.label && <span className="wh-badge">{p.label}</span>}
+                      {p.guessed ? (
+                        <span className="wh-badge warn" title="문서에서 날짜를 찾지 못해 올린 날로 봅니다. 문서의 작성일·기준일을 넣어 주세요">
+                          확인 필요 · 올린 날({p.date}) 기준
+                        </span>
+                      ) : (
+                        <span style={{ ...mutedText, fontSize: 11 }}>
+                          {d.doc_date_source === 'manual' ? '담당자 입력' : 'AI 가 문서에서 찾음'}
+                        </span>
+                      )}
+                    </div>
+                  );
+                })()}
                 {d.extract_error && (
                   <div style={{ fontSize: 12, color: 'var(--danger)', marginTop: 6 }}>
                     {d.extract_error}

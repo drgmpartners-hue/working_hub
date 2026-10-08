@@ -43,12 +43,15 @@ MEMO_PROMPT = """아래는 '{company}'에 관한 자료 '{filename}'에서 뽑�
   "memo": "이 문서가 무엇이고 보고서 어디에 쓸 만한지 3줄 이내(한국어, 각 줄 60자 안팎)",
   "facts": ["보고서에 쓸 만한 핵심 사실 최대 8개. 한 줄에 하나, 숫자·날짜 포함, 문서 표기 그대로"],
   "has_personal_investment": true 또는 false,
-  "is_public": true 또는 false
+  "is_public": true 또는 false,
+  "doc_date": "YYYY-MM-DD 또는 빈칸"
 }}
 
 - has_personal_investment: 특정 개인(고객) 이름과 그 사람의 투자 금액·주식 수·지분율이 함께 나오면 true.
   그 개인 정보는 facts 에 절대 넣지 마라. 회사·펀드·VC 의 투자 정보는 괜찮다.
 - is_public: 보도자료·홈페이지 자료처럼 공개된 문서로 보이면 true, 내부 자료·계약서·주주명부면 false.
+- doc_date: 이 문서가 어느 시점 자료인지 — 작성일·발행일·기준일(재무제표면 결산 기준일, 주주명부면 기준일). 문서에 적힌 날짜만.
+  일(日)이 없으면 그 달 말일, 달도 없으면 빈칸. 찾지 못하면 빈칸.
 
 --- 자료 글(앞부분) ---
 {text}
@@ -57,6 +60,19 @@ OCR_PROMPT = (
     "이 PDF 의 글을 빠짐없이 옮겨 적어라. 쪽마다 '[N쪽]' 으로 시작하고, 표는 칸을 ' | ' 로 나눠 한 줄씩 적어라. "
     "설명이나 요약은 붙이지 말고 원문 글만 적어라."
 )
+
+
+def parse_doc_date(v) -> Optional["date"]:
+    """AI 가 준 자료 날짜(YYYY-MM-DD)를 날짜로. 이상한 값·미래 날짜는 버린다."""
+    from datetime import date
+
+    from app.services.company_report.timeutil import today_kst
+
+    try:
+        d = date.fromisoformat(str(v or "").strip()[:10])
+    except ValueError:
+        return None
+    return d if date(1990, 1, 1) <= d <= today_kst() else None
 
 
 async def register(db: AsyncSession, f: CompanyFile, user_id: Optional[str]) -> Optional[CompanyDocument]:
@@ -180,6 +196,9 @@ async def process(db: AsyncSession, doc_id: str, *, with_ai: bool = True) -> Com
             doc.ai_facts = [str(x)[:300] for x in facts[:8] if str(x).strip()]
             doc.has_personal_investment = bool(m.get("has_personal_investment"))
             doc.is_public = bool(m.get("is_public"))
+            if doc.doc_date_source != "manual":  # 담당자가 고친 날짜는 다시 읽어도 지키기
+                dd = parse_doc_date(m.get("doc_date"))
+                doc.doc_date, doc.doc_date_source = (dd, "ai") if dd else (None, None)
             if doc.doc_type and f.doc_kind in (None, "자료"):
                 f.doc_kind = DOC_TYPES[doc.doc_type][:40]
     # 검색 색인: PDF·HWP 본문까지 찾히게
@@ -242,6 +261,7 @@ def doc_out(d: CompanyDocument, file: Optional[CompanyFile] = None) -> dict:
         "image_count": len(d.extracted_images or []), "doc_type": d.doc_type,
         "doc_type_label": DOC_TYPES.get(d.doc_type or "", None), "ai_memo": d.ai_memo, "ai_facts": d.ai_facts or [],
         "has_personal_investment": d.has_personal_investment, "use_in_report": d.use_in_report, "is_public": d.is_public,
+        "doc_date": d.doc_date.isoformat() if d.doc_date else None, "doc_date_source": d.doc_date_source,
         "display_name": file.display_name if file else None,
         "created_at": d.created_at.isoformat() if d.created_at else None,
         "updated_at": d.updated_at.isoformat() if d.updated_at else None,

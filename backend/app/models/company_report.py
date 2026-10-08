@@ -261,6 +261,10 @@ class CompanyDocument(Base):
     has_personal_investment: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     use_in_report: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     is_public: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)  # 부록에 링크를 걸어도 되는 공개 자료
+    # 자료 날짜(2026-10-08): 문서가 어느 시점 자료인가. AI 가 본문에서 찾고 담당자가 고친다. 반기 보고서는
+    # 이 날짜(없으면 올린 날)가 반기 끝 이전인 자료만 쓴다. source: ai / manual (없으면 못 찾음 → 확인 필요)
+    doc_date: Mapped[Optional[date]] = mapped_column(Date)
+    doc_date_source: Mapped[Optional[str]] = mapped_column(String(10))
     uploaded_by: Mapped[Optional[str]] = mapped_column(String(36))
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now(), nullable=False)
     updated_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now(), onupdate=func.now(), nullable=False)

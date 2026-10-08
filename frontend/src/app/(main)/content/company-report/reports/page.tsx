@@ -13,6 +13,7 @@ import { Card } from '@/components/common/Card';
 import { ReportSendDialog } from '@/components/company-report/ReportSendDialog';
 import { ErrorBox, SectionTitle, Spinner, fmtDate, inputStyle, mutedText } from '@/components/company-report/ui';
 import { crDownload, crDownloadPost, crGet, crPut } from '@/lib/companyReportApi';
+import { halfOption } from '@/lib/halfPeriod';
 import { useAuthStore } from '@/stores/auth';
 
 type Stage = 'none' | 'generating' | 'failed' | 'draft' | 'final';
@@ -83,7 +84,7 @@ function halves(): { year: number; half: number; label: string }[] {
   let h = now.getMonth() >= 6 ? 1 : 2;
   const out = [];
   for (let i = 0; i < 6; i++) {
-    out.push({ year: y, half: h, label: `${y}년 ${h === 1 ? '상반기' : '하반기'}` });
+    out.push({ year: y, half: h, label: halfOption(y, h) });
     if (h === 1) {
       y -= 1;
       h = 2;

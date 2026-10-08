@@ -20,6 +20,7 @@ import {
 import { DocRequestPanel } from '@/components/company-report/DocRequestPanel';
 import { ReportSendDialog } from '@/components/company-report/ReportSendDialog';
 import { crBlob, crDownload, crGet, crPatch, crPost } from '@/lib/companyReportApi';
+import { halfOption, halfRange } from '@/lib/halfPeriod';
 
 interface Sent {
   id: string;
@@ -86,7 +87,7 @@ interface Brief {
 }
 interface Full extends Brief {
   content: {
-    cover: { company: string; period: string; as_of: string; brand: string };
+    cover: { company: string; period: string; period_range?: string; as_of: string; brand: string };
     summary: {
       three_lines: Sent[];
       changes: Sent[];
@@ -171,7 +172,7 @@ function halves(): { year: number; half: number; label: string }[] {
   let cy = now.getMonth() >= 6 ? y : y - 1;
   let ch = now.getMonth() >= 6 ? 1 : 2;
   for (let i = 0; i < 4; i++) {
-    out.push({ year: cy, half: ch, label: `${cy}년 ${ch === 1 ? '상반기' : '하반기'}` });
+    out.push({ year: cy, half: ch, label: halfOption(cy, ch) });
     if (ch === 1) {
       cy -= 1;
       ch = 2;
@@ -493,7 +494,7 @@ function ReportView({ r, edit }: { r: Full; edit?: EditApi }) {
           {c.cover.company} {c.cover.period} 기업 종합보고서
         </h3>
         <div style={{ ...mutedText, fontSize: 12 }}>
-          기준일 {c.cover.as_of} · v{r.version}
+          대상 기간 {c.cover.period_range || halfRange(r.period_year, r.period_half)} · 작성일 {c.cover.as_of} · v{r.version}
         </div>
         <div style={{ marginTop: 14 }}>
           <SectionTitle>한 장 요약</SectionTitle>
@@ -900,7 +901,7 @@ export function ReportPanel({ companyId }: { companyId: string }) {
     const [year, half] = pick.split('-').map(Number);
     if (
       !window.confirm(
-        `${year}년 ${half === 1 ? '상반기' : '하반기'} 보고서를 만들까요? 자료 수집·웹 확인·교차 검토까지 수 분 걸리고 AI 비용이 듭니다.`,
+        `${halfOption(year, half)} 보고서를 만들까요?\n대상 기간(${halfRange(year, half)}) 자료로 쓰고, 그 뒤 일은 '기간 이후 주요 사항'에 짧게 넣습니다.\n자료 수집·웹 확인·교차 검토까지 수 분 걸리고 AI 비용이 듭니다.`,
       )
     )
       return;
@@ -953,7 +954,8 @@ export function ReportPanel({ companyId }: { companyId: string }) {
         <div style={{ ...mutedText, fontSize: 12, marginTop: -4 }}>
           자료함·기업 원장·투자유치·월간 요약·기사·웹 검색으로 10개 항목과 부록을 쓰고, Gemini 와
           Claude 가 문장마다 출처와 대조합니다. 검토에서 의견이 갈린 문장은 노란색으로 남겨 담당자가
-          확인합니다. 대표 승인 없이 담당자가 검토·출력합니다.
+          확인합니다. 대표 승인 없이 담당자가 검토·출력합니다. 본문은 고른 반기(대상 기간) 자료만 쓰고, 반기가 끝난 뒤
+          작성일까지의 큰 일은 &lsquo;기간 이후 주요 사항&rsquo;에 따로 짧게 넣습니다. 자료함 문서는 자료 날짜가 반기 끝 이전인 것만 씁니다.
         </div>
         <ErrorBox message={error} />
         {list && list.length > 0 && (
