@@ -488,10 +488,10 @@ async def export(db: AsyncSession, report: CompanyReport, fmt: str, *, user_id: 
     company = await db.get(PortfolioCompany, report.company_id)
     name = _filename(report, company.name if company else "기업", fmt, client_name)
     if record:
-        # 기업DB 04_보고서는 그 기업을 추가한 모든 매니저가 본다. 그래서 공용 자동 생성본만 저장하고,
+        # 기업DB 04_보고서는 그 기업을 추가한 모든 매니저가 본다. 그래서 공용 자동 생성본·공식본만 저장하고,
         # 고객용(고객 이름이 들어감)·개인 수정본은 기록만 남긴다(개인 버전은 보고서 화면에서 본인·대표가 다시 뽑는다).
         file_id = None
-        if not client_id and not report.owner_user_id:
+        if not client_id and (not report.owner_user_id or (report.official and report.status == "final")):
             period = f"{report.period_year}H{report.period_half}"
             f = await company_db.save_auto(
                 db, company_id=report.company_id, folder="reports", doc_kind="반기보고서",

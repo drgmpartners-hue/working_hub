@@ -361,6 +361,10 @@ async def test_overview_batch_content_docreq_jobs(env, monkeypatch, tmp_path):  
         ua.phone = "010-9999-0000"
         await db.commit()
         pend = await report_jobs.pending_review(db, 2026, 1)
+        assert c2 not in str(pend)  # 검토 담당을 정하기 전에는 알리지 않는다(2026-10-08)
+    assert (await c.put(f"/company-report/companies/{c2}/report-reviewers", headers=ho, json={"user_ids": [d["A"]]})).status_code == 200
+    async with Session() as db:
+        pend = await report_jobs.pending_review(db, 2026, 1)
         assert c2 and d["A"] in pend and any(n.startswith("관리2") for n in pend[d["A"]]["companies"])
         dry = await report_jobs.remind(db, dry_run=True, today=date(2026, 10, 5))
         assert dry["targets"] >= 1 and "검토 완료" in dry["preview"][0]["text"]
@@ -385,3 +389,79 @@ async def test_overview_batch_content_docreq_jobs(env, monkeypatch, tmp_path):  
         res = await report_jobs.remind(db, today=date(2026, 10, 5))
         assert res["sent"] >= 1
         await settings_store.set_value(db, config.BRIEFING_ENABLED, "0")
+
+
+@pytest.mark.skipif(not PG, reason="PERM_PG_URL 없음(실제 PostgreSQL 필요)")
+async def test_reviewer_designation_and_official_version(env, monkeypatch, tmp_path):  # noqa: F811
+    """대표가 기업마다 검토 담당을 정한다(2026-10-08). 검토 담당이 검토 완료한 버전은 공식본 —
+    다른 담당자도 보고 고객에게 보낸다. 주간 검토 알림은 검토 담당에게만, 공식본이 생기면 멈춘다."""
+    from app.models.news_briefing import CompanyMember
+    from app.models.user import User
+    from app.services.company_report import report_jobs
+
+    monkeypatch.setenv("COMPANY_DB_ROOT", str(tmp_path))
+    c, d, hdr, Session = env["c"], env["d"], env["hdr"], env["Session"]
+    ha, hb, ho = hdr(d["A"]), hdr(d["B"]), hdr(d["owner"])
+    cid = (await c.post("/company-report/companies", headers=ha, json={"name": f"검토-{uuid.uuid4().hex[:6]}", "backfill_months": 0})).json()["id"]
+    async with Session() as db:
+        db.add(CompanyMember(company_id=cid, user_id=d["B"]))  # B 도 같은 기업을 목록에 둠
+        for uid, ph in ((d["A"], "010-1000-0001"), (d["B"], "010-1000-0002")):
+            (await db.get(User, uid)).phone = ph
+        await db.commit()
+    shared = await _make_report(Session, cid)
+    url = f"/company-report/companies/{cid}/report-reviewers"
+
+    # 대표만 정한다. 목록에 없는 매니저는 안 됨, 대표 본인은 목록에 넣어 준다
+    assert (await c.put(url, headers=ha, json={"user_ids": [d["A"]]})).status_code == 403
+    async with Session() as db:
+        assert d["A"] not in await report_jobs.pending_review(db, 2026, 1)  # 아직 아무도 안 정함
+    r = await c.put(url, headers=ho, json={"user_ids": [d["B"], d["owner"]]})
+    assert r.status_code == 200, r.text
+    assert {m["id"] for m in r.json()["reviewers"]} == {d["B"], d["owner"]}
+    r = await c.put(url, headers=ho, json={"user_ids": [d["B"]]})
+    assert [m["id"] for m in r.json()["reviewers"]] == [d["B"]]
+    async with Session() as db:
+        pend = await report_jobs.pending_review(db, 2026, 1)
+        assert d["B"] in pend and d["A"] not in pend
+        dry = await report_jobs.remind(db, dry_run=True, today=date(2026, 10, 5))
+        assert "검토 담당" in dry["preview"][0]["text"]
+
+    # A(검토 담당 아님)가 검토 완료하면 자기 버전일 뿐 — 공식본 아님, 알림도 계속
+    fa = (await c.post(f"/company-report/reports/{shared}/finalize", headers=ha)).json()["report"]
+    assert not fa["official"] and fa["can_send"]
+    async with Session() as db:
+        assert d["B"] in await report_jobs.pending_review(db, 2026, 1)
+
+    # B(검토 담당)가 검토 완료 → 공식본
+    fb = (await c.post(f"/company-report/reports/{shared}/finalize", headers=hb)).json()["report"]
+    assert fb["official"] and fb["status"] == "final"
+    async with Session() as db:
+        assert d["B"] not in await report_jobs.pending_review(db, 2026, 1)  # 공식본이 생기면 알림 멈춤
+
+    # 다른 사람도 공식본을 보고 보낼 수 있다(자기 버전이 없으면 공식본이 '지금 쓸 보고서')
+    assert (await c.get(f"/company-report/reports/{fb['id']}", headers=ha)).status_code == 200
+    assert fb["id"] in {x["id"] for x in (await c.get(f"/company-report/companies/{cid}/reports", headers=ha)).json()}
+    async with Session() as db:
+        from app.models.company_report import CompanyReport
+
+        await db.delete(await db.get(CompanyReport, fa["id"]))  # A 의 개인 버전을 지워 공식본이 고르도록
+        await db.commit()
+    ov = (await c.get("/company-report/reports-overview", params={"year": 2026, "half": 1}, headers=ha)).json()
+    row = next(x for x in ov["companies"] if x["company_id"] == cid)
+    assert row["report"]["id"] == fb["id"] and row["report"]["official"] and row["report"]["can_send"]
+    assert row["official"]["by_name"] and [m["id"] for m in row["reviewers"]] == [d["B"]]
+    sent = {}
+
+    async def fake_send(db, report, clients, sender):
+        sent["report"] = report.id
+        return {"sent": len(clients)}
+
+    from app.services.company_report import report_share
+
+    monkeypatch.setattr(report_share, "send", fake_send)
+    r = await c.post(f"/company-report/reports/{fb['id']}/send", headers=ha, json={"client_ids": [d["client_A"]]})
+    assert r.status_code == 200, r.text
+    assert sent["report"] == fb["id"]
+
+    # 지정 해제
+    assert (await c.put(url, headers=ho, json={"user_ids": []})).json()["reviewers"] == []

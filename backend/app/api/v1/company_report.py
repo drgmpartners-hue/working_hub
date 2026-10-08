@@ -1836,6 +1836,7 @@ def _report_brief(r, names: dict) -> dict:
             "as_of_date": r.as_of_date.isoformat() if r.as_of_date else None,
             "created_at": r.created_at.isoformat() if r.created_at else None,
             "updated_at": r.updated_at.isoformat() if r.updated_at else None,
+            "official": bool(getattr(r, "official", False)) and r.status == "final",
             "review_summary": (r.review or {}).get("summary")}
 
 
@@ -1849,15 +1850,15 @@ async def _user_names(db: AsyncSession, ids) -> dict[str, str]:
 
 
 async def _report_for(db: AsyncSession, user, report_id: str):
-    """보고서 읽기 권한: 그 기업을 볼 수 있어야 하고, 남이 고친 개인 버전은 본인·대표만."""
-    from app.core.permissions import is_owner
+    """보고서 읽기 권한: 그 기업을 볼 수 있어야 하고, 남이 고친 개인 버전은 본인·대표만(공식본은 모두)."""
     from app.models.company_report import CompanyReport
+    from app.services.company_report import report_hub
 
     r = await db.get(CompanyReport, report_id)
     if not r:
         raise HTTPException(404, "보고서를 찾을 수 없습니다.")
     await assert_company(db, user, r.company_id)
-    if r.owner_user_id and r.owner_user_id != user.id and not is_owner(user):
+    if not report_hub.can_read(r, user):
         raise HTTPException(404, "보고서를 찾을 수 없습니다.")
     return r
 
@@ -1904,29 +1905,29 @@ async def create_half_year_report(company_id: str, body: ReportCreate, backgroun
 
 @router.get("/companies/{company_id}/reports")
 async def list_half_year_reports(company_id: str, current_user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
-    """이 기업의 보고서 버전 목록(최신 반기·최신 버전 먼저). 남이 고친 개인 버전은 본인·대표만 본다."""
-    from app.core.permissions import is_owner
+    """이 기업의 보고서 버전 목록(최신 반기·최신 버전 먼저). 남이 고친 개인 버전은 본인·대표만 본다(공식본은 모두)."""
     from app.models.company_report import CompanyReport
+    from app.services.company_report import report_hub
 
     await assert_company(db, current_user, company_id)
     stmt = select(CompanyReport).where(CompanyReport.company_id == company_id)
-    if not is_owner(current_user):
-        stmt = stmt.where((CompanyReport.owner_user_id.is_(None)) | (CompanyReport.owner_user_id == current_user.id))
     rows = (await db.execute(stmt.order_by(CompanyReport.period_year.desc(), CompanyReport.period_half.desc(),
                                            CompanyReport.created_at.desc()))).scalars().all()
+    rows = [r for r in rows if report_hub.can_read(r, current_user)]
     names = await _user_names(db, [r.owner_user_id for r in rows])
     return [_report_brief(r, names) for r in rows]
 
 
 async def _report_detail(db: AsyncSession, r, user) -> dict:
     from app.models.company_report import ReportImage
-    from app.services.company_report import report_edit
+    from app.services.company_report import report_edit, report_hub
 
     imgs = (await db.execute(select(ReportImage).where(ReportImage.report_id == r.id).order_by(ReportImage.sort_order))).scalars().all()
     names = await _user_names(db, [r.owner_user_id, r.finalized_by])
     return {**_report_brief(r, names), "content": r.content, "sources": r.sources, "review": r.review,
             "sales_note": r.sales_note, "token_usage": r.token_usage, "main_model": r.main_model, "review_model": r.review_model,
             "mine": r.owner_user_id == user.id, "disputed_count": report_edit.disputed_count(r.content or {}),
+            "can_send": report_hub.can_send(r, user),
             "finalized_by_name": names.get(r.finalized_by or ""),
             "finalized_at": r.finalized_at.isoformat() if r.finalized_at else None,
             "images": [{"id": i.id, "section_no": i.section_no, "kind": i.kind, "caption": i.caption,
@@ -2094,9 +2095,9 @@ class ReportSendBody(BaseModel):
 @router.post("/reports/{report_id}/send")
 async def send_report(report_id: str, body: ReportSendBody, request: Request,
                       current_user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
-    """고객에게 카톡(알림톡 템플릿 승인 전에는 문자) 링크 발송. 검토 완료된 내 보고서만, 내 담당 고객에게만."""
-    from app.core.permissions import assert_client, forbid_while_impersonating, is_owner
-    from app.services.company_report import report_share
+    """고객에게 카톡(알림톡 템플릿 승인 전에는 문자) 링크 발송. 검토 완료된 내 보고서 또는 공식본만, 내 담당 고객에게만."""
+    from app.core.permissions import assert_client, forbid_while_impersonating
+    from app.services.company_report import report_hub, report_share
 
     ctx = getattr(request.state, "auth_ctx", None)
     if ctx is not None:
@@ -2104,8 +2105,8 @@ async def send_report(report_id: str, body: ReportSendBody, request: Request,
     r = await _report_for(db, current_user, report_id)
     if r.status != "final":
         raise HTTPException(409, "검토 완료한 보고서만 고객에게 보낼 수 있습니다. 먼저 [검토 완료]를 눌러 주세요.")
-    if r.owner_user_id != current_user.id and not is_owner(current_user):
-        raise HTTPException(403, "본인이 검토 완료한 보고서만 보낼 수 있습니다.")
+    if not report_hub.can_send(r, current_user):
+        raise HTTPException(403, "본인이 검토 완료한 보고서나 검토 담당이 완료한 공식본만 보낼 수 있습니다.")
     clients = []
     for cid in dict.fromkeys(body.client_ids):
         clients.append(await assert_client(db, current_user, cid))
@@ -2170,16 +2171,42 @@ async def reports_overview(year: Optional[int] = Query(None, ge=2000, le=2100), 
     if ids is None:
         ids = set((await db.execute(select(PortfolioCompany.id).where(PortfolioCompany.deleted_at.is_(None)))).scalars().all())
     rows = await report_hub.overview(db, current_user, list(ids), y, h)
-    names = await _user_names(db, [o["owner_user_id"] for row in rows for o in row["others"]])
+    names = await _user_names(db, [o["owner_user_id"] for row in rows for o in row["others"]]
+                              + [row["official"]["by_user_id"] for row in rows if row["official"]])
     for row in rows:
         for o in row["others"]:
             o["owner_name"] = names.get(o["owner_user_id"])
+        if row["official"]:
+            row["official"]["by_name"] = names.get(row["official"]["by_user_id"] or "")
     counts: dict[str, int] = {}
     for row in rows:
         counts[row["stage"]] = counts.get(row["stage"], 0) + 1
     dy, dh = doc_requests.target_half()
     return {"year": y, "half": h, "period_label": half_label(y, h), "companies": rows, "counts": counts,
             "doc_season": doc_requests.in_request_season(), "doc_period": {"year": dy, "half": dh, "label": half_label(dy, dh)}}
+
+
+class ReviewersBody(BaseModel):
+    user_ids: list[str] = Field(default_factory=list, max_length=20)
+
+
+@router.put("/companies/{company_id}/report-reviewers")
+async def set_report_reviewers(company_id: str, body: ReviewersBody, request: Request,
+                               current_user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    """반기 보고서 검토 담당 지정(대표 전용, 2026-10-08). 빈 목록이면 지정 해제.
+    검토 담당이 [검토 완료]한 버전이 공식본이 되고, 매주 월요일 검토 요청 알림은 검토 담당에게만 간다."""
+    from app.core.permissions import forbid_while_impersonating, is_owner
+
+    ctx = getattr(request.state, "auth_ctx", None)
+    if ctx is not None:
+        forbid_while_impersonating(ctx)
+    if not is_owner(current_user):
+        raise HTTPException(403, "검토 담당은 대표만 정할 수 있습니다.")
+    await assert_company(db, current_user, company_id)
+    await vis.set_reviewers(db, company_id, body.user_ids)
+    await db.commit()
+    members = (await vis.member_names(db, [company_id])).get(company_id, [])
+    return {"company_id": company_id, "members": members, "reviewers": [m for m in members if m["reviewer"]]}
 
 
 @router.get("/report-exports")

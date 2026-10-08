@@ -83,6 +83,9 @@ class CompanyMember(Base):
         String(36), ForeignKey("portfolio_companies.id", ondelete="CASCADE"), nullable=False, index=True
     )
     user_id: Mapped[str] = mapped_column(String(36), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    # 반기 보고서 검토 담당(대표가 지정, 2026-10-08). 이 사람이 [검토 완료]한 버전이 그 기업의 공식본이 되고,
+    # 매주 월요일 검토 요청 알림도 이 사람에게만 간다.
+    is_reviewer: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false", nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now(), nullable=False)
 
 

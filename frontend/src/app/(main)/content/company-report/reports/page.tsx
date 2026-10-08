@@ -4,20 +4,31 @@
  * 보고서 관리 (P4-10) — 반기별 진행 현황·일괄 출력·출력/발송 기록.
  * 매니저는 자기 목록의 기업, 대표는 전체(매니저별 개인 버전 진행도 함께). 대표 승인 절차는 없다(2026-10-01 결정):
  * 담당자가 [검토 완료]하면 바로 출력·고객 발송할 수 있다.
+ * 검토 담당(2026-10-08): 대표가 기업마다 지정. 검토 담당이 [검토 완료]한 버전은 공식본이 되어 다른 담당자도 바로 보낸다.
+ * 매주 월요일 검토 요청 알림은 검토 담당에게만 간다.
  */
 import Link from 'next/link';
 import { useEffect, useMemo, useState } from 'react';
 import { Card } from '@/components/common/Card';
 import { ReportSendDialog } from '@/components/company-report/ReportSendDialog';
 import { ErrorBox, SectionTitle, Spinner, fmtDate, inputStyle, mutedText } from '@/components/company-report/ui';
-import { crDownload, crDownloadPost, crGet } from '@/lib/companyReportApi';
+import { crDownload, crDownloadPost, crGet, crPut } from '@/lib/companyReportApi';
+import { useAuthStore } from '@/stores/auth';
 
 type Stage = 'none' | 'generating' | 'failed' | 'draft' | 'final';
+interface Member {
+  id: string;
+  name: string;
+  role?: string;
+  reviewer?: boolean;
+}
 interface Row {
   company_id: string;
   company_name: string;
   listed: boolean;
-  members: { id: string; name: string; role?: string }[];
+  members: Member[];
+  reviewers: Member[];
+  official: { report_id: string; version: number; by_name?: string; at: string | null } | null;
   stage: Stage;
   generating: boolean;
   report: {
@@ -25,6 +36,8 @@ interface Row {
     status: 'draft' | 'final';
     version: number;
     mine: boolean;
+    official: boolean;
+    can_send: boolean;
     disputed: number;
     updated_at: string | null;
     exports: number;
@@ -96,6 +109,65 @@ const td: React.CSSProperties = {
   verticalAlign: 'middle',
 };
 
+/** 대표 전용: 기업마다 검토 담당 고르기(그 기업을 추가한 사람 + 대표 본인) */
+function ReviewerEditor({
+  row,
+  me,
+  onSaved,
+  onCancel,
+}: {
+  row: Row;
+  me: { id: string; name: string };
+  onSaved: (members: Member[], reviewers: Member[]) => void;
+  onCancel: () => void;
+}) {
+  const cands = row.members.some((m) => m.id === me.id) ? row.members : [...row.members, { id: me.id, name: me.name }];
+  const [sel, setSel] = useState<string[]>(row.reviewers.map((m) => m.id));
+  const [saving, setSaving] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+  const save = async () => {
+    setSaving(true);
+    setErr(null);
+    try {
+      const r = await crPut<{ members: Member[]; reviewers: Member[] }>(
+        `/companies/${row.company_id}/report-reviewers`,
+        { user_ids: sel },
+      );
+      onSaved(r.members, r.reviewers);
+    } catch (e) {
+      setErr((e as Error).message);
+    } finally {
+      setSaving(false);
+    }
+  };
+  return (
+    <div style={{ marginTop: 6, padding: 8, borderRadius: 8, background: 'var(--bg-surface)', border: '1px solid var(--border)' }}>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+        {cands.map((m) => (
+          <label key={m.id} style={{ display: 'flex', gap: 6, alignItems: 'center', fontSize: 12, whiteSpace: 'nowrap' }}>
+            <input
+              type="checkbox"
+              checked={sel.includes(m.id)}
+              onChange={() => setSel((p) => (p.includes(m.id) ? p.filter((x) => x !== m.id) : [...p, m.id]))}
+            />
+            {m.name}
+            {m.id === me.id ? ' (나)' : ''}
+          </label>
+        ))}
+      </div>
+      {err && <div style={{ color: 'var(--danger)', fontSize: 12, marginTop: 4 }}>{err}</div>}
+      <div style={{ display: 'flex', gap: 4, marginTop: 6 }}>
+        <button type="button" className="wh-btn wh-btn-primary wh-btn-sm" disabled={saving} onClick={() => void save()}>
+          {saving ? '저장 중…' : '저장'}
+        </button>
+        <button type="button" className="wh-btn wh-btn-ghost wh-btn-sm" disabled={saving} onClick={onCancel}>
+          취소
+        </button>
+      </div>
+    </div>
+  );
+}
+
 export default function ReportsPage() {
   const options = useMemo(halves, []);
   const [pick, setPick] = useState(`${options[0].year}-${options[0].half}`);
@@ -107,6 +179,9 @@ export default function ReportsPage() {
   const [stageFilter, setStageFilter] = useState<Stage | ''>('');
   const [tab, setTab] = useState<'status' | 'history'>('status');
   const [dialog, setDialog] = useState<{ id: string; title: string } | null>(null);
+  const me = useAuthStore((st) => st.user);
+  const isOwner = me?.role === 'owner';
+  const [editRev, setEditRev] = useState<string | null>(null);
 
   useEffect(() => {
     let alive = true;
@@ -179,7 +254,8 @@ export default function ReportsPage() {
         </SectionTitle>
         <div style={{ ...mutedText, fontSize: 12, marginTop: -4 }}>
           반기 보고서는 1/31·7/31 새벽에 자동으로 만들어지고(기업마다 몇 분), 담당자가 기업 상세 &gt; 반기 보고서에서 고친 뒤
-          [검토 완료]하면 출력·고객 발송을 할 수 있습니다. 대표 승인 절차는 없습니다.
+          [검토 완료]하면 출력·고객 발송을 할 수 있습니다. 기업마다 정한 <b>검토 담당</b>이 검토 완료한 버전은 공식본이 되어
+          다른 담당자도 따로 검토하지 않고 고객에게 보낼 수 있습니다. 매주 월요일 검토 요청 알림은 검토 담당에게만 갑니다.
         </div>
         {data?.doc_season && (
           <div
@@ -303,13 +379,54 @@ export default function ReportsPage() {
                           </span>
                         )}
                       </td>
-                      <td style={{ ...td, fontSize: 12 }}>{r.members.map((m) => m.name).join(', ') || '-'}</td>
+                      <td style={{ ...td, fontSize: 12 }}>
+                        <div>{r.members.map((m) => m.name).join(', ') || '-'}</div>
+                        <div style={{ marginTop: 2 }}>
+                          {r.reviewers.length ? (
+                            <span className="wh-badge info" style={{ fontSize: 10 }}>
+                              검토 {r.reviewers.map((m) => m.name).join(', ')}
+                            </span>
+                          ) : (
+                            <span style={{ ...mutedText, fontSize: 11 }}>검토 담당 없음</span>
+                          )}
+                          {isOwner && editRev !== r.company_id && (
+                            <button
+                              type="button"
+                              className="wh-btn wh-btn-ghost wh-btn-sm"
+                              style={{ marginLeft: 4, padding: '1px 6px', fontSize: 11 }}
+                              onClick={() => setEditRev(r.company_id)}
+                            >
+                              검토 담당 지정
+                            </button>
+                          )}
+                        </div>
+                        {isOwner && me && editRev === r.company_id && (
+                          <ReviewerEditor
+                            row={r}
+                            me={{ id: me.id, name: me.nickname || '대표' }}
+                            onCancel={() => setEditRev(null)}
+                            onSaved={(members, reviewers) => {
+                              setData((d) =>
+                                d && {
+                                  ...d,
+                                  companies: d.companies.map((x) => (x.company_id === r.company_id ? { ...x, members, reviewers } : x)),
+                                },
+                              );
+                              setEditRev(null);
+                            }}
+                          />
+                        )}
+                      </td>
                       <td style={td}>
                         <span className={`wh-badge ${STAGE[r.stage].cls}`}>{STAGE[r.stage].label}</span>
                         {r.report && (
                           <span style={{ ...mutedText, fontSize: 11, marginLeft: 6 }}>
                             v{r.report.version}
-                            {r.report.mine ? ' 내 버전' : ' 공용본'}
+                            {r.report.mine
+                              ? ' 내 버전'
+                              : r.report.official
+                                ? ` 공식본${r.official?.by_name ? `(${r.official.by_name} 검토)` : ''}`
+                                : ' 공용본'}
                           </span>
                         )}
                         {r.generating && r.stage !== 'generating' && (
@@ -353,7 +470,7 @@ export default function ReportsPage() {
                             >
                               PDF
                             </button>
-                            {r.report.status === 'final' && r.report.mine && (
+                            {r.report.status === 'final' && r.report.can_send && (
                               <button
                                 type="button"
                                 className="wh-btn wh-btn-primary wh-btn-sm"

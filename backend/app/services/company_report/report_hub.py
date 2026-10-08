@@ -1,7 +1,8 @@
 """반기 보고서 관리 — 기업별로 '지금 쓸 보고서' 고르기, 진행 현황, 일괄 출력(zip), 고객 보고서 연동 (P4-8·P4-10).
 
 '지금 쓸 보고서' 고르는 순서(그 사람 기준):
-  ① 내 버전 중 검토 완료된 최신  ② 내 버전 중 검토 중인 최신  ③ 공용 자동 생성본 최신(검토 중·완료)
+  ① 내 버전 중 검토 완료된 최신  ② 내 버전 중 검토 중인 최신
+  ③ 공식본(검토 담당이 검토 완료한 버전, 2026-10-08) 최신  ④ 공용 자동 생성본 최신(검토 중·완료)
 대표는 공용본과 모든 사람의 버전을 본다(개인 버전은 '누가 고쳤는지'와 함께).
 """
 from __future__ import annotations
@@ -19,13 +20,32 @@ from app.models.news_briefing import PortfolioCompany
 READY = ("draft", "final")
 
 
+def is_official(r: CompanyReport) -> bool:
+    return bool(getattr(r, "official", False)) and r.status == "final"
+
+
 def _rank(r: CompanyReport, user_id: str) -> tuple:
     mine = r.owner_user_id == user_id
     return (
-        2 if (mine and r.status == "final") else 1 if (mine and r.status == "draft") else 0 if r.owner_user_id is None else -1,
+        3 if (mine and r.status == "final") else 2 if (mine and r.status == "draft") else 1 if is_official(r)
+        else 0 if r.owner_user_id is None else -1,
         r.version,
         r.created_at.isoformat() if r.created_at else "",
     )
+
+
+def can_read(r: CompanyReport, user) -> bool:
+    """그 기업을 볼 수 있는 사람 기준: 공용본·공식본·내 버전은 보고, 남의 개인 버전은 대표만."""
+    from app.core.permissions import is_owner
+
+    return r.owner_user_id in (None, user.id) or is_official(r) or is_owner(user)
+
+
+def can_send(r: CompanyReport, user) -> bool:
+    """고객에게 보낼 수 있는 버전: 검토 완료된 내 버전 또는 공식본(대표는 모두)."""
+    from app.core.permissions import is_owner
+
+    return r.status == "final" and (r.owner_user_id == user.id or is_official(r) or is_owner(user))
 
 
 async def reports_for(db: AsyncSession, company_ids: list[str], year: int, half: int) -> dict[str, list[CompanyReport]]:
@@ -41,8 +61,8 @@ async def reports_for(db: AsyncSession, company_ids: list[str], year: int, half:
 
 
 def pick(reports: list[CompanyReport], user_id: str) -> Optional[CompanyReport]:
-    """완성된 보고서 중 이 사람이 지금 쓸 것(없으면 None). 남의 개인 버전은 고르지 않는다."""
-    cands = [r for r in reports if r.status in READY and r.content and (r.owner_user_id in (None, user_id))]
+    """완성된 보고서 중 이 사람이 지금 쓸 것(없으면 None). 남의 개인 버전은 고르지 않는다(공식본은 예외)."""
+    cands = [r for r in reports if r.status in READY and r.content and (r.owner_user_id in (None, user_id) or is_official(r))]
     return max(cands, key=lambda r: _rank(r, user_id)) if cands else None
 
 
@@ -81,18 +101,26 @@ async def overview(db: AsyncSession, user, company_ids: list[str], year: int, ha
     for c in companies:
         rs = by_c.get(c.id, [])
         p = pick(rs, user.id)
+        off = max((r for r in rs if is_official(r)), key=lambda r: (r.version, r.created_at.isoformat() if r.created_at else ""),
+                  default=None)
         others = []
         if owner:  # 대표: 매니저별 개인 버전 진행도 함께 본다
             seen = {}
             for r in sorted(rs, key=lambda r: (r.version, r.created_at.isoformat() if r.created_at else "")):
-                if r.owner_user_id and r.owner_user_id != user.id and r.status in READY:
+                if r.owner_user_id and r.owner_user_id != user.id and r.status in READY and not is_official(r):
                     seen[r.owner_user_id] = r
             others = [{"report_id": r.id, "owner_user_id": uid, "status": r.status, "version": r.version} for uid, r in seen.items()]
         out.append({
             "company_id": c.id, "company_name": c.name, "listed": bool(getattr(c, "stock_code", None)),
             "members": members.get(c.id, []), "stage": stage_of(rs, user.id),
+            "reviewers": [m for m in members.get(c.id, []) if m.get("reviewer")],
+            # 공식본(검토 담당이 검토 완료): 누가 언제 했는지 — 없으면 None
+            "official": None if off is None else {"report_id": off.id, "version": off.version,
+                                                  "by_user_id": off.finalized_by,
+                                                  "at": off.finalized_at.isoformat() if off.finalized_at else None},
             "report": None if p is None else {
                 "id": p.id, "status": p.status, "version": p.version, "mine": p.owner_user_id == user.id,
+                "official": is_official(p), "can_send": can_send(p, user),
                 "disputed": report_edit.disputed_count(p.content or {}),
                 "updated_at": p.updated_at.isoformat() if p.updated_at else None,
                 "exports": exp_count.get(p.id, 0), "sends": sent_count.get(p.id, 0),

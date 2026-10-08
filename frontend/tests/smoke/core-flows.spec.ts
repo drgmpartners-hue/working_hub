@@ -192,3 +192,35 @@ test('고객 정보 관리: [계좌정보 관리]가 이 화면에서 열리고,
   await page.getByRole('button', { name: '계좌정보 관리' }).click(); // 툴바 버튼으로 다시 열기
   await expect(page.getByText('123-45-678')).toBeVisible();
 });
+
+test('보고서 관리: 대표가 기업별 검토 담당을 지정하고, 공식본은 다른 담당자도 보낼 수 있다', async ({ page }) => {
+  await signIn(page);
+  let put: unknown = null;
+  const row = {
+    company_id: 'co1', company_name: '테스트바이오', listed: false,
+    members: [{ id: 'm1', name: '백서연', role: 'manager', reviewer: false }, { id: 'm2', name: '김민호', role: 'manager', reviewer: false }],
+    reviewers: [], official: { report_id: 'r9', version: 2, by_name: '김민호', at: '2026-08-10T10:00:00' }, stage: 'final', generating: false,
+    report: { id: 'r9', status: 'final', version: 2, mine: false, official: true, can_send: true, disputed: 0, updated_at: '2026-08-10T10:00:00', exports: 0, sends: 0 },
+    others: [],
+  };
+  await mockApi(page, {
+    'GET /api/v1/company-report/reports-overview': {
+      year: 2026, half: 1, period_label: '2026년 상반기', companies: [row], counts: { final: 1 },
+      doc_season: false, doc_period: { year: 2026, half: 2, label: '2026년 하반기' },
+    },
+    'PUT /api/v1/company-report/companies/co1/report-reviewers': (r: Route) => {
+      put = r.request().postDataJSON();
+      const members = row.members.map((m) => ({ ...m, reviewer: m.id === 'm2' }));
+      return json(r, { company_id: 'co1', members, reviewers: members.filter((m) => m.reviewer) });
+    },
+  });
+  await page.goto('/content/company-report/reports');
+  await expect(page.getByText('검토 담당 없음')).toBeVisible();
+  await expect(page.getByText(/공식본\(김민호 검토\)/)).toBeVisible();
+  await expect(page.getByRole('button', { name: '고객에게 보내기' })).toBeVisible();
+  await page.getByRole('button', { name: '검토 담당 지정' }).click();
+  await page.getByLabel('김민호').check();
+  await page.getByRole('button', { name: '저장' }).click();
+  await expect.poll(() => put).toEqual({ user_ids: ['m2'] });
+  await expect(page.getByText('검토 김민호')).toBeVisible();
+});

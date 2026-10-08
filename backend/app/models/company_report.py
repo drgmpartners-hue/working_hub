@@ -287,6 +287,8 @@ class CompanyReport(Base):
         String(36), ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True
     )
     base_report_id: Mapped[Optional[str]] = mapped_column(String(36))  # 어느 버전을 고쳐 만들었나
+    # 공식본: 그 기업의 검토 담당이 [검토 완료]한 버전 — 그 기업을 추가한 모두가 보고, 검토 없이 고객에게 보낼 수 있다(2026-10-08)
+    official: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false", nullable=False)
     status: Mapped[str] = mapped_column(String(12), default="generating", nullable=False)
     progress_step: Mapped[Optional[str]] = mapped_column(String(40))
     progress: Mapped[int] = mapped_column(Integer, default=0, nullable=False)  # 0~100

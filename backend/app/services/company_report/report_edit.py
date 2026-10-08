@@ -1,6 +1,8 @@
 """반기 보고서 편집 — 내 버전·문장 고치기·그림 고르기·검토 완료 (기획 6장, P4-9).
 
 규칙(2026-10-01 결정: 매니저는 대표 승인 없이 독립적으로 검토·출력)
+- 대표가 기업마다 검토 담당을 정할 수 있다(2026-10-08). 검토 담당이 [검토 완료]한 버전은 공식본(official)이 되어
+  그 기업을 추가한 모두가 보고 고객에게 보낼 수 있다. 검토 담당이 아닌 사람이 완료한 버전은 지금처럼 본인만 쓴다.
 - 자동 생성본(owner_user_id 없음)은 그 기업을 추가한 모두가 같이 본다. 누가 고치면 그 사람의 '내 버전'이 새로 생긴다.
 - 내 버전이 '검토 중'이면 그 자리에서 고친다. '검토 완료'된 버전을 다시 고치면 새 버전(v+1)이 생긴다.
 - [검토 완료]: 확인 필요(노란 표시) 문장이 남아 있어도 막지는 않고 개수를 알려 준다(화면에서 확인 창).
@@ -157,6 +159,10 @@ async def finalize(db: AsyncSession, r: CompanyReport, user_id: str) -> tuple[Co
     n_sel = (await db.execute(select(func.count()).select_from(ReportImage).where(
         ReportImage.report_id == mine.id, ReportImage.selected == True))).scalar_one()  # noqa: E712
     mine.status, mine.finalized_by, mine.finalized_at = "final", user_id, now_kst()
+    # 검토 담당이 완료하면 그 기업의 공식본 — 다른 담당자도 검토 없이 쓰고 보낸다(2026-10-08)
+    from app.services.company_report import visibility as vis
+
+    mine.official = await vis.is_reviewer(db, mine.company_id, user_id)
     warnings = {"disputed": disputed_count(mine.content), "images": n_sel,
                 "image_warning": None if MIN_SELECTED <= n_sel <= MAX_SELECTED else f"그림은 {MIN_SELECTED}~{MAX_SELECTED}개가 좋습니다(지금 {n_sel}개)."}
     return mine, warnings

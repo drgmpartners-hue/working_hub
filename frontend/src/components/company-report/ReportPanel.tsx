@@ -78,6 +78,8 @@ interface Brief {
   progress: number;
   progress_step: string | null;
   owner_name: string | null;
+  /** 검토 담당이 검토 완료한 공식본(2026-10-08) */
+  official?: boolean;
   error: string | null;
   as_of_date: string | null;
   created_at: string | null;
@@ -130,6 +132,8 @@ interface Full extends Brief {
   mine?: boolean;
   disputed_count?: number;
   finalized_by_name?: string | null;
+  /** 내가 고객에게 보낼 수 있는 버전인가(검토 완료한 내 버전·공식본) */
+  can_send?: boolean;
   finalized_at?: string | null;
 }
 
@@ -971,7 +975,8 @@ export function ReportPanel({ companyId }: { companyId: string }) {
               {list.map((x) => (
                 <option key={x.id} value={x.id}>
                   {x.period_label} v{x.version}
-                  {x.owner_name ? ` (${x.owner_name} 수정본)` : ''} · {STATUS[x.status]?.label}
+                  {x.official ? ` (공식본${x.owner_name ? ` · ${x.owner_name} 검토` : ''})` : x.owner_name ? ` (${x.owner_name} 수정본)` : ''} ·{' '}
+                  {STATUS[x.status]?.label}
                 </option>
               ))}
             </select>
@@ -1015,7 +1020,7 @@ export function ReportPanel({ companyId }: { companyId: string }) {
             <button
               type="button"
               className="wh-btn wh-btn-primary wh-btn-sm"
-              disabled={ebusy || full.status !== 'final' || !full.mine}
+              disabled={ebusy || full.status !== 'final' || !(full.can_send ?? full.mine)}
               title={full.status !== 'final' ? '검토 완료한 보고서만 보낼 수 있습니다' : undefined}
               onClick={() => setDialog('send')}
             >
@@ -1023,7 +1028,7 @@ export function ReportPanel({ companyId }: { companyId: string }) {
             </button>
             <span style={{ ...mutedText, fontSize: 12, marginLeft: 4 }}>
               {full.status === 'final'
-                ? `검토 완료 ${full.finalized_by_name ? `(${full.finalized_by_name}, ${fmtDate(full.finalized_at ?? null, true)})` : ''} — 고치면 새 버전이 생깁니다`
+                ? `${full.official ? '공식본 · ' : ''}검토 완료 ${full.finalized_by_name ? `(${full.finalized_by_name}, ${fmtDate(full.finalized_at ?? null, true)})` : ''} — 고치면 새 버전이 생깁니다`
                 : full.mine
                   ? `내 버전(검토 중)${full.disputed_count ? ` · 확인 필요 ${full.disputed_count}개` : ''}`
                   : `공용 자동 생성본 — 고치거나 검토 완료하면 내 버전이 생깁니다${full.disputed_count ? ` · 확인 필요 ${full.disputed_count}개` : ''}`}

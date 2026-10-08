@@ -138,22 +138,66 @@ async def remove_member(db: AsyncSession, company_id: str, user_id: str) -> int:
 
 
 async def member_names(db: AsyncSession, company_ids) -> dict[str, list[dict]]:
-    """기업 id → [{id, name, role}] (추가한 순서)."""
+    """기업 id → [{id, name, role, reviewer}] (추가한 순서). reviewer = 반기 보고서 검토 담당."""
     from app.models.user import User
 
     ids = [i for i in set(company_ids) if i]
     if not ids:
         return {}
     rows = (await db.execute(
-        select(CompanyMember.company_id, User.id, User.nickname, User.role)
+        select(CompanyMember.company_id, User.id, User.nickname, User.role, CompanyMember.is_reviewer)
         .join(User, User.id == CompanyMember.user_id)
         .where(CompanyMember.company_id.in_(ids))
         .order_by(CompanyMember.created_at)
     )).all()
     out: dict[str, list[dict]] = {}
-    for cid, uid, name, role in rows:
-        out.setdefault(cid, []).append({"id": uid, "name": name, "role": role})
+    for cid, uid, name, role, rev in rows:
+        out.setdefault(cid, []).append({"id": uid, "name": name, "role": role, "reviewer": bool(rev)})
     return out
+
+
+# --------------------------------------------------------------------------- 반기 보고서 검토 담당 (2026-10-08)
+
+async def reviewer_ids(db: AsyncSession, company_ids) -> dict[str, set[str]]:
+    """기업 id → 검토 담당 user id 들(지정 안 했으면 빠짐)."""
+    ids = [i for i in set(company_ids) if i]
+    if not ids:
+        return {}
+    rows = (await db.execute(select(CompanyMember.company_id, CompanyMember.user_id).where(
+        CompanyMember.company_id.in_(ids), CompanyMember.is_reviewer == True))).all()  # noqa: E712
+    out: dict[str, set[str]] = {}
+    for cid, uid in rows:
+        out.setdefault(cid, set()).add(uid)
+    return out
+
+
+async def is_reviewer(db: AsyncSession, company_id: str, user_id: Optional[str]) -> bool:
+    if not user_id:
+        return False
+    return (await db.execute(select(CompanyMember.id).where(
+        CompanyMember.company_id == company_id, CompanyMember.user_id == user_id,
+        CompanyMember.is_reviewer == True))).first() is not None  # noqa: E712
+
+
+async def set_reviewers(db: AsyncSession, company_id: str, user_ids: list[str]) -> None:
+    """검토 담당을 이 사람들로 바꾼다(커밋은 호출한 쪽). 목록에 없는 대표는 목록에 넣어 준다(매니저는 이미 추가한 사람만)."""
+    from sqlalchemy import update as sa_update
+
+    from app.models.user import User
+
+    want = list(dict.fromkeys(user_ids))
+    members = set((await db.execute(select(CompanyMember.user_id).where(CompanyMember.company_id == company_id))).scalars().all())
+    for uid in want:
+        u = await db.get(User, uid)
+        if u is None or not u.is_active:
+            raise HTTPException(422, "검토 담당으로 고를 수 없는 계정입니다.")
+        if uid not in members:
+            if not permissions.is_owner(u):
+                raise HTTPException(422, f"{u.nickname}님은 이 기업을 목록에 추가하지 않아 검토 담당이 될 수 없습니다.")
+            await add_member(db, company_id, uid)
+    await db.execute(sa_update(CompanyMember).where(CompanyMember.company_id == company_id)
+                     .values(is_reviewer=CompanyMember.user_id.in_(want) if want else False))
+    await db.flush()
 
 
 # --------------------------------------------------------------------------- 기업 가시성

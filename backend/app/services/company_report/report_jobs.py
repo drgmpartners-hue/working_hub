@@ -4,8 +4,8 @@
   없어 그림·차트를 저장할 수 없으므로, 실제 작성은 웹 서비스의 file_worker 가 30분마다 몇 건씩 집어 간다.
   - 대상: 활성 기업 중 누군가 목록에 둔 기업. 이미 그 반기 공용본(작성 중·검토 중·완료)이 있으면 건너뛴다.
 - run_queued (웹 서비스): 예약된 것을 한 번에 MAX_PER_TICK 건씩 작성. 2시간 넘게 '작성 중'에 멈춘 것은 실패로 바꾼다.
-- report-reminders (매주 월 09:00 KST): 검토 완료하지 않은 보고서가 있는 사람에게 문자 1통(승인 절차는 없음 —
-  '검토 완료'를 잊지 않게 하는 알림). 발송 꺼짐이면 보내지 않는다.
+- report-reminders (매주 월 09:00 KST): 대표가 지정한 검토 담당에게만, 아직 공식본(검토 담당의 검토 완료)이 없는
+  기업을 모아 1통(2026-10-08). 검토 담당을 정하지 않은 기업은 알리지 않는다. 발송 꺼짐이면 보내지 않는다.
 """
 from __future__ import annotations
 
@@ -81,28 +81,34 @@ async def run_queued(db: AsyncSession, limit: int = MAX_PER_TICK) -> dict:
 
 
 async def pending_review(db: AsyncSession, year: int, half: int) -> dict[str, dict]:
-    """{user_id: {name, phone, companies:[이름]}} — 그 반기에 내가 쓸 보고서가 아직 '검토 중'인 기업."""
-    from app.services.company_report import doc_requests, report_hub
+    """{user_id: {name, phone, companies:[이름]}} — 내가 검토 담당인 기업 중, 그 반기 보고서가 나왔는데
+    아직 공식본(검토 담당의 검토 완료)이 없는 곳. 검토 담당을 정하지 않은 기업은 빠진다."""
+    from app.models.user import User
+    from app.services.company_report import report_hub
 
-    targets = await doc_requests.member_targets(db)
+    rows = (await db.execute(
+        select(User.id, User.nickname, User.phone, PortfolioCompany.id, PortfolioCompany.name)
+        .join(CompanyMember, CompanyMember.user_id == User.id)
+        .join(PortfolioCompany, PortfolioCompany.id == CompanyMember.company_id)
+        .where(CompanyMember.is_reviewer == True, User.is_active == True,  # noqa: E712
+               PortfolioCompany.is_active == True, PortfolioCompany.deleted_at.is_(None))  # noqa: E712
+        .order_by(User.nickname, PortfolioCompany.name))).all()
+    by_c = await report_hub.reports_for(db, list({r[3] for r in rows}), year, half)
     out: dict[str, dict] = {}
-    all_cids = list({cid for t in targets.values() for cid, _ in t["companies"]})
-    by_c = await report_hub.reports_for(db, all_cids, year, half)
-    for uid, t in targets.items():
-        names = []
-        for cid, cname in t["companies"]:
-            p = report_hub.pick(by_c.get(cid, []), uid)
-            if p is not None and p.status == "draft":
-                names.append(cname)
-        if names:
-            out[uid] = {"name": t["name"], "phone": t["phone"], "companies": names}
+    for uid, name, phone, cid, cname in rows:
+        rs = by_c.get(cid, [])
+        ready = any(r.status in report_hub.READY and r.content for r in rs)
+        if not phone or not ready or any(report_hub.is_official(r) for r in rs):
+            continue
+        out.setdefault(uid, {"name": name, "phone": phone, "companies": []})["companies"].append(cname)
     return out
 
 
 def reminder_text(name: str, companies: list[str], period: str) -> str:
     shown = ", ".join(companies[:8]) + (f" 외 {len(companies) - 8}곳" if len(companies) > 8 else "")
-    return (f"[Working Hub] {name}님, {period} 반기 보고서 중 아직 [검토 완료]하지 않은 기업이 {len(companies)}곳 있습니다.\n"
-            f"{shown}\n\n기업 리포트 > 보고서 관리에서 확인 후 검토 완료해 주세요. 고객 발송은 검토 완료 후에 할 수 있습니다.")
+    return (f"[Working Hub] {name}님, 검토 담당으로 지정된 {period} 반기 보고서 중 아직 [검토 완료]하지 않은 기업이 "
+            f"{len(companies)}곳 있습니다.\n{shown}\n\n기업 리포트 > 보고서 관리에서 확인 후 검토 완료해 주세요. "
+            "검토 완료하면 그 기업을 맡은 모든 담당자가 고객에게 보낼 수 있습니다.")
 
 
 async def remind(db: AsyncSession, *, dry_run: bool = False, today: Optional[date] = None) -> dict:
