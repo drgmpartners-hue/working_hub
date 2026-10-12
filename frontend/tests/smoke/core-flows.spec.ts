@@ -224,3 +224,52 @@ test('보고서 관리: 대표가 기업별 검토 담당을 지정하고, 공�
   await expect.poll(() => put).toEqual({ user_ids: ['m2'] });
   await expect(page.getByText('검토 김민호')).toBeVisible();
 });
+
+test('데일리 폰 화면: 기사를 펼치면 [접기]가 화면 아래를 따라다니고, 누르면 접고 그 기업 카드로 돌아간다', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 800 });
+  const arts = (n: number) =>
+    Array.from({ length: n }, (_, i) => ({ title: `기사 제목 ${i + 1}`, url: `https://news.example/${i}`, press: '신문', summary: '요약 '.repeat(20), published_at: '2026-10-12T05:00:00' }));
+  await mockApi(page, {
+    'GET /api/v1/company-report/m/daily': {
+      kind: 'daily', date: '2026-10-12', weekday: '월', weather: null, markets: [], company_count: 2, article_count: 63, caution_count: 0,
+      overall: [], refs: [],
+      companies: [
+        { name: '비이아이', article_count: 60, caution_count: 0, one_liner: '배터리 산업 동향', refs: [], articles: arts(60) },
+        { name: '비바리퍼블리카', article_count: 3, caution_count: 0, one_liner: '토스 소식', refs: [], articles: arts(3) },
+      ],
+    },
+  });
+  await page.goto('/m/daily?t=abc.def.ghi.jkl');
+  await page.getByRole('button', { name: '기사 57건 더 보기' }).click();
+  await expect(page.getByText('기사 제목 60')).toBeAttached();
+  // 펼친 목록 가운데로 내려가도 [접기]가 화면 안에 보인다
+  await page.getByRole('link', { name: /^기사 제목 30 / }).scrollIntoViewIfNeeded();
+  const close = page.getByRole('button', { name: /비이아이 기사 접기/ });
+  await expect(close).toBeInViewport();
+  await page.screenshot({ path: 'test-results/daily-sticky-close.png' });
+  await close.click();
+  await expect(page.getByRole('link', { name: /^기사 제목 30 / })).toHaveCount(0);
+  await expect(page.getByRole('heading', { name: '비이아이' })).toBeInViewport(); // 그 기업 카드로 돌아옴
+  await expect(page.getByRole('heading', { name: '비바리퍼블리카' })).toBeInViewport(); // 다음 기업이 바로 보임
+});
+
+test('월간 폰 화면: 펼친 기업 카드에도 따라다니는 [접기]', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 800 });
+  const facts = Array.from({ length: 25 }, (_, i) => ({ text: `사실 ${i + 1} — ${'내용 '.repeat(15)}`, refs: [], date: '2026-09-03' }));
+  const co = (name: string) => ({ name, article_count: 40, caution_count: 0, caution: null, summary: [{ text: `${name} 요약`, refs: [] }],
+    facts, meaning: null, client_explain: null, qa: [] });
+  await mockApi(page, {
+    'GET /api/v1/company-report/m/monthly': {
+      kind: 'monthly', month: '2026-09', article_count: 80, caution_count: 0, prev_article_count: 70, company_with_news: 2,
+      summary: [], highlights: [], cautions: [], checkpoints: [], refs: [], companies: [co('비이아이'), co('비바리퍼블리카')],
+    },
+  });
+  await page.goto('/m/monthly?t=abc.def.ghi.jkl');
+  await page.getByRole('heading', { name: /비이아이/ }).click();
+  await page.getByText(/사실 20 —/).scrollIntoViewIfNeeded();
+  const close = page.getByRole('button', { name: /비이아이 접기/ });
+  await expect(close).toBeInViewport();
+  await close.click();
+  await expect(page.getByText(/사실 20 —/)).toHaveCount(0);
+  await expect(page.getByRole('heading', { name: /비바리퍼블리카/ })).toBeInViewport();
+});

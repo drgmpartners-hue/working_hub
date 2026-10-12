@@ -5,6 +5,7 @@
  * 문장 끝 [1][2]를 누르면 바로 원문 기사. 서버가 수신자별 열쇠값(t)을 확인한다.
  */
 import { CSSProperties, ReactNode, useEffect, useState } from 'react';
+import { StickyClose } from './StickyClose';
 import { API_URL } from '@/lib/api-url';
 
 type Refs = number[];
@@ -226,7 +227,7 @@ function pct(v?: number | null) {
   return `${v > 0 ? '+' : ''}${v.toFixed(1)}%`;
 }
 
-function CompanyArticles({ c }: { c: DailyData['companies'][number] }) {
+function CompanyArticles({ c, anchorId }: { c: DailyData['companies'][number]; anchorId: string }) {
   const [all, setAll] = useState(false);
   const list = all ? c.articles : c.articles.slice(0, 3);
   return (
@@ -270,7 +271,12 @@ function CompanyArticles({ c }: { c: DailyData['companies'][number] }) {
           </div>
         </li>
       ))}
-      {c.articles.length > 3 && (
+      {all && (
+        <li style={{ position: 'sticky', bottom: 14, zIndex: 5, pointerEvents: 'none' }}>
+          <StickyClose label={`${shortCo(c.name)} 기사 접기`} onClose={() => setAll(false)} anchorId={anchorId} />
+        </li>
+      )}
+      {c.articles.length > 3 && !all && (
         <li>
           <button
             type="button"
@@ -285,7 +291,7 @@ function CompanyArticles({ c }: { c: DailyData['companies'][number] }) {
               fontSize: 14,
             }}
           >
-            {all ? '접기' : `기사 ${c.articles.length - 3}건 더 보기`}
+            {`기사 ${c.articles.length - 3}건 더 보기`}
           </button>
         </li>
       )}
@@ -370,7 +376,7 @@ export function DailyMobile({ d }: { d: DailyData }) {
         )}
       </section>
       {d.companies.map((c, i) => (
-        <section key={i} style={card}>
+        <section key={i} id={`dco-${i}`} style={{ ...card, scrollMarginTop: 12 }}>
           <div
             style={{
               display: 'flex',
@@ -400,7 +406,7 @@ export function DailyMobile({ d }: { d: DailyData }) {
               <Line s={{ text: c.one_liner, refs: c.refs }} map={map} />
             </div>
           )}
-          <CompanyArticles c={c} />
+          <CompanyArticles c={c} anchorId={`dco-${i}`} />
         </section>
       ))}
       <Footer />
@@ -655,6 +661,7 @@ function MonthlyCompanyCard({
               </div>
             )}
           </div>
+          <StickyClose label={`${shortCo(c.name)} 접기`} onClose={() => setOpen(false)} anchorId={domId} />
         </>
       )}
     </section>

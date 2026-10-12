@@ -14,6 +14,7 @@ import {
   YAxis,
 } from 'recharts';
 import { Card } from '@/components/common/Card';
+import { StickyClose } from './StickyClose';
 import type { MSentence, MSource, MStatRow, MonthlyBriefing } from './types';
 import { SectionTitle, mutedText } from './ui';
 
@@ -685,6 +686,7 @@ export function MonthlyBriefingView({ mb }: { mb: MonthlyBriefing }) {
                       기업 상세 보기 →
                     </Link>
                   </div>
+                  <StickyClose label={`${sec.name} 접기`} onClose={() => toggleCo(sec.company_id)} anchorId={`mco-${sec.company_id}`} />
                 </>
               )}
             </Card>
