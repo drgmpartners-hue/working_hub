@@ -8,6 +8,7 @@
  */
 import { useCallback, useEffect, useState } from 'react';
 import { CompanyKeywordPanel, type KwAction } from '../_lib/CompanyKeywordPanel';
+import { CleanupBox } from './CleanupBox';
 import { crGet, crPost } from '@/lib/companyReportApi';
 import { fmtDate } from '@/components/company-report/ui';
 
@@ -133,6 +134,8 @@ export default function ArticleReportsPage() {
           기업명을 눌러 오른쪽 패널에서 키워드를 바로 고치세요. 처리하면 같은 기사의 다른 제보도 함께 닫힙니다.
         </p>
       </div>
+
+      <CleanupBox />
 
       <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
         {TABS.map((t) => (

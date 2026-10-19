@@ -506,6 +506,18 @@ async def recheck_company_articles(company_id: str, body: RecheckBody, current_u
     return out
 
 
+@router.post("/article-reports/cleanup")
+async def cleanup_mention_articles(body: RecheckBody, current_user=Depends(get_current_user),
+                                   db: AsyncSession = Depends(get_db)):
+    """모든 기업의 기존 기사를 지금 규칙으로 정리(apply=false: 미리 보기, true: 숨기기 — 지우지 않음). 대표·관리자."""
+    from app.services.company_report import article_reports
+
+    await _require_cr_manager(db, current_user)
+    out = await article_reports.recheck_all(db, apply=body.apply)
+    await db.commit()
+    return out
+
+
 # --------------------------------------------------------------------------- 폰 전용 화면(로그인 없음, 열쇠값 필요)
 
 async def _mobile_subject(db: AsyncSession, kind: str, t: str) -> tuple[str, Optional[set[str]]]:

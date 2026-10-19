@@ -23,6 +23,36 @@ def test_relevance_exclude_and_score():
     assert x.excluded and x.score == 0
 
 
+def test_relevance_mention_only_is_dropped():
+    req = ["한미반도체"]
+    # 실제 제보 사례: 시황 기사 본문 중간에 한 번 언급 → 모으지 않음
+    r = relevance("코스피, 반등에도 AI 우려 여전…다음 주 빅테크 실적 주목",
+                  "코스피가 반등했지만 AI 투자 우려가 이어졌다. 증권가에서는 다음 주 메타·마이크로소프트 실적에 주목한다. "
+                  "한 연구원은 한미반도체 등 장비주의 변동성도 커졌다고 말했다.", req, [], [])
+    assert r.excluded and r.reason.startswith("단순 언급")
+    # 제목에 있으면 통과
+    assert relevance("한미반도체, TC본더 수주", "", req, [], []).score == 60
+    # 제목에 없어도 첫 문장 주어면 통과(기자명 머리말은 건너뜀)
+    lead = relevance("HBM 장비 경쟁 본격화", "[서울=뉴시스] 홍길동 기자 = 한미반도체가 신형 본더를 공개했다.", req, ["본더"], [])
+    assert not lead.excluded and lead.score == 55 and lead.reason.startswith("첫머리")
+    # 짧은 문장이 여러 개여도 첫 문장만 첫머리로 본다
+    assert relevance("증시 마감", "증시가 올랐다. 실적에 주목한다. 한미반도체도 올랐다.", req, [], []).excluded
+    # 별칭·대표자 이름이 제목에 있어도 통과
+    assert not relevance("곽동신 회장 \"HBM4 대응 끝\"", "", req, [], [], ["한미반도체", "곽동신"]).excluded
+    # 이름이 아예 없으면 필수어 없음
+    assert relevance("반도체 업황", "업황 회복", req, [], []).reason == "필수어 없음"
+    # 제외어가 가장 먼저
+    assert relevance("한미반도체 화장품", "", req, [], ["화장품"]).reason.startswith("제외어")
+
+
+def test_company_names():
+    from app.services.company_report.collector import company_names
+
+    c = SimpleNamespace(name="한미반도체(주)", name_en="Hanmi Semiconductor", aliases=["한미", "㈜한미반도체"], ceo_name="곽동신")
+    assert company_names(c) == ["한미반도체", "Hanmi Semiconductor", "곽동신"]  # 짧은 약칭('한미')·중복 제외
+    assert company_names(None) == []
+
+
 def test_group_similar():
     arts = [{"title": "뉴로리온 50억 투자 유치"}, {"title": "뉴로리온, 50억 투자유치"}, {"title": "전혀 다른 기사 제목입니다"}]
     groups = group_similar(arts)

@@ -26,11 +26,27 @@ from app.services.company_report.timeutil import now_kst
 logger = logging.getLogger(__name__)
 
 
+def company_names(company: Optional[PortfolioCompany]) -> list[str]:
+    """제목·첫머리에서 찾을 기업 이름: 기업명·영문명·별칭(이전 사명·약칭)·대표자."""
+    if not company:
+        return []
+    out: list[str] = []
+    for i, n in enumerate([company.name, company.name_en, *(company.aliases or []), company.ceo_name]):
+        n = str(n or "").strip()
+        for cut in ("(주)", "㈜", "주식회사"):
+            n = n.replace(cut, "").strip()
+        # 기업명은 늘 쓰고, 영문명·별칭·대표자는 3글자 이상만(짧은 약칭은 '한미 정상회담'처럼 엉뚱한 제목에 걸림)
+        if n and (i == 0 or len(n) >= 3) and n not in out:
+            out.append(n)
+    return out
+
+
 async def _keywords(db: AsyncSession, company_id: str) -> dict[str, list[str]]:
     rows = (await db.execute(select(CompanyKeyword).where(CompanyKeyword.company_id == company_id))).scalars().all()
     out: dict[str, list[str]] = {"required": [], "boost": [], "exclude": []}
     for r in rows:
         out.setdefault(r.kind, []).append(r.keyword)
+    out["names"] = company_names(await db.get(PortfolioCompany, company_id))
     return out
 
 
@@ -137,7 +153,8 @@ async def _store(db: AsyncSession, company_id: str, items: list[dict], kw: dict,
         if it.get("source_type") == "dart":
             score = 100
         else:
-            rel = relevance(it["title"], it.get("description", ""), kw["required"], kw["boost"], kw["exclude"])
+            rel = relevance(it["title"], it.get("description", ""), kw["required"], kw["boost"], kw["exclude"],
+                            kw.get("names", ()))
             if rel.excluded:
                 excluded += 1
                 continue

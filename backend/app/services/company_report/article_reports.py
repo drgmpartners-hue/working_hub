@@ -27,6 +27,9 @@ async def keyword_sets(db: AsyncSession, company_id: str) -> dict[str, list[str]
     out: dict[str, list[str]] = {"required": [], "boost": [], "exclude": []}
     for r in rows:
         out.get(r.kind, out["boost"]).append(r.keyword)
+    from app.services.company_report.collector import company_names
+
+    out["names"] = company_names(await db.get(PortfolioCompany, company_id))
     return out
 
 
@@ -196,29 +199,68 @@ async def resolve(db: AsyncSession, rep: ArticleReport, *, action: str, user_id:
     return len(reps)
 
 
-async def recheck_company(db: AsyncSession, company_id: str, *, user_id: str, apply: bool, limit: int = 5000) -> dict:
-    """지금 키워드의 제외어에 걸리는 기존 기사(숨기지 않은 것)를 찾는다. apply=True 면 숨긴다."""
-    from app.services.company_report import search
+async def _rule_hits(db: AsyncSession, company_id: str, limit: int = 5000) -> list[tuple[NewsArticle, str]]:
+    """지금 규칙(제외어, 제목·첫머리에 기업명 없는 단순 언급)에 걸리는 보이는 기사. 공시·직접 추가는 빼고 본다."""
     from app.services.company_report.dedup import relevance
 
     kw = await keyword_sets(db, company_id)
-    if not kw["exclude"]:
-        return {"matched": 0, "hidden": 0, "samples": [], "note": "제외어가 없어 점검할 것이 없습니다."}
     arts = (await db.execute(select(NewsArticle).where(
-        NewsArticle.company_id == company_id, NewsArticle.is_hidden == False)  # noqa: E712
+        NewsArticle.company_id == company_id, NewsArticle.is_hidden == False,  # noqa: E712
+        NewsArticle.source_type == "news")
         .order_by(NewsArticle.published_at.desc().nullslast()).limit(limit))).scalars().all()
     hits = []
     for a in arts:
-        rel = relevance(a.title or "", a.description or "", kw["required"], kw["boost"], kw["exclude"])
+        rel = relevance(a.title or "", a.description or "", kw["required"], kw["boost"], kw["exclude"], kw["names"])
         if rel.excluded:
             hits.append((a, rel.reason))
-    hidden = 0
-    if apply:
-        for a, _ in hits:
-            a.is_hidden, a.hidden_at, a.hidden_by = True, now_kst(), user_id
-            await search.index_article(db, a)
-            hidden += 1
-        await db.flush()
-    return {"matched": len(hits), "hidden": hidden,
-            "samples": [{"title": a.title, "reason": why, "published_at": a.published_at.isoformat() if a.published_at else None}
-                        for a, why in hits[:10]]}
+    return hits
+
+
+async def _hide(db: AsyncSession, hits: list[tuple[NewsArticle, str]], by: str) -> int:
+    from app.services.company_report import search
+
+    for a, _ in hits:
+        a.is_hidden, a.hidden_at, a.hidden_by = True, now_kst(), by
+        await search.index_article(db, a)
+    await db.flush()
+    return len(hits)
+
+
+def _sample(a: NewsArticle, why: str, company: Optional[str] = None) -> dict:
+    d = {"title": a.title, "reason": why, "url": a.url,
+         "published_at": a.published_at.isoformat() if a.published_at else None}
+    if company:
+        d["company"] = company
+    return d
+
+
+async def recheck_company(db: AsyncSession, company_id: str, *, user_id: str, apply: bool, limit: int = 5000) -> dict:
+    """지금 키워드·규칙에 걸리는 기존 기사(제외어, 단순 언급)를 찾는다. apply=True 면 숨긴다."""
+    hits = await _rule_hits(db, company_id, limit)
+    hidden = await _hide(db, hits, user_id) if apply else 0
+    return {"matched": len(hits), "hidden": hidden, "samples": [_sample(a, why) for a, why in hits[:10]]}
+
+
+MENTION_HIDDEN_BY = "rule"
+
+
+async def recheck_all(db: AsyncSession, *, apply: bool) -> dict:
+    """모든 활성 기업의 기존 기사를 지금 규칙으로 다시 본다(처음 한 번 정리). 숨기기만 하고 지우지 않는다."""
+    companies = (await db.execute(select(PortfolioCompany).where(PortfolioCompany.is_active == True)  # noqa: E712
+                                  .order_by(PortfolioCompany.name))).scalars().all()
+    per, samples, total, hidden = [], [], 0, 0
+    reasons: dict[str, int] = {}
+    for c in companies:
+        hits = await _rule_hits(db, c.id)
+        if not hits:
+            continue
+        total += len(hits)
+        for _, why in hits:
+            k = "단순 언급" if why.startswith("단순 언급") else ("제외어" if why.startswith("제외어") else "필수어 없음")
+            reasons[k] = reasons.get(k, 0) + 1
+        per.append({"company_id": c.id, "name": c.name, "matched": len(hits)})
+        samples += [_sample(a, why, c.name) for a, why in hits[:3]]
+        if apply:
+            hidden += await _hide(db, hits, MENTION_HIDDEN_BY)
+    per.sort(key=lambda x: -x["matched"])
+    return {"matched": total, "hidden": hidden, "reasons": reasons, "companies": per, "samples": samples[:30]}

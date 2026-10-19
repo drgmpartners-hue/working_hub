@@ -312,6 +312,14 @@ test('기사 제보: 관리자 화면에서 Claude 분석 → 기업명 패널�
       rec(r);
       return json(r, { closed: 2, status: 'resolved', resolution: '기사 숨김' });
     },
+    'POST /api/v1/company-report/article-reports/cleanup': (r: Route) => {
+      rec(r);
+      const apply = (r.request().postDataJSON() as { apply: boolean }).apply;
+      return json(r, { matched: 37, hidden: apply ? 37 : 0, reasons: { '단순 언급': 35, 제외어: 2 },
+        companies: [{ company_id: 'co1', name: '비이아이', matched: 30 }, { company_id: 'co2', name: '한미반도체', matched: 7 }],
+        samples: [{ title: '코스피, 반등에도 AI 우려 여전', reason: '단순 언급(제목·첫머리에 기업명 없음)', url: 'https://n/x',
+          published_at: '2026-10-18T14:00:00', company: '한미반도체' }] });
+    },
   });
   await page.route('**/api/v1/company-report/companies/co1', (r) => (r.request().method() === 'GET' ? json(r, company) : r.fallback()));
   await page.goto('/admin/article-reports');
@@ -338,6 +346,16 @@ test('기사 제보: 관리자 화면에서 Claude 분석 → 기업명 패널�
 
   await page.getByRole('button', { name: '기사 숨기기' }).click();
   await expect.poll(() => calls.find((c) => c.p.endsWith('/resolve'))?.body).toEqual({ action: 'hide' });
+
+  // 기존 기사 한 번에 정리: 미리 보기 → 숨기기
+  const cleanup = page.getByRole('region', { name: '기존 기사 정리' });
+  await cleanup.getByRole('button', { name: '걸리는 기사 미리 보기' }).click();
+  await expect(cleanup.getByText('단순 언급 35건', { exact: false })).toBeVisible();
+  await expect(cleanup.getByRole('link', { name: '코스피, 반등에도 AI 우려 여전' })).toBeVisible();
+  await page.screenshot({ path: 'test-results/article-reports-cleanup.png' });
+  await cleanup.getByRole('button', { name: '37건 숨기기' }).click();
+  await expect(cleanup.getByText('37건을 숨겼습니다')).toBeVisible();
+  expect(calls.filter((c) => c.p.endsWith('/cleanup')).map((c) => c.body)).toEqual([{ apply: false }, { apply: true }]);
 });
 
 test('데일리 폰 화면: [관련성 없는 기사] 제보는 링크 열쇠값으로 보낸다', async ({ page }) => {

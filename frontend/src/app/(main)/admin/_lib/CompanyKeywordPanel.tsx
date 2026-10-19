@@ -293,7 +293,7 @@ export function CompanyKeywordPanel({
         <section style={{ borderTop: '1px solid var(--border)', paddingTop: 12 }}>
           <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text-primary)' }}>기존 기사 다시 점검</div>
           <div style={{ fontSize: 12, color: 'var(--text-muted)', margin: '4px 0 8px', lineHeight: 1.6 }}>
-            저장된 제외어에 걸리는, 이미 모인 기사를 찾습니다. 먼저 몇 건인지 보고 숨길지 정합니다.
+            이미 모인 기사 중 저장된 제외어에 걸리거나, 제목·첫 문장에 기업명이 없는(단순 언급) 기사를 찾습니다. 먼저 몇 건인지 보고 숨길지 정합니다.
           </div>
           <button type="button" className="wh-btn wh-btn-ghost wh-btn-sm" disabled={busy || dirty} onClick={() => void recheck(false)}>
             {dirty ? '먼저 키워드를 저장하세요' : '걸리는 기사 찾기'}
@@ -306,7 +306,7 @@ export function CompanyKeywordPanel({
                 <span style={{ color: 'var(--success)' }}>{rc.hidden}건을 숨겼습니다. 이후 브리핑·보고서에서 빠집니다.</span>
               ) : rc.matched ? (
                 <>
-                  제외어에 걸리는 기사 <b>{rc.matched}건</b>
+                  걸리는 기사 <b>{rc.matched}건</b>
                   <ul style={{ margin: '4px 0', paddingLeft: 18, fontSize: 12 }}>
                     {rc.samples.map((x, i) => (
                       <li key={i}>
