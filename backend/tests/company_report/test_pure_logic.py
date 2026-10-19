@@ -112,6 +112,34 @@ def test_group_and_fallback():
     assert mapping[srcs[0]["id"]] == "2"
 
 
+def _art2(i, cid, tag="neutral", issue="기타", src="news", rel=50, hour=10):
+    return SimpleNamespace(id=i, company_id=cid, tag=tag, relevance_score=rel, published_at=datetime(2026, 9, 27, hour),
+                           title=f"제목{i}", url=f"https://n/{i}", press="언론", source_type=src,
+                           summary=f"요약{i}", issue_type=issue)
+
+
+def test_daily_order_by_importance_not_count():
+    comps = {k: SimpleNamespace(name=n) for k, n in
+             [("big", "가대기업"), ("inv", "나투자"), ("dart", "다공시"), ("new", "라신규"), ("cau", "하주의")]}
+    arts = [_art2(f"b{i}", "big") for i in range(6)]                       # 중립 기사만 6건
+    arts += [_art2("i1", "inv", "positive", "투자유치")]                     # 투자유치 호재 1건
+    arts += [_art2("d1", "dart", "neutral", "공시", "dart")]                  # 공시 1건
+    arts += [_art2("n1", "new")]                                            # 중립 1건이지만 오랜만의 소식
+    arts += [_art2("c1", "cau", "caution", "기타")]                          # 주의 1건
+    cards = daily.group_articles(arts, comps, new_companies={"new"})
+    order = [c["company_id"] for c in cards]
+    assert order[0] == "cau"                       # 주의는 항상 맨 앞
+    assert order.index("inv") < order.index("big")  # 건수 많은 중립보다 투자유치 호재가 앞
+    assert order.index("dart") < order.index("big")
+    assert cards[order.index("new")]["is_new"] and cards[order.index("dart")]["has_dart"]
+    # 같은 기사 수여도 여러 언론이 다룬 기업이 앞
+    two = daily.group_articles([_art2("x", "big"), _art2("y", "inv")], comps, press_counts={"y": 5})
+    assert two[0]["company_id"] == "inv"
+    # 점수가 같으면 더 최근 기사가 있는 기업이 앞(가나다순 고정 방지)
+    tie = daily.group_articles([_art2("x", "big", hour=8), _art2("y", "inv", hour=11)], comps)
+    assert [c["company_id"] for c in tie] == ["inv", "big"]
+
+
 def test_template_b_variables_limits():
     b = SimpleNamespace(
         briefing_date=date(2026, 9, 28), article_count=12, caution_count=1, overall_summary="",

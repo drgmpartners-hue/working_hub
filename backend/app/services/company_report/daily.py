@@ -78,8 +78,39 @@ async def build_basic_info(db: AsyncSession, day: date) -> dict:
 
 # --------------------------------------------------------------------------- 기사 묶기
 
-def group_articles(articles: list[NewsArticle], companies: dict[str, PortfolioCompany]) -> list[dict]:
-    """기업별 카드(주의 먼저, 관련도 높은 순). 순수 로직."""
+# 기업 순서용 중요도 점수(기사 1건). 주의 > 호재 > 중립, 무게 있는 이슈·공시·여러 언론 보도에 가산.
+TAG_WEIGHT = {"caution": 6.0, "positive": 3.0, "neutral": 1.0}
+ISSUE_WEIGHT = {"투자유치": 3.0, "실적": 3.0, "규제": 3.0, "소송": 3.0, "공시": 2.0, "제휴": 2.0,
+                "제품": 1.0, "수상": 1.0, "인사": 1.0}
+DART_BONUS = 2.0
+NEW_NEWS_BONUS = 2.0      # 직전 7일 동안 기사가 없던 기업(오랜만의 소식)
+NEW_NEWS_DAYS = 7
+
+
+def article_weight(a, press_count: int = 1) -> float:
+    w = TAG_WEIGHT.get(a.tag, 1.0) + ISSUE_WEIGHT.get(a.issue_type or "", 0.0)
+    if a.source_type == "dart":
+        w += DART_BONUS
+    w += min(max(press_count - 1, 0), 4) * 0.75      # 같은 내용을 여러 언론이 다룸
+    w += (a.relevance_score or 0) / 50                # 관련도 0~100 → 0~2
+    return w
+
+
+def company_importance(weights: list[float], is_new: bool = False) -> float:
+    """상위 기사 위주(1위 100%, 2위 50%, 3위 25%) + 그 밖의 건수는 조금만. 건수만 많은 기업이 늘 앞서지 않게."""
+    ws = sorted(weights, reverse=True)
+    s = sum(w * f for w, f in zip(ws, (1.0, 0.5, 0.25)))
+    s += min(len(ws) - 3, 5) * 0.3 if len(ws) > 3 else 0
+    return round(s + (NEW_NEWS_BONUS if is_new else 0), 2)
+
+
+def group_articles(articles: list[NewsArticle], companies: dict[str, PortfolioCompany],
+                   press_counts: Optional[dict[str, int]] = None,
+                   new_companies: Optional[set[str]] = None) -> list[dict]:
+    """기업별 카드. 순서: 주의 있는 기업 먼저 → 중요도 점수 → 최신 기사. 순수 로직.
+    press_counts: 기사 id → 같은 내용을 다룬 언론 수. new_companies: 직전 며칠 기사가 없던 기업 id."""
+    press_counts = press_counts or {}
+    new_companies = new_companies or set()
     by: dict[str, list[NewsArticle]] = defaultdict(list)
     for a in articles:
         by[a.company_id].append(a)
@@ -89,11 +120,17 @@ def group_articles(articles: list[NewsArticle], companies: dict[str, PortfolioCo
         if not c:
             continue
         arts.sort(key=lambda a: (TAG_ORDER.get(a.tag, 3), -(a.relevance_score or 0), -(a.published_at or datetime.min).timestamp()))
+        latest = max((a.published_at for a in arts if a.published_at), default=None)
         cards.append({
             "company_id": cid,
             "name": c.name,
             "article_count": len(arts),
             "caution_count": sum(1 for a in arts if a.tag == "caution"),
+            "importance": company_importance([article_weight(a, press_counts.get(a.id, 1)) for a in arts],
+                                             cid in new_companies),
+            "is_new": cid in new_companies,
+            "has_dart": any(a.source_type == "dart" for a in arts),
+            "latest_at": latest.isoformat() if latest else None,
             "one_liner": None,
             "articles": [{
                 "id": a.id, "title": a.title, "url": a.url, "press": a.press, "source_type": a.source_type,
@@ -101,8 +138,45 @@ def group_articles(articles: list[NewsArticle], companies: dict[str, PortfolioCo
                 "summary": a.summary, "tag": a.tag, "issue_type": a.issue_type,
             } for a in arts],
         })
-    cards.sort(key=lambda x: (-x["caution_count"], -x["article_count"], x["name"]))
+    cards.sort(key=lambda x: (x["caution_count"] == 0, -x["importance"], -x["caution_count"],
+                              -(datetime.fromisoformat(x["latest_at"]).timestamp() if x["latest_at"] else 0), x["name"]))
     return cards
+
+
+async def ordering_signals(db: AsyncSession, arts: list[NewsArticle], start: datetime) -> tuple[dict[str, int], set[str]]:
+    """(기사 id → 같은 내용 보도 언론 수, 직전 7일 기사가 없던 기업 id). 실패해도 브리핑은 계속."""
+    from sqlalchemy import func
+
+    press: dict[str, int] = {}
+    new: set[str] = set()
+    gids = {a.dup_group_id for a in arts if a.dup_group_id}
+    cids = {a.company_id for a in arts}
+    try:
+        async with db.begin_nested():  # 실패해도 바깥 트랜잭션이 깨지지 않게
+            if gids:
+                rows = (await db.execute(
+                    select(NewsArticle.dup_group_id,
+                           func.count(func.distinct(func.coalesce(NewsArticle.press, NewsArticle.id))))
+                    .where(NewsArticle.dup_group_id.in_(list(gids)), NewsArticle.is_hidden == False)  # noqa: E712
+                    .group_by(NewsArticle.dup_group_id)
+                )).all()
+                size = {g: int(n) for g, n in rows}
+                press = {a.id: size.get(a.dup_group_id, 1) for a in arts if a.dup_group_id}
+            if cids:
+                seen = set((await db.execute(
+                    select(NewsArticle.company_id).where(
+                        NewsArticle.company_id.in_(list(cids)),
+                        NewsArticle.is_hidden == False,  # noqa: E712
+                        NewsArticle.is_representative == True,  # noqa: E712
+                        NewsArticle.published_at >= start - timedelta(days=NEW_NEWS_DAYS),
+                        NewsArticle.published_at < start,
+                    ).distinct()
+                )).scalars().all())
+                new = cids - seen
+    except Exception as e:  # noqa: BLE001
+        logger.warning("데일리 순서 보조 정보 실패(기본 점수로 정렬): %r", e)
+        press, new = {}, set()
+    return press, new
 
 
 def build_sources(cards: list[dict]) -> tuple[list[dict], dict[str, str]]:
@@ -228,7 +302,8 @@ async def build_daily(db: AsyncSession, day: Optional[date] = None, *, collect: 
             NewsArticle.published_at < end,
         )
     )).scalars().all()
-    cards = group_articles(list(arts), companies)
+    press_counts, new_companies = await ordering_signals(db, list(arts), start)
+    cards = group_articles(list(arts), companies, press_counts, new_companies)
     basic = await build_basic_info(db, day)
     basic.update({
         "window": [start.isoformat(), end.isoformat()],
