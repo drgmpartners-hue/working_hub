@@ -4,6 +4,7 @@
 import Link from 'next/link';
 import { useState } from 'react';
 import { ArticleBody } from './ArticleList';
+import { ReportArticleButton } from './ReportArticleButton';
 import { Card } from '@/components/common/Card';
 import type { DailyBriefing, MarketRow } from './types';
 import { TAG_BADGE } from './types';
@@ -157,8 +158,11 @@ export function DailyBriefingView({ b }: { b: DailyBriefing }) {
                           <ToggleTitle id={a.id} title={a.title} open={openIds.has(a.id)} onToggle={toggle} />
                         </div>
                         {a.summary && <p style={{ margin: '4px 0 0', fontSize: 13, lineHeight: 1.55, color: 'var(--text-secondary)' }}>{a.summary}</p>}
-                        <div style={{ ...mutedText, fontSize: 11, marginTop: 2 }}>
-                          {a.source_type === 'dart' ? 'DART 공시' : a.press || ''} {a.published_at ? a.published_at.slice(5, 16).replace('T', ' ') : ''}
+                        <div style={{ ...mutedText, fontSize: 11, marginTop: 2, display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+                          <span>
+                            {a.source_type === 'dart' ? 'DART 공시' : a.press || ''} {a.published_at ? a.published_at.slice(5, 16).replace('T', ' ') : ''}
+                          </span>
+                          {a.source_type !== 'dart' && <ReportArticleButton articleId={a.id} />}
                         </div>
                         {openIds.has(a.id) && <ArticleBody article={a} />}
                       </li>

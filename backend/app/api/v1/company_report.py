@@ -375,6 +375,137 @@ async def patch_article(article_id: str, body: ArticlePatch, current_user=Depend
     return _article_out(a)
 
 
+# --------------------------------------------------------------------------- '관련성 없는 기사' 제보 (2026-10-19)
+
+class ArticleReportBody(BaseModel):
+    reason: Optional[str] = Field(None, max_length=300)
+
+
+class MobileArticleReportBody(ArticleReportBody):
+    article_id: str = Field(..., max_length=36)
+
+
+class ReportResolveBody(BaseModel):
+    action: str = Field(..., pattern="^(hide|resolved|dismissed)$")
+    note: Optional[str] = Field(None, max_length=200)
+
+
+class RecheckBody(BaseModel):
+    apply: bool = False
+
+
+async def _require_cr_manager(db: AsyncSession, user) -> None:
+    if not await vis.can_manage_all(db, user):
+        raise HTTPException(403, "대표 또는 기업 리포트 관리자만 볼 수 있습니다.")
+
+
+@router.post("/articles/{article_id}/report", status_code=201)
+async def report_article(article_id: str, body: ArticleReportBody, current_user=Depends(get_current_user),
+                         db: AsyncSession = Depends(get_db)):
+    """[관련성 없는 기사] — 그 기업을 볼 수 있는 사람이면 누구나. 관리자가 검토한다."""
+    from app.services.company_report import article_reports
+
+    a = await db.get(NewsArticle, article_id)
+    if not a:
+        raise HTTPException(404, "기사를 찾을 수 없습니다.")
+    await assert_company(db, current_user, a.company_id)
+    rep, new = await article_reports.create(db, a, user_id=current_user.id, name=getattr(current_user, "nickname", None),
+                                            channel="web", reason=body.reason)
+    await db.commit()
+    return {"id": rep.id, "status": rep.status, "new": new}
+
+
+@router.post("/m/report-article", status_code=201)
+async def mobile_report_article(body: MobileArticleReportBody, t: str = Query(..., max_length=200),
+                                db: AsyncSession = Depends(get_db)):
+    """폰 화면(카톡 링크)에서 제보 — 로그인 대신 그 링크의 열쇠값으로 누가 보냈는지 안다."""
+    from app.models.news_briefing import BriefingRecipient
+    from app.models.user import User
+    from app.services.company_report import article_reports, mobile_link
+
+    try:
+        _key, subject = mobile_link.parse("d", t)
+    except mobile_link.LinkError as e:
+        raise HTTPException(403, str(e))
+    if not await mobile_link.subject_active(db, subject):
+        raise HTTPException(403, "브리핑 수신자가 아니거나 해제되었습니다.")
+    a = await db.get(NewsArticle, body.article_id)
+    ids = await mobile_link.subject_company_ids(db, subject)
+    if not a or (ids is not None and a.company_id not in ids):
+        raise HTTPException(404, "기사를 찾을 수 없습니다.")
+    if subject.startswith("u"):
+        u = await db.get(User, subject[1:])
+        uid, name = (u.id, u.nickname) if u else (None, None)
+    else:
+        r = await db.get(BriefingRecipient, subject)
+        uid = r.user_id if r else None
+        name = (r.name if r else None) or ((await db.get(User, uid)).nickname if uid else None)
+    rep, new = await article_reports.create(db, a, user_id=uid, name=name, channel="mobile", reason=body.reason)
+    await db.commit()
+    return {"id": rep.id, "status": rep.status, "new": new}
+
+
+@router.get("/article-reports")
+async def list_article_reports(status: Optional[str] = Query("open"), current_user=Depends(get_current_user),
+                               db: AsyncSession = Depends(get_db)):
+    """관리자 > 기사 제보: 언제·누가·어느 기업·어떤 기사, Claude 분석 결과. status=open/resolved/dismissed/all."""
+    from app.services.company_report import article_reports
+
+    await _require_cr_manager(db, current_user)
+    return await article_reports.list_reports(db, None if status == "all" else status)
+
+
+async def _report_for_admin(db: AsyncSession, user, report_id: str):
+    from app.models.company_report import ArticleReport
+
+    await _require_cr_manager(db, user)
+    rep = await db.get(ArticleReport, report_id)
+    if not rep:
+        raise HTTPException(404, "제보를 찾을 수 없습니다.")
+    return rep
+
+
+@router.post("/article-reports/{report_id}/analyze")
+async def analyze_article_report(report_id: str, current_user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    """Claude 가 기사와 기업 정보·키워드를 비교해 관련 여부·원인·키워드 대안을 낸다(수십 초)."""
+    from app.services import llm_client
+    from app.services.company_report import article_reports, usage
+
+    rep = await _report_for_admin(db, current_user, report_id)
+    try:
+        res = await article_reports.analyze(db, rep)
+    except llm_client.LLMError as e:
+        raise HTTPException(502, f"분석하지 못했습니다: {e}")
+    await usage.flush(db)
+    await db.commit()
+    return res
+
+
+@router.post("/article-reports/{report_id}/resolve")
+async def resolve_article_report(report_id: str, body: ReportResolveBody, current_user=Depends(get_current_user),
+                                 db: AsyncSession = Depends(get_db)):
+    from app.services.company_report import article_reports
+
+    rep = await _report_for_admin(db, current_user, report_id)
+    n = await article_reports.resolve(db, rep, action=body.action, user_id=current_user.id, note=body.note)
+    await db.commit()
+    return {"closed": n, "status": rep.status, "resolution": rep.resolution}
+
+
+@router.post("/companies/{company_id}/recheck-articles")
+async def recheck_company_articles(company_id: str, body: RecheckBody, current_user=Depends(get_current_user),
+                                   db: AsyncSession = Depends(get_db)):
+    """지금 제외어에 걸리는 기존 기사 찾기(apply=false: 몇 건인지만, true: 숨기기). 대표·관리자."""
+    from app.services.company_report import article_reports
+
+    await _require_cr_manager(db, current_user)
+    if not await db.get(PortfolioCompany, company_id):
+        raise HTTPException(404, "기업을 찾을 수 없습니다.")
+    out = await article_reports.recheck_company(db, company_id, user_id=current_user.id, apply=body.apply)
+    await db.commit()
+    return out
+
+
 # --------------------------------------------------------------------------- 폰 전용 화면(로그인 없음, 열쇠값 필요)
 
 async def _mobile_subject(db: AsyncSession, kind: str, t: str) -> tuple[str, Optional[set[str]]]:

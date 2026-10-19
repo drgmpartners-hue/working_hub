@@ -89,6 +89,7 @@ const NAV: NavGroup[] = [
       { title: '통합 현황', desc: '매니저별 고객·업무 한눈에', href: '/admin', icon: ic.chart },
       { title: '매니저 관리', desc: '계정 추가·비활성·비밀번호', href: '/admin/managers', icon: ic.users },
       { title: '감사 로그', desc: '등록·수정·삭제·대행 기록', href: '/admin/audit-logs', icon: ic.shield },
+      { title: '기사 제보', desc: '관련성 없는 기사 검토·키워드 수정', href: '/admin/article-reports', icon: ic.doc },
     ],
   },
 ];

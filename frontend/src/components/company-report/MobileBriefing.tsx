@@ -5,6 +5,7 @@
  * 문장 끝 [1][2]를 누르면 바로 원문 기사. 서버가 수신자별 열쇠값(t)을 확인한다.
  */
 import { CSSProperties, ReactNode, useEffect, useState } from 'react';
+import { ReportArticleButton } from './ReportArticleButton';
 import { StickyClose } from './StickyClose';
 import { API_URL } from '@/lib/api-url';
 
@@ -53,6 +54,8 @@ interface DailyData {
       summary?: string | null;
       published_at?: string | null;
       dart?: boolean;
+      /** 기사 id — [관련성 없는 기사] 제보용(2026-10-19) */
+      id?: string;
     }[];
   }[];
   refs: RefItem[];
@@ -227,7 +230,20 @@ function pct(v?: number | null) {
   return `${v > 0 ? '+' : ''}${v.toFixed(1)}%`;
 }
 
-function CompanyArticles({ c, anchorId }: { c: DailyData['companies'][number]; anchorId: string }) {
+/** 폰 화면 제보: 로그인 대신 이 링크의 열쇠값으로 */
+async function mobileReport(token: string, articleId: string, reason: string) {
+  const r = await fetch(`${API_URL}/api/v1/company-report/m/report-article?t=${encodeURIComponent(token)}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ article_id: articleId, reason: reason || null }),
+  });
+  if (!r.ok) {
+    const j = await r.json().catch(() => ({}));
+    throw new Error((j && j.detail) || '보내지 못했습니다.');
+  }
+}
+
+function CompanyArticles({ c, anchorId, token }: { c: DailyData['companies'][number]; anchorId: string; token: string }) {
   const [all, setAll] = useState(false);
   const list = all ? c.articles : c.articles.slice(0, 3);
   return (
@@ -264,10 +280,15 @@ function CompanyArticles({ c, anchorId }: { c: DailyData['companies'][number]; a
               {a.summary}
             </p>
           )}
-          <div style={{ ...muted, fontSize: 12, marginTop: 2 }}>
-            {[a.press, (a.published_at || '').slice(5, 16).replace('T', ' ')]
-              .filter(Boolean)
-              .join(' · ')}
+          <div style={{ ...muted, fontSize: 12, marginTop: 2, display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center' }}>
+            <span>
+              {[a.press, (a.published_at || '').slice(5, 16).replace('T', ' ')]
+                .filter(Boolean)
+                .join(' · ')}
+            </span>
+            {a.id && !a.dart && token && (
+              <ReportArticleButton articleId={a.id} dark submit={(id, reason) => mobileReport(token, id, reason)} />
+            )}
           </div>
         </li>
       ))}
@@ -299,7 +320,7 @@ function CompanyArticles({ c, anchorId }: { c: DailyData['companies'][number]; a
   );
 }
 
-export function DailyMobile({ d }: { d: DailyData }) {
+export function DailyMobile({ d, token = '' }: { d: DailyData; token?: string }) {
   const map = useRefMap(d.refs);
   const dt = `${Number(d.date.slice(5, 7))}월 ${Number(d.date.slice(8, 10))}일(${d.weekday || ''})`;
   return (
@@ -406,7 +427,7 @@ export function DailyMobile({ d }: { d: DailyData }) {
               <Line s={{ text: c.one_liner, refs: c.refs }} map={map} />
             </div>
           )}
-          <CompanyArticles c={c} anchorId={`dco-${i}`} />
+          <CompanyArticles c={c} anchorId={`dco-${i}`} token={token} />
         </section>
       ))}
       <Footer />
@@ -858,7 +879,7 @@ export function MobileBriefingPage({ kind, token }: { kind: 'daily' | 'monthly';
         ) : !data ? (
           <div style={{ ...muted, textAlign: 'center', marginTop: 60 }}>브리핑을 불러오는 중…</div>
         ) : data.kind === 'daily' ? (
-          <DailyMobile d={data} />
+          <DailyMobile d={data} token={token} />
         ) : (
           <MonthlyMobile d={data} />
         )}

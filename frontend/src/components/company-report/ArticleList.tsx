@@ -6,6 +6,7 @@ import { crGet } from '@/lib/companyReportApi';
 import type { Article } from './types';
 import { TAG_BADGE } from './types';
 import { fmtDate, mutedText } from './ui';
+import { ReportArticleButton } from './ReportArticleButton';
 
 type ArticleContent = {
   ok: boolean;
@@ -184,6 +185,7 @@ export function ArticleList({
                         {a.is_hidden ? '다시 보이기' : '관련 없음'}
                       </button>
                     )}
+                    {!a.is_hidden && <ReportArticleButton articleId={a.id} />}
                   </div>
                   {a.summary && <p style={{ margin: '4px 0 0', fontSize: 13, color: 'var(--text-secondary)', lineHeight: 1.6 }}>{a.summary}</p>}
                   {open.has(a.id) && <ArticleBody article={a} />}

@@ -95,7 +95,7 @@ from app.models.news_briefing import (
 from app.models.company_report import (
     CompanyFact, CompanyFundingRound, CompanyPeriodSummary, CompanyFile, CompanyFileDownload,
     CompanyDocument, CompanyReport, ReportImage, ReportExport,
-    CompanyPublicData, SearchIndex, CompanyMonthlyDigest, MonthlyBriefing, ShortLink,
+    CompanyPublicData, SearchIndex, CompanyMonthlyDigest, MonthlyBriefing, ShortLink, ArticleReport,
 )
 
 # 권한 체계 (매니저 계정·대행·이관, docs/login_logic)
@@ -166,6 +166,7 @@ __all__ = [
     "CompanyMonthlyDigest",
     "MonthlyBriefing",
     "ShortLink",
+    "ArticleReport",
     "AuditLog",
     "ClientTransfer",
     "MergeArchive",

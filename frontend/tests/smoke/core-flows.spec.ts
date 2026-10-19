@@ -273,3 +273,92 @@ test('월간 폰 화면: 펼친 기업 카드에도 따라다니는 [접기]', a
   await expect(page.getByText(/사실 20 —/)).toHaveCount(0);
   await expect(page.getByRole('heading', { name: /비바리퍼블리카/ })).toBeInViewport();
 });
+
+test('기사 제보: 관리자 화면에서 Claude 분석 → 기업명 패널에서 제안 적용·저장 → 기존 기사 점검 → 처리', async ({ page }) => {
+  await signIn(page);
+  const calls: { m: string; p: string; body: unknown }[] = [];
+  const rec = (r: Route) => calls.push({ m: r.request().method(), p: new URL(r.request().url()).pathname, body: r.request().postDataJSON() });
+  const item = {
+    id: 'rep1', status: 'open', channel: 'mobile', reason: '화장품 회사 기사', created_at: '2026-10-19T09:10:00', reporter_name: '백서연',
+    company: { id: 'co1', name: '비이아이', is_active: true },
+    article: { id: 'a1', title: '비이아이 화장품, 신제품 립스틱 출시', url: 'https://news.example/a1', press: '뷰티신문', summary: '뷰티 브랜드 소식',
+      published_at: '2026-10-12T09:00:00', is_hidden: false, relevance_score: 60 },
+    same_article_reports: 2, ai_analysis: null, ai_analyzed_at: null, resolution: null, resolved_by_name: null, resolved_at: null,
+  };
+  let company = { id: 'co1', name: '비이아이', name_en: null, aliases: [], is_listed: false, stock_code: null, corp_code: null, biz_reg_no: null,
+    ceo_name: '홍길동', industry: '2차전지 소재', address: null, homepage: null, established_at: null, profile_source: 'manual', invested_at: null,
+    invest_type: null, invest_amount: null, memo: null, is_active: true, last_collected_at: null, created_at: '2026-01-01T00:00:00',
+    keywords: { required: ['비이아이'], boost: ['배터리'], exclude: [] }, stats: { today: 0, week: 0, caution_week: 0, total: 0 } };
+  await mockApi(page, {
+    'GET /api/v1/admin/overview': (r: Route) => json(r, { detail: 'skip' }, 500),
+    'GET /api/v1/company-report/article-reports': { items: [item], counts: { open: 1, resolved: 0, dismissed: 0 } },
+    'POST /api/v1/company-report/article-reports/rep1/analyze': (r: Route) => {
+      rec(r);
+      return json(r, { verdict: 'irrelevant', confidence: 'high', cause: '동명 회사', matched_by: '비이아이', reason: '화장품 브랜드 기사다.',
+        actions: [{ type: 'add_exclude', keyword: '화장품', why: '동명 브랜드' }], hide_article: true, summary: '동명 화장품 회사 기사' });
+    },
+    'GET /api/v1/company-report/companies/co1': () => undefined,
+    'PUT /api/v1/company-report/companies/co1': (r: Route) => {
+      rec(r);
+      company = { ...company, keywords: (r.request().postDataJSON() as { keywords: typeof company.keywords }).keywords };
+      return json(r, company);
+    },
+    'POST /api/v1/company-report/companies/co1/recheck-articles': (r: Route) => {
+      rec(r);
+      const apply = (r.request().postDataJSON() as { apply: boolean }).apply;
+      return json(r, { matched: 2, hidden: apply ? 2 : 0, samples: [{ title: '비이아이 화장품 매장 확대', reason: "제외어 '화장품'", published_at: null }] });
+    },
+    'POST /api/v1/company-report/article-reports/rep1/resolve': (r: Route) => {
+      rec(r);
+      return json(r, { closed: 2, status: 'resolved', resolution: '기사 숨김' });
+    },
+  });
+  await page.route('**/api/v1/company-report/companies/co1', (r) => (r.request().method() === 'GET' ? json(r, company) : r.fallback()));
+  await page.goto('/admin/article-reports');
+  await expect(page.getByText('비이아이 화장품, 신제품 립스틱 출시')).toBeVisible();
+  await expect(page.getByText('폰(카톡 링크)')).toBeVisible();
+  await expect(page.getByText('같은 기사 제보 2건')).toBeVisible();
+  await expect(page.getByText('제보 사유: 화장품 회사 기사')).toBeVisible();
+
+  await page.getByRole('button', { name: 'Claude 분석' }).click();
+  await expect(page.getByText('동명 화장품 회사 기사')).toBeVisible();
+  await page.getByRole('button', { name: '패널에서 키워드 고치기' }).click();
+  const panel = page.getByRole('dialog', { name: '기업 키워드' });
+  await expect(panel.getByText('2차전지 소재')).toBeVisible();
+  await panel.getByRole('button', { name: '적용' }).click();
+  await expect(panel.getByRole('button', { name: '반영됨' })).toBeVisible();
+  await panel.getByRole('button', { name: '키워드 저장' }).click();
+  await expect.poll(() => calls.find((c) => c.m === 'PUT')?.body).toEqual({ keywords: { required: ['비이아이'], boost: ['배터리'], exclude: ['화장품'] } });
+  await panel.getByRole('button', { name: '걸리는 기사 찾기' }).click();
+  await expect(panel.getByText('비이아이 화장품 매장 확대')).toBeVisible();
+  await page.screenshot({ path: 'test-results/article-reports-panel.png' });
+  await panel.getByRole('button', { name: '2건 숨기기' }).click();
+  await expect(panel.getByText('2건을 숨겼습니다')).toBeVisible();
+  await panel.getByRole('button', { name: '패널 닫기' }).click();
+
+  await page.getByRole('button', { name: '기사 숨기기' }).click();
+  await expect.poll(() => calls.find((c) => c.p.endsWith('/resolve'))?.body).toEqual({ action: 'hide' });
+});
+
+test('데일리 폰 화면: [관련성 없는 기사] 제보는 링크 열쇠값으로 보낸다', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 800 });
+  let sent: { q: string | null; body: unknown } | null = null;
+  await mockApi(page, {
+    'GET /api/v1/company-report/m/daily': {
+      kind: 'daily', date: '2026-10-12', weekday: '월', weather: null, markets: [], company_count: 1, article_count: 1, caution_count: 0,
+      overall: [], refs: [],
+      companies: [{ name: '비이아이', article_count: 1, caution_count: 0, one_liner: '', refs: [],
+        articles: [{ id: 'a1', title: '비이아이 화장품 출시', url: 'https://news.example/a1', press: '뷰티신문', published_at: '2026-10-12T05:00:00' }] }],
+    },
+    'POST /api/v1/company-report/m/report-article': (r: Route, url: URL) => {
+      sent = { q: url.searchParams.get('t'), body: r.request().postDataJSON() };
+      return json(r, { id: 'rep9', status: 'open', new: true }, 201);
+    },
+  });
+  await page.goto('/m/daily?t=abc.def.ghi.jkl');
+  await page.getByRole('button', { name: '관련성 없는 기사' }).click();
+  await page.getByLabel('제보 사유').fill('같은 이름의 화장품 회사');
+  await page.getByRole('button', { name: '제보하기' }).click();
+  await expect(page.getByText('제보했습니다')).toBeVisible();
+  expect(sent).toEqual({ q: 'abc.def.ghi.jkl', body: { article_id: 'a1', reason: '같은 이름의 화장품 회사' } });
+});

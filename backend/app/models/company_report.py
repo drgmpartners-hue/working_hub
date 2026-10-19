@@ -351,3 +351,31 @@ class ReportExport(Base):
     file_id: Mapped[Optional[str]] = mapped_column(String(36))     # 기업DB 04_보고서에 저장된 파일
     exported_by: Mapped[Optional[str]] = mapped_column(String(36))
     exported_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now(), nullable=False)
+
+
+class ArticleReport(Base):
+    """'관련성 없는 기사' 제보 (2026-10-19).
+
+    누구나(브리핑 화면·폰 화면·기업 상세) 기업과 무관해 보이는 기사를 제보하고, 대표·기업 리포트 관리자가
+    관리자 > 기사 제보에서 Claude 분석(왜 걸렸는지·키워드 대안)을 보고 숨기기·키워드 수정으로 처리한다.
+    status: open(검토 대기) / resolved(숨김·키워드 수정으로 처리) / dismissed(관련 있음 — 그대로 둠)
+    """
+
+    __tablename__ = "article_reports"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    article_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("news_articles.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    company_id: Mapped[str] = _company_fk()
+    reporter_user_id: Mapped[Optional[str]] = mapped_column(String(36))
+    reporter_name: Mapped[Optional[str]] = mapped_column(String(100))
+    channel: Mapped[str] = mapped_column(String(10), default="web", nullable=False)  # web / mobile
+    reason: Mapped[Optional[str]] = mapped_column(String(300))
+    status: Mapped[str] = mapped_column(String(10), default="open", nullable=False, index=True)
+    ai_analysis: Mapped[Optional[dict]] = mapped_column(JSONB)
+    ai_analyzed_at: Mapped[Optional[datetime]] = mapped_column(DateTime)
+    resolution: Mapped[Optional[str]] = mapped_column(String(300))
+    resolved_by: Mapped[Optional[str]] = mapped_column(String(36))
+    resolved_at: Mapped[Optional[datetime]] = mapped_column(DateTime)
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now(), nullable=False)

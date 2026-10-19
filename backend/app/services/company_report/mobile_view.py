@@ -57,7 +57,7 @@ def daily_view(b: NewsBriefing) -> dict[str, Any]:
         companies.append({
             "name": c.get("name"), "article_count": c.get("article_count", len(al)), "caution_count": c.get("caution_count", 0),
             "one_liner": c.get("one_liner") or "", "refs": refs.nums([top["id"]]) if top else [],
-            "articles": [{"title": a.get("title"), "url": a.get("url"), "press": a.get("press"), "tag": a.get("tag"),
+            "articles": [{"id": a.get("id"), "title": a.get("title"), "url": a.get("url"), "press": a.get("press"), "tag": a.get("tag"),
                           "summary": a.get("summary"), "published_at": a.get("published_at"),
                           "dart": a.get("source_type") == "dart"} for a in al],
         })
