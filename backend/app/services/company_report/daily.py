@@ -143,6 +143,19 @@ def group_articles(articles: list[NewsArticle], companies: dict[str, PortfolioCo
     return cards
 
 
+def judged_only(arts: list[NewsArticle]) -> list[NewsArticle]:
+    """AI 심사(요약·역할 판정)를 마친 뉴스만 브리핑에 넣는다. 공시·직접 자료는 그대로.
+    AI가 그날 통째로 실패해 심사된 뉴스가 하나도 없으면 규칙만 통과한 기사로 대신한다(브리핑이 비지 않게)."""
+    news = [a for a in arts if a.source_type == "news"]
+    judged = [a for a in news if a.summarized_at]
+    if news and not judged:
+        logger.warning("데일리: AI 심사된 기사가 없어 규칙 통과 기사로 브리핑(%d건)", len(news))
+        return arts
+    if len(judged) < len(news):
+        logger.info("데일리: AI 심사 전 기사 %d건 제외", len(news) - len(judged))
+    return [a for a in arts if a.source_type != "news" or a.summarized_at]
+
+
 async def ordering_signals(db: AsyncSession, arts: list[NewsArticle], start: datetime) -> tuple[dict[str, int], set[str]]:
     """(기사 id → 같은 내용 보도 언론 수, 직전 7일 기사가 없던 기업 id). 실패해도 브리핑은 계속."""
     from sqlalchemy import func
@@ -302,6 +315,7 @@ async def build_daily(db: AsyncSession, day: Optional[date] = None, *, collect: 
             NewsArticle.published_at < end,
         )
     )).scalars().all()
+    arts = judged_only(list(arts))
     press_counts, new_companies = await ordering_signals(db, list(arts), start)
     cards = group_articles(list(arts), companies, press_counts, new_companies)
     basic = await build_basic_info(db, day)

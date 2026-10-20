@@ -4,7 +4,8 @@
 - summary: 1~2문장(80자 내외), 기사에 없는 내용 금지
 - tag: positive / neutral / caution
 - issue_type: 투자유치·실적·제품·수상·인사·제휴·규제·소송·공시·기타
-- relevance: 0~100 (이 기업이 기사의 주인공인지). 30 미만(단순 언급·다른 회사)이면 숨김 처리
+- role: main/major/mention/market/other — main·major 만 보이고 나머지는 숨김(공시 제외)
+- relevance: 0~100 (role 이 없을 때만 30 미만이면 숨김)
 """
 from __future__ import annotations
 
@@ -27,6 +28,8 @@ logger = logging.getLogger(__name__)
 BATCH = 20
 HIDE_BELOW = 30
 TAGS = {"positive", "neutral", "caution"}
+ROLES = {"main", "major", "mention", "market", "other"}
+SHOW_ROLES = {"main", "major"}
 ISSUE_TYPES = ["투자유치", "실적", "제품", "수상", "인사", "제휴", "규제", "소송", "공시", "기타"]
 
 SUMMARY_PROMPT = """너는 벤처캐피탈 직원을 위한 뉴스 요약 담당이다.
@@ -37,15 +40,18 @@ SUMMARY_PROMPT = """너는 벤처캐피탈 직원을 위한 뉴스 요약 담당
 - summary: 한국어 1~2문장, 80자 내외. 두괄식. 기사에 없는 사실·숫자를 만들지 마라.
 - tag: 기업 입장에서 positive(호재)/neutral(중립)/caution(주의: 소송·적자·규제·사고·부정 이슈) 중 하나.
 - issue_type: {issue_types} 중 하나.
-- relevance: 0~100. 이 기업이 기사의 주인공이면 70 이상, 여러 회사 중 하나로 비중 있게 다뤄지면 40~69,
-  단순 언급(기사의 중심은 시황·업종·다른 회사이고 이 기업은 주가 등락 목록·인용 한 줄 등으로 지나가듯 나옴)이면 20 이하,
-  동명이인·다른 회사면 10 이하.
+- role: 이 기업이 이 기사에서 맡은 역할. 반드시 아래 중 하나.
+  main(주인공: 기사가 이 기업 이야기) / major(주요 등장: 여러 회사 중 하나로 비중 있게, 문단 단위로 다뤄짐) /
+  mention(단순 언급: 기사의 중심은 다른 주제, 이 기업은 인용·예시 한 줄) /
+  market(주가·시황 나열: 여러 종목 등락·순위·시세를 늘어놓은 기사에서 한 줄) /
+  other(다른 회사·동명이인·관계없음)
+- relevance: 0~100. main 70 이상, major 40~69, mention·market 20 이하, other 10 이하.
 
 기사:
 {articles}
 
 출력 형식(JSON):
-{{"items": [{{"id": "기사 id", "summary": "...", "tag": "neutral", "issue_type": "기타", "relevance": 80}}]}}
+{{"items": [{{"id": "기사 id", "summary": "...", "tag": "neutral", "issue_type": "기타", "role": "main", "relevance": 80}}]}}
 """
 
 
@@ -80,13 +86,17 @@ def apply_result(arts: list[NewsArticle], items: list[dict], now: Optional[datet
             rel = int(it.get("relevance"))
         except (TypeError, ValueError):
             rel = None
+        role = str(it.get("role") or "").strip().lower()
+        role = role if role in ROLES else None
+        a.ai_role = role
         if rel is not None:
             # 규칙 점수와 AI 점수 중 낮은 쪽을 쓰지 않고 평균(규칙 과신 방지)
             a.relevance_score = int(((a.relevance_score or rel) + rel) / 2)
-            if rel < HIDE_BELOW and a.source_type != "dart":
-                a.is_hidden = True
-                a.hidden_at = now
-                a.hidden_by = "ai"
+        drop = (role not in SHOW_ROLES) if role else (rel is not None and rel < HIDE_BELOW)
+        if drop and a.source_type == "news":  # 공시·직접 올린 자료는 숨기지 않음
+            a.is_hidden = True
+            a.hidden_at = now
+            a.hidden_by = "ai"
         done += 1
     return done
 

@@ -29,7 +29,9 @@ def test_relevance_mention_only_is_dropped():
     r = relevance("코스피, 반등에도 AI 우려 여전…다음 주 빅테크 실적 주목",
                   "코스피가 반등했지만 AI 투자 우려가 이어졌다. 증권가에서는 다음 주 메타·마이크로소프트 실적에 주목한다. "
                   "한 연구원은 한미반도체 등 장비주의 변동성도 커졌다고 말했다.", req, [], [])
-    assert r.excluded and r.reason.startswith("단순 언급")
+    assert r.excluded and r.reason.startswith("주가·시황")  # 제목부터 시황 기사
+    m = relevance("AI 투자 우려 여전", "AI 투자 우려가 이어졌다. 한 연구원은 한미반도체 등 장비주를 거론했다.", req, [], [])
+    assert m.excluded and m.reason.startswith("단순 언급")
     # 제목에 있으면 통과
     assert relevance("한미반도체, TC본더 수주", "", req, [], []).score == 60
     # 제목에 없어도 첫 문장 주어면 통과(기자명 머리말은 건너뜀)
@@ -45,11 +47,69 @@ def test_relevance_mention_only_is_dropped():
     assert relevance("한미반도체 화장품", "", req, [], ["화장품"]).reason.startswith("제외어")
 
 
+def test_relevance_word_boundary_ceo_and_market_lists():
+    from app.services.company_report.dedup import find_word
+
+    # 다른 낱말의 일부는 불일치, 조사는 허용
+    assert find_word("에이치엘", "에이치엘비 주가 급등") is None
+    assert find_word("에이치엘", "에이치엘이 수주") == 0
+    assert find_word("한미 반도체", "(주)한미반도체에서는") == 3
+    assert find_word("LG", "LG에너지솔루션 실적") is None and find_word("LG", "LG가 투자") == 0
+    assert relevance("에이치엘비, 신약 허가", "", ["에이치엘"], [], []).reason == "필수어 없음"
+    # 대표자 이름은 기업명과 함께일 때만
+    ceo = relevance("곽동신 원장 개원", "곽동신 원장은 정형외과를 열었다.", ["한미반도체"], [], [], [], ["곽동신"])
+    assert ceo.excluded and ceo.reason.startswith("대표자 이름만")
+    ok = relevance("곽동신 회장 인터뷰", "HBM 시장에 대해 한미반도체 곽동신 회장이 밝혔다", ["한미반도체"], [], [], [], ["곽동신"])
+    assert not ok.excluded and ok.reason.startswith("제목 대표자")
+    # 주가·시황 나열: 제목 패턴, 본문 등락률 나열 → 제외. 그 기업이 제목 주인공이면 예외
+    req = ["한미반도체"]
+    for t in ["[마감시황] 코스피 하락…한미반도체 강세", "코스닥 상승률 상위 종목 한미반도체", "반도체 관련주 일제히 강세, 한미반도체도"]:
+        assert relevance(t, "", req, [], []).reason.startswith("주가·시황"), t
+    lst = relevance("20일 상승 종목", "A 3%, B 2.1%, C ▲4%, 한미반도체 5%, D 1%", req, [], [])
+    assert lst.reason == "주가·시황 나열 기사(등락률 나열)"
+    assert not relevance("[특징주] 한미반도체, 코스닥서 8% 상승", "", req, [], []).excluded
+    # 단독 실적 기사는 등락률이 많아도 통과(제목 주인공)
+    assert not relevance("한미반도체, 3분기 영업익 급증", "매출 30%, 영업익 45%, 순익 50%, 수출 60%, 마진 20% 증가", req, [], []).excluded
+
+
+def test_summarizer_role_decides_visibility():
+    def art(i, src="news"):
+        return SimpleNamespace(id=i, relevance_score=60, is_hidden=False, source_type=src, summary=None, tag=None,
+                               issue_type=None, summarized_at=None, ai_role=None, hidden_at=None, hidden_by=None)
+
+    arts = [art("m"), art("j"), art("x"), art("k"), art("d", "dart"), art("old")]
+    summarizer.apply_result(arts, [
+        {"id": "m", "summary": "s", "role": "main", "relevance": 90},
+        {"id": "j", "summary": "s", "role": "major", "relevance": 50},
+        {"id": "x", "summary": "s", "role": "market", "relevance": 45},   # 점수가 높아도 역할로 숨김
+        {"id": "k", "summary": "s", "role": "mention", "relevance": 35},
+        {"id": "d", "summary": "s", "role": "other", "relevance": 5},     # 공시는 숨기지 않음
+        {"id": "old", "summary": "s", "relevance": 45},                   # 역할 없는 예전 답: 점수 기준
+    ])
+    hidden = {a.id for a in arts if a.is_hidden}
+    assert hidden == {"x", "k"} and arts[2].ai_role == "market" and arts[5].ai_role is None
+
+
+def test_daily_uses_judged_articles_only():
+    from datetime import datetime as dt
+
+    def art(i, src="news", done=True):
+        return SimpleNamespace(id=i, source_type=src, summarized_at=dt(2026, 10, 20) if done else None)
+
+    got = daily.judged_only([art("a"), art("b", done=False), art("d", "dart", done=False)])
+    assert [a.id for a in got] == ["a", "d"]
+    # AI가 통째로 실패한 날은 규칙 통과 기사로
+    assert len(daily.judged_only([art("a", done=False), art("b", done=False)])) == 2
+
+
 def test_company_names():
     from app.services.company_report.collector import company_names
 
+    from app.services.company_report.collector import company_people
+
     c = SimpleNamespace(name="한미반도체(주)", name_en="Hanmi Semiconductor", aliases=["한미", "㈜한미반도체"], ceo_name="곽동신")
-    assert company_names(c) == ["한미반도체", "Hanmi Semiconductor", "곽동신"]  # 짧은 약칭('한미')·중복 제외
+    assert company_names(c) == ["한미반도체", "Hanmi Semiconductor"]  # 짧은 약칭('한미')·중복 제외, 대표자는 따로
+    assert company_people(c) == ["곽동신"]
     assert company_names(None) == []
 
 

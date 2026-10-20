@@ -56,7 +56,7 @@ export function CleanupBox({ onDone }: { onDone?: () => void }) {
     <section style={box} aria-label="기존 기사 정리">
       <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
         <div style={{ flex: '1 1 320px', fontSize: 13, color: 'var(--text-secondary)', lineHeight: 1.6 }}>
-          <b style={{ color: 'var(--text-primary)' }}>기존 기사 정리</b> — 이제 새 기사는 제목이나 첫 문장에 기업명이 없으면(단순 언급) 모으지 않습니다.
+          <b style={{ color: 'var(--text-primary)' }}>기존 기사 정리</b> — 새 기사는 제목·첫 문장에 기업명이 낱말로 없거나(단순 언급), 주가·시황 나열 기사이거나, 기업명 없이 대표자 이름만 있으면 모으지 않습니다.
           이미 모인 기사도 같은 기준으로 한 번에 정리할 수 있습니다. 숨기기만 하고 지우지 않습니다.
         </div>
         <button type="button" className="wh-btn wh-btn-ghost wh-btn-sm" disabled={busy} onClick={() => void run(false)}>

@@ -40,7 +40,7 @@ def _relevant(items: list[dict], kw: dict, start: date, end: date) -> list[dict]
         p = it.get("published_at")
         if p and not (lo <= p < hi):
             continue
-        rel = relevance(it["title"], it.get("description", ""), kw["required"], kw["boost"], kw["exclude"], kw.get("names", ()))
+        rel = relevance(it["title"], it.get("description", ""), kw["required"], kw["boost"], kw["exclude"], kw.get("names", ()), kw.get("people", ()))
         if not rel.excluded:
             out.append(it)
     return out
@@ -66,7 +66,7 @@ async def _recover_events(db: AsyncSession, company: PortfolioCompany, kw: dict,
             continue
         await release(db)
         r = await google_news_rss.search_range(f'"{company.name}"', d - timedelta(days=7), d + timedelta(days=7), step_days=15)
-        items = [it for it in r["items"] if not relevance(it["title"], it.get("description", ""), kw["required"], kw["boost"], kw["exclude"], kw.get("names", ())).excluded]
+        items = [it for it in r["items"] if not relevance(it["title"], it.get("description", ""), kw["required"], kw["boost"], kw["exclude"], kw.get("names", ()), kw.get("people", ())).excluded]
         if items:
             s = await collector._store(db, company.id, items, kw, via="backfill")
             added += s["new"]

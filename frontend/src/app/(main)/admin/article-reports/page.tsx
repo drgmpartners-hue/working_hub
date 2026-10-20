@@ -40,6 +40,8 @@ interface Item {
     published_at: string | null;
     is_hidden: boolean;
     relevance_score: number | null;
+    relevance_reason?: string | null;
+    ai_role?: string | null;
   };
   same_article_reports: number;
   ai_analysis: Analysis | null;
@@ -59,6 +61,9 @@ const VERDICT: Record<Analysis['verdict'], { label: string; cls: string }> = {
   irrelevant: { label: '관련 없음', cls: 'neg' },
   relevant: { label: '관련 있음', cls: 'pos' },
   unclear: { label: '애매함', cls: 'warn' },
+};
+const ROLE_LABEL: Record<string, string> = {
+  main: '주인공', major: '주요 등장', mention: '단순 언급', market: '주가·시황 나열', other: '다른 회사',
 };
 const CONF: Record<Analysis['confidence'], string> = { high: '확신 높음', mid: '확신 보통', low: '확신 낮음' };
 const ACTION_LABEL: Record<KwAction['type'], string> = {
@@ -199,7 +204,9 @@ export default function ArticleReportsPage() {
                   {it.article.title} <span style={{ color: 'var(--cyan-400)' }}>↗</span>
                 </a>
                 <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 2 }}>
-                  {[it.article.press, fmtDate(it.article.published_at, true), it.article.relevance_score != null && `관련도 ${it.article.relevance_score}점`]
+                  {[it.article.press, fmtDate(it.article.published_at, true), it.article.relevance_score != null && `관련도 ${it.article.relevance_score}점`,
+                    it.article.relevance_reason && `수집 근거: ${it.article.relevance_reason}`,
+                    it.article.ai_role && `AI 판정: ${ROLE_LABEL[it.article.ai_role] ?? it.article.ai_role}`]
                     .filter(Boolean)
                     .join(' · ')}
                 </div>

@@ -143,6 +143,8 @@ class NewsArticle(Base):
     published_at: Mapped[Optional[datetime]] = mapped_column(DateTime)
     collected_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now(), nullable=False)
     relevance_score: Mapped[Optional[int]] = mapped_column(Integer)
+    relevance_reason: Mapped[Optional[str]] = mapped_column(String(200))  # 수집 규칙 근거(제목 'OO' 등)
+    ai_role: Mapped[Optional[str]] = mapped_column(String(10))  # AI 판정: main/major/mention/market/other
     is_hidden: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     hidden_at: Mapped[Optional[datetime]] = mapped_column(DateTime)
     hidden_by: Mapped[Optional[str]] = mapped_column(String(36))

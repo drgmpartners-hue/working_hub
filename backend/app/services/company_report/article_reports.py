@@ -27,9 +27,10 @@ async def keyword_sets(db: AsyncSession, company_id: str) -> dict[str, list[str]
     out: dict[str, list[str]] = {"required": [], "boost": [], "exclude": []}
     for r in rows:
         out.get(r.kind, out["boost"]).append(r.keyword)
-    from app.services.company_report.collector import company_names
+    from app.services.company_report.collector import company_names, company_people
 
-    out["names"] = company_names(await db.get(PortfolioCompany, company_id))
+    company = await db.get(PortfolioCompany, company_id)
+    out["names"], out["people"] = company_names(company), company_people(company)
     return out
 
 
@@ -52,6 +53,7 @@ def _article_brief(a: NewsArticle) -> dict:
     return {"id": a.id, "title": a.title, "url": a.url, "press": a.press, "summary": a.summary,
             "description": a.description, "tag": a.tag, "is_hidden": a.is_hidden, "source_type": a.source_type,
             "collected_via": a.collected_via, "relevance_score": a.relevance_score,
+            "relevance_reason": a.relevance_reason, "ai_role": a.ai_role,
             "published_at": a.published_at.isoformat() if a.published_at else None}
 
 
@@ -210,7 +212,7 @@ async def _rule_hits(db: AsyncSession, company_id: str, limit: int = 5000) -> li
         .order_by(NewsArticle.published_at.desc().nullslast()).limit(limit))).scalars().all()
     hits = []
     for a in arts:
-        rel = relevance(a.title or "", a.description or "", kw["required"], kw["boost"], kw["exclude"], kw["names"])
+        rel = relevance(a.title or "", a.description or "", kw["required"], kw["boost"], kw["exclude"], kw["names"], kw["people"])
         if rel.excluded:
             hits.append((a, rel.reason))
     return hits
@@ -256,7 +258,8 @@ async def recheck_all(db: AsyncSession, *, apply: bool) -> dict:
             continue
         total += len(hits)
         for _, why in hits:
-            k = "단순 언급" if why.startswith("단순 언급") else ("제외어" if why.startswith("제외어") else "필수어 없음")
+            k = next((lab for pre, lab in (("단순 언급", "단순 언급"), ("주가·시황", "주가·시황 나열"), ("제외어", "제외어"),
+                                           ("대표자", "대표자 이름만")) if why.startswith(pre)), "기업명 없음")
             reasons[k] = reasons.get(k, 0) + 1
         per.append({"company_id": c.id, "name": c.name, "matched": len(hits)})
         samples += [_sample(a, why, c.name) for a, why in hits[:3]]

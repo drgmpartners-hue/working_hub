@@ -26,19 +26,30 @@ from app.services.company_report.timeutil import now_kst
 logger = logging.getLogger(__name__)
 
 
+def _clean_name(n) -> str:
+    n = str(n or "").strip()
+    for cut in ("(주)", "㈜", "주식회사"):
+        n = n.replace(cut, "").strip()
+    return n
+
+
 def company_names(company: Optional[PortfolioCompany]) -> list[str]:
-    """제목·첫머리에서 찾을 기업 이름: 기업명·영문명·별칭(이전 사명·약칭)·대표자."""
+    """제목·첫머리에서 찾을 기업 이름: 기업명·영문명·별칭(이전 사명·약칭). 대표자는 company_people."""
     if not company:
         return []
     out: list[str] = []
-    for i, n in enumerate([company.name, company.name_en, *(company.aliases or []), company.ceo_name]):
-        n = str(n or "").strip()
-        for cut in ("(주)", "㈜", "주식회사"):
-            n = n.replace(cut, "").strip()
-        # 기업명은 늘 쓰고, 영문명·별칭·대표자는 3글자 이상만(짧은 약칭은 '한미 정상회담'처럼 엉뚱한 제목에 걸림)
+    for i, n in enumerate([company.name, company.name_en, *(company.aliases or [])]):
+        n = _clean_name(n)
+        # 기업명은 늘 쓰고, 영문명·별칭은 3글자 이상만(짧은 약칭은 '한미 정상회담'처럼 엉뚱한 제목에 걸림)
         if n and (i == 0 or len(n) >= 3) and n not in out:
             out.append(n)
     return out
+
+
+def company_people(company: Optional[PortfolioCompany]) -> list[str]:
+    """대표자 이름 — 기사에 기업명도 함께 있을 때만 근거로 쓴다(동명이인 방지)."""
+    n = _clean_name(company.ceo_name) if company else ""
+    return [n] if len(n) >= 2 else []
 
 
 async def _keywords(db: AsyncSession, company_id: str) -> dict[str, list[str]]:
@@ -46,7 +57,8 @@ async def _keywords(db: AsyncSession, company_id: str) -> dict[str, list[str]]:
     out: dict[str, list[str]] = {"required": [], "boost": [], "exclude": []}
     for r in rows:
         out.setdefault(r.kind, []).append(r.keyword)
-    out["names"] = company_names(await db.get(PortfolioCompany, company_id))
+    company = await db.get(PortfolioCompany, company_id)
+    out["names"], out["people"] = company_names(company), company_people(company)
     return out
 
 
@@ -151,14 +163,14 @@ async def _store(db: AsyncSession, company_id: str, items: list[dict], kw: dict,
             continue
         known.add(h)
         if it.get("source_type") == "dart":
-            score = 100
+            score, it["_reason"] = 100, "DART 공시"
         else:
             rel = relevance(it["title"], it.get("description", ""), kw["required"], kw["boost"], kw["exclude"],
-                            kw.get("names", ()))
+                            kw.get("names", ()), kw.get("people", ()))
             if rel.excluded:
                 excluded += 1
                 continue
-            score = rel.score
+            score, it["_reason"] = rel.score, rel.reason
         it["_hash"], it["_score"] = h, score
         fresh.append(it)
 
@@ -182,6 +194,7 @@ async def _store(db: AsyncSession, company_id: str, items: list[dict], kw: dict,
             press=(it.get("press") or "")[:100] or None,
             published_at=it.get("published_at"),
             relevance_score=it["_score"],
+            relevance_reason=(it.get("_reason") or "")[:200] or None,
             dup_group_id=gid,
             is_representative=rep,
         )
