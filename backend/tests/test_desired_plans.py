@@ -376,3 +376,48 @@ class TestDesiredPlansRouter:
             if r.path == "/retirement/desired-plans/{customer_id}" and "PUT" in r.methods
         ]
         assert len(put_routes) == 1, "PUT /{customer_id} route missing"
+
+
+# ---------------------------------------------------------------------------
+# 2026-10-26: 적립 없이 거치금만 넣는 플랜(적립기간 0) — 화면이 허용하는데 서버가 422로 막던 문제
+# ---------------------------------------------------------------------------
+
+class TestLumpSumOnlyPlan:
+    def test_schema_accepts_zero_savings_period(self):
+        from app.schemas.desired_plan import DesiredPlanCalculateRequest, DesiredPlanUpsert
+
+        assert DesiredPlanUpsert(monthly_desired_amount=1, retirement_age=65, current_age=45, savings_period=0).savings_period == 0
+        assert DesiredPlanCalculateRequest(monthly_desired_amount=1, retirement_age=65, current_age=45, savings_period=0).savings_period == 0
+        with pytest.raises(Exception):
+            DesiredPlanUpsert(monthly_desired_amount=1, retirement_age=65, current_age=45, savings_period=-1)
+
+    def test_lump_sum_grows_to_target(self):
+        from app.services.compound_calc import CompoundCalcService
+
+        r = CompoundCalcService.calculate_all(
+            monthly_desired_amount=3_000_000, retirement_age=65, current_age=45, retirement_period_years=99,
+            savings_period=0, annual_savings=0, inflation_rate=0.021, pension_return_rate=0.05,
+            expected_return_rate=0.07, with_inflation=False,
+        )
+        t = r["simulation_table"]
+        assert len(t) == 20 and r["holding_period"] == 20
+        assert r["required_holding"] > 0
+        assert t[0]["additional"] == round(r["required_holding"])          # 1년차에 거치금 한 번
+        assert all(row["monthly_payment"] == 0 for row in t)               # 적립 없음
+        assert all(row["additional"] == 0 for row in t[1:])
+        assert abs(t[-1]["evaluation"] - r["target_fund"]) <= 2            # 은퇴 시점에 목표 도달
+
+    def test_required_annual_savings_zero_period_is_safe(self):
+        from app.services.compound_calc import CompoundCalcService
+
+        assert CompoundCalcService.calculate_required_annual_savings(1e8, 0.07, 0, 10) == 0.0
+
+    def test_errors_are_korean(self):
+        from app.services.compound_calc import CompoundCalcService
+
+        with pytest.raises(ValueError, match="적립기간"):
+            CompoundCalcService.calculate_all(monthly_desired_amount=1, retirement_age=60, current_age=50,
+                                              retirement_period_years=10, savings_period=11, annual_savings=0)
+        with pytest.raises(ValueError, match="은퇴나이"):
+            CompoundCalcService.calculate_all(monthly_desired_amount=1, retirement_age=50, current_age=50,
+                                              retirement_period_years=10, savings_period=0, annual_savings=0)

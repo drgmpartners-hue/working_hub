@@ -380,3 +380,54 @@ test('데일리 폰 화면: [관련성 없는 기사] 제보는 링크 열쇠값
   await expect(page.getByText('제보했습니다')).toBeVisible();
   expect(sent).toEqual({ q: 'abc.def.ghi.jkl', body: { article_id: 'a1', reason: '같은 이름의 화장품 회사' } });
 });
+
+test('은퇴플랜 설계: 서버 거절 이유가 한글로 보이고, 거치금만 있는 플랜(적립기간 0)도 저장된다', async ({ page }) => {
+  await page.setViewportSize({ width: 1400, height: 900 });
+  await signIn(page);
+  const client = { id: 'c1', name: '홍길동', birth_date: '1981-03-01', phone: null, email: null };
+  const puts: Record<string, unknown>[] = [];
+  let reject = true;
+  await mockApi(page, {
+    'GET /api/v1/clients': [client],
+    'GET /api/v1/retirement/inflation-rate': { rate: 2.1 },
+    'GET /api/v1/retirement/profiles/c1': { id: 'p1', customer_id: 'c1', current_age: 45, age_at_design: 45, desired_retirement_age: 65 },
+    'GET /api/v1/retirement/desired-plans/c1': (r: Route) => json(r, { detail: '희망 플랜이 없습니다.' }, 404),
+    'PUT /api/v1/retirement/desired-plans/c1': (r: Route) => {
+      puts.push(r.request().postDataJSON());
+      if (reject) {
+        reject = false;
+        return json(r, { detail: [
+          { type: 'greater_than_equal', loc: ['body', 'savings_period'], msg: 'Input should be greater than or equal to 1', input: 0, ctx: { ge: 1 } },
+        ] }, 422);
+      }
+      return json(r, { id: 'dp1', profile_id: 'p1', monthly_desired_amount: 3000000 });
+    },
+  });
+  await page.goto('/retirement?tab=desired-plan');
+  await page.getByRole('combobox').first().selectOption('c1');
+  // 추천플랜(현재플랜은 접혀 있음): 거치금만, 적립기간·적립액 비움
+  await page.getByRole('textbox', { name: '희망 은퇴나이' }).fill('65');
+  await page.getByRole('textbox', { name: '거치금액' }).fill('20000');
+  await page.getByRole('textbox', { name: '기대 투자수익률' }).fill('7');
+  await page.getByRole('textbox', { name: '현재가치 연금액' }).fill('300');
+
+  // 연금수익률이 비어 있으면 서버에 보내기 전에 막는다
+  await page.getByRole('button', { name: '은퇴플랜 저장' }).click();
+  await expect(page.getByText('연금수익률을 입력하세요(0보다 커야 합니다).', { exact: false })).toBeVisible();
+  expect(puts).toHaveLength(0);
+
+  await page.getByRole('textbox', { name: '기대 연금수익률' }).fill('5');
+  // 서버가 목록으로 거절해도 "[object Object]" 가 아니라 칸 이름과 이유
+  await page.getByRole('button', { name: '은퇴플랜 저장' }).click();
+  await expect(page.getByText('적립기간: 1 이상이어야 합니다')).toBeVisible();
+  await expect(page.getByText('[object Object]')).toHaveCount(0);
+  await page.screenshot({ path: 'test-results/retirement-save-error.png' });
+
+  await page.getByRole('button', { name: '은퇴플랜 저장' }).click();
+  await expect(page.getByText('저장이 완료되었습니다.')).toBeVisible();
+  const body = puts[1] as { savings_period: number; annual_savings: number; retirement_age: number; expected_return_rate: number };
+  expect(body.savings_period).toBe(0);
+  expect(body.annual_savings).toBe(0);
+  expect(body.retirement_age).toBe(65);
+  expect(body.expected_return_rate).toBeCloseTo(0.07);
+});

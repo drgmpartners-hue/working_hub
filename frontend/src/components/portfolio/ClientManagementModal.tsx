@@ -1,5 +1,6 @@
 'use client';
 
+import { errorText } from '@/lib/errorText';
 import React, { useState, useEffect, useCallback } from 'react';
 import { API_URL } from '@/lib/api-url';
 import { authLib } from '@/lib/auth';
@@ -506,7 +507,7 @@ export function ClientManagementModal({ isOpen, onClose, onClientAdded }: Client
       });
       if (!clientRes.ok) {
         const err = await clientRes.json().catch(() => ({}));
-        alert(err?.detail || '고객 정보 저장 실패');
+        alert(errorText(err?.detail) || '고객 정보 저장 실패');
         return;
       }
 
@@ -526,7 +527,7 @@ export function ClientManagementModal({ isOpen, onClose, onClientAdded }: Client
         );
         if (!accRes.ok) {
           const err = await accRes.json().catch(() => ({}));
-          alert(err?.detail || '계좌 정보 저장 실패');
+          alert(errorText(err?.detail) || '계좌 정보 저장 실패');
           return;
         }
       }
@@ -557,7 +558,7 @@ export function ClientManagementModal({ isOpen, onClose, onClientAdded }: Client
       );
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));
-        alert(err?.detail || '계좌 삭제 실패');
+        alert(errorText(err?.detail) || '계좌 삭제 실패');
         return;
       }
       await loadClients();
@@ -575,7 +576,7 @@ export function ClientManagementModal({ isOpen, onClose, onClientAdded }: Client
       });
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));
-        alert(err?.detail || '고객 삭제 실패');
+        alert(errorText(err?.detail) || '고객 삭제 실패');
         return;
       }
       await loadClients();
@@ -614,7 +615,7 @@ export function ClientManagementModal({ isOpen, onClose, onClientAdded }: Client
       );
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));
-        alert(err?.detail || '계좌 추가 실패');
+        alert(errorText(err?.detail) || '계좌 추가 실패');
         return;
       }
       setAddAccountClientId(null);

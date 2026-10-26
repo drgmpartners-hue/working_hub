@@ -1,5 +1,6 @@
 'use client';
 
+import { errorText } from '@/lib/errorText';
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import dynamic from 'next/dynamic';
@@ -580,7 +581,7 @@ function Tab2Section({
       } else {
         // 조용히 넘기면 '저장은 되는데 목록이 빈' 상태로 보여 원인을 찾기 어렵다
         const e = await res.json().catch(() => ({}));
-        showDrGmToast(`포트폴리오 불러오기 실패 (${res.status}) ${String((e as Record<string, unknown>)?.detail ?? '')}`.trim());
+        showDrGmToast(`포트폴리오 불러오기 실패 (${res.status}) ${String(errorText((e as Record<string, unknown>)?.detail) || '')}`.trim());
       }
       // 탭마다 기억해 둔 투자 시뮬레이션 금액을 함께 복원
       const meta = drGmTabs.find((t) => t.id === id);
@@ -633,7 +634,7 @@ function Tab2Section({
       });
       if (!res.ok) {
         const e = await res.json().catch(() => ({}));
-        showDrGmToast(String(e?.detail || '탭 추가 실패'));
+        showDrGmToast(String(errorText(e?.detail) || '탭 추가 실패'));
         return;
       }
       const created: DrGmTab = await res.json();
@@ -675,7 +676,7 @@ function Tab2Section({
       });
       if (!res.ok) {
         const e = await res.json().catch(() => ({}));
-        showDrGmToast(String(e?.detail || '삭제 실패'));
+        showDrGmToast(String(errorText(e?.detail) || '삭제 실패'));
         return;
       }
       const nextId = await loadDrGmTabs(id === drGmTabId ? null : drGmTabId);
@@ -804,7 +805,7 @@ function Tab2Section({
         showDrGmToast(`${tabName ? `'${tabName}' ` : ''}추천 포트폴리오가 저장되었습니다.`);
       } else {
         const e = await res.json().catch(() => ({}));
-        showDrGmToast(`저장 실패 (${res.status}) ${String((e as Record<string, unknown>)?.detail ?? '')}`.trim());
+        showDrGmToast(`저장 실패 (${res.status}) ${String(errorText((e as Record<string, unknown>)?.detail) || '')}`.trim());
       }
     } catch (e) {
       showDrGmToast(`저장 중 오류 발생 — ${e instanceof Error ? e.message : String(e)}`);
@@ -830,7 +831,7 @@ function Tab2Section({
       } else {
         // 원인을 추측하지 않도록 서버가 준 상태코드와 사유를 그대로 보여준다
         const e = await res.json().catch(() => ({}));
-        showDrGmToast(`현재가 갱신 실패 (${res.status}) ${String((e as Record<string, unknown>)?.detail ?? '')}`.trim());
+        showDrGmToast(`현재가 갱신 실패 (${res.status}) ${String(errorText((e as Record<string, unknown>)?.detail) || '')}`.trim());
       }
     } catch (e) {
       showDrGmToast(`현재가 갱신 중 오류 발생 — ${e instanceof Error ? e.message : String(e)}`);
@@ -1008,7 +1009,7 @@ function Tab2Section({
       });
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));
-        showT2Toast(`삭제 실패: ${err?.detail || '알 수 없는 오류'}`);
+        showT2Toast(`삭제 실패: ${errorText(err?.detail) || '알 수 없는 오류'}`);
         return;
       }
       /* Remove from historyList */
@@ -1084,7 +1085,7 @@ function Tab2Section({
       });
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));
-        showT2Toast(`등록 실패: ${err?.detail || '알 수 없는 오류'}`);
+        showT2Toast(`등록 실패: ${errorText(err?.detail) || '알 수 없는 오류'}`);
         return;
       }
       const newMaster: ProductMaster = await res.json();
@@ -1869,7 +1870,7 @@ function Tab2Section({
 
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));
-        showT2Toast(`저장 실패: ${err?.detail || '알 수 없는 오류'}`);
+        showT2Toast(`저장 실패: ${errorText(err?.detail) || '알 수 없는 오류'}`);
         return;
       }
       showT2Toast('리밸런싱 제안이 저장되었습니다.');
@@ -3712,7 +3713,7 @@ export default function IRPPage() {
 
         if (!snapRes.ok) {
           const err = await snapRes.json().catch(() => ({}));
-          throw new Error(err?.detail || '스냅샷 생성 실패');
+          throw new Error(errorText(err?.detail) || '스냅샷 생성 실패');
         }
 
         const snap: Snapshot = await snapRes.json();
@@ -4055,7 +4056,7 @@ export default function IRPPage() {
       );
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));
-        alert(err?.detail || '저장 실패');
+        alert(errorText(err?.detail) || '저장 실패');
       }
     } catch {
       alert('저장 중 오류가 발생했습니다.');
@@ -4095,7 +4096,7 @@ export default function IRPPage() {
 
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));
-        alert(err?.detail || '상품 마스터 적용 실패');
+        alert(errorText(err?.detail) || '상품 마스터 적용 실패');
         return;
       }
 
@@ -4248,7 +4249,7 @@ export default function IRPPage() {
       });
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));
-        alert(err?.detail || '상품 등록 실패');
+        alert(errorText(err?.detail) || '상품 등록 실패');
         return;
       }
       const newMaster: ProductMaster = await res.json();
@@ -4545,7 +4546,7 @@ export default function IRPPage() {
       );
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));
-        showToast(err?.detail || '보고서 로드 실패');
+        showToast(errorText(err?.detail) || '보고서 로드 실패');
         return;
       }
       const data: ReportData = await res.json();
@@ -4716,7 +4717,7 @@ export default function IRPPage() {
       });
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));
-        alert(err?.detail || 'AI 코멘트 생성 실패');
+        alert(errorText(err?.detail) || 'AI 코멘트 생성 실패');
         return;
       }
       const data = await res.json();
@@ -4773,7 +4774,7 @@ export default function IRPPage() {
       });
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));
-        alert(err?.detail || 'AI 변경 코멘트 생성 실패');
+        alert(errorText(err?.detail) || 'AI 변경 코멘트 생성 실패');
         return;
       }
       const data = await res.json();
@@ -5050,7 +5051,7 @@ export default function IRPPage() {
       });
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));
-        showToast(err?.detail || '이메일 발송에 실패했습니다.');
+        showToast(errorText(err?.detail) || '이메일 발송에 실패했습니다.');
         return;
       }
       showToast('이메일이 발송되었습니다');
@@ -5074,7 +5075,7 @@ export default function IRPPage() {
       });
       if (!patchRes.ok) {
         const err = await patchRes.json().catch(() => ({}));
-        showToast(err?.detail || '이메일 저장에 실패했습니다.');
+        showToast(errorText(err?.detail) || '이메일 저장에 실패했습니다.');
         setEmailSending(false);
         return;
       }
@@ -5115,7 +5116,7 @@ export default function IRPPage() {
         if (list.length > 0) setSelectedTemplateId(list[0].templateId);
       } else {
         const err = await res.json().catch(() => ({}));
-        showToast(err?.detail || '알림톡 템플릿 조회 실패');
+        showToast(errorText(err?.detail) || '알림톡 템플릿 조회 실패');
         setKakaoTemplates([]);
       }
     } catch {
@@ -5271,7 +5272,7 @@ export default function IRPPage() {
         } catch { /* 기록 저장 실패 무시 */ }
       } else {
         const err = await res.json().catch(() => ({}));
-        showToast(err?.detail || '알림톡 발송 실패');
+        showToast(errorText(err?.detail) || '알림톡 발송 실패');
       }
     } catch {
       showToast('알림톡 발송 중 오류가 발생했습니다.');
@@ -5405,7 +5406,7 @@ export default function IRPPage() {
         } catch (e) { console.error('발송 기록 저장 오류:', e); }
       } else {
         const err = await res.json().catch(() => ({}));
-        showToast(err?.detail || '문자 발송 실패');
+        showToast(errorText(err?.detail) || '문자 발송 실패');
       }
     } catch {
       showToast('문자 발송 중 오류가 발생했습니다.');

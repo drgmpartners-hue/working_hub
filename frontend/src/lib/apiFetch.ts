@@ -13,6 +13,7 @@
  *
  * 기존 raw fetch 는 한 번에 다 바꾸지 않고, 손대는 화면부터 점진적으로 옮긴다.
  */
+import { errorText } from '@/lib/errorText';
 import { API_URL } from '@/lib/api-url';
 import { authLib } from '@/lib/auth';
 
@@ -48,11 +49,7 @@ export function isAbort(e: unknown): boolean {
 
 function detailText(body: unknown): string {
   if (!body || typeof body !== 'object') return '';
-  const d = (body as { detail?: unknown }).detail;
-  if (typeof d === 'string') return d;
-  if (d && typeof d === 'object' && typeof (d as { message?: unknown }).message === 'string') return (d as { message: string }).message;
-  if (Array.isArray(d) && d[0] && typeof d[0].msg === 'string') return d[0].msg; // FastAPI 422
-  return '';
+  return errorText((body as { detail?: unknown }).detail); // FastAPI 422 목록도 한글 문장으로
 }
 
 /** fetch 그대로의 Response 를 돌려준다(상태 코드를 직접 보고 싶을 때). 시간 초과는 ApiError(0). */

@@ -1,5 +1,6 @@
 'use client';
 
+import { errorText } from '@/lib/errorText';
 import { useState, useEffect, useLayoutEffect, useCallback, useRef, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
@@ -833,7 +834,7 @@ export default function WrapAccountsPage() {
     try {
       const t = authLib.getToken();
       const res = await fetch(`${API_URL}/api/v1/notion/databases`, { headers: { Authorization: `Bearer ${t}` } });
-      if (!res.ok) { const d = await res.json().catch(() => ({})); throw new Error(d?.detail ?? '조회 실패'); }
+      if (!res.ok) { const d = await res.json().catch(() => ({})); throw new Error(errorText(d?.detail) || '조회 실패'); }
       setNDbs(await res.json());
       setNStep('selectDb');
     } catch (e: unknown) { setNError(e instanceof Error ? e.message : '오류'); }

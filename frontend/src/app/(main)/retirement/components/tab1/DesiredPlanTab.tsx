@@ -1,5 +1,6 @@
 'use client';
 
+import { errorText } from '@/lib/errorText';
 import { useState, useEffect, useRef, useMemo, Fragment } from 'react';
 import dynamic from 'next/dynamic';
 import { useRetirementStore } from '../../hooks/useRetirementStore';
@@ -652,6 +653,18 @@ export function DesiredPlanTab() {
       show('저장할 수 없습니다 — 현재플랜의 "현재가치 기대 연금액" 또는 추천플랜의 "현재가치 연금액" 중 최소 한 곳에 월 기준 금액을 입력하세요.', 'error');
       return;
     }
+    // 서버가 받는 범위를 저장 전에 미리 확인한다(예전엔 서버가 거절하면 "[object Object]"만 떴다)
+    const sendRetAge = rRetAge || cRetAge || 60;
+    const serverChecks = [
+      (sendRetAge < 40 || sendRetAge > 100) && `희망 은퇴나이는 40~100세로 입력하세요. (지금 ${sendRetAge}세)`,
+      !((rInvR || cInvR) > 0) && '투자수익률을 입력하세요(0보다 커야 합니다).',
+      !((rPenR || cPenR) > 0) && '연금수익률을 입력하세요(0보다 커야 합니다).',
+      !(infRate > 0) && '물가상승률을 입력하세요(0보다 커야 합니다).',
+    ].filter(Boolean) as string[];
+    if (serverChecks.length) {
+      show(`저장할 수 없습니다 — 아래 항목을 먼저 수정하세요\n\n${serverChecks.map(m => `• ${m}`).join('\n')}`, 'error');
+      return;
+    }
     setSaving(true);
     try {
       if (!(await ensureProfile())) { show('프로필 생성 실패', 'error'); setSaving(false); return; }
@@ -659,11 +672,11 @@ export function DesiredPlanTab() {
       const body = {
         // 하위 호환 필수 필드 (추천플랜 기준, 없으면 현재플랜)
         monthly_desired_amount: (recPenM || curPenM) * 1e4,
-        retirement_age: rRetAge || cRetAge || 60,
+        retirement_age: sendRetAge,
         current_age: curAge,
         retirement_period_years: 99,   // 무한지급(이자식) — 하위 호환용 명목값
         savings_period: rSavP || cSavP,
-        annual_savings: rAmt * 12 * 1e4 || cAnnSavWon,
+        annual_savings: rAnnSavWon || cAnnSavWon,   // 적립 주기(월/연) 반영 — 예전엔 '연' 주기도 ×12 됐다
         plan_start_age: rStartAge > 0 ? rStartAge : curAge,
         inflation_rate: infRate / 100,
         pension_return_rate: (rPenR || cPenR) / 100,
@@ -674,7 +687,7 @@ export function DesiredPlanTab() {
         use_inflation_input: tog1, use_inflation_calc: tog2,
         desired_retirement_age: rRetAge || cRetAge || 60,
         savings_period_years: rSavP, holding_period_years: rHoldYrs,
-        annual_savings_amount: rAmt * 12 * 1e4,
+        annual_savings_amount: rAnnSavWon,
         plan_start_year: pSY,
         simulation_data: simRows,
         simulation_target_fund: Math.round(recRetFund),
@@ -701,7 +714,7 @@ export function DesiredPlanTab() {
       if (r.ok) {
         if (selectedCustomer) setCustomer({ ...selectedCustomer, retirementAge: rRetAge || cRetAge, targetFund: Math.round(recRetFund / 1e4) });
         show('저장이 완료되었습니다.', 'success');
-      } else { const e = await r.json().catch(() => ({})); show(String((e as Record<string, unknown>).detail || '저장 실패'), 'error'); }
+      } else { const e = await r.json().catch(() => ({})); show(String(errorText((e as Record<string, unknown>).detail) || '저장 실패'), 'error'); }
     } catch { show('네트워크 오류', 'error'); } finally { setSaving(false); }
   }
 
@@ -1330,7 +1343,7 @@ function InC({ label, u, v, f, cur, sub, subC, ph, hl, dim, err }: {
     <div style={cardStyle}>
       <div style={CL}>{label}</div>
       <div style={{ position: 'relative' }}>
-        <input type="text" inputMode={cur ? 'numeric' : undefined} value={v} onChange={e => f(e.target.value)}
+        <input type="text" aria-label={label} inputMode={cur ? 'numeric' : undefined} value={v} onChange={e => f(e.target.value)}
           placeholder={ph} disabled={dim}
           style={{ ...IS, ...(dim ? { cursor: 'not-allowed' } : {}), ...(err ? { borderColor: '#F87171' } : {}) }} />
         <span style={US}>{u}</span>
@@ -1360,7 +1373,7 @@ function SavAmtCard({ label, v, f, freq, setFreq, amt, annSavWon }: {
         </div>
       </div>
       <div style={{ position: 'relative' }}>
-        <input type="text" inputMode="numeric" value={v} onChange={e => f(e.target.value)} style={IS} />
+        <input type="text" aria-label={label} inputMode="numeric" value={v} onChange={e => f(e.target.value)} style={IS} />
         <span style={US}>만원/{freq}</span>
       </div>
       <div style={{ fontSize: '10px', color: '#9CA3AF', marginTop: '4px' }}>
@@ -1381,7 +1394,7 @@ function SavPCard({ label, v, f, invYrs, holdYrs, warn, maxYrs }: {
     <div style={err ? { ...CARD, border: '1.5px solid #F87171', boxShadow: '0 0 0 1px rgba(248,113,113,0.35)' } : CARD}>
       <div style={CL}>{label}</div>
       <div style={{ position: 'relative' }}>
-        <input type="text" inputMode="numeric" value={v} onChange={e => f(e.target.value)}
+        <input type="text" aria-label={label} inputMode="numeric" value={v} onChange={e => f(e.target.value)}
           style={{ ...IS, ...(err ? { borderColor: '#F87171' } : {}) }} />
         <span style={US}>년</span>
       </div>

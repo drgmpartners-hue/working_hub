@@ -1,5 +1,6 @@
 'use client';
 
+import { errorText } from '@/lib/errorText';
 import { useState } from 'react';
 import { Button } from '@/components/common/Button';
 import { Card } from '@/components/common/Card';
@@ -58,7 +59,7 @@ export function AITextReview({
       );
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));
-        throw new Error(err.detail ?? '승인에 실패했습니다.');
+        throw new Error(errorText(err.detail) || '승인에 실패했습니다.');
       }
       const updated: ContentVersion = await res.json();
       onApprove(updated);
@@ -83,7 +84,7 @@ export function AITextReview({
       });
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));
-        throw new Error(err.detail ?? '재생성에 실패했습니다.');
+        throw new Error(errorText(err.detail) || '재생성에 실패했습니다.');
       }
       const newVersion: ContentVersion = await res.json();
       setEditedText(newVersion.ai_text_content ?? '');

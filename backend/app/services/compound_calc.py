@@ -198,12 +198,9 @@ class CompoundCalcService:
         prev_evaluation = 0.0
 
         for year in range(1, investment_years + 1):
-            if year <= savings_period:
-                monthly_payment = annual_savings / 12
-                additional = required_holding if year == 1 else 0.0
-            else:
-                monthly_payment = 0.0
-                additional = 0.0
+            monthly_payment = annual_savings / 12 if year <= savings_period else 0.0
+            # 초기 거치금은 적립 여부와 관계없이 1년차에 한 번 넣는다(적립기간 0 = 거치만 플랜)
+            additional = required_holding if year == 1 else 0.0
 
             evaluation = cls.excel_fv(
                 rate=monthly_rate,
@@ -243,6 +240,8 @@ class CompoundCalcService:
         else:
             pv_at_holding = target_fund
 
+        if savings_period <= 0:
+            return 0.0   # 적립 없이 거치만 하는 플랜: 역산할 적립금이 없다
         nper = savings_period * 12
         if monthly_rate == 0:
             return pv_at_holding / savings_period if savings_period > 0 else 0
@@ -289,9 +288,9 @@ class CompoundCalcService:
         holding_period = investment_years - savings_period
 
         if investment_years <= 0:
-            raise ValueError(f"retirement_age({retirement_age}) must be greater than start_age({sim_start_age})")
+            raise ValueError(f"희망 은퇴나이({retirement_age}세)가 플랜 시작 나이({sim_start_age}세)보다 커야 합니다.")
         if holding_period < 0:
-            raise ValueError(f"savings_period({savings_period}) must be less than investment_years({investment_years})")
+            raise ValueError(f"적립기간({savings_period}년)이 투자기간({investment_years}년)보다 길 수 없습니다.")
         # 1. 은퇴 시점 희망 월수령액
         #    tog1(물가반영)은 프론트에서 처리하여 전달됨
         #    monthly_desired_amount = 이미 은퇴당시 기준 금액

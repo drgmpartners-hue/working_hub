@@ -30,8 +30,8 @@ class DesiredPlanUpsert(BaseModel):
     )
     savings_period: int = Field(
         ...,
-        ge=1,
-        description="월 납입 적립 기간 (년)",
+        ge=0,
+        description="월 납입 적립 기간 (년). 0 = 적립 없이 거치금만 넣는 플랜",
     )
     annual_savings: int = Field(
         default=0,
@@ -179,7 +179,7 @@ class DesiredPlanCalculateRequest(BaseModel):
     monthly_desired_amount: int = Field(..., gt=0)
     retirement_age: int = Field(..., ge=40, le=100)
     current_age: int = Field(..., ge=1, le=99)
-    savings_period: int = Field(..., ge=1)
+    savings_period: int = Field(..., ge=0)  # 0 = 거치만
     annual_savings: int = Field(default=0, ge=0)
     retirement_period_years: int = Field(default=40, gt=0)
     inflation_rate: float = Field(default=0.021, gt=0, le=1.0)

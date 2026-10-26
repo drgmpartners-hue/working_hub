@@ -1,5 +1,6 @@
 'use client';
 
+import { errorText } from '@/lib/errorText';
 import { useState, useEffect } from 'react';
 import { Button } from '@/components/common/Button';
 import { Card } from '@/components/common/Card';
@@ -71,7 +72,7 @@ export function InputPanel({ contentType, onComplete }: InputPanelProps) {
       });
       if (!createRes.ok) {
         const err = await createRes.json().catch(() => ({}));
-        throw new Error(err.detail ?? '프로젝트 생성에 실패했습니다.');
+        throw new Error(errorText(err.detail) || '프로젝트 생성에 실패했습니다.');
       }
       const project: ContentProject = await createRes.json();
 
@@ -86,7 +87,7 @@ export function InputPanel({ contentType, onComplete }: InputPanelProps) {
       });
       if (!versionRes.ok) {
         const err = await versionRes.json().catch(() => ({}));
-        throw new Error(err.detail ?? 'AI 텍스트 생성에 실패했습니다.');
+        throw new Error(errorText(err.detail) || 'AI 텍스트 생성에 실패했습니다.');
       }
       const version: ContentVersion = await versionRes.json();
 

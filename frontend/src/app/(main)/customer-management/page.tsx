@@ -1,5 +1,6 @@
 'use client';
 
+import { errorText } from '@/lib/errorText';
 import { Fragment, useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { API_URL } from '@/lib/api-url';
@@ -192,7 +193,7 @@ export default function CustomerManagementPage() {
       });
       if (!res.ok) {
         const d = await res.json().catch(() => ({}));
-        throw new Error(d?.detail ?? 'Notion 데이터베이스 목록 조회 실패');
+        throw new Error(errorText(d?.detail) || 'Notion 데이터베이스 목록 조회 실패');
       }
       const dbs = await res.json();
       setNotionDbs(dbs);
@@ -226,7 +227,7 @@ export default function CustomerManagementPage() {
     try {
       const token = authLib.getToken();
       const res = await fetch(`${API_URL}/api/v1/notion/databases`, { headers: { Authorization: `Bearer ${token}` } });
-      if (!res.ok) { const d = await res.json().catch(() => ({})); throw new Error(d?.detail ?? 'Notion 데이터베이스 목록 조회 실패'); }
+      if (!res.ok) { const d = await res.json().catch(() => ({})); throw new Error(errorText(d?.detail) || 'Notion 데이터베이스 목록 조회 실패'); }
       dbs = await res.json();
       setNotionDbs(dbs);
     } catch (e: unknown) {
@@ -478,7 +479,7 @@ export default function CustomerManagementPage() {
 
       if (!res.ok) {
         const detail = await res.json().catch(() => ({}));
-        throw new Error(detail?.detail ?? '저장에 실패했습니다.');
+        throw new Error(errorText(detail?.detail) || '저장에 실패했습니다.');
       }
 
       closeModal();

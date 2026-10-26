@@ -1,5 +1,6 @@
 'use client';
 
+import { errorText } from '@/lib/errorText';
 import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import dynamic from 'next/dynamic';
 import { Modal } from '@/components/common/Modal';
@@ -978,7 +979,7 @@ export function InvestmentFlowTab() {
         fetch(`${API_URL}/api/v1/notion/databases/${saved.dbId}/rows`, { headers: authLib.getAuthHeader() }),
         fetch(`${API_URL}/api/v1/retirement/deposit-accounts/${acctId}/transactions`, { headers: authLib.getAuthHeader() }),
       ]);
-      if (!rowsRes.ok) { const d = await rowsRes.json().catch(() => ({})); throw new Error(d?.detail || 'Notion 데이터 조회 실패'); }
+      if (!rowsRes.ok) { const d = await rowsRes.json().catch(() => ({})); throw new Error(errorText(d?.detail) || 'Notion 데이터 조회 실패'); }
       const rows: { id: string; properties: Record<string, string> }[] = await rowsRes.json();
       // 고객별 전용 DB이므로 전체 행이 이 고객의 거래 — 행 필터 없음
       const matched = rows;

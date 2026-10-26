@@ -1,6 +1,7 @@
 'use client';
 
 /** 투자 흐름 탭 — Notion 가져오기·동기화(도우미·모달) (수정_tasks P2-4: InvestmentFlowTab.tsx 에서 동작 변경 없이 분리) */
+import { errorText } from '@/lib/errorText';
 import { useState, useEffect, useRef, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import { Modal } from '@/components/common/Modal';
@@ -493,7 +494,7 @@ export function NotionImportRecordsModal({ customerId, customerName, existingKey
     setIrLoading(true); setIrError(null);
     try {
       const res = await fetch(`${API_URL}/api/v1/notion/databases`, { headers: authLib.getAuthHeader() });
-      if (!res.ok) { const d = await res.json().catch(() => ({})); throw new Error(d?.detail || `조회 실패 (HTTP ${res.status})`); }
+      if (!res.ok) { const d = await res.json().catch(() => ({})); throw new Error(errorText(d?.detail) || `조회 실패 (HTTP ${res.status})`); }
       setIrDbs(await res.json());
       setIrStep('selectDb');
     } catch (e: unknown) { setIrError(e instanceof Error ? e.message : '오류'); }
@@ -509,7 +510,7 @@ export function NotionImportRecordsModal({ customerId, customerName, existingKey
       const pR = await fetch(`${API_URL}/api/v1/notion/databases/${dbId}/properties`, { headers: authLib.getAuthHeader() });
       if (!pR.ok) {
         const d = await pR.json().catch(() => ({} as { detail?: string }));
-        throw new Error(d?.detail || `데이터 조회 실패 (HTTP ${pR.status})`);
+        throw new Error(errorText(d?.detail) || `데이터 조회 실패 (HTTP ${pR.status})`);
       }
       const props: { name: string }[] = await pR.json();
       const cols = props.map(p => p.name);
@@ -542,7 +543,7 @@ export function NotionImportRecordsModal({ customerId, customerName, existingKey
     let list: { id: string; title: string; icon: string | null }[];
     try {
       const res = await fetch(`${API_URL}/api/v1/notion/databases`, { headers: authLib.getAuthHeader() });
-      if (!res.ok) { const d = await res.json().catch(() => ({})); throw new Error(d?.detail || `조회 실패 (HTTP ${res.status})`); }
+      if (!res.ok) { const d = await res.json().catch(() => ({})); throw new Error(errorText(d?.detail) || `조회 실패 (HTTP ${res.status})`); }
       list = await res.json();
       setIrDbs(list);
     } catch (e: unknown) { setIrError(e instanceof Error ? e.message : '오류'); setIrLoading(false); return; }
@@ -965,7 +966,7 @@ export function NotionImportDepositTxModal({ customerId, customerName, accounts,
     setLoading(true); setError(null);
     try {
       const res = await fetch(`${API_URL}/api/v1/notion/databases`, { headers: authLib.getAuthHeader() });
-      if (!res.ok) { const d = await res.json().catch(() => ({})); throw new Error(d?.detail || `조회 실패 (HTTP ${res.status})`); }
+      if (!res.ok) { const d = await res.json().catch(() => ({})); throw new Error(errorText(d?.detail) || `조회 실패 (HTTP ${res.status})`); }
       setDbs(await res.json());
       setStep('selectDb');
     } catch (e: unknown) { setError(e instanceof Error ? e.message : '오류'); }
@@ -980,7 +981,7 @@ export function NotionImportDepositTxModal({ customerId, customerName, accounts,
       const pR = await fetch(`${API_URL}/api/v1/notion/databases/${dbId}/properties`, { headers: authLib.getAuthHeader() });
       if (!pR.ok) {
         const d = await pR.json().catch(() => ({} as { detail?: string }));
-        throw new Error(d?.detail || `데이터 조회 실패 (HTTP ${pR.status})`);
+        throw new Error(errorText(d?.detail) || `데이터 조회 실패 (HTTP ${pR.status})`);
       }
       const props: { name: string }[] = await pR.json();
       const colNames = props.map(p => p.name);
@@ -989,7 +990,7 @@ export function NotionImportDepositTxModal({ customerId, customerName, accounts,
       const rR = await fetch(`${API_URL}/api/v1/notion/databases/${dbId}/rows`, { headers: authLib.getAuthHeader() });
       if (!rR.ok) {
         const d = await rR.json().catch(() => ({} as { detail?: string }));
-        throw new Error(d?.detail || `데이터 조회 실패 (HTTP ${rR.status})`);
+        throw new Error(errorText(d?.detail) || `데이터 조회 실패 (HTTP ${rR.status})`);
       }
       const rws: { id: string; properties: Record<string, string> }[] = await rR.json();
       setCols(colNames);

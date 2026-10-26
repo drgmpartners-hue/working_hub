@@ -1,5 +1,6 @@
 'use client';
 
+import { errorText } from '@/lib/errorText';
 import { useState, useRef, useCallback, useEffect } from 'react';
 import { Card } from '@/components/common/Card';
 import { API_URL } from '@/lib/api-url';
@@ -297,7 +298,7 @@ export function ClientRow({ index, clients, data, onChange }: ClientRowProps) {
       });
       if (!clientRes.ok) {
         const err = await clientRes.json().catch(() => ({}));
-        alert(err?.detail || '고객 정보 저장 실패');
+        alert(errorText(err?.detail) || '고객 정보 저장 실패');
         return;
       }
 
@@ -316,7 +317,7 @@ export function ClientRow({ index, clients, data, onChange }: ClientRowProps) {
         );
         if (!accRes.ok) {
           const err = await accRes.json().catch(() => ({}));
-          alert(err?.detail || `계좌 저장 실패 (${ACCOUNT_TYPE_LABELS[acc.account_type] ?? acc.account_type})`);
+          alert(errorText(err?.detail) || `계좌 저장 실패 (${ACCOUNT_TYPE_LABELS[acc.account_type] ?? acc.account_type})`);
           return;
         }
       }

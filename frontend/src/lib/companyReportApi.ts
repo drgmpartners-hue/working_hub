@@ -2,6 +2,7 @@
  * 기업 리포트 API 헬퍼 — /api/v1/company-report/*
  * 기존 페이지들과 같은 방식(API_URL + authLib 토큰)으로 호출한다.
  */
+import { errorText } from '@/lib/errorText';
 import { API_URL } from '@/lib/api-url';
 import { authLib } from '@/lib/auth';
 import { viewAsHeader } from '@/lib/crViewAs';
@@ -35,7 +36,7 @@ export async function crFetch<T = unknown>(path: string, init: RequestInit = {})
     let detail = `요청 실패 (${res.status})`;
     try {
       const body = await res.json();
-      if (body?.detail) detail = typeof body.detail === 'string' ? body.detail : JSON.stringify(body.detail);
+      if (body?.detail) detail = errorText(body.detail) || detail;
     } catch {
       /* 본문 없음 */
     }
@@ -62,7 +63,7 @@ export async function crBlob(path: string): Promise<{ blob: Blob; filename: stri
     let detail = `요청 실패 (${res.status})`;
     try {
       const b = await res.json();
-      if (b?.detail) detail = String(b.detail);
+      if (b?.detail) detail = errorText(b.detail) || detail;
     } catch {
       /* 본문 없음 */
     }
@@ -101,7 +102,7 @@ export async function crDownloadPost(path: string, body: unknown, fallbackName =
     let detail = `요청 실패 (${res.status})`;
     try {
       const b = await res.json();
-      if (b?.detail) detail = String(b.detail);
+      if (b?.detail) detail = errorText(b.detail) || detail;
     } catch {
       /* 본문 없음 */
     }

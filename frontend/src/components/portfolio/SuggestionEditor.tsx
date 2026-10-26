@@ -1,5 +1,6 @@
 'use client';
 
+import { errorText } from '@/lib/errorText';
 import { useState, useCallback } from 'react';
 import type { Holding } from './SnapshotDataTable';
 import { authLib } from '@/lib/auth';
@@ -124,7 +125,7 @@ export function SuggestionEditor({ holdings, snapshotId, accountId, totalEvaluat
 
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));
-        showToast(err?.detail || '제안 생성에 실패했습니다.', 'error');
+        showToast(errorText(err?.detail) || '제안 생성에 실패했습니다.', 'error');
         return;
       }
 

@@ -1,6 +1,7 @@
 /**
  * Authentication API service.
  */
+import { errorText } from '@/lib/errorText';
 import { authLib } from '@/lib/auth';
 import type { AuthResponse, LoginRequest, RegisterRequest, User, PasswordChangeRequest, SessionInfo } from '@/types/auth';
 import { API_URL } from '@/lib/api-url';
@@ -45,7 +46,7 @@ export const authService = {
 
     if (!response.ok) {
       const error = await response.json();
-      throw new Error(error.detail || 'Registration failed');
+      throw new Error(errorText(error.detail) || 'Registration failed');
     }
 
     return response.json();
@@ -63,7 +64,7 @@ export const authService = {
 
     if (!response.ok) {
       const error = await response.json();
-      throw new Error(error.detail || 'Login failed');
+      throw new Error(errorText(error.detail) || 'Login failed');
     }
 
     const result = await response.json();
@@ -108,7 +109,7 @@ export const authService = {
 
     if (!response.ok) {
       const error = await response.json();
-      throw new Error(error.detail || 'Update failed');
+      throw new Error(errorText(error.detail) || 'Update failed');
     }
 
     return response.json();
@@ -125,7 +126,7 @@ export const authService = {
 
     if (!response.ok) {
       const error = await response.json();
-      throw new Error(error.detail || 'Password change failed');
+      throw new Error(errorText(error.detail) || 'Password change failed');
     }
   },
 
@@ -141,7 +142,7 @@ export const authService = {
 
     if (!response.ok) {
       const error = await response.json();
-      throw new Error(error.detail || 'Google login failed');
+      throw new Error(errorText(error.detail) || 'Google login failed');
     }
 
     const result = await response.json();
@@ -167,7 +168,7 @@ export const authService = {
     const response = await fetchWithAuth(`/api/v1/auth/impersonate/${encodeURIComponent(userId)}`, { method: 'POST' });
     if (!response.ok) {
       const error = await response.json().catch(() => ({}));
-      throw new Error(error.detail || '계정 전환에 실패했습니다.');
+      throw new Error(errorText(error.detail) || '계정 전환에 실패했습니다.');
     }
     return response.json();
   },

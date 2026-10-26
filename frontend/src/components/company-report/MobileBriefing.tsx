@@ -4,6 +4,7 @@
  * 폰 전용 브리핑 화면(로그인 없음) — 카톡 [브리핑 보기] 버튼이 여는 화면.
  * 문장 끝 [1][2]를 누르면 바로 원문 기사. 서버가 수신자별 열쇠값(t)을 확인한다.
  */
+import { errorText } from '@/lib/errorText';
 import { CSSProperties, ReactNode, useEffect, useState } from 'react';
 import { ReportArticleButton } from './ReportArticleButton';
 import { StickyClose } from './StickyClose';
@@ -239,7 +240,7 @@ async function mobileReport(token: string, articleId: string, reason: string) {
   });
   if (!r.ok) {
     const j = await r.json().catch(() => ({}));
-    throw new Error((j && j.detail) || '보내지 못했습니다.');
+    throw new Error(errorText((j && j.detail)) || '보내지 못했습니다.');
   }
 }
 
@@ -855,7 +856,7 @@ export function MobileBriefingPage({ kind, token }: { kind: 'daily' | 'monthly';
     fetch(`${API_URL}/api/v1/company-report/m/${kind}?t=${encodeURIComponent(token)}`)
       .then(async (r) => {
         const j = await r.json().catch(() => ({}));
-        if (!r.ok) throw new Error((j && j.detail) || '브리핑을 불러오지 못했습니다.');
+        if (!r.ok) throw new Error(errorText((j && j.detail)) || '브리핑을 불러오지 못했습니다.');
         if (alive) setData(j);
       })
       .catch(

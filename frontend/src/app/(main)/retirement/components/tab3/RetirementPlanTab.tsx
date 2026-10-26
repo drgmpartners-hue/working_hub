@@ -1,5 +1,6 @@
 'use client';
 
+import { errorText } from '@/lib/errorText';
 import { useState, useEffect, useCallback } from 'react';
 import dynamic from 'next/dynamic';
 import { Button } from '@/components/common/Button';
@@ -575,7 +576,7 @@ export function RetirementPlanTab() {
         await runSimulation(data);
       } else {
         const err = await res.json().catch(() => ({}));
-        showToast((err as { detail?: string }).detail || '저장에 실패했습니다.', 'error');
+        showToast(errorText((err as { detail?: string }).detail) || '저장에 실패했습니다.', 'error');
       }
     } catch {
       showToast('네트워크 오류가 발생했습니다.', 'error');

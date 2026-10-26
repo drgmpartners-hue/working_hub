@@ -1,5 +1,6 @@
 'use client';
 
+import { errorText } from '@/lib/errorText';
 import { useState, useCallback } from 'react';
 import { authLib } from '@/lib/auth';
 import { API_URL } from '@/lib/api-url';
@@ -171,7 +172,7 @@ function HoldingRow({ holding: initialHolding, index, snapshotId, editable, onSa
       );
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));
-        alert(err?.detail || '저장 실패');
+        alert(errorText(err?.detail) || '저장 실패');
         return;
       }
       setSaved(true);

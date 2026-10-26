@@ -5,6 +5,7 @@
  * 서버가 열쇠값(t: 보고서·고객·만료일·서명)을 확인하고, 내부 표시(확인 필요·검토 의견·영업 노트)를 뺀 본문만 준다.
  * 고객은 Working Hub 사용자가 아니므로 앱 테마가 아니라 보고서와 같은 밝은 Dr.GM 색(남색·금색)으로 그린다.
  */
+import { errorText } from '@/lib/errorText';
 import { CSSProperties, useEffect, useMemo, useState } from 'react';
 import { API_URL } from '@/lib/api-url';
 
@@ -100,7 +101,7 @@ export function MobileReportPage({ token }: { token: string }) {
     fetch(`${API_URL}/api/v1/company-report/m/report?${q}`)
       .then(async (r) => {
         const j = await r.json().catch(() => ({}));
-        if (!r.ok) throw new Error((j && j.detail) || '보고서를 불러오지 못했습니다.');
+        if (!r.ok) throw new Error(errorText((j && j.detail)) || '보고서를 불러오지 못했습니다.');
         if (alive) setData(j);
       })
       .catch(
