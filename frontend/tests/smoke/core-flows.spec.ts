@@ -431,3 +431,35 @@ test('은퇴플랜 설계: 서버 거절 이유가 한글로 보이고, 거치�
   expect(body.retirement_age).toBe(65);
   expect(body.expected_return_rate).toBeCloseTo(0.07);
 });
+
+test('연금수령 계획: A/B 연금재원이 1번탭 은퇴금액(모은 돈)과 같다 — 무한지급 필요액이 아니라', async ({ page }) => {
+  await page.setViewportSize({ width: 1400, height: 900 });
+  await signIn(page);
+  const client = { id: 'c1', name: '정윤희', birth_date: '1978-04-20', phone: null, email: null };
+  const acc = (start: number, last: number) => [
+    { year: 1, age: start, phase: 'saving', evaluation: 50_000_000, cumulative_principal: 12_000_000 },
+    { year: 2, age: start + 1, phase: 'holding', evaluation: last, cumulative_principal: 120_000_000 },
+    { year: 3, age: start + 2, phase: 'retirement', evaluation: last - 30_000_000, cumulative_principal: 120_000_000, pension: 30_000_000 },
+  ];
+  const plan = {
+    id: 'dp1', profile_id: 'p1', desired_retirement_age: 70, retirement_pension_rate: 0.05,
+    target_retirement_fund: 600_000_000,          // 서버가 계산한 무한지급 필요액(연금재원이 아님)
+    simulation_target_fund: 430_000_000,
+    calculation_params: {
+      original_plan: acc(68, 350_000_000),          // 현재플랜 은퇴금액 3.5억
+      modified_plan: acc(68, 430_000_000),          // 추천플랜 은퇴금액 4.3억
+      plan_v2: { cRetAgeIn: '70', rRetAgeIn: '70', cPenRIn: '3.5', rPenRIn: '5' },
+    },
+  };
+  await mockApi(page, {
+    'GET /api/v1/clients': [client],
+    'GET /api/v1/retirement/profiles/c1': { id: 'p1', customer_id: 'c1', current_age: 48, age_at_design: 48, desired_retirement_age: 70 },
+    'GET /api/v1/retirement/desired-plans/c1': plan,
+  });
+  await page.goto('/retirement?tab=pension-plan');
+  await page.getByRole('combobox').first().selectOption('c1');
+  const line = page.getByText('연금재원 — A:', { exact: false });
+  await expect(line).toContainText('A: 3.5억원');
+  await expect(line).toContainText('B: 4.3억원');
+  await expect(line).not.toContainText('6.0억');
+});

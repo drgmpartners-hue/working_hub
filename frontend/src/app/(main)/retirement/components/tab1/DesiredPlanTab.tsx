@@ -691,7 +691,6 @@ export function DesiredPlanTab() {
         plan_start_year: pSY,
         simulation_data: simRows,
         simulation_target_fund: Math.round(recRetFund),
-        target_fund_pv: Math.round(recRetFund),
         existing_return_rate: cInvR / 100,
         recommended_return_rate: rInvR > 0 ? rInvR / 100 : undefined,
         recommended_pension_rate: rPenR > 0 ? rPenR / 100 : undefined,
@@ -700,6 +699,9 @@ export function DesiredPlanTab() {
         original_plan: simCur, modified_plan: simRec.length ? simRec : undefined,
         // 새 구조 전체 저장 (재진입 시 복원)
         calculation_params: {
+          // 플랜별 은퇴금액(모은 돈) — 연금수령 계획 탭의 A/B 연금재원으로 그대로 쓴다
+          fund_current: Math.round(curAccFund),
+          fund_recommended: Math.round(recRetFund),
           plan_v2: {
             infIn, tog1, tog2,
             pSYIn, cRetAgeIn, cAmtIn, cFreq, cHoldIn, cSavPIn, cInvRIn, cPenMIn, cPenRIn,

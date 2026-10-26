@@ -413,16 +413,27 @@ export function PensionPlanTab() {
   const recPenRate = (v2Num('rPenRIn') != null ? v2Num('rPenRIn')! / 100 : null)
     ?? (cp.recommended_pension_rate as number) ?? null;                              // B고객
 
-  // A고객 연금재원: 1번탭 목표 은퇴자금 (PV 계산값)
-  const pensionFundA = (cp.target_fund_pv as number) ?? tab1?.target_retirement_fund ?? 0;
-  // B고객 연금재원: 시뮬레이션 테이블 은퇴나이-1 평가금액 (수정 목표)
+  // 연금재원 = 1번탭 '은퇴금액(모은 돈)': 그 플랜 시뮬레이션의 은퇴 직전 해 평가금액.
+  // (2026-10-26) 예전엔 A를 서버가 따로 계산한 '무한지급 필요액'(target_retirement_fund)으로 잡아
+  //   1번탭 현재플랜 3.5억이 여기서 6.0억으로 보였다. 저장된 플랜 표에서 직접 읽어 1번탭과 같게 맞춘다.
+  const accFund = (rows: unknown): number | null => {
+    if (!Array.isArray(rows) || !rows.length) return null;
+    const acc = (rows as Record<string, unknown>[]).filter(r => r.phase !== 'retirement');
+    const v = acc[acc.length - 1]?.evaluation;
+    return typeof v === 'number' && v > 0 ? v : null;
+  };
+  const savedFund = (k: string) => (typeof cp[k] === 'number' && (cp[k] as number) > 0 ? (cp[k] as number) : null);
+  // A고객 연금재원: 현재플랜 은퇴금액
+  const pensionFundA = savedFund('fund_current') ?? accFund(cp.original_plan) ?? tab1?.target_retirement_fund ?? 0;
+  // B고객 연금재원: 추천플랜 은퇴금액
   const simData = tab1?.simulation_data ?? (cp.modified_plan as Record<string, unknown>[]) ?? [];
   const retireAge = tab1?.desired_retirement_age ?? 65;
   // A/B 은퇴나이는 각각 다르게 설정될 수 있으므로 분리
   const retireAgeA = v2Num('cRetAgeIn') ?? retireAge;
   const retireAgeB = v2Num('rRetAgeIn') ?? retireAge;
   const retireRow = simData.find(r => (r.age as number) === retireAge - 1);
-  const pensionFundB = (retireRow?.evaluation as number) ?? tab1?.simulation_target_fund ?? 0;
+  const pensionFundB = savedFund('fund_recommended') ?? accFund(cp.modified_plan)
+    ?? (retireRow?.evaluation as number) ?? tab1?.simulation_target_fund ?? 0;
   // 기본 연금재원 (하위 섹션 등에서 사용)
   const pensionFund = recPenRate ? pensionFundB : pensionFundA;
 
