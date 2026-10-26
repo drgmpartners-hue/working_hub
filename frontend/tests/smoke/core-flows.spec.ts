@@ -462,4 +462,22 @@ test('연금수령 계획: A/B 연금재원이 1번탭 은퇴금액(모은 돈)�
   await expect(line).toContainText('A: 3.5억원');
   await expect(line).toContainText('B: 4.3억원');
   await expect(line).not.toContainText('6.0억');
+
+  // 확정형 수령기간: 비교표 A고객 칸 하나만 고치면 B고객·월 연금액·아래 상세·안내문이 함께 바뀌고 저장된다
+  const saved: unknown[] = [];
+  await page.route('**/api/v1/retirement/desired-plans/c1/params', (r) => { saved.push(r.request().postDataJSON()); return json(r, {}); });
+  const yearsBox = page.getByRole('textbox', { name: '확정형 수령기간(년)' });
+  await expect(yearsBox).toHaveValue('30');
+  const fixedRowA = page.getByRole('row').filter({ has: yearsBox });
+  const before = await fixedRowA.innerText();
+  await yearsBox.fill('20');
+  await expect(fixedRowA).toContainText('(70~89세)');
+  await expect(page.getByText('확정 20년', { exact: false })).toBeVisible();          // B고객 줄
+  expect(await fixedRowA.innerText()).not.toEqual(before);                           // 월 연금액 다시 계산
+  const fixedDetail = page.locator('#pension-opt-fixed');
+  await expect(fixedDetail).toContainText('20년 (70세~89세)');
+  await expect(fixedDetail).toContainText('70세부터 89세까지 20년간');
+  await expect(fixedDetail).toContainText('89세 (수령종료)');
+  await expect.poll(() => JSON.stringify(saved.at(-1) ?? null)).toContain('"fixedPeriod":"20"');
+  await page.screenshot({ path: 'test-results/pension-fixed-period.png', fullPage: true });
 });

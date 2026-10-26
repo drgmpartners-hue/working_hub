@@ -298,7 +298,7 @@ export function PensionPlanTab() {
 
   const [lifetimeRate, setLifetimeRate] = useState('');
   const [fixedRate, setFixedRate] = useState('2');
-  const [fixedPeriod, setFixedPeriod] = useState('30');
+  const [fixedPeriod, setFixedPeriod] = useState('');   // 비어 있으면 기본(최대 30년, 100세 이전까지)
   const [infiniteRate, setInfiniteRate] = useState('5');
   const [infinitePeriod, setInfinitePeriod] = useState('40');
   // 무한지급형 월 연금액 (만원). 빈 값이면 이자액(재원×수익률) 자동 적용 → 원금 보존
@@ -341,7 +341,7 @@ export function PensionPlanTab() {
     if (savedIn && typeof savedIn === 'object') {
       setLifetimeRate(savedIn.lifetimeRate ?? '');
       setFixedRate(savedIn.fixedRate ?? '2');
-      setFixedPeriod(savedIn.fixedPeriod ?? '30');
+      setFixedPeriod(savedIn.fixedPeriod ?? '');
       setInfiniteRate(savedIn.infiniteRate ?? '5');
       setInfinitePeriod(savedIn.infinitePeriod ?? '40');
       setInfinitePension(savedIn.infinitePension ?? '');
@@ -355,7 +355,7 @@ export function PensionPlanTab() {
     setLifetimeRate(rateStr);
     setFixedRate(rateStr || '2');
     setInfiniteRate(rateStr || '5');
-    setFixedPeriod('30'); setInfinitePeriod('40'); setInfinitePension('');
+    setFixedPeriod(''); setInfinitePeriod('40'); setInfinitePension('');
     setInputsDirty(false);
   }, [tab1]);
 
@@ -446,9 +446,13 @@ export function PensionPlanTab() {
   const lifetimeYearsA = 120 - retireAgeA + 1;
   const lifetimeYearsB = 120 - retireAgeB + 1;
   const lifetimeYears = lifetimeYearsA;   // 하위 섹션 호환
-  // 확정형: A의 은퇴기간(100세까지)이 30년 이상이면 30년, 미만이면 그 기간에 맞춤
-  const fixedCompareYears = Math.max(1, Math.min(30, 100 - retireAgeA));
-  const fixedCompareYearsB = Math.max(1, Math.min(30, 100 - retireAgeB));
+  // 확정형 수령기간 — 비교표의 A고객 칸 하나에서 고치면 B고객·아래 확정형 상세·그래프·안내문·PDF가 모두 이 값을 쓴다.
+  // 비워 두면 기본: 30년(100세 전에 끝나도록 은퇴나이가 늦으면 그만큼 줄임). 120세를 넘지 않게 제한.
+  const defaultFixedYears = Math.max(1, Math.min(30, 100 - retireAgeA));
+  const maxFixedYears = Math.max(1, 121 - Math.max(retireAgeA, retireAgeB, retireAge));
+  const fixedYears = Math.min(maxFixedYears, fixedPeriod.trim() ? years(fixedPeriod, defaultFixedYears) : defaultFixedYears);
+  const fixedCompareYears = fixedYears;
+  const fixedCompareYearsB = fixedYears;
   const infiniteCompareRate = num(infiniteRate, 5) / 100;
 
   // A고객 (현재플랜 연금수익률 + A연금재원) 월연금
@@ -480,7 +484,7 @@ export function PensionPlanTab() {
 
   // 상세 탭용 계산
   const lifetimeResult = useMemo(() => calcLifetime(pensionFund, num(lifetimeRate, pensionRate * 100) / 100, retireAge, 120), [pensionFund, lifetimeRate, retireAge, pensionRate]);
-  const fixedResult = useMemo(() => calcFixed(pensionFund, num(fixedRate, pensionRate * 100) / 100, years(fixedPeriod, 30), retireAge), [pensionFund, fixedRate, fixedPeriod, retireAge, pensionRate]);
+  const fixedResult = useMemo(() => calcFixed(pensionFund, num(fixedRate, pensionRate * 100) / 100, fixedYears, retireAge), [pensionFund, fixedRate, fixedYears, retireAge, pensionRate]);
   const infiniteResult = useMemo(() => {
     const monthlyManwon = parseInt(infinitePension.replace(/\D/g, ''), 10) || 0;
     const annualInput = monthlyManwon > 0 ? monthlyManwon * 1e4 * 12 : undefined;
@@ -565,7 +569,7 @@ export function PensionPlanTab() {
               })();
               const infiniteChart: PChart[] = infiniteResult.chartData.map(p => ({ age: p.age, balance: p.balance, pension: p.pension }));
               // 그래프 아래 첨언 (화면 Note와 동일 문구)
-              const fixedP = years(fixedPeriod, 30);
+              const fixedP = fixedYears;
               const infDiff = infiniteResult.interestAnnual - infiniteResult.annualPension;
               const infStatus: 'keep' | 'grow' | 'drain' =
                 Math.abs(infDiff) < infiniteResult.interestAnnual * 0.005 ? 'keep' : infDiff > 0 ? 'grow' : 'drain';
@@ -608,7 +612,7 @@ export function PensionPlanTab() {
                 fixedCards: [
                   { label: '연금재원', value: fmtW(pensionFund) },
                   { label: '연금수익률', value: `${fixedRate}%` },
-                  { label: '연금수령기간', value: `${years(fixedPeriod, 30)}년 (${retireAge}세~${retireAge + years(fixedPeriod, 30) - 1}세)` },
+                  { label: '연금수령기간', value: `${fixedP}년 (${retireAge}세~${retireAge + fixedP - 1}세)` },
                   { label: '연금액 (월/연)', value: `${fmt(Math.round(fr.monthlyPension / 1e4))}만원 / ${fmtW(fr.annualPension)}` },
                   { label: '총 수령연금', value: fmtW(fr.totalReceived) },
                   { label: '총 수령이자', value: fmtW(fr.totalInterest) },
@@ -626,8 +630,8 @@ export function PensionPlanTab() {
                 lifetimeChart,
                 lifetimeNote: `원리금 균등상환 방식: 매월 동일한 ${fmtW(lr.monthlyPension)}을 수령합니다. 초기에는 이자 비중이 높고, 후반으로 갈수록 원금 비중이 증가합니다.`,
                 fixedChart,
-                fixedEndAge: retireAge + fixedP,
-                fixedNote: `확정기간 수령: ${retireAge}세부터 ${retireAge + fixedP}세까지 ${fixedP}년간 확정 수령합니다. 수령 종료 후 연금재원은 소진되며, 중도 사망 시 잔존연금이 상속됩니다.`,
+                fixedEndAge: retireAge + fixedP - 1,   // 마지막 수령 나이(화면 그래프 표시와 같게)
+                fixedNote: `확정기간 수령: ${retireAge}세부터 ${retireAge + fixedP - 1}세까지 ${fixedP}년간 확정 수령합니다. 수령 종료 후 연금재원은 소진되며, 중도 사망 시 잔존연금이 상속됩니다.`,
                 infiniteChart,
                 infiniteNote,
                 // 목표달성 플랜 섹션 제거 — PDF에서도 생략
@@ -689,7 +693,10 @@ export function PensionPlanTab() {
               <td rowSpan={recPenRate ? 2 : 1} style={{ padding: '12px', fontWeight: 700, color: '#7CC0FF', verticalAlign: 'middle' }}>확정형</td>
               <td style={{ padding: '10px 12px', textAlign: 'center', fontSize: '12px', color: 'var(--text-muted)' }}>A고객</td>
               <td style={{ padding: '10px 12px', textAlign: 'center', color: 'var(--text-muted)', fontSize: '12px' }}>연금수익률 ({(basePenRate * 100).toFixed(1)}%)</td>
-              <td style={{ padding: '10px 12px', textAlign: 'center', color: 'var(--text-primary)' }}>확정 {fixedCompareYears}년<br /><span style={{ fontSize: '10px', color: 'var(--text-muted)' }}>({retireAgeA}~{retireAgeA + fixedCompareYears - 1}세)</span></td>
+              <td style={{ padding: '10px 12px', textAlign: 'center', color: 'var(--text-primary)' }}>
+                <FixedYearsInput value={fixedYears} max={maxFixedYears} onChange={v => edited(setFixedPeriod)(v)} />
+                <br /><span style={{ fontSize: '10px', color: 'var(--text-muted)' }}>({retireAgeA}~{retireAgeA + fixedCompareYears - 1}세)</span>
+              </td>
               <td style={{ padding: '10px 12px', textAlign: 'right', fontWeight: 700, fontVariantNumeric: 'tabular-nums', color: 'var(--text-primary)' }}>{fmtW(compareFixedMonthlyA)}</td>
               <td rowSpan={recPenRate ? 2 : 1} style={{ padding: '10px 12px', textAlign: 'center', color: 'var(--text-muted)', borderBottom: `1px solid var(--bg-surface)`, verticalAlign: 'middle' }}>잔존연금 또는 없음</td>
             </tr>
@@ -744,7 +751,7 @@ export function PensionPlanTab() {
             <span style={{ width: 4, height: 16, backgroundColor: tabColors[1], borderRadius: 2 }} />
             <span style={{ fontSize: '15px', fontWeight: 700, color: '#93C5FD' }}>{tabs[1]}</span>
           </div>
-          <FixedSection pv={pensionFund} rate={fixedRate} setRate={edited(setFixedRate)} period={fixedPeriod} setPeriod={edited(setFixedPeriod)} retireAge={retireAge} result={fixedResult} />
+          <FixedSection pv={pensionFund} rate={fixedRate} periodYears={fixedYears} retireAge={retireAge} result={fixedResult} />
         </div>
 
         {/* 무한지급형 */}
@@ -835,14 +842,44 @@ function LifetimeSection({ pv, rate, setRate, retireAge, result, pensionRateFrom
   );
 }
 
+/** 확정형 수령기간 입력(년). 입력하는 동안은 빈 칸도 허용하고, 벗어나면 확정값으로 되돌린다. */
+function FixedYearsInput({ value, max, onChange }: { value: number; max: number; onChange: (v: string) => void }) {
+  const [draft, setDraft] = useState<string | null>(null);
+  return (
+    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+      확정
+      <input
+        type="text"
+        inputMode="numeric"
+        aria-label="확정형 수령기간(년)"
+        title={`수령기간을 바꾸면 월 연금액과 아래 확정형 상세가 함께 바뀝니다 (1~${max}년)`}
+        value={draft ?? String(value)}
+        onChange={e => {
+          const d = e.target.value.replace(/\D/g, '').slice(0, 3);
+          setDraft(d);
+          const n = parseInt(d, 10);
+          if (n > 0) onChange(String(Math.min(max, n)));
+        }}
+        onBlur={() => setDraft(null)}
+        style={{
+          width: 44, padding: '3px 6px', textAlign: 'center', fontWeight: 700, fontSize: 13,
+          color: 'var(--text-primary)', background: 'var(--bg-surface)',
+          border: '1px solid var(--blue-500)', borderRadius: 6,
+        }}
+      />
+      년
+    </span>
+  );
+}
+
 /* ================================================================== */
 /*  확정형 섹션                                                         */
 /* ================================================================== */
 
-function FixedSection({ pv, rate, setRate, period, setPeriod, retireAge, result }: {
-  pv: number; rate: string; setRate: (v: string) => void; period: string; setPeriod: (v: string) => void; retireAge: number; result: FixedResult;
+function FixedSection({ pv, rate, periodYears, retireAge, result }: {
+  pv: number; rate: string; periodYears: number; retireAge: number; result: FixedResult;
 }) {
-  const p = years(period, 30);
+  const p = periodYears;   // 수령기간은 위 '연금전환 옵션 비교' 표의 확정형 칸에서 바꾼다
   const rateDisplay = rate || '4.5';
   const maxAge = 120;
   const totalYears = maxAge - retireAge + 1;
@@ -865,7 +902,7 @@ function FixedSection({ pv, rate, setRate, period, setPeriod, retireAge, result 
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1.3fr 1.2fr 1fr 1fr', gap: '10px' }}>
         <ResultCard label="연금재원" value={fmtW(pv)} color="#60A5FA" />
         <ResultCard label="연금수익률" value={`${rateDisplay}%`} color="var(--success)" />
-        <ResultCard label="연금수령기간" value={`${p}년 (${retireAge}세~${retireAge + p}세)`} color="var(--text-primary)" />
+        <ResultCard label="연금수령기간" value={`${p}년 (${retireAge}세~${retireAge + p - 1}세)`} color="var(--text-primary)" />
         <div style={{ padding: '12px 16px', backgroundColor: 'var(--bg-surface)', borderRadius: '8px', border: '1px solid var(--border)' }}>
           <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginBottom: '4px' }}>연금액 (월/연)</div>
           <div style={{ fontSize: '16px', fontWeight: 700, color: 'var(--blue-400)', fontVariantNumeric: 'tabular-nums' }}>{fmtW(result.monthlyPension)}</div>
@@ -882,7 +919,7 @@ function FixedSection({ pv, rate, setRate, period, setPeriod, retireAge, result 
       </div>
 
       <Note bg="rgba(59,130,246,0.08)" border="rgba(59,130,246,0.30)" color="#93C5FD">
-        <strong>확정기간 수령</strong>: {retireAge}세부터 {retireAge + p}세까지 {p}년간 확정 수령합니다. 수령 종료 후 연금재원은 소진되며, 중도 사망 시 잔존연금이 상속됩니다.
+        <strong>확정기간 수령</strong>: {retireAge}세부터 {retireAge + p - 1}세까지 {p}년간 확정 수령합니다. 수령 종료 후 연금재원은 소진되며, 중도 사망 시 잔존연금이 상속됩니다.
       </Note>
     </div>
   );
